@@ -128,7 +128,7 @@ docker run -d \
 ### Option 1: Run All from Maven
 
 ```bash
-cd water-management-platform
+cd backend
 mvn clean package -DskipTests
 
 # Start each service in a separate terminal
