@@ -1,16 +1,19 @@
 package com.example.tenant.service;
 
-import com.example.tenant.dto.CreateTenantRequest;
-import com.example.tenant.dto.DepartmentResponse;
-import com.example.tenant.dto.TenantResponse;
+import com.example.tenant.dto.CreateDepartmentRequestDTO;
+import com.example.tenant.dto.CreateTenantRequestDTO;
+import com.example.tenant.dto.DepartmentResponseDTO;
+import com.example.tenant.dto.TenantResponseDTO;
 
 import java.util.List;
 
 public interface TenantManagementService {
 
-    TenantResponse createTenant(CreateTenantRequest request);
+    TenantResponseDTO createTenant(CreateTenantRequestDTO request);
 
-    List<DepartmentResponse> getTenantDepartments();
+    List<DepartmentResponseDTO> getTenantDepartments();
 
-    List<TenantResponse> getAllTenants();
+    DepartmentResponseDTO createDepartment(CreateDepartmentRequestDTO request);
+
+    List<TenantResponseDTO> getAllTenants();
 }

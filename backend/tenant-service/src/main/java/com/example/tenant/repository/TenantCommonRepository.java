@@ -1,7 +1,8 @@
 package com.example.tenant.repository;
 
-import com.example.tenant.dto.CreateTenantRequest;
-import com.example.tenant.dto.TenantResponse;
+import com.example.tenant.dto.CreateTenantRequestDTO;
+import com.example.tenant.dto.TenantResponseDTO;
+import com.example.tenant.enums.TenantStatus;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.jdbc.core.ConnectionCallback;
@@ -25,14 +26,14 @@ public class TenantCommonRepository {
 
     private final JdbcTemplate jdbcTemplate;
 
-    private static final RowMapper<TenantResponse> TENANT_ROW_MAPPER = (rs, rowNum) ->
-            TenantResponse.builder()
+    private static final RowMapper<TenantResponseDTO> TENANT_ROW_MAPPER = (rs, rowNum) ->
+            TenantResponseDTO.builder()
                     .id(rs.getInt("id"))
                     .uuid(rs.getString("uuid"))
                     .stateCode(rs.getString("state_code"))
                     .lgdCode(rs.getInt("lgd_code"))
-                    .name(rs.getString("name"))
-                    .status(rs.getString("status"))
+                    .name(rs.getString("title"))
+                    .status(TenantStatus.fromCode(rs.getInt("status")).name())
                     .createdAt(rs.getTimestamp("created_at") != null
                             ? rs.getTimestamp("created_at").toLocalDateTime() : null)
                     .createdBy((Integer) rs.getObject("created_by"))
@@ -46,11 +47,11 @@ public class TenantCommonRepository {
     /**
      * Inserts a new tenant into {@code common_schema.tenant_master_table}.
      */
-    public TenantResponse createTenant(CreateTenantRequest request) {
+    public TenantResponseDTO createTenant(CreateTenantRequestDTO request) {
         String sql = """
                 INSERT INTO common_schema.tenant_master_table
-                    (state_code, lgd_code, name, created_by, status)
-                VALUES (?, ?, ?, ?, 'ACTIVE')
+                    (state_code, lgd_code, title, created_by, status)
+                VALUES (?, ?, ?, ?, ?)
                 RETURNING *
                 """;
 
@@ -58,7 +59,8 @@ public class TenantCommonRepository {
                 request.getStateCode(),
                 request.getLgdCode(),
                 request.getName(),
-                request.getCreatedBy());
+                request.getCreatedBy(),
+                TenantStatus.ACTIVE.getCode());
     }
 
     /**
@@ -79,13 +81,13 @@ public class TenantCommonRepository {
         });
     }
 
-    public Optional<TenantResponse> findByStateCode(String stateCode) {
+    public Optional<TenantResponseDTO> findByStateCode(String stateCode) {
         String sql = "SELECT * FROM common_schema.tenant_master_table WHERE state_code = ?";
-        List<TenantResponse> results = jdbcTemplate.query(sql, TENANT_ROW_MAPPER, stateCode);
+        List<TenantResponseDTO> results = jdbcTemplate.query(sql, TENANT_ROW_MAPPER, stateCode);
         return results.isEmpty() ? Optional.empty() : Optional.of(results.get(0));
     }
 
-    public List<TenantResponse> findAll() {
+    public List<TenantResponseDTO> findAll() {
         return jdbcTemplate.query(
                 "SELECT * FROM common_schema.tenant_master_table ORDER BY id",
                 TENANT_ROW_MAPPER);

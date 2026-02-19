@@ -1,9 +1,10 @@
 package com.example.tenant.service;
 
 import com.example.tenant.config.TenantContext;
-import com.example.tenant.dto.CreateTenantRequest;
-import com.example.tenant.dto.DepartmentResponse;
-import com.example.tenant.dto.TenantResponse;
+import com.example.tenant.dto.CreateDepartmentRequestDTO;
+import com.example.tenant.dto.CreateTenantRequestDTO;
+import com.example.tenant.dto.DepartmentResponseDTO;
+import com.example.tenant.dto.TenantResponseDTO;
 import com.example.tenant.repository.TenantCommonRepository;
 import com.example.tenant.repository.TenantSchemaRepository;
 import lombok.RequiredArgsConstructor;
@@ -23,54 +24,71 @@ public class TenantManagementServiceImpl implements TenantManagementService {
 
     @Override
     @Transactional
-    public TenantResponse createTenant(CreateTenantRequest request) {
+    public TenantResponseDTO createTenant(CreateTenantRequestDTO request) {
         log.info("Creating tenant – stateCode: {}, name: {}", request.getStateCode(), request.getName());
-
-        validateCreateRequest(request);
 
         tenantCommonRepository.findByStateCode(request.getStateCode()).ifPresent(existing -> {
             throw new IllegalStateException(
                     "Tenant with state code '" + request.getStateCode() + "' already exists");
         });
 
-        TenantResponse tenant = tenantCommonRepository.createTenant(request);
-        log.info("Tenant record created in common_schema with id: {}", tenant.getId());
+        try {
+            TenantResponseDTO tenant = tenantCommonRepository.createTenant(request);
+            log.info("Tenant record created in common_schema with id: {}", tenant.getId());
 
-        String schemaName = "tenant_" + request.getStateCode().toLowerCase();
-        tenantCommonRepository.provisionTenantSchema(schemaName);
-        log.info("Tenant schema '{}' provisioned successfully", schemaName);
+            String schemaName = "tenant_" + request.getStateCode().toLowerCase();
+            tenantCommonRepository.provisionTenantSchema(schemaName);
+            log.info("Tenant schema '{}' provisioned successfully", schemaName);
 
-        return tenant;
+            return tenant;
+        } catch (IllegalArgumentException | IllegalStateException e) {
+            throw e;
+        } catch (Exception e) {
+            log.error("Failed to create tenant with stateCode: {}", request.getStateCode(), e);
+            throw new RuntimeException("Tenant creation failed: " + e.getMessage(), e);
+        }
     }
 
     @Override
-    public List<DepartmentResponse> getTenantDepartments() {
+    public List<DepartmentResponseDTO> getTenantDepartments() {
         String schemaName = TenantContext.getSchema();
         if (schemaName == null || schemaName.isBlank()) {
             throw new IllegalArgumentException(
                     "Tenant could not be resolved. Ensure the X-Tenant-Code header is set by the gateway.");
         }
         log.info("Fetching departments from schema: {}", schemaName);
-        return tenantSchemaRepository.getDepartments(schemaName);
+        try {
+            return tenantSchemaRepository.getDepartments(schemaName);
+        } catch (Exception e) {
+            log.error("Failed to fetch departments for schema: {}", schemaName, e);
+            throw new RuntimeException("Failed to fetch departments: " + e.getMessage(), e);
+        }
     }
 
     @Override
-    public List<TenantResponse> getAllTenants() {
-        return tenantCommonRepository.findAll();
+    @Transactional
+    public DepartmentResponseDTO createDepartment(CreateDepartmentRequestDTO request) {
+        String schemaName = TenantContext.getSchema();
+        if (schemaName == null || schemaName.isBlank()) {
+            throw new IllegalArgumentException(
+                    "Tenant could not be resolved. Ensure the X-Tenant-Code header is set.");
+        }
+        log.info("Creating department in schema: {}", schemaName);
+        try {
+            return tenantSchemaRepository.createDepartment(schemaName, request);
+        } catch (Exception e) {
+            log.error("Failed to create department in schema: {}", schemaName, e);
+            throw new RuntimeException("Department creation failed: " + e.getMessage(), e);
+        }
     }
 
-    private void validateCreateRequest(CreateTenantRequest request) {
-        if (request.getStateCode() == null || request.getStateCode().isBlank()) {
-            throw new IllegalArgumentException("State code is required");
-        }
-        if (request.getLgdCode() == null) {
-            throw new IllegalArgumentException("LGD code is required");
-        }
-        if (request.getName() == null || request.getName().isBlank()) {
-            throw new IllegalArgumentException("Tenant name is required");
-        }
-        if (!request.getStateCode().matches("^[A-Za-z]{2,10}$")) {
-            throw new IllegalArgumentException("State code must be 2-10 alphabetic characters");
+    @Override
+    public List<TenantResponseDTO> getAllTenants() {
+        try {
+            return tenantCommonRepository.findAll();
+        } catch (Exception e) {
+            log.error("Failed to fetch tenants", e);
+            throw new RuntimeException("Failed to fetch tenants: " + e.getMessage(), e);
         }
     }
 }

@@ -1,6 +1,7 @@
 package com.example.tenant.repository;
 
-import com.example.tenant.dto.DepartmentResponse;
+import com.example.tenant.dto.CreateDepartmentRequestDTO;
+import com.example.tenant.dto.DepartmentResponseDTO;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -24,15 +25,14 @@ public class TenantSchemaRepository {
 
     private final JdbcTemplate jdbcTemplate;
 
-    private static final RowMapper<DepartmentResponse> DEPARTMENT_ROW_MAPPER = (rs, rowNum) ->
-            DepartmentResponse.builder()
+    private static final RowMapper<DepartmentResponseDTO> DEPARTMENT_ROW_MAPPER = (rs, rowNum) ->
+            DepartmentResponseDTO.builder()
                     .id(rs.getInt("id"))
                     .uuid(rs.getString("uuid"))
                     .title(rs.getString("title"))
-                    .departmentLocationTypeLevel(rs.getInt("department_location_type_level"))
-                    .departmentLocationTypeName(rs.getString("department_location_type_name"))
+                    .departmentLocationConfigId((Integer) rs.getObject("department_location_config_id"))
                     .parentId((Integer) rs.getObject("parent_id"))
-                    .status(rs.getString("status"))
+                    .status(rs.getInt("status"))
                     .createdAt(rs.getTimestamp("created_at") != null
                             ? rs.getTimestamp("created_at").toLocalDateTime() : null)
                     .createdBy((Integer) rs.getObject("created_by"))
@@ -41,19 +41,32 @@ public class TenantSchemaRepository {
                     .updatedBy((Integer) rs.getObject("updated_by"))
                     .build();
 
-    /**
-     * Fetches all departments from the specified tenant schema's
-     * {@code department_master_table}.
-     *
-     * @param schemaName validated tenant schema name (e.g. {@code tenant_mp})
-     */
-    public List<DepartmentResponse> getDepartments(String schemaName) {
+    public List<DepartmentResponseDTO> getDepartments(String schemaName) {
         validateSchemaName(schemaName);
         log.debug("Fetching departments from schema: {}", schemaName);
 
         String sql = String.format(
                 "SELECT * FROM %s.department_master_table ORDER BY id", schemaName);
         return jdbcTemplate.query(sql, DEPARTMENT_ROW_MAPPER);
+    }
+
+    public DepartmentResponseDTO createDepartment(String schemaName, CreateDepartmentRequestDTO request) {
+        validateSchemaName(schemaName);
+        log.debug("Creating department in schema: {}", schemaName);
+
+        String sql = String.format("""
+                INSERT INTO %s.department_master_table
+                    (title, department_location_config_id, parent_id, status, created_by)
+                VALUES (?, ?, ?, ?, ?)
+                RETURNING *
+                """, schemaName);
+
+        return jdbcTemplate.queryForObject(sql, DEPARTMENT_ROW_MAPPER,
+                request.getTitle(),
+                request.getDepartmentLocationConfigId(),
+                request.getParentId(),
+                request.getStatus(),
+                request.getCreatedBy());
     }
 
     private void validateSchemaName(String schemaName) {
