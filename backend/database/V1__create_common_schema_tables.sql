@@ -141,6 +141,7 @@ CREATE TABLE common_schema.channel_master_table (
         FOREIGN KEY (deleted_by) REFERENCES common_schema.tenant_admin_user_master_table(id)
 );
 
+
 -- ============================================================
 -- Deferred FK constraints on tenant_admin_user_master_table
 -- ============================================================

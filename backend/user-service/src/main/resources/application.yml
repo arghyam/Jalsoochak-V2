@@ -4,11 +4,37 @@ server:
 spring:
   application:
     name: user-service
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${KEYCLOAK_ISSUER_URI:${keycloak.auth-server-url}/realms/${keycloak.realm}}
+
+  mail:
+    host: smtp.office365.com
+    port: 587
+    username: otonye.amietubodie@beehyv.com
+    password: zxfsfdbrjvtmkcvd
+    protocol: smtp
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+            required: true
+          ssl:
+            enable: false
+            protocols: TLSv1.2
+          connectiontimeout: 30000
+          timeout: 30000
+          writetimeout: 30000
+          debug: ${env.SPRING_MAIL_DEBUG:false}
 
   datasource:
     url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/jalsoochak_db}?stringtype=unspecified
-    username: ${SPRING_DATASOURCE_USERNAME:postgres}
-    password: ${SPRING_DATASOURCE_PASSWORD:Zaqwsx@1123}
+    username: ${SPRING_DATASOURCE_USERNAME:jalsoochak_user}
+    password: ${SPRING_DATASOURCE_PASSWORD:Password7@}
     driver-class-name: org.postgresql.Driver
     hikari:
       maximum-pool-size: 10
@@ -30,6 +56,31 @@ spring:
     consumer:
       group-id: user-service-group
       auto-offset-reset: earliest
+
+keycloak:
+  realm: jalsoochak-realm
+  auth-server-url: https://jalsoochak.beehyv.com/keycloak
+
+  # Login client (normal users)
+  resource: jalsoochak-client-id
+  credentials:
+    secret: EGFtM7yxOqkRvwTAoAeIO7N6aBymnTEZ
+
+  # Admin client (for creating users)
+  admin-client-id: jalsoochak-admin-client-id
+  admin-client-secret: b9yEU8jS1RrSoZdYoYBOx9ovml5oXBxH
+  admin-grant-type: client_credentials
+
+  # Public key
+  public-key: yXsFP1ORLn20RFFj2vwnsSiSMhfSUQEUUNIkLrCd8bE
+
+mail:
+  from:
+    email: otonye.amietubodie@beehyv.com
+    name: Jalsoochak
+
+frontend:
+  base-url: https://jalsoochak.beehyv.com/createpassword
 
 eureka:
   client:
