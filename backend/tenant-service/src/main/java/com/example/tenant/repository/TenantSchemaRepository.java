@@ -46,7 +46,7 @@ public class TenantSchemaRepository {
         log.debug("Fetching departments from schema: {}", schemaName);
 
         String sql = String.format(
-                "SELECT * FROM %s.department_master_table ORDER BY id", schemaName);
+                "SELECT * FROM %s.department_location_master_table ORDER BY id", schemaName);
         return jdbcTemplate.query(sql, DEPARTMENT_ROW_MAPPER);
     }
 
@@ -55,7 +55,7 @@ public class TenantSchemaRepository {
         log.debug("Creating department in schema: {}", schemaName);
 
         String sql = String.format("""
-                INSERT INTO %s.department_master_table
+                INSERT INTO %s.department_location_master_table
                     (title, department_location_config_id, parent_id, status, created_by)
                 VALUES (?, ?, ?, ?, ?)
                 RETURNING *

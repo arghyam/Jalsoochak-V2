@@ -1,4 +1,4 @@
-package com.example.tenant.service;
+package com.example.tenant.service.serviceImpl;
 
 import com.example.tenant.config.TenantContext;
 import com.example.tenant.dto.CreateDepartmentRequestDTO;
@@ -7,6 +7,8 @@ import com.example.tenant.dto.DepartmentResponseDTO;
 import com.example.tenant.dto.TenantResponseDTO;
 import com.example.tenant.repository.TenantCommonRepository;
 import com.example.tenant.repository.TenantSchemaRepository;
+import com.example.tenant.service.TenantManagementService;
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;

@@ -2,7 +2,7 @@ package com.example.tenant.repository;
 
 import com.example.tenant.dto.CreateTenantRequestDTO;
 import com.example.tenant.dto.TenantResponseDTO;
-import com.example.tenant.enums.TenantStatus;
+import com.example.tenant.enums.TenantStatusEnum;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.jdbc.core.ConnectionCallback;
@@ -33,7 +33,7 @@ public class TenantCommonRepository {
                     .stateCode(rs.getString("state_code"))
                     .lgdCode(rs.getInt("lgd_code"))
                     .name(rs.getString("title"))
-                    .status(TenantStatus.fromCode(rs.getInt("status")).name())
+                    .status(TenantStatusEnum.fromCode(rs.getInt("status")).name())
                     .createdAt(rs.getTimestamp("created_at") != null
                             ? rs.getTimestamp("created_at").toLocalDateTime() : null)
                     .createdBy((Integer) rs.getObject("created_by"))
@@ -60,7 +60,7 @@ public class TenantCommonRepository {
                 request.getLgdCode(),
                 request.getName(),
                 request.getCreatedBy(),
-                TenantStatus.ACTIVE.getCode());
+                TenantStatusEnum.ACTIVE.getCode());
     }
 
     /**

@@ -85,7 +85,7 @@ public class TenantController {
 
     @Operation(
             summary = "Create a department for the current tenant",
-            description = "Inserts a new department into the tenant-specific schema's department_master_table. "
+            description = "Inserts a new department into the tenant-specific schema's department_location_master_table. "
                     + "Requires the X-Tenant-Code header to identify the target tenant schema.")
     @ApiResponses({
             @ApiResponse(responseCode = "201", description = "Department created successfully",

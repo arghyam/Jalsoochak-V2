@@ -131,14 +131,14 @@ BEGIN
         )', schema_name);
 
     -- --------------------------------------------------------
-    -- 2.4  department_master_table
+    -- 2.4  department_location_master_table
     --      Departmental hierarchy for this tenant
     --      (e.g. zone > circle > division > sub-division).
     --      Self-referencing via parent_id.
     -- --------------------------------------------------------
 
     EXECUTE format('
-        CREATE TABLE %1$I.department_master_table (
+        CREATE TABLE %1$I.department_location_master_table (
             id                              SERIAL          PRIMARY KEY,
             uuid                            VARCHAR(36)     NOT NULL UNIQUE DEFAULT gen_random_uuid()::TEXT,
             title                           VARCHAR(255)    NOT NULL,
@@ -157,7 +157,7 @@ BEGIN
                 REFERENCES %1$I.location_config_master_table(id),
             CONSTRAINT fk_dept_parent
                 FOREIGN KEY (parent_id)
-                REFERENCES %1$I.department_master_table(id)
+                REFERENCES %1$I.department_location_master_table(id)
             -- created_by, updated_by, deleted_by -> common_schema.tenant_admin_user_master_table (enforced at app level)
         )', schema_name);
 
@@ -245,7 +245,7 @@ BEGIN
                 REFERENCES %1$I.scheme_master_table(id),
             CONSTRAINT fk_scheme_dept_parent
                 FOREIGN KEY (parent_department_id)
-                REFERENCES %1$I.department_master_table(id),
+                REFERENCES %1$I.department_location_master_table(id),
             CONSTRAINT fk_scheme_dept_created_by
                 FOREIGN KEY (created_by)
                 REFERENCES %1$I.user_table(id),
@@ -388,9 +388,9 @@ BEGIN
     EXECUTE format('CREATE INDEX idx_%1$s_lgd_parent        ON %1$I.lgd_location_master_table(parent_id)',  schema_name);
     EXECUTE format('CREATE INDEX idx_%1$s_lgd_status        ON %1$I.lgd_location_master_table(status)',     schema_name);
 
-    -- department_master_table
-    EXECUTE format('CREATE INDEX idx_%1$s_dept_parent       ON %1$I.department_master_table(parent_id)', schema_name);
-    EXECUTE format('CREATE INDEX idx_%1$s_dept_status       ON %1$I.department_master_table(status)',    schema_name);
+    -- department_location_master_table
+    EXECUTE format('CREATE INDEX idx_%1$s_dept_parent       ON %1$I.department_location_master_table(parent_id)', schema_name);
+    EXECUTE format('CREATE INDEX idx_%1$s_dept_status       ON %1$I.department_location_master_table(status)',    schema_name);
 
     -- scheme_master_table
     EXECUTE format('CREATE INDEX idx_%1$s_scheme_work_st    ON %1$I.scheme_master_table(work_status)',       schema_name);
