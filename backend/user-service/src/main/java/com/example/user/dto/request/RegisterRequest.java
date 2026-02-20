@@ -22,8 +22,8 @@ public class RegisterRequest {
     private String email;
 
     @NotBlank(message = "Phone number is required")
-    @Size(min = 10, max = 10, message = "Phone number must be exactly 10 digits")
-    @Pattern(regexp = "\\d+", message = "Phone number should contain only digits")
+//    @Size(min = 10, max = 10, message = "Phone number must be exactly 10 digits")
+//    @Pattern(regexp = "\\d+", message = "Phone number should contain only digits")
     private String phoneNumber;
 
     @NotBlank(message = "Person type is required")

@@ -64,7 +64,7 @@ public class UserController {
     @PostMapping("/complete/profile")
     public ResponseEntity<String> completeProfile(
             @Valid @RequestBody RegisterRequest registerRequest) {
-
+        log.info("hit: {}", registerRequest);
         boolean tenantExist = userCommonRepository.existsTenantByStateCode(registerRequest.getTenantId());
         if (!tenantExist){
             log.warn("Invalid tenant code provided: {}", registerRequest.getTenantId());

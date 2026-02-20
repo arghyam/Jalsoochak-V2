@@ -10,10 +10,10 @@ public class HeaderExceptionHandler {
 
     @ExceptionHandler(MissingRequestHeaderException.class)
     public ResponseEntity<String> handleMissingHeader(MissingRequestHeaderException ex) {
-        if ("X-Tenant-ID".equals(ex.getHeaderName())) {
+        if ("X-Tenant-Code".equals(ex.getHeaderName())) {
             return ResponseEntity
                     .badRequest()
-                    .body("Tenant ID is required");
+                    .body("Tenant code is required");
         }
         return ResponseEntity.badRequest().body(ex.getMessage());
     }
