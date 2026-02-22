@@ -2,6 +2,8 @@ server:
   port: 8082
 
 spring:
+  config:
+    import: "optional:file:.env[.properties],optional:file:user-service/.env[.properties]"
   application:
     name: user-service
   security:
@@ -13,8 +15,8 @@ spring:
   mail:
     host: smtp.office365.com
     port: 587
-    username: otonye.amietubodie@beehyv.com
-    password: zxfsfdbrjvtmkcvd
+    username: ${SPRING_MAIL_USERNAME}
+    password: ${SPRING_MAIL_PASSWORD}
     protocol: smtp
     properties:
       mail:
@@ -34,7 +36,7 @@ spring:
   datasource:
     url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/jalsoochak_db}?stringtype=unspecified
     username: ${SPRING_DATASOURCE_USERNAME:jalsoochak_user}
-    password: ${SPRING_DATASOURCE_PASSWORD:Password7@}
+    password: ${SPRING_DATASOURCE_PASSWORD}
     driver-class-name: org.postgresql.Driver
     hikari:
       maximum-pool-size: 10
@@ -62,22 +64,22 @@ keycloak:
   auth-server-url: https://jalsoochak.beehyv.com/keycloak
 
   # Login client (normal users)
-  resource: jalsoochak-client-id
+  resource: ${KEYCLOAK_CLIENT_ID}
   credentials:
-    secret: EGFtM7yxOqkRvwTAoAeIO7N6aBymnTEZ
+    secret: ${KEYCLOAK_CLIENT_SECRET}
 
   # Admin client (for creating users)
-  admin-client-id: jalsoochak-admin-client-id
-  admin-client-secret: b9yEU8jS1RrSoZdYoYBOx9ovml5oXBxH
+  admin-client-id: ${KEYCLOAK_ADMIN_CLIENT_ID}
+  admin-client-secret: ${KEYCLOAK_ADMIN_CLIENT_SECRET}
   admin-grant-type: client_credentials
 
   # Public key
-  public-key: yXsFP1ORLn20RFFj2vwnsSiSMhfSUQEUUNIkLrCd8bE
+  public-key: ${KEYCLOAK_PUBLIC_KEY:}
 
 mail:
   from:
-    email: otonye.amietubodie@beehyv.com
-    name: Jalsoochak
+    email: ${MAIL_FROM_EMAIL:no-reply@example.com}
+    name: ${MAIL_FROM_NAME:Jalsoochak}
 
 frontend:
   base-url: https://jalsoochak.beehyv.com/createpassword
@@ -92,4 +94,4 @@ management:
   endpoints:
     web:
       exposure:
-        include: "*"
+        include: "health,info"

@@ -11,6 +11,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestTemplate;
+import org.springframework.web.client.RestClientResponseException;
 
 import java.util.List;
 import java.util.Map;
@@ -89,6 +90,9 @@ public class KeycloakClient {
             }
 
             return objectMapper.readValue(response.getBody(), Map.class);
+        } catch (RestClientResponseException e) {
+            log.error("Keycloak token error: status={}, body={}", e.getRawStatusCode(), e.getResponseBodyAsString());
+            throw new RuntimeException("Keycloak token request error");
         } catch (Exception e) {
             log.error("Keycloak token error", e);
             throw new RuntimeException("Keycloak token request error");
@@ -110,6 +114,9 @@ public class KeycloakClient {
             }
 
             return objectMapper.readValue(response.getBody(), Map.class);
+        } catch (RestClientResponseException e) {
+            log.error("Keycloak userinfo error: status={}, body={}", e.getRawStatusCode(), e.getResponseBodyAsString());
+            throw new RuntimeException("Keycloak userinfo request error");
         } catch (Exception e) {
             log.error("Keycloak userinfo error", e);
             throw new RuntimeException("Keycloak userinfo request error");
