@@ -7,6 +7,7 @@ import org.springframework.stereotype.Repository;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.sql.Timestamp;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -85,14 +86,20 @@ public class UserCommonRepository {
                 LIMIT 1
                 """;
         List<InviteTokenRow> rows = jdbcTemplate.query(sql, (rs, n) ->
-                new InviteTokenRow(
-                        rs.getLong("id"),
-                        rs.getString("email"),
-                        rs.getTimestamp("expires_at").toLocalDateTime(),
-                        rs.getInt("tenant_id"),
-                        rs.getLong("sender_id"),
-                        rs.getBoolean("used")
-                ), tokenHash, rawToken);
+                {
+                    Timestamp expiresAtTs = rs.getTimestamp("expires_at");
+                    if (expiresAtTs == null) {
+                        throw new IllegalStateException("Invite token row has null expires_at");
+                    }
+                    return new InviteTokenRow(
+                            rs.getLong("id"),
+                            rs.getString("email"),
+                            expiresAtTs.toLocalDateTime(),
+                            rs.getInt("tenant_id"),
+                            rs.getLong("sender_id"),
+                            rs.getBoolean("used")
+                    );
+                }, tokenHash, rawToken);
         return rows.stream().findFirst();
     }
 
