@@ -19,7 +19,6 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -88,8 +87,8 @@ public class UserController {
 
 
     @PostMapping("/logout")
-    public ResponseEntity<String> logout(@RequestParam String refreshToken) {
-        boolean success = userService.logout(refreshToken);
+    public ResponseEntity<String> logout(@Valid @RequestBody TokenRequest tokenRequest) {
+        boolean success = userService.logout(tokenRequest.getRefreshToken());
         return success ? ResponseEntity.ok("Logged out") :
                 ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Logout failed");
     }
