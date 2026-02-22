@@ -4,6 +4,9 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -64,31 +67,32 @@ public class UserCommonRepository {
         return Boolean.TRUE.equals(exists);
     }
 
-    public void createInviteToken(String email, String token, LocalDateTime expiresAt, Integer tenantId, Long senderId) {
+    public void createInviteToken(String email, String rawToken, LocalDateTime expiresAt, Integer tenantId, Long senderId) {
+        String tokenHash = hashToken(rawToken);
         String sql = """
-                INSERT INTO common_schema.invite_tokens (email, token, expires_at, tenant_id, sender_id, used)
-                VALUES (?, ?, ?, ?, ?, false)
+                INSERT INTO common_schema.invite_tokens (email, token, token_hash, expires_at, tenant_id, sender_id, used)
+                VALUES (?, NULL, ?, ?, ?, ?, false)
                 """;
-        jdbcTemplate.update(sql, email, token, expiresAt, tenantId, senderId);
+        jdbcTemplate.update(sql, email, tokenHash, expiresAt, tenantId, senderId);
     }
 
-    public Optional<InviteTokenRow> findInviteTokenByToken(String token) {
+    public Optional<InviteTokenRow> findInviteTokenByToken(String rawToken) {
+        String tokenHash = hashToken(rawToken);
         String sql = """
-                SELECT id, email, token, expires_at, tenant_id, sender_id, used
+                SELECT id, email, expires_at, tenant_id, sender_id, used
                 FROM common_schema.invite_tokens
-                WHERE token = ?
+                WHERE token_hash = ? OR token = ?
                 LIMIT 1
                 """;
         List<InviteTokenRow> rows = jdbcTemplate.query(sql, (rs, n) ->
                 new InviteTokenRow(
                         rs.getLong("id"),
                         rs.getString("email"),
-                        rs.getString("token"),
                         rs.getTimestamp("expires_at").toLocalDateTime(),
                         rs.getInt("tenant_id"),
                         rs.getLong("sender_id"),
                         rs.getBoolean("used")
-                ), token);
+                ), tokenHash, rawToken);
         return rows.stream().findFirst();
     }
 
@@ -110,5 +114,19 @@ public class UserCommonRepository {
                 WHERE id = ?
                 """;
         jdbcTemplate.update(sql, id);
+    }
+
+    private String hashToken(String rawToken) {
+        try {
+            MessageDigest messageDigest = MessageDigest.getInstance("SHA-256");
+            byte[] digest = messageDigest.digest(rawToken.getBytes(StandardCharsets.UTF_8));
+            StringBuilder hex = new StringBuilder(digest.length * 2);
+            for (byte b : digest) {
+                hex.append(String.format("%02x", b));
+            }
+            return hex.toString();
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 algorithm is not available", e);
+        }
     }
 }
