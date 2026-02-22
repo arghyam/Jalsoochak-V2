@@ -25,6 +25,7 @@ public class MailService {
 
     public void sendInviteMail(String recipientEmail, String inviteLink) {
         try {
+            String inviteToken = extractToken(inviteLink);
             MimeMessage message = mailSender.createMimeMessage();
             MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
 
@@ -45,10 +46,13 @@ public class MailService {
                       </a>
                     </p>
                     <p>This link expires in 24 hours.</p>
-                    """.formatted(inviteLink);
+                    <p><strong>Here is your token (do not share with anyone):</strong> %s</p>
+                    """.formatted(inviteLink, inviteToken);
 
             helper.setText("Hello,\n\nYou have been invited to join the Jalsoochak platform.\n"
-                            + "Click the link to set your password: " + inviteLink + "\n\nThis link expires in 24 hours.",
+                            + "Click the link to set your password: " + inviteLink + "\n\n"
+                            + "Here is your token (do not share with anyone): " + inviteToken + "\n\n"
+                            + "This link expires in 24 hours.",
                     htmlContent);
 
             mailSender.send(message);
@@ -59,5 +63,13 @@ public class MailService {
             log.error("Failed to send invite email to {}", recipientEmail, e);
             throw new RuntimeException("Failed to send invite email", e);
         }
+    }
+
+    private String extractToken(String inviteLink) {
+        int tokenIndex = inviteLink.indexOf("token=");
+        if (tokenIndex < 0) {
+            return "";
+        }
+        return inviteLink.substring(tokenIndex + "token=".length());
     }
 }

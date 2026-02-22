@@ -4,13 +4,10 @@ import com.example.user.dto.request.InviteRequest;
 import com.example.user.dto.request.LoginRequest;
 import com.example.user.dto.request.RegisterRequest;
 import com.example.user.dto.response.TokenResponse;
-import org.springframework.web.multipart.MultipartFile;
-
-import java.util.Map;
 
 public interface UserService {
 
-    String inviteUser(InviteRequest inviteRequest);
+    void inviteUser(InviteRequest inviteRequest);
 
     void completeProfile(RegisterRequest registerRequest);
 

@@ -59,7 +59,7 @@ public class UserServiceImpl implements UserService {
 
 
     @Transactional
-    public String inviteUser(InviteRequest inviteRequest) {
+    public void inviteUser(InviteRequest inviteRequest) {
 
         if (inviteRequest.getSenderId() == null) {
             throw new ResponseStatusException(
@@ -94,11 +94,17 @@ public class UserServiceImpl implements UserService {
         }
 
         String inviteeEmail = inviteRequest.getEmail().trim().toLowerCase();
-        if (userTenantRepository.existsEmail(schemaName, inviteeEmail)
-                || userCommonRepository.existsActiveInviteByEmail(inviteeEmail, sender.tenantId())) {
+        if (userTenantRepository.existsEmail(schemaName, inviteeEmail)) {
             throw new ResponseStatusException(
                     HttpStatus.CONFLICT,
-                    "Invitation already sent to this user"
+                    "User with this email already exists"
+            );
+        }
+
+        if (userCommonRepository.existsActiveInviteByEmail(inviteeEmail, sender.tenantId())) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "An active invitation already exists for this email"
             );
         }
 
@@ -123,7 +129,6 @@ public class UserServiceImpl implements UserService {
                 }
             }
         });
-        return token;
     }
 
 
@@ -182,7 +187,6 @@ public class UserServiceImpl implements UserService {
         keycloakUser.setLastName(registerRequest.getLastName());
         keycloakUser.setEnabled(true);
         keycloakUser.setEmailVerified(true);
-        keycloakUser.setRequiredActions(List.of("UPDATE_PASSWORD"));
 
         String keycloakUserId;
         try (Response response = usersResource.create(keycloakUser)) {

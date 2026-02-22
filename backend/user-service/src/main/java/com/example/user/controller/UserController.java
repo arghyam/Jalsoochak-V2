@@ -51,9 +51,9 @@ public class UserController {
             );
         }
 
-        String inviteToken = userService.inviteUser(inviteRequest);
+        userService.inviteUser(inviteRequest);
         String message = "Invite sent to " + inviteRequest.getEmail();
-        return ResponseEntity.ok(new InviteToken(inviteToken, message));
+        return ResponseEntity.ok(new InviteToken(message));
     }
 
     @PostMapping("/complete/profile")
