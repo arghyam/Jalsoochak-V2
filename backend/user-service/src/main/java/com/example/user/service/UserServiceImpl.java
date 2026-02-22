@@ -215,11 +215,7 @@ public class UserServiceImpl implements UserService {
                     inviteToken.senderId()
             );
 
-            try {
-                assignRoleToUser(keycloakUserId, "STATE_ADMIN");
-            } catch (Exception e) {
-                log.error("Failed to assign role to user: {}", e.getMessage(), e);
-            }
+            assignRoleToUser(keycloakUserId, "STATE_ADMIN");
 
             userCommonRepository.markInviteTokenUsed(inviteToken.id());
 
