@@ -79,6 +79,11 @@ public class TenantCommonRepository {
             }
             return null;
         });
+
+        // Keycloak owns credentials; tenant user_table.password should be nullable.
+        String alterPasswordNullabilitySql = String.format(
+                "ALTER TABLE IF EXISTS %s.user_table ALTER COLUMN password DROP NOT NULL", schemaName);
+        jdbcTemplate.execute(alterPasswordNullabilitySql);
     }
 
     public Optional<TenantResponseDTO> findByStateCode(String stateCode) {

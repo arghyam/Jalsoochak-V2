@@ -5,6 +5,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
@@ -12,6 +13,7 @@ import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.client.RestClientResponseException;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
 import java.util.Map;
@@ -86,16 +88,20 @@ public class KeycloakClient {
             ResponseEntity<String> response = restTemplate.postForEntity(url, entity, String.class);
 
             if (!response.getStatusCode().is2xxSuccessful() || response.getBody() == null) {
-                throw new RuntimeException("Keycloak token request failed");
+                throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Keycloak token request failed");
             }
 
             return objectMapper.readValue(response.getBody(), Map.class);
         } catch (RestClientResponseException e) {
             log.error("Keycloak token error: status={}, body={}", e.getRawStatusCode(), e.getResponseBodyAsString());
-            throw new RuntimeException("Keycloak token request error");
+            HttpStatus status = HttpStatus.resolve(e.getRawStatusCode());
+            if (status == HttpStatus.UNAUTHORIZED || status == HttpStatus.BAD_REQUEST) {
+                throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid username, password, or refresh token", e);
+            }
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Keycloak token request failed", e);
         } catch (Exception e) {
             log.error("Keycloak token error", e);
-            throw new RuntimeException("Keycloak token request error");
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Keycloak token request failed", e);
         }
     }
 
@@ -110,16 +116,20 @@ public class KeycloakClient {
                     org.springframework.http.HttpMethod.GET, entity, String.class);
 
             if (!response.getStatusCode().is2xxSuccessful() || response.getBody() == null) {
-                throw new RuntimeException("Keycloak userinfo request failed");
+                throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Keycloak userinfo request failed");
             }
 
             return objectMapper.readValue(response.getBody(), Map.class);
         } catch (RestClientResponseException e) {
             log.error("Keycloak userinfo error: status={}, body={}", e.getRawStatusCode(), e.getResponseBodyAsString());
-            throw new RuntimeException("Keycloak userinfo request error");
+            HttpStatus status = HttpStatus.resolve(e.getRawStatusCode());
+            if (status == HttpStatus.UNAUTHORIZED || status == HttpStatus.FORBIDDEN) {
+                throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Access token is invalid or expired", e);
+            }
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Keycloak userinfo request failed", e);
         } catch (Exception e) {
             log.error("Keycloak userinfo error", e);
-            throw new RuntimeException("Keycloak userinfo request error");
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Keycloak userinfo request failed", e);
         }
     }
 

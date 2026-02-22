@@ -8,6 +8,7 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.server.ResponseStatusException;
 import lombok.extern.slf4j.Slf4j;
+import org.slf4j.MDC;
 
 import java.time.OffsetDateTime;
 import java.util.LinkedHashMap;
@@ -16,6 +17,7 @@ import java.util.Map;
 @RestControllerAdvice
 @Slf4j
 public class GlobalExceptionHandler {
+    private static final String REQUEST_ID_KEY = "requestId";
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<Map<String, Object>> handleValidation(MethodArgumentNotValidException ex) {
@@ -30,6 +32,7 @@ public class GlobalExceptionHandler {
         body.put("error", "Validation Failed");
         body.put("message", "Request validation failed");
         body.put("errors", errors);
+        body.put("requestId", MDC.get(REQUEST_ID_KEY));
 
         return ResponseEntity.badRequest().body(body);
     }
@@ -42,6 +45,7 @@ public class GlobalExceptionHandler {
         body.put("status", status.value());
         body.put("error", status.getReasonPhrase());
         body.put("message", ex.getReason() != null ? ex.getReason() : "Request failed");
+        body.put("requestId", MDC.get(REQUEST_ID_KEY));
 
         return ResponseEntity.status(status).body(body);
     }
@@ -54,6 +58,7 @@ public class GlobalExceptionHandler {
         body.put("status", HttpStatus.INTERNAL_SERVER_ERROR.value());
         body.put("error", HttpStatus.INTERNAL_SERVER_ERROR.getReasonPhrase());
         body.put("message", "Unexpected server error");
+        body.put("requestId", MDC.get(REQUEST_ID_KEY));
 
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(body);
     }

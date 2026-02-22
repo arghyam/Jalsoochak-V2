@@ -45,14 +45,7 @@ public class UserServiceImpl implements UserService {
     private final UserTenantRepository userTenantRepository;
     private final KeycloakClient keycloakClient;
     private final UserCommonRepository userCommonRepository;
-    private static final String ALLOWED_PERSON_TYPE = "Pump Operator";
-
-
     private static final String SUPER_USER_ROLE = "super_user";
-
-    private static final String NAME_REGEX = "^[A-Za-z]+$";
-    private static final String FULL_NAME_REGEX = "^[A-Za-z]+(\\s[A-Za-z]+)*$";
-    private static final String PHONE_REGEX = "^[0-9]{10}$";
 
     public UserServiceImpl(KeycloakProvider keycloakProvider,
                            KeycloakClient keycloakClient, MailService mailService,
@@ -102,7 +95,7 @@ public class UserServiceImpl implements UserService {
 
         String inviteeEmail = inviteRequest.getEmail().trim().toLowerCase();
         if (userTenantRepository.existsEmail(schemaName, inviteeEmail)
-                || userCommonRepository.existsActiveInviteByEmail(inviteeEmail)) {
+                || userCommonRepository.existsActiveInviteByEmail(inviteeEmail, sender.tenantId())) {
             throw new ResponseStatusException(
                     HttpStatus.CONFLICT,
                     "Invitation already sent to this user"
@@ -114,6 +107,7 @@ public class UserServiceImpl implements UserService {
                 inviteeEmail,
                 token,
                 LocalDateTime.now().plusHours(24),
+                sender.tenantId(),
                 inviteRequest.getSenderId()
         );
 
@@ -151,11 +145,19 @@ public class UserServiceImpl implements UserService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invite token has expired");
         }
 
-        String tenantCode = registerRequest.getTenantId().trim().toLowerCase();
-        String schemaName = "tenant_" + tenantCode;
+        String tenantCode = userCommonRepository.findTenantStateCodeById(inviteToken.tenantId())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid tenant for invite token"))
+                .trim()
+                .toLowerCase();
 
-        Integer tenantId = userCommonRepository.findTenantIdByStateCode(tenantCode)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid tenant code"));
+        if (registerRequest.getTenantId() != null
+                && !registerRequest.getTenantId().isBlank()
+                && !tenantCode.equals(registerRequest.getTenantId().trim().toLowerCase())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Tenant does not match invite token");
+        }
+
+        String schemaName = "tenant_" + tenantCode;
+        Integer tenantId = inviteToken.tenantId();
 
         Integer userTypeId = userCommonRepository.findUserTypeId(registerRequest.getPersonType())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid person type"));
@@ -195,13 +197,13 @@ public class UserServiceImpl implements UserService {
             keycloakUserId = response.getLocation().getPath().replaceAll(".*/", "");
         }
 
-        CredentialRepresentation credential = new CredentialRepresentation();
-        credential.setType(CredentialRepresentation.PASSWORD);
-        credential.setValue(registerRequest.getPassword());
-        credential.setTemporary(false);
-        usersResource.get(keycloakUserId).resetPassword(credential);
-
         try {
+            CredentialRepresentation credential = new CredentialRepresentation();
+            credential.setType(CredentialRepresentation.PASSWORD);
+            credential.setValue(registerRequest.getPassword());
+            credential.setTemporary(false);
+            usersResource.get(keycloakUserId).resetPassword(credential);
+
             String title = (registerRequest.getFirstName() + " " + registerRequest.getLastName()).trim();
             userTenantRepository.createUser(
                     schemaName,
@@ -210,7 +212,6 @@ public class UserServiceImpl implements UserService {
                     inviteeEmail,
                     userTypeId,
                     registerRequest.getPhoneNumber(),
-                    null,
                     inviteToken.senderId()
             );
 
@@ -247,7 +248,7 @@ public class UserServiceImpl implements UserService {
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.BAD_REQUEST, "User not found in tenant"));
 
-        log.debug("User '{}' logged in with tenant '{}'", user.phoneNumber(), user.email());
+        log.debug("User '{}' logged in with tenant '{}'", user.phoneNumber(), tenantCode);
         Map<String, Object> tokenMap = keycloakClient.obtainToken(
                 loginRequest.getUsername(), loginRequest.getPassword()
         );
@@ -276,13 +277,7 @@ public class UserServiceImpl implements UserService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Refresh token must be provided");
         }
 
-        Map<String, Object> tokenMap;
-        try {
-            tokenMap = keycloakClient.refreshToken(refreshToken);
-        } catch (Exception e) {
-            log.error("Failed to refresh token", e);
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid refresh token");
-        }
+        Map<String, Object> tokenMap = keycloakClient.refreshToken(refreshToken);
 
         String accessToken = (String) tokenMap.get("access_token");
         Map<String, Object> userInfo = keycloakClient.getUserInfo(accessToken);

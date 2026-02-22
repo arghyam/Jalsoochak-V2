@@ -37,6 +37,7 @@ public class UserTenantRepository {
 
         String sql = String.format("""
         SELECT u.id,
+               u.tenant_id,
                u.phone_number,
                u.email,
                u.user_type,
@@ -50,6 +51,7 @@ public class UserTenantRepository {
         List<TenantUserRecord> rows = jdbcTemplate.query(sql, (rs, n) ->
                 new TenantUserRecord(
                         toLong(rs.getObject("id")),
+                        toInteger(rs.getObject("tenant_id")),
                         rs.getString("phone_number"),
                         rs.getString("email"),
                         toLong(rs.getObject("user_type")),
@@ -64,6 +66,7 @@ public class UserTenantRepository {
 
         String sql = String.format("""
         SELECT u.id,
+               u.tenant_id,
                u.phone_number,
                u.email,
                u.user_type,
@@ -77,6 +80,7 @@ public class UserTenantRepository {
         List<TenantUserRecord> rows = jdbcTemplate.query(sql, (rs, n) ->
                 new TenantUserRecord(
                         toLong(rs.getObject("id")),
+                        toInteger(rs.getObject("tenant_id")),
                         rs.getString("phone_number"),
                         rs.getString("email"),
                         toLong(rs.getObject("user_type")),
@@ -105,7 +109,6 @@ public class UserTenantRepository {
                            String email,
                            Integer userTypeId,
                            String phoneNumber,
-                           String password,
                            Long createdBy) {
         validateSchemaName(schemaName);
         String sql = String.format("""
@@ -137,7 +140,7 @@ public class UserTenantRepository {
                 email,
                 userTypeId,
                 phoneNumber,
-                password,
+                null,
                 createdBy,
                 createdBy
         );
@@ -150,6 +153,16 @@ public class UserTenantRepository {
         }
         if (value instanceof Number number) {
             return number.longValue();
+        }
+        throw new IllegalArgumentException("Expected numeric DB value, got: " + value.getClass().getName());
+    }
+
+    private Integer toInteger(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof Number number) {
+            return number.intValue();
         }
         throw new IllegalArgumentException("Expected numeric DB value, got: " + value.getClass().getName());
     }

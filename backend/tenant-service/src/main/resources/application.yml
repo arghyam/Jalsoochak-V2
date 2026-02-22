@@ -20,6 +20,8 @@ spring:
     enabled: true
     locations: classpath:db/migration
     baseline-on-migrate: true
+    default-schema: common_schema
+    schemas: common_schema
 
   jpa:
     hibernate:

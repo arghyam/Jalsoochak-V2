@@ -7,6 +7,7 @@ public record InviteTokenRow(
         String email,
         String token,
         LocalDateTime expiresAt,
+        Integer tenantId,
         Long senderId,
         boolean used
 ) {
