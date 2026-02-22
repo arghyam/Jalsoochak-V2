@@ -210,7 +210,7 @@ public class UserServiceImpl implements UserService {
                     inviteeEmail,
                     userTypeId,
                     registerRequest.getPhoneNumber(),
-                    registerRequest.getPassword(),
+                    null,
                     inviteToken.senderId()
             );
 
