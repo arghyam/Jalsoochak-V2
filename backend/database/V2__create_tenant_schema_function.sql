@@ -87,6 +87,7 @@ BEGIN
             status                      INTEGER         NOT NULL,
             email_verification_status   BOOLEAN         DEFAULT FALSE,
             phone_verification_status   BOOLEAN         DEFAULT FALSE,
+            language_id                 INTEGER,
             created_by                  INTEGER,        -- loosely coupled to common_schema.tenant_admin_user_master_table
             created_at                  TIMESTAMP       NOT NULL DEFAULT NOW(),
             updated_by                  INTEGER,        -- loosely coupled to common_schema.tenant_admin_user_master_table
@@ -362,6 +363,9 @@ BEGIN
             detail          TEXT            NOT NULL,
             created_at      TIMESTAMP       NOT NULL DEFAULT NOW(),
             status          INTEGER         NOT NULL,
+            remark          TEXT,
+            resolved_by     INTEGER,
+            resolved_at     TIMESTAMP,
             deleted_at      TIMESTAMP,
             deleted_by      INTEGER,
 
@@ -372,6 +376,25 @@ BEGIN
                 FOREIGN KEY (scheme_id)
                 REFERENCES %1$I.scheme_master_table(id)
             -- deleted_by -> common_schema.tenant_admin_user_master_table (enforced at app level)
+        )', schema_name);
+
+    -- 2.12 language_master_table
+    --      Master list of supported languages for the tenant.
+
+    EXECUTE format('
+        CREATE TABLE %1$I.language_master_table (
+            id              SERIAL          PRIMARY KEY,
+            language_name   VARCHAR(255)    NOT NULL,
+            preference      INTEGER,
+            created_at      TIMESTAMP       NOT NULL DEFAULT NOW(),
+            updated_at      TIMESTAMP       NOT NULL DEFAULT NOW(),
+            status          INTEGER         NOT NULL,
+            created_by      INTEGER,
+            updated_by      INTEGER,
+            deleted_at      TIMESTAMP,
+            deleted_by      INTEGER,
+            -- created_by, updated_by, deleted_by -> common_schema.tenant_admin_user_master_table (enforced at app level)
+            CONSTRAINT uq_language_name UNIQUE (language_name)
         )', schema_name);
 
     -- ============================================================
