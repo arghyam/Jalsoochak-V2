@@ -6,9 +6,9 @@ spring:
     name: telemetry-service
 
   datasource:
-    url: jdbc:postgresql://localhost:5432/shared_db
-    username: YOUR_USERNAME
-    password: YOUR_PASSWORD
+    url: jdbc:postgresql://localhost:5432/jalsoochak_db?stringtype=unspecified
+    username: jalsoochak_user
+    password: Password7@
 
   jpa:
     hibernate:
@@ -23,6 +23,13 @@ spring:
     consumer:
       group-id: telemetry-service-group
       auto-offset-reset: earliest
+
+minio:
+  endpoint: http://192.168.6.61:9000
+  bucket: jalsoochak-dev
+  access-key: D0NW7W59XKFHEA866VG1
+  secret-key: q6Mku87XebrNW2zXfoQTypz8QChl3CF1CQZtPkcx
+  region: us-east-1
 
 eureka:
   client:
