@@ -102,7 +102,8 @@ public class BfmReadingService {
                 extractedReading,
                 confirmedReading,
                 correlationId,
-                request.getReadingUrl()
+                request.getReadingUrl(),
+                request.getMeterChangeReason()
         );
 
         BigDecimal lastConfirmedReading = telemetryTenantRepository

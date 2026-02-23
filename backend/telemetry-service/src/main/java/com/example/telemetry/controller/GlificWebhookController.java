@@ -3,9 +3,15 @@ package com.example.telemetry.controller;
 import com.example.telemetry.dto.response.ClosingResponse;
 import com.example.telemetry.dto.response.CreateReadingResponse;
 import com.example.telemetry.dto.response.IntroResponse;
+import com.example.telemetry.dto.response.SelectionResponse;
 import com.example.telemetry.dto.requests.ClosingRequest;
 import com.example.telemetry.dto.requests.GlificWebhookRequest;
 import com.example.telemetry.dto.requests.IntroRequest;
+import com.example.telemetry.dto.requests.ManualReadingRequest;
+import com.example.telemetry.dto.requests.MeterChangeRequest;
+import com.example.telemetry.dto.requests.SelectedChannelRequest;
+import com.example.telemetry.dto.requests.SelectedItemRequest;
+import com.example.telemetry.dto.requests.SelectedLanguageRequest;
 import com.example.telemetry.service.GlificWebhookService;
 import jakarta.validation.Valid;
 import org.slf4j.Logger;
@@ -83,6 +89,153 @@ public class GlificWebhookController {
                     .build();
 
             return ResponseEntity.ok(fallbackResponse);
+        }
+    }
+
+    @PostMapping("/language/selection")
+    public ResponseEntity<IntroResponse> languageSelection(@RequestBody @Valid IntroRequest request) {
+        try {
+            IntroResponse response = glificWebhookService.languageSelectionMessage(request);
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            log.error("Error preparing language selection for contactId {}: {}", request.getContactId(), e.getMessage(), e);
+            return ResponseEntity.ok(
+                    IntroResponse.builder()
+                            .success(false)
+                            .message("Language selection could not be prepared.")
+                            .build()
+            );
+        }
+    }
+
+    @PostMapping("/selected/language")
+    public ResponseEntity<IntroResponse> selectedLanguage(@RequestBody @Valid SelectedLanguageRequest request) {
+        try {
+            IntroResponse response = glificWebhookService.selectedLanguageMessage(request);
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            log.error("Error processing selected language for contactId {}: {}", request.getContactId(), e.getMessage(), e);
+            return ResponseEntity.ok(
+                    IntroResponse.builder()
+                            .success(false)
+                            .message("Language selection could not be saved.")
+                            .build()
+            );
+        }
+    }
+
+    @PostMapping("/channel/selection")
+    public ResponseEntity<IntroResponse> channelSelection(@RequestBody @Valid IntroRequest request) {
+        try {
+            IntroResponse response = glificWebhookService.channelSelectionMessage(request);
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            log.error("Error preparing channel selection for contactId {}: {}", request.getContactId(), e.getMessage(), e);
+            return ResponseEntity.ok(
+                    IntroResponse.builder()
+                            .success(false)
+                            .message("Channel selection could not be prepared.")
+                            .build()
+            );
+        }
+    }
+
+    @PostMapping("/selected/channel")
+    public ResponseEntity<IntroResponse> selectedChannel(@RequestBody @Valid SelectedChannelRequest request) {
+        try {
+            IntroResponse response = glificWebhookService.selectedChannelMessage(request);
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            log.error("Error processing selected channel for contactId {}: {}", request.getContactId(), e.getMessage(), e);
+            return ResponseEntity.ok(
+                    IntroResponse.builder()
+                            .success(false)
+                            .message("Channel selection could not be saved.")
+                            .build()
+            );
+        }
+    }
+
+    @PostMapping("/item/selection")
+    public ResponseEntity<IntroResponse> itemSelection(@RequestBody @Valid IntroRequest request) {
+        try {
+            IntroResponse response = glificWebhookService.itemSelectionMessage(request);
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            log.error("Error preparing item selection for contactId {}: {}", request.getContactId(), e.getMessage(), e);
+            return ResponseEntity.ok(
+                    IntroResponse.builder()
+                            .success(false)
+                            .message("Item selection could not be prepared.")
+                            .build()
+            );
+        }
+    }
+
+    @PostMapping("/selected/item")
+    public ResponseEntity<SelectionResponse> selectedItem(@RequestBody @Valid SelectedItemRequest request) {
+        try {
+            SelectionResponse response = glificWebhookService.selectedItemMessage(request);
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            log.error("Error processing selected item for contactId {}: {}", request.getContactId(), e.getMessage(), e);
+            return ResponseEntity.ok(
+                    SelectionResponse.builder()
+                            .success(false)
+                            .selected(null)
+                            .message("Item selection could not be saved.")
+                            .build()
+            );
+        }
+    }
+
+    @PostMapping("/meterChange")
+    public ResponseEntity<IntroResponse> meterChange(@RequestBody @Valid MeterChangeRequest request) {
+        try {
+            IntroResponse response = glificWebhookService.meterChangeMessage(request);
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            log.error("Error preparing meter change reasons for contactId {}: {}", request.getContactId(), e.getMessage(), e);
+            return ResponseEntity.ok(
+                    IntroResponse.builder()
+                            .success(false)
+                            .message("Meter change reasons could not be prepared.")
+                            .build()
+            );
+        }
+    }
+
+    @PostMapping("/takemeterreading")
+    public ResponseEntity<IntroResponse> takeMeterReading(@RequestBody @Valid MeterChangeRequest request) {
+        try {
+            IntroResponse response = glificWebhookService.takeMeterReadingMessage(request);
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            log.error("Error preparing take meter reading prompt for contactId {}: {}", request.getContactId(), e.getMessage(), e);
+            return ResponseEntity.ok(
+                    IntroResponse.builder()
+                            .success(false)
+                            .message("Take meter reading prompt could not be prepared.")
+                            .build()
+            );
+        }
+    }
+
+    @PostMapping("/manualReading")
+    public ResponseEntity<CreateReadingResponse> manualReading(@RequestBody @Valid ManualReadingRequest request) {
+        try {
+            CreateReadingResponse response = glificWebhookService.manualReadingMessage(request);
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            log.error("Error saving manual reading for contactId {}: {}", request.getContactId(), e.getMessage(), e);
+            return ResponseEntity.ok(
+                    CreateReadingResponse.builder()
+                            .success(false)
+                            .message("Manual reading could not be saved.")
+                            .qualityStatus("REJECTED")
+                            .correlationId(request.getContactId())
+                            .build()
+            );
         }
     }
 

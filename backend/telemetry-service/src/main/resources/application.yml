@@ -2,13 +2,16 @@ server:
   port: 8084
 
 spring:
+  config:
+    import: optional:file:./telemetry-service/.env[.properties],optional:file:.env[.properties]
+
   application:
     name: telemetry-service
 
   datasource:
-    url: jdbc:postgresql://localhost:5432/jalsoochak_db?stringtype=unspecified
-    username: jalsoochak_user
-    password: Password7@
+    url: ${SPRING_DATASOURCE_URL}
+    username: ${SPRING_DATASOURCE_USERNAME}
+    password: ${SPRING_DATASOURCE_PASSWORD}
 
   jpa:
     hibernate:
@@ -19,17 +22,20 @@ spring:
         dialect: org.hibernate.dialect.PostgreSQLDialect
 
   kafka:
-    bootstrap-servers: localhost:9092
+    bootstrap-servers: ${SPRING_KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
     consumer:
-      group-id: telemetry-service-group
+      group-id: ${SPRING_KAFKA_CONSUMER_GROUP_ID:telemetry-service-group}
       auto-offset-reset: earliest
 
 minio:
-  endpoint: http://192.168.6.61:9000
-  bucket: jalsoochak-dev
-  access-key: D0NW7W59XKFHEA866VG1
-  secret-key: q6Mku87XebrNW2zXfoQTypz8QChl3CF1CQZtPkcx
-  region: us-east-1
+  endpoint: ${MINIO_ENDPOINT}
+  bucket: ${MINIO_BUCKET}
+  access-key: ${MINIO_ACCESS_KEY}
+  secret-key: ${MINIO_SECRET_KEY}
+  region: ${MINIO_REGION:us-east-1}
+
+glific:
+  api-token: ${GLIFIC_API_TOKEN:}
 
 eureka:
   client:

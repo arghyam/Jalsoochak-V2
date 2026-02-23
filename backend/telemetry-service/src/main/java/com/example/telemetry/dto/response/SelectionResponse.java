@@ -5,8 +5,8 @@ import lombok.Data;
 
 @Data
 @Builder
-public class IntroResponse {
+public class SelectionResponse {
     private boolean success;
+    private String selected;
     private String message;
-    private String correlationId;
 }

@@ -9,6 +9,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
 @Repository
 @RequiredArgsConstructor
@@ -43,6 +44,15 @@ public class TelemetryTenantRepository {
     }
 
     public Optional<TelemetryOperatorWithSchema> findOperatorByPhoneAcrossTenants(String phoneNumber) {
+        return findOperatorByPhoneAcrossTenants(phoneNumber, null);
+    }
+
+    public Optional<TelemetryOperatorWithSchema> findOperatorByPhoneAcrossTenants(String phoneNumber, Integer preferredTenantId) {
+        String normalizedPhone = normalizePhone(phoneNumber);
+        if (normalizedPhone == null || normalizedPhone.isBlank()) {
+            return Optional.empty();
+        }
+
         String schemaSql = """
                 SELECT nspname
                 FROM pg_namespace
@@ -50,13 +60,20 @@ public class TelemetryTenantRepository {
                 ORDER BY nspname
                 """;
         List<String> schemas = jdbcTemplate.query(schemaSql, (rs, n) -> rs.getString("nspname"));
+        TelemetryOperatorWithSchema firstMatch = null;
         for (String schemaName : schemas) {
-            Optional<TelemetryOperator> operator = findOperatorByPhone(schemaName, phoneNumber);
+            Optional<TelemetryOperator> operator = findOperatorByPhone(schemaName, phoneNumber, normalizedPhone);
             if (operator.isPresent()) {
-                return Optional.of(new TelemetryOperatorWithSchema(schemaName, operator.get()));
+                TelemetryOperatorWithSchema match = new TelemetryOperatorWithSchema(schemaName, operator.get());
+                if (preferredTenantId != null && preferredTenantId.equals(match.operator().tenantId())) {
+                    return Optional.of(match);
+                }
+                if (firstMatch == null) {
+                    firstMatch = match;
+                }
             }
         }
-        return Optional.empty();
+        return Optional.ofNullable(firstMatch);
     }
 
     public Optional<Long> findFirstSchemeForUser(String schemaName, Long userId) {
@@ -95,13 +112,14 @@ public class TelemetryTenantRepository {
                                   BigDecimal extractedReading,
                                   BigDecimal confirmedReading,
                                   String correlationId,
-                                  String imageUrl) {
+                                  String imageUrl,
+                                  String meterChangeReason) {
         validateSchemaName(schemaName);
         String sql = String.format("""
                 INSERT INTO %s.flow_reading_table
                     (scheme_id, reading_at, reading_date, extracted_reading, confirmed_reading,
-                     correlation_id, quantity, channel, image_url, created_by, created_at, updated_by, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, 0, NULL, ?, ?, NOW(), ?, NOW())
+                     correlation_id, quantity, channel, meter_change_reason, image_url, created_by, created_at, updated_by, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, 0, NULL, ?, ?, ?, NOW(), ?, NOW())
                 RETURNING id
                 """, schemaName);
 
@@ -114,11 +132,156 @@ public class TelemetryTenantRepository {
                 extractedReading,
                 confirmedReading,
                 correlationId,
+                meterChangeReason,
                 imageUrl != null ? imageUrl : "",
                 operatorId,
                 operatorId
         );
         return id != null ? id.longValue() : null;
+    }
+
+    public Long createMeterChangeReasonRecord(String schemaName,
+                                              Long schemeId,
+                                              Long operatorId,
+                                              LocalDateTime readingAt,
+                                              String correlationId,
+                                              String reason) {
+        validateSchemaName(schemaName);
+        String sql = String.format("""
+                INSERT INTO %s.flow_reading_table
+                    (scheme_id, reading_at, reading_date, extracted_reading, confirmed_reading,
+                     correlation_id, quantity, channel, meter_change_reason, image_url, created_by, created_at, updated_by, updated_at)
+                VALUES (?, ?, ?, 0, 0, ?, 0, NULL, ?, '', ?, NOW(), ?, NOW())
+                RETURNING id
+                """, schemaName);
+
+        Number id = jdbcTemplate.queryForObject(
+                sql,
+                Number.class,
+                schemeId,
+                readingAt,
+                LocalDate.from(readingAt),
+                correlationId,
+                reason,
+                operatorId,
+                operatorId
+        );
+        return id != null ? id.longValue() : null;
+    }
+
+    public Optional<TelemetryReadingRecord> findLatestPendingMeterChangeRecord(String schemaName, Long schemeId, Long operatorId) {
+        validateSchemaName(schemaName);
+        String sql = String.format("""
+                SELECT id, correlation_id, created_by
+                FROM %s.flow_reading_table
+                WHERE scheme_id = ?
+                  AND created_by = ?
+                  AND extracted_reading = 0
+                  AND confirmed_reading = 0
+                  AND meter_change_reason IS NOT NULL
+                  AND deleted_at IS NULL
+                ORDER BY id DESC
+                LIMIT 1
+                """, schemaName);
+        List<TelemetryReadingRecord> rows = jdbcTemplate.query(sql, (rs, n) ->
+                new TelemetryReadingRecord(
+                        toLong(rs.getObject("id")),
+                        rs.getString("correlation_id"),
+                        toLong(rs.getObject("created_by"))
+                ), schemeId, operatorId);
+        return rows.stream().findFirst();
+    }
+
+    public Optional<TelemetryReadingRecord> findPendingMeterChangeRecordByCorrelation(String schemaName,
+                                                                                       Long schemeId,
+                                                                                       Long operatorId,
+                                                                                       String correlationId) {
+        validateSchemaName(schemaName);
+        String sql = String.format("""
+                SELECT id, correlation_id, created_by
+                FROM %s.flow_reading_table
+                WHERE scheme_id = ?
+                  AND created_by = ?
+                  AND correlation_id = ?
+                  AND extracted_reading = 0
+                  AND confirmed_reading = 0
+                  AND meter_change_reason IS NOT NULL
+                  AND deleted_at IS NULL
+                LIMIT 1
+                """, schemaName);
+        List<TelemetryReadingRecord> rows = jdbcTemplate.query(sql, (rs, n) ->
+                new TelemetryReadingRecord(
+                        toLong(rs.getObject("id")),
+                        rs.getString("correlation_id"),
+                        toLong(rs.getObject("created_by"))
+                ), schemeId, operatorId, correlationId);
+        return rows.stream().findFirst();
+    }
+
+    public String upsertPendingMeterChangeRecord(String schemaName,
+                                                 Long schemeId,
+                                                 Long operatorId,
+                                                 LocalDateTime readingAt,
+                                                 String reason) {
+        Optional<TelemetryReadingRecord> pending = findLatestPendingMeterChangeRecord(schemaName, schemeId, operatorId);
+        if (pending.isPresent()) {
+            String sql = String.format("""
+                    UPDATE %s.flow_reading_table
+                    SET reading_at = ?,
+                        reading_date = ?,
+                        meter_change_reason = ?,
+                        updated_by = ?,
+                        updated_at = NOW()
+                    WHERE id = ?
+                    """, schemaName);
+            jdbcTemplate.update(sql, readingAt, LocalDate.from(readingAt), reason, operatorId, pending.get().id());
+            cleanupOtherPendingMeterChangeRecords(schemaName, schemeId, operatorId, pending.get().id(), operatorId);
+            return pending.get().correlationId();
+        }
+
+        String correlationId = "meter-change-" + UUID.randomUUID();
+        Long createdId = createMeterChangeReasonRecord(schemaName, schemeId, operatorId, readingAt, correlationId, reason);
+        cleanupOtherPendingMeterChangeRecords(schemaName, schemeId, operatorId, createdId, operatorId);
+        return correlationId;
+    }
+
+    private void cleanupOtherPendingMeterChangeRecords(String schemaName,
+                                                       Long schemeId,
+                                                       Long operatorId,
+                                                       Long keepId,
+                                                       Long updatedBy) {
+        validateSchemaName(schemaName);
+        String sql = String.format("""
+                UPDATE %s.flow_reading_table
+                SET deleted_at = NOW(),
+                    deleted_by = ?,
+                    updated_by = ?,
+                    updated_at = NOW()
+                WHERE scheme_id = ?
+                  AND created_by = ?
+                  AND extracted_reading = 0
+                  AND confirmed_reading = 0
+                  AND meter_change_reason IS NOT NULL
+                  AND deleted_at IS NULL
+                  AND id <> ?
+                """, schemaName);
+        jdbcTemplate.update(sql, updatedBy, updatedBy, schemeId, operatorId, keepId);
+    }
+
+    public void updatePendingMeterChangeReading(String schemaName,
+                                                Long readingId,
+                                                BigDecimal readingValue,
+                                                Long updatedBy) {
+        validateSchemaName(schemaName);
+        String sql = String.format("""
+                UPDATE %s.flow_reading_table
+                SET extracted_reading = ?,
+                    confirmed_reading = ?,
+                    updated_by = ?,
+                    updated_at = NOW()
+                WHERE id = ?
+                """, schemaName);
+        jdbcTemplate.update(sql, readingValue, readingValue, updatedBy, readingId);
     }
 
     public Optional<BigDecimal> findLastConfirmedReading(String schemaName, Long schemeId, Long excludeReadingId) {
@@ -163,12 +326,13 @@ public class TelemetryTenantRepository {
         jdbcTemplate.update(sql, confirmedReading, updatedBy, readingId);
     }
 
-    private Optional<TelemetryOperator> findOperatorByPhone(String schemaName, String phoneNumber) {
+    private Optional<TelemetryOperator> findOperatorByPhone(String schemaName, String rawPhoneNumber, String normalizedPhone) {
         validateSchemaName(schemaName);
         String sql = String.format("""
                 SELECT id, tenant_id, title, email, phone_number
                 FROM %s.user_table
                 WHERE phone_number = ?
+                   OR regexp_replace(COALESCE(phone_number, ''), '\\\\D', '', 'g') = ?
                 LIMIT 1
                 """, schemaName);
         List<TelemetryOperator> rows = jdbcTemplate.query(sql, (rs, n) ->
@@ -178,8 +342,15 @@ public class TelemetryTenantRepository {
                         rs.getString("title"),
                         rs.getString("email"),
                         rs.getString("phone_number")
-                ), phoneNumber);
+                ), rawPhoneNumber, normalizedPhone);
         return rows.stream().findFirst();
+    }
+
+    private String normalizePhone(String value) {
+        if (value == null) {
+            return null;
+        }
+        return value.replaceAll("\\D", "");
     }
 
     private void validateSchemaName(String schemaName) {

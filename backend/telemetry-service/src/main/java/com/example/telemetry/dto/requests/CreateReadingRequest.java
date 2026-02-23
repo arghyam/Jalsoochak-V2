@@ -26,6 +26,8 @@ public class CreateReadingRequest {
 
     private String readingUrl;
 
+    private String meterChangeReason;
+
     @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss")
     private LocalDateTime readingTime;
 }
