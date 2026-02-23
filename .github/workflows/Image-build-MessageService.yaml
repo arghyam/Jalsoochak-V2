@@ -41,7 +41,7 @@ jobs:
       - name: SonarQube Scan
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-        run:  mvn -B package org.sonarsource.scanner.maven:sonar-maven-plugin:3.11.0.3922:sonar -Dsonar.projectKey=jalsoochak-messageservice -Dsonar.organization=arghyam -Dsonar.host.url=${{ secrets.SONAR_HOST_URL }} -Dsonar.qualitygate.wait=false
+        run:  mvn -B package org.sonarsource.scanner.maven:sonar-maven-plugin:3.11.0.3922:sonar -Dsonar.projectKey=jalsoochak-messageservice -Dsonar.organization=jalsoochak -Dsonar.host.url=${{ secrets.SONAR_HOST_URL }} -Dsonar.qualitygate.wait=false
         working-directory: backend/message-service
         
       - name: Configure AWS credentials
