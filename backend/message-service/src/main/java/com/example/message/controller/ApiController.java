@@ -8,6 +8,7 @@ import com.example.message.service.NotificationService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -26,16 +27,15 @@ public class ApiController {
     private final NotificationService notificationService;
     private final KafkaProducer kafkaProducer;
 
-    // ── GET all notifications (hardcoded) ─────────────────────
-
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'TENANT_ADMIN')")
     @GetMapping("/notifications")
     public ResponseEntity<List<SampleDTO>> getAllNotifications() {
         log.info("GET /api/notifications called");
         return ResponseEntity.ok(businessService.getAllNotifications());
     }
 
-    // ── POST send a notification via the specified channel ────
 
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'TENANT_ADMIN')")
     @PostMapping("/notifications/send")
     public ResponseEntity<String> sendNotification(@RequestBody NotificationRequest request) {
         log.info("POST /api/notifications/send called – channel={}, recipient={}",
@@ -44,8 +44,8 @@ public class ApiController {
         return ResponseEntity.ok(result);
     }
 
-    // ── POST publish Kafka message ────────────────────────────
 
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
     @PostMapping("/publish")
     public ResponseEntity<String> publishMessage(@RequestBody String message) {
         log.info("POST /api/publish called with message: {}", message);

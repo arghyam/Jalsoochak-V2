@@ -18,6 +18,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -46,12 +47,14 @@ public class TenantController {
             @ApiResponse(responseCode = "409", description = "Tenant with the given state code already exists"),
             @ApiResponse(responseCode = "500", description = "Internal server error during tenant creation")
     })
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
     @PostMapping
     public ResponseEntity<TenantResponseDTO> createTenant(@Valid @RequestBody CreateTenantRequestDTO request) {
         log.info("POST /api/v1/tenants – Creating tenant: {}", request.getName());
         TenantResponseDTO response = tenantManagementService.createTenant(request);
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
+
 
     @Operation(
             summary = "List all tenants",
@@ -61,11 +64,13 @@ public class TenantController {
                     content = @Content(array = @ArraySchema(schema = @Schema(implementation = TenantResponseDTO.class)))),
             @ApiResponse(responseCode = "500", description = "Internal server error")
     })
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'TENANT_ADMIN')")
     @GetMapping
     public ResponseEntity<List<TenantResponseDTO>> getAllTenants() {
         log.info("GET /api/v1/tenants");
         return ResponseEntity.ok(tenantManagementService.getAllTenants());
     }
+
 
     @Operation(
             summary = "Get departments for the current tenant",
@@ -77,11 +82,13 @@ public class TenantController {
             @ApiResponse(responseCode = "400", description = "Tenant could not be resolved — missing X-Tenant-Code header"),
             @ApiResponse(responseCode = "500", description = "Internal server error")
     })
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'TENANT_ADMIN', 'DEPT_MANAGER')")
     @GetMapping("/departments")
     public ResponseEntity<List<DepartmentResponseDTO>> getTenantDepartments() {
         log.info("GET /api/v1/tenants/departments");
         return ResponseEntity.ok(tenantManagementService.getTenantDepartments());
     }
+
 
     @Operation(
             summary = "Create a department for the current tenant",
@@ -93,6 +100,7 @@ public class TenantController {
             @ApiResponse(responseCode = "400", description = "Invalid request or tenant could not be resolved"),
             @ApiResponse(responseCode = "500", description = "Internal server error")
     })
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'TENANT_ADMIN')")
     @PostMapping("/departments")
     public ResponseEntity<DepartmentResponseDTO> createDepartment(
             @Valid @RequestBody CreateDepartmentRequestDTO request) {

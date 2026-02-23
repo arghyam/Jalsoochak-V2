@@ -25,6 +25,12 @@ spring:
         dialect: org.hibernate.dialect.PostgreSQLDialect
         default_schema: common_schema
 
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${KEYCLOAK_ISSUER_URI:http://localhost:8080/realms/jalsoochak}
+
   kafka:
     bootstrap-servers: localhost:9092
     consumer:
