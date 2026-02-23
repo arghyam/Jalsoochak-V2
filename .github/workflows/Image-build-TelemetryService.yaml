@@ -1,0 +1,67 @@
+name: Image Build & SonarQube Scan for Telemetry Service
+
+on:
+  push:
+    branches: ["main", "dev"]
+    paths:
+      - 'backend/telemetry-service/**'
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - 'backend/telemetry-service/**'
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+  id-token: write
+  pull-requests: write
+
+jobs:
+  Docker-Image-Build:
+    name: SonarQube scan & push image
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Docker
+        uses: docker/setup-buildx-action@v3
+
+      - name: Set up JDK 21  
+        uses: actions/setup-java@v5
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          server-id: github
+
+      - name: SonarQube Scan
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run:  mvn -B package org.sonarsource.scanner.maven:sonar-maven-plugin:3.11.0.3922:sonar -Dsonar.projectKey=jalsoochak-telemetryservice -Dsonar.organization=arghyam -Dsonar.host.url=${{ secrets.SONAR_HOST_URL }} -Dsonar.qualitygate.wait=false
+        working-directory: backend/telemetry-service
+        
+      - name: Configure AWS credentials
+        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev'
+        id: ecr-login
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Docker build
+        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev'
+        env:
+          ECR_REGISTRY: ${{ steps.ecr-login.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build --build-arg WORK_DIR="backend/telemetry-service" -t $ECR_REGISTRY/telemetry-service:$IMAGE_TAG -f build/maven/Dockerfile .
+          docker push $ECR_REGISTRY/telemetry-service:$IMAGE_TAG
