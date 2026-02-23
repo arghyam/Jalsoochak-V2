@@ -123,6 +123,109 @@ docker run -d \
 
 ---
 
+## Database Schema & Flyway Migrations
+
+The platform uses a **two-layer schema** strategy managed by [Flyway](https://flywaydb.org/):
+
+| Layer | Schema | Purpose |
+|-------|--------|---------|
+| **Common** | `common_schema` | Shared lookup tables (tenants, admin users, user types, channels, etc.) |
+| **Per-tenant** | `tenant_<state_code>` (e.g. `tenant_mp`) | Tenant-specific operational tables (users, schemes, readings, etc.) |
+
+### Migration files
+
+All SQL migration scripts live in a single directory:
+
+```
+backend/
+├── database/
+│   ├── V1__create_common_schema_tables.sql      # Creates common_schema and shared tables
+│   └── V2__create_tenant_schema_function.sql    # Creates the create_tenant_schema() PL/pgSQL function
+```
+
+| Script | What it does |
+|--------|-------------|
+| **V1** | Creates `common_schema` and its tables: `tenant_admin_user_master_table`, `user_type_master_table`, `tenant_master_table`, `tenant_config_master_table`, `channel_master_table`, plus indexes. |
+| **V2** | **Only defines** the `create_tenant_schema(schema_name)` PL/pgSQL function. It does **not** call it. The function is invoked at runtime by `tenant-service` when a new tenant is created. Once called, it provisions a full set of tenant-specific tables (user, scheme, location, department, readings, notifications, anomalies, etc.) inside the given schema. |
+
+### How Flyway is wired into tenant-service
+
+`tenant-service` is the service responsible for running Flyway migrations on startup. The setup uses three pieces:
+
+**1. Maven resource mapping** (`tenant-service/pom.xml`):
+
+```xml
+<resources>
+    <resource>
+        <directory>src/main/resources</directory>
+    </resource>
+    <resource>
+        <directory>../database</directory>
+        <targetPath>db/migration</targetPath>
+        <includes>
+            <include>V*.sql</include>
+        </includes>
+    </resource>
+</resources>
+```
+
+This copies `V*.sql` files from `backend/database/` into `classpath:db/migration` at build time, keeping a **single source of truth** for migration scripts.
+
+**2. Flyway dependency** (`tenant-service/pom.xml`):
+
+```xml
+<dependency>
+    <groupId>org.flywaydb</groupId>
+    <artifactId>flyway-core</artifactId>
+</dependency>
+```
+
+**3. Flyway configuration** (`tenant-service/src/main/resources/application.yml`):
+
+```yaml
+spring:
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+```
+
+### What happens on startup
+
+1. **Flyway runs first** (before JPA/Hibernate). It creates a `flyway_schema_history` table in the `public` schema to track applied migrations.
+2. **V1** executes — creates `common_schema` and all shared tables.
+3. **V2** executes — **registers** the `create_tenant_schema()` function. No tenant schema is created at this point.
+4. **JPA** then initialises with `ddl-auto: none`, using `common_schema` as its default schema.
+
+### Provisioning a new tenant schema (runtime, not migration)
+
+Tenant schemas are **not** created during Flyway migration. They are created **at runtime** when a new tenant is onboarded via the tenant-service API. The flow is:
+
+1. A request to create a new tenant hits `tenant-service`.
+2. A row is inserted into `common_schema.tenant_master_table`.
+3. `TenantSchemaRepository` calls the function registered by V2:
+
+```sql
+SELECT create_tenant_schema('tenant_mp');   -- e.g. Madhya Pradesh
+```
+
+4. The function creates the schema `tenant_mp` and provisions all tenant-specific tables and indexes inside it.
+
+Each tenant gets its own isolated schema. The function is idempotent — calling it again for an existing tenant is a no-op.
+
+### Adding a new migration
+
+1. Create a new file in `backend/database/` following the Flyway naming convention: `V<version>__<description>.sql` (e.g. `V3__add_audit_log_table.sql`).
+2. Rebuild `tenant-service` (`mvn compile` or `mvn package`). The file is automatically copied to the classpath.
+3. On next startup, Flyway applies only the new, unapplied migration.
+
+### Cross-schema FK strategy
+
+- **Within a schema**: formal `FOREIGN KEY` constraints are used.
+- **Across schemas** (e.g. tenant schema tables referencing `common_schema`): FKs are **loosely coupled** — stored as plain `INTEGER` columns with no formal constraint. Referential integrity is enforced at the application level. This avoids tight cross-schema coupling and simplifies tenant provisioning.
+
+---
+
 ## How to Run Services
 
 ### Option 1: Run All from Maven
@@ -295,6 +398,10 @@ water-management-platform/
 ├── pom.xml                          # Parent POM with BOM management
 ├── README.md
 │
+├── database/                        # Flyway SQL migrations (single source of truth)
+│   ├── V1__create_common_schema_tables.sql
+│   └── V2__create_tenant_schema_function.sql
+│
 ├── service-discovery/
 │   ├── pom.xml
 │   ├── Dockerfile
@@ -303,7 +410,7 @@ water-management-platform/
 │       │   └── ServiceDiscoveryApplication.java
 │       └── resources/application.yml
 │
-├── tenant-service/                  # Port 8081
+├── tenant-service/                  # Port 8081 — runs Flyway migrations on startup
 │   ├── pom.xml
 │   ├── Dockerfile
 │   └── src/main/

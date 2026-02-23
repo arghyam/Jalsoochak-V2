@@ -1,4 +1,4 @@
-package com.example.tenant.config;
+package com.example.user.config;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -8,11 +8,6 @@ import org.springframework.web.servlet.HandlerInterceptor;
 
 import java.util.regex.Pattern;
 
-/**
- * HTTP interceptor that reads the tenant code injected by the API gateway.
- * The gateway validates the Keycloak JWT, extracts the tenant_state_code claim,
- * and forwards it as the X-Tenant-Code header.
- */
 public class TenantInterceptor implements HandlerInterceptor {
 
     private static final Logger log = LoggerFactory.getLogger(TenantInterceptor.class);
@@ -35,7 +30,7 @@ public class TenantInterceptor implements HandlerInterceptor {
         if (tenantCode != null && !tenantCode.isBlank()) {
             String schemaName = "tenant_" + tenantCode.toLowerCase().trim();
             TenantContext.setSchema(schemaName);
-            log.debug("Tenant schema resolved from gateway header: {}", schemaName);
+            log.debug("Resolved tenant schema from header: {}", schemaName);
         }
 
         return true;

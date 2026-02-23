@@ -2,13 +2,41 @@ server:
   port: 8082
 
 spring:
+  config:
+    import: "optional:file:.env[.properties],optional:file:user-service/.env[.properties]"
   application:
     name: user-service
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${KEYCLOAK_ISSUER_URI:${keycloak.auth-server-url}/realms/${keycloak.realm}}
+
+  mail:
+    host: smtp.office365.com
+    port: 587
+    username: ${SPRING_MAIL_USERNAME}
+    password: ${SPRING_MAIL_PASSWORD}
+    protocol: smtp
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+            required: true
+          ssl:
+            enable: false
+            protocols: TLSv1.2
+          connectiontimeout: 30000
+          timeout: 30000
+          writetimeout: 30000
+          debug: ${env.SPRING_MAIL_DEBUG:false}
 
   datasource:
     url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/jalsoochak_db}?stringtype=unspecified
-    username: ${SPRING_DATASOURCE_USERNAME:postgres}
-    password: ${SPRING_DATASOURCE_PASSWORD:Zaqwsx@1123}
+    username: ${SPRING_DATASOURCE_USERNAME:jalsoochak_user}
+    password: ${SPRING_DATASOURCE_PASSWORD}
     driver-class-name: org.postgresql.Driver
     hikari:
       maximum-pool-size: 10
@@ -31,6 +59,31 @@ spring:
       group-id: user-service-group
       auto-offset-reset: earliest
 
+keycloak:
+  realm: jalsoochak-realm
+  auth-server-url: https://jalsoochak.beehyv.com/keycloak
+
+  # Login client (normal users)
+  resource: ${KEYCLOAK_CLIENT_ID}
+  credentials:
+    secret: ${KEYCLOAK_CLIENT_SECRET}
+
+  # Admin client (for creating users)
+  admin-client-id: ${KEYCLOAK_ADMIN_CLIENT_ID}
+  admin-client-secret: ${KEYCLOAK_ADMIN_CLIENT_SECRET}
+  admin-grant-type: client_credentials
+
+  # Public key
+  public-key: ${KEYCLOAK_PUBLIC_KEY:}
+
+mail:
+  from:
+    email: ${MAIL_FROM_EMAIL:no-reply@example.com}
+    name: ${MAIL_FROM_NAME:Jalsoochak}
+
+frontend:
+  base-url: https://jalsoochak.beehyv.com/createpassword
+
 eureka:
   client:
     enabled: ${EUREKA_ENABLED:false}
@@ -41,4 +94,4 @@ management:
   endpoints:
     web:
       exposure:
-        include: "*"
+        include: "health,info"
