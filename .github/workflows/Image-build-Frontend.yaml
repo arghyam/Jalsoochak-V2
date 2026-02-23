@@ -51,7 +51,7 @@ jobs:
           projectBaseDir: frontend
           args: >
             -Dsonar.projectKey=jalsoochak-frontend
-            -Dsonar.organization=arghyam
+            -Dsonar.organization=jalsoochak
             -Dsonar.qualitygate.wait=false
 
       - name: Configure AWS credentials
