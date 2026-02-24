@@ -11,10 +11,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
-import java.time.LocalDate;
-import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -74,9 +71,9 @@ public class EscalationSchedulerService {
                                               int level2Days,
                                               String level1UserType,
                                               String level2UserType) {
-        // Fetch all users who missed >= level1 days within the level2-day window
+        // Fetch all OPERATOR users whose consecutive missed days >= level1 threshold
         List<Map<String, Object>> rows =
-                nudgeRepository.findUsersWithMissedDays(schema, level2Days, level1Days);
+                nudgeRepository.findUsersWithMissedDays(schema, level1Days);
 
         log.info("[EscalationJob] schema={} → {} users exceeded level1 threshold", schema, rows.size());
 
@@ -85,8 +82,13 @@ public class EscalationSchedulerService {
         Map<String, OfficerGroup> officerGroups = new LinkedHashMap<>();
 
         for (Map<String, Object> row : rows) {
-            int missedDays = ((Number) row.get("missed_days")).intValue();
-            int escalationLevel = missedDays >= level2Days ? 2 : 1;
+            // days_since_last_upload is NULL when the operator has never uploaded
+            Number daysSinceObj = (Number) row.get("days_since_last_upload");
+            boolean neverUploaded = (daysSinceObj == null);
+            int daysSinceLastUpload = neverUploaded ? 0 : daysSinceObj.intValue();
+
+            // Never-uploaded operators go straight to level-2 (most severe)
+            int escalationLevel = (neverUploaded || daysSinceLastUpload >= level2Days) ? 2 : 1;
             String officerUserType = escalationLevel == 2 ? level2UserType : level1UserType;
             Object schemeId = row.get("scheme_id");
 
@@ -116,10 +118,9 @@ public class EscalationSchedulerService {
                 soName = officerName; // level1 officer IS the SO
             }
 
+            // Display "Never" when no reading exists; otherwise show the actual date
             Object lastReadingDateObj = row.get("last_reading_date");
-            String lastReadingDate = lastReadingDateObj != null
-                    ? lastReadingDateObj.toString()
-                    : "Never";
+            String lastRecordedBfmDate = (lastReadingDateObj == null) ? "Never" : lastReadingDateObj.toString();
 
             OperatorEscalationDetail detail = OperatorEscalationDetail.builder()
                     .name((String) row.get("name"))
@@ -127,8 +128,8 @@ public class EscalationSchedulerService {
                     .schemeName((String) row.getOrDefault("scheme_name", String.valueOf(schemeId)))
                     .schemeId(String.valueOf(schemeId))
                     .soName(soName)
-                    .consecutiveDaysMissed(missedDays)
-                    .lastRecordedBfmDate(lastReadingDate)
+                    .consecutiveDaysMissed(daysSinceLastUpload)
+                    .lastRecordedBfmDate(lastRecordedBfmDate)
                     .build();
 
             String groupKey = "LEVEL_" + escalationLevel + "|" + officerPhone;

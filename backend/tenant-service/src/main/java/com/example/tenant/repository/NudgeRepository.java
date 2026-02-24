@@ -21,7 +21,7 @@ public class NudgeRepository {
     private final JdbcTemplate jdbcTemplate;
 
     /**
-     * Returns users who have an active scheme mapping but no flow reading for today.
+     * Returns OPERATOR users who have an active scheme mapping but no flow reading for today.
      * These are candidates for a nudge notification.
      */
     public List<Map<String, Object>> findUsersWithNoUploadToday(String schema) {
@@ -30,69 +30,68 @@ public class NudgeRepository {
                 SELECT u.id, u.name, u.phone_number, usm.scheme_id
                 FROM %s.user_scheme_mapping_table usm
                 JOIN %s.user_table u ON u.id = usm.user_id
+                JOIN common_schema.user_type_master_table ut ON ut.id = u.user_type_id
                 LEFT JOIN %s.flow_reading_table fr
                     ON fr.scheme_id = usm.scheme_id
                     AND fr.created_by = u.id
                     AND fr.reading_date = CURRENT_DATE
-                WHERE usm.status = 'ACTIVE' AND fr.id IS NULL
+                WHERE usm.status = 'ACTIVE'
+                  AND ut.c_name = 'OPERATOR'
+                  AND fr.id IS NULL
                 """, schema, schema, schema);
         log.debug("findUsersWithNoUploadToday – schema={}", schema);
         return jdbcTemplate.queryForList(sql);
     }
 
     /**
-     * Returns users with at least {@code minMissedDays} missed uploads within the
-     * last {@code lookbackDays} days, along with their last reading date and
-     * the total missed count within that window.
+     * Returns OPERATOR users who have missed at least {@code minMissedDays} consecutive
+     * days of uploads, plus any operators who have NEVER uploaded (returned with a
+     * {@code null} value for {@code days_since_last_upload}).
+     *
+     * <p>{@code days_since_last_upload} is the calendar-day gap between the operator's
+     * most recent reading and today: {@code CURRENT_DATE - MAX(reading_date)}.
+     * It is {@code null} when the operator has no readings at all.</p>
+     *
+     * <ul>
+     *   <li>Last upload today → 0 (up to date, excluded by threshold)</li>
+     *   <li>Last upload yesterday → 1 day</li>
+     *   <li>Last upload 7 days ago → 7 days → level-2 escalation</li>
+     *   <li>Never uploaded → NULL → always escalated (level-2)</li>
+     * </ul>
      */
-    public List<Map<String, Object>> findUsersWithMissedDays(String schema,
-                                                              int lookbackDays,
-                                                              int minMissedDays) {
+    public List<Map<String, Object>> findUsersWithMissedDays(String schema, int minMissedDays) {
         validateSchemaName(schema);
         String sql = String.format("""
-                SELECT
-                  u.id,
-                  u.name,
-                  u.phone_number,
-                  usm.scheme_id,
-                  sm.state_scheme_id AS scheme_name,
-                  MAX(fr.reading_date) AS last_reading_date,
-                  (SELECT COUNT(*)
-                   FROM generate_series(
-                       CURRENT_DATE - ? * INTERVAL '1 day',
-                       CURRENT_DATE - INTERVAL '1 day',
-                       INTERVAL '1 day'
-                   ) gs(day)
-                   WHERE gs.day::DATE NOT IN (
-                       SELECT DISTINCT reading_date
-                       FROM %s.flow_reading_table
-                       WHERE scheme_id = usm.scheme_id AND created_by = u.id
-                   )
-                  ) AS missed_days
-                FROM %s.user_scheme_mapping_table usm
-                JOIN %s.user_table u ON u.id = usm.user_id
-                LEFT JOIN %s.flow_reading_table fr
-                    ON fr.scheme_id = usm.scheme_id AND fr.created_by = u.id
-                LEFT JOIN %s.scheme_master_table sm ON sm.id = usm.scheme_id
-                WHERE usm.status = 'ACTIVE'
-                GROUP BY u.id, u.name, u.phone_number, usm.scheme_id, sm.state_scheme_id
-                HAVING (SELECT COUNT(*)
-                        FROM generate_series(
-                            CURRENT_DATE - ? * INTERVAL '1 day',
-                            CURRENT_DATE - INTERVAL '1 day',
-                            INTERVAL '1 day'
-                        ) gs(day)
-                        WHERE gs.day::DATE NOT IN (
-                            SELECT DISTINCT reading_date
-                            FROM %s.flow_reading_table
-                            WHERE scheme_id = usm.scheme_id AND created_by = u.id
-                        )
-                       ) >= ?
-                """,
-                schema, schema, schema, schema, schema, schema);
+                SELECT id, name, phone_number, scheme_id, scheme_name,
+                       last_reading_date, days_since_last_upload
+                FROM (
+                    SELECT
+                      u.id,
+                      u.name,
+                      u.phone_number,
+                      usm.scheme_id,
+                      sm.state_scheme_id AS scheme_name,
+                      MAX(fr.reading_date) AS last_reading_date,
+                      CASE
+                        WHEN MAX(fr.reading_date) IS NULL THEN NULL
+                        ELSE CURRENT_DATE - MAX(fr.reading_date)
+                      END AS days_since_last_upload
+                    FROM %s.user_scheme_mapping_table usm
+                    JOIN %s.user_table u ON u.id = usm.user_id
+                    JOIN common_schema.user_type_master_table ut ON ut.id = u.user_type_id
+                    LEFT JOIN %s.flow_reading_table fr
+                        ON fr.scheme_id = usm.scheme_id AND fr.created_by = u.id
+                    LEFT JOIN %s.scheme_master_table sm ON sm.id = usm.scheme_id
+                    WHERE usm.status = 'ACTIVE'
+                      AND ut.c_name = 'OPERATOR'
+                    GROUP BY u.id, u.name, u.phone_number, usm.scheme_id, sm.state_scheme_id
+                ) sub
+                WHERE days_since_last_upload IS NULL
+                   OR days_since_last_upload >= ?
+                """, schema, schema, schema, schema);
 
-        log.debug("findUsersWithMissedDays – schema={}, lookback={}, min={}", schema, lookbackDays, minMissedDays);
-        return jdbcTemplate.queryForList(sql, lookbackDays, lookbackDays, minMissedDays);
+        log.debug("findUsersWithMissedDays – schema={}, minMissedDays={}", schema, minMissedDays);
+        return jdbcTemplate.queryForList(sql, minMissedDays);
     }
 
     /**
