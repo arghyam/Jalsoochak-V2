@@ -15,8 +15,6 @@ import com.example.telemetry.dto.requests.SelectedLanguageRequest;
 import com.example.telemetry.repository.TenantConfigRepository;
 import com.example.telemetry.repository.TelemetryOperatorWithSchema;
 import com.example.telemetry.repository.TelemetryTenantRepository;
-import com.example.telemetry.repository.UserChannelPreferenceRepository;
-import com.example.telemetry.repository.UserLanguagePreferenceRepository;
 import com.example.telemetry.dto.response.SelectionResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -45,8 +43,6 @@ public class GlificWebhookService {
     private final BfmReadingService bfmReadingService;
     private final TelemetryTenantRepository telemetryTenantRepository;
     private final TenantConfigRepository tenantConfigRepository;
-    private final UserLanguagePreferenceRepository userLanguagePreferenceRepository;
-    private final UserChannelPreferenceRepository userChannelPreferenceRepository;
 
     private final String glificApiToken;
 
@@ -55,16 +51,12 @@ public class GlificWebhookService {
                                 BfmReadingService bfmReadingService,
                                 TelemetryTenantRepository telemetryTenantRepository,
                                 TenantConfigRepository tenantConfigRepository,
-                                UserLanguagePreferenceRepository userLanguagePreferenceRepository,
-                                UserChannelPreferenceRepository userChannelPreferenceRepository,
                                 @Value("${glific.api-token:}") String glificApiToken) {
         this.minioService = minioService;
         this.restTemplate = restTemplate;
         this.bfmReadingService = bfmReadingService;
         this.telemetryTenantRepository = telemetryTenantRepository;
         this.tenantConfigRepository = tenantConfigRepository;
-        this.userLanguagePreferenceRepository = userLanguagePreferenceRepository;
-        this.userChannelPreferenceRepository = userChannelPreferenceRepository;
         this.glificApiToken = glificApiToken;
     }
 
@@ -133,12 +125,8 @@ public class GlificWebhookService {
                 throw new IllegalStateException("contactId is required");
             }
 
-            Integer preferredTenantId = userLanguagePreferenceRepository
-                    .findPreferredTenantIdByContactId(introRequest.getContactId())
-                    .orElse(null);
-
             TelemetryOperatorWithSchema operatorWithSchema = telemetryTenantRepository
-                    .findOperatorByPhoneAcrossTenants(introRequest.getContactId(), preferredTenantId)
+                    .findOperatorByPhoneAcrossTenants(introRequest.getContactId())
                     .orElseThrow(() -> new IllegalStateException("Operator not found"));
 
             Integer tenantId = operatorWithSchema.operator().tenantId();
@@ -150,8 +138,7 @@ public class GlificWebhookService {
                     ? operatorWithSchema.operator().title()
                     : "there";
 
-            Optional<String> selectedLanguageOpt = userLanguagePreferenceRepository
-                    .findLanguage(tenantId, introRequest.getContactId());
+            Optional<String> selectedLanguageOpt = Optional.of(resolveOperatorLanguage(operatorWithSchema, tenantId));
             String languageKey = selectedLanguageOpt
                     .map(this::normalizeLanguageKey)
                     .orElse("english");
@@ -191,12 +178,8 @@ public class GlificWebhookService {
                 throw new IllegalStateException("contactId is required");
             }
 
-            Integer preferredTenantId = userLanguagePreferenceRepository
-                    .findPreferredTenantIdByContactId(closingRequest.getContactId())
-                    .orElse(null);
-
             TelemetryOperatorWithSchema operatorWithSchema = telemetryTenantRepository
-                    .findOperatorByPhoneAcrossTenants(closingRequest.getContactId(), preferredTenantId)
+                    .findOperatorByPhoneAcrossTenants(closingRequest.getContactId())
                     .orElseThrow(() -> new IllegalStateException("Operator not found"));
 
             Integer tenantId = operatorWithSchema.operator().tenantId();
@@ -204,8 +187,7 @@ public class GlificWebhookService {
                 throw new IllegalStateException("Operator tenant could not be resolved");
             }
 
-            Optional<String> selectedLanguageOpt = userLanguagePreferenceRepository
-                    .findLanguage(tenantId, closingRequest.getContactId());
+            Optional<String> selectedLanguageOpt = Optional.of(resolveOperatorLanguage(operatorWithSchema, tenantId));
             String languageKey = selectedLanguageOpt
                     .map(this::normalizeLanguageKey)
                     .orElse("english");
@@ -309,7 +291,12 @@ public class GlificWebhookService {
             String selectedLanguage = resolveLanguageSelection(request.getLanguage(), languageOptions)
                     .orElseThrow(() -> new IllegalStateException("Invalid language selection"));
 
-            userLanguagePreferenceRepository.upsert(tenantId, request.getContactId(), selectedLanguage);
+            int selectedLanguageId = languageOptions.indexOf(selectedLanguage) + 1;
+            telemetryTenantRepository.updateUserLanguageId(
+                    operatorWithSchema.schemaName(),
+                    operatorWithSchema.operator().id(),
+                    selectedLanguageId
+            );
 
             String languageSpecificKey = "language_selection_confirmation_template_" + normalizeLanguageKey(selectedLanguage);
             String confirmationTemplate = tenantConfigRepository
@@ -345,9 +332,7 @@ public class GlificWebhookService {
                 throw new IllegalStateException("Operator tenant could not be resolved");
             }
 
-            String selectedLanguage = userLanguagePreferenceRepository
-                    .findLanguage(tenantId, request.getContactId())
-                    .orElse("English");
+            String selectedLanguage = resolveOperatorLanguage(operatorWithSchema, tenantId);
             String languageKey = normalizeLanguageKey(selectedLanguage);
 
             String prompt = tenantConfigRepository.findChannelSelectionPrompt(tenantId, languageKey)
@@ -397,9 +382,7 @@ public class GlificWebhookService {
                 throw new IllegalStateException("Operator tenant could not be resolved");
             }
 
-            String selectedLanguage = userLanguagePreferenceRepository
-                    .findLanguage(tenantId, request.getContactId())
-                    .orElse("English");
+            String selectedLanguage = resolveOperatorLanguage(operatorWithSchema, tenantId);
             String languageKey = normalizeLanguageKey(selectedLanguage);
 
             List<String> channelOptions = tenantConfigRepository.findChannelOptions(tenantId, languageKey);
@@ -410,7 +393,11 @@ public class GlificWebhookService {
             String selectedChannel = resolveLanguageSelection(request.getChannel(), channelOptions)
                     .orElseThrow(() -> new IllegalStateException("Invalid channel selection"));
 
-            userChannelPreferenceRepository.upsert(tenantId, request.getContactId(), selectedChannel);
+            int selectedChannelId = channelOptions.indexOf(selectedChannel) + 1;
+            Long schemeId = telemetryTenantRepository
+                    .findFirstSchemeForUser(operatorWithSchema.schemaName(), operatorWithSchema.operator().id())
+                    .orElseThrow(() -> new IllegalStateException("Operator is not mapped to any scheme"));
+            telemetryTenantRepository.updateSchemeChannel(operatorWithSchema.schemaName(), schemeId, selectedChannelId);
 
             String confirmationTemplate = tenantConfigRepository
                     .findConfigValue(tenantId, "channel_selection_confirmation_template_" + languageKey)
@@ -445,9 +432,7 @@ public class GlificWebhookService {
                 throw new IllegalStateException("Operator tenant could not be resolved");
             }
 
-            String selectedLanguage = userLanguagePreferenceRepository
-                    .findLanguage(tenantId, request.getContactId())
-                    .orElse("English");
+            String selectedLanguage = resolveOperatorLanguage(operatorWithSchema, tenantId);
             String languageKey = normalizeLanguageKey(selectedLanguage);
 
             String prompt = tenantConfigRepository.findItemSelectionPrompt(tenantId, languageKey)
@@ -497,9 +482,7 @@ public class GlificWebhookService {
                 throw new IllegalStateException("Operator tenant could not be resolved");
             }
 
-            String selectedLanguage = userLanguagePreferenceRepository
-                    .findLanguage(tenantId, request.getContactId())
-                    .orElse("English");
+            String selectedLanguage = resolveOperatorLanguage(operatorWithSchema, tenantId);
             String languageKey = normalizeLanguageKey(selectedLanguage);
 
             List<String> itemOptions = tenantConfigRepository.findItemOptions(tenantId, languageKey);
@@ -546,12 +529,8 @@ public class GlificWebhookService {
                 throw new IllegalStateException("contactId is required");
             }
 
-            Integer preferredTenantId = userLanguagePreferenceRepository
-                    .findPreferredTenantIdByContactId(request.getContactId())
-                    .orElse(null);
-
             TelemetryOperatorWithSchema operatorWithSchema = telemetryTenantRepository
-                    .findOperatorByPhoneAcrossTenants(request.getContactId(), preferredTenantId)
+                    .findOperatorByPhoneAcrossTenants(request.getContactId())
                     .orElseThrow(() -> new IllegalStateException("No operator found for contactId " + request.getContactId()));
 
             Integer tenantId = operatorWithSchema.operator().tenantId();
@@ -559,9 +538,7 @@ public class GlificWebhookService {
                 throw new IllegalStateException("Operator tenant could not be resolved");
             }
 
-            String selectedLanguage = userLanguagePreferenceRepository
-                    .findLanguage(tenantId, request.getContactId())
-                    .orElse("English");
+            String selectedLanguage = resolveOperatorLanguage(operatorWithSchema, tenantId);
             String languageKey = normalizeLanguageKey(selectedLanguage);
 
             String prompt = tenantConfigRepository.findMeterChangePrompt(tenantId, languageKey)
@@ -604,12 +581,8 @@ public class GlificWebhookService {
                 throw new IllegalStateException("meter change reason selection is required");
             }
 
-            Integer preferredTenantId = userLanguagePreferenceRepository
-                    .findPreferredTenantIdByContactId(request.getContactId())
-                    .orElse(null);
-
             TelemetryOperatorWithSchema operatorWithSchema = telemetryTenantRepository
-                    .findOperatorByPhoneAcrossTenants(request.getContactId(), preferredTenantId)
+                    .findOperatorByPhoneAcrossTenants(request.getContactId())
                     .orElseThrow(() -> new IllegalStateException("No operator found for contactId " + request.getContactId()));
 
             Integer tenantId = operatorWithSchema.operator().tenantId();
@@ -617,9 +590,7 @@ public class GlificWebhookService {
                 throw new IllegalStateException("Operator tenant could not be resolved");
             }
 
-            String selectedLanguage = userLanguagePreferenceRepository
-                    .findLanguage(tenantId, request.getContactId())
-                    .orElse("English");
+            String selectedLanguage = resolveOperatorLanguage(operatorWithSchema, tenantId);
             String languageKey = normalizeLanguageKey(selectedLanguage);
 
             List<String> reasons = tenantConfigRepository.findMeterChangeReasons(tenantId, languageKey);
@@ -677,12 +648,8 @@ public class GlificWebhookService {
                 throw new IllegalStateException("manualReading must be greater than zero");
             }
 
-            Integer preferredTenantId = userLanguagePreferenceRepository
-                    .findPreferredTenantIdByContactId(request.getContactId())
-                    .orElse(null);
-
             TelemetryOperatorWithSchema operatorWithSchema = telemetryTenantRepository
-                    .findOperatorByPhoneAcrossTenants(request.getContactId(), preferredTenantId)
+                    .findOperatorByPhoneAcrossTenants(request.getContactId())
                     .orElseThrow(() -> new IllegalStateException("No operator found for contactId " + request.getContactId()));
 
             Integer tenantId = operatorWithSchema.operator().tenantId();
@@ -727,9 +694,7 @@ public class GlificWebhookService {
                     .qualityStatus("CONFIRMED")
                     .build();
 
-            String selectedLanguage = userLanguagePreferenceRepository
-                    .findLanguage(tenantId, request.getContactId())
-                    .orElse("English");
+            String selectedLanguage = resolveOperatorLanguage(operatorWithSchema, tenantId);
             String languageKey = normalizeLanguageKey(selectedLanguage);
 
             String template = tenantConfigRepository.findManualReadingConfirmationTemplate(tenantId, languageKey)
@@ -749,6 +714,21 @@ public class GlificWebhookService {
                     .correlationId(request.getContactId())
                     .build();
         }
+    }
+
+    private String resolveOperatorLanguage(TelemetryOperatorWithSchema operatorWithSchema, Integer tenantId) {
+        if (operatorWithSchema == null || operatorWithSchema.operator() == null) {
+            return "English";
+        }
+        Integer languageId = operatorWithSchema.operator().languageId();
+        if (languageId == null || languageId <= 0) {
+            return "English";
+        }
+        List<String> languageOptions = tenantConfigRepository.findLanguageOptions(tenantId);
+        if (languageOptions.isEmpty() || languageId > languageOptions.size()) {
+            return "English";
+        }
+        return languageOptions.get(languageId - 1);
     }
 
     private Optional<String> resolveLanguageSelection(String rawSelection, List<String> options) {
