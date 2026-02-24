@@ -1,0 +1,55 @@
+package org.arghyam.jalsoochak.message.controller;
+
+import org.arghyam.jalsoochak.message.dto.NotificationRequest;
+import org.arghyam.jalsoochak.message.dto.SampleDTO;
+import org.arghyam.jalsoochak.message.kafka.KafkaProducer;
+import org.arghyam.jalsoochak.message.service.BusinessService;
+import org.arghyam.jalsoochak.message.service.NotificationService;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import java.util.List;
+
+@RestController
+@RequestMapping("/api")
+@RequiredArgsConstructor
+@Slf4j
+public class ApiController {
+
+    private final BusinessService businessService;
+    private final NotificationService notificationService;
+    private final KafkaProducer kafkaProducer;
+
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'TENANT_ADMIN')")
+    @GetMapping("/notifications")
+    public ResponseEntity<List<SampleDTO>> getAllNotifications() {
+        log.info("GET /api/notifications called");
+        return ResponseEntity.ok(businessService.getAllNotifications());
+    }
+
+
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'TENANT_ADMIN')")
+    @PostMapping("/notifications/send")
+    public ResponseEntity<String> sendNotification(@RequestBody NotificationRequest request) {
+        log.info("POST /api/notifications/send called – channel={}, recipient={}",
+                request.getChannel(), request.getRecipient());
+        String result = notificationService.send(request);
+        return ResponseEntity.ok(result);
+    }
+
+
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    @PostMapping("/publish")
+    public ResponseEntity<String> publishMessage(@RequestBody String message) {
+        log.info("POST /api/publish called with message: {}", message);
+        kafkaProducer.sendMessage(message);
+        return ResponseEntity.ok("Message published to message-service-topic");
+    }
+}
