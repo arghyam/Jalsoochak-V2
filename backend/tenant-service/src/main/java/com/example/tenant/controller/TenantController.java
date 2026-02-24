@@ -47,7 +47,7 @@ public class TenantController {
             @ApiResponse(responseCode = "409", description = "Tenant with the given state code already exists"),
             @ApiResponse(responseCode = "500", description = "Internal server error during tenant creation")
     })
-    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    @PreAuthorize("permitAll()")
     @PostMapping
     public ResponseEntity<TenantResponseDTO> createTenant(@Valid @RequestBody CreateTenantRequestDTO request) {
         log.info("POST /api/v1/tenants – Creating tenant: {}", request.getName());
