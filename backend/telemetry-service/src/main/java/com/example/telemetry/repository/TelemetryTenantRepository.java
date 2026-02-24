@@ -26,19 +26,22 @@ public class TelemetryTenantRepository {
 
     public Optional<TelemetryOperator> findOperatorById(String schemaName, Long operatorId) {
         validateSchemaName(schemaName);
+        String languageColumn = resolveSelectColumn(schemaName, "user_table", "language_id", "NULL::integer AS language_id");
         String sql = String.format("""
-                SELECT id, tenant_id, title, email, phone_number
+                SELECT id, tenant_id, title, email, phone_number, language_id
                 FROM %s.user_table
                 WHERE id = ?
                 LIMIT 1
                 """, schemaName);
+        sql = sql.replace("language_id", languageColumn);
         List<TelemetryOperator> rows = jdbcTemplate.query(sql, (rs, n) ->
                 new TelemetryOperator(
                         toLong(rs.getObject("id")),
                         toInteger(rs.getObject("tenant_id")),
                         rs.getString("title"),
                         rs.getString("email"),
-                        rs.getString("phone_number")
+                        rs.getString("phone_number"),
+                        toInteger(rs.getObject("language_id"))
                 ), operatorId);
         return rows.stream().findFirst();
     }
@@ -88,6 +91,57 @@ public class TelemetryTenantRepository {
                 """, schemaName);
         List<Long> rows = jdbcTemplate.query(sql, (rs, n) -> toLong(rs.getObject("scheme_id")), userId);
         return rows.stream().findFirst();
+    }
+
+    public Optional<Integer> findUserLanguageId(String schemaName, Long userId) {
+        validateSchemaName(schemaName);
+        if (!columnExists(schemaName, "user_table", "language_id")) {
+            return Optional.empty();
+        }
+        String sql = String.format("""
+                SELECT language_id
+                FROM %s.user_table
+                WHERE id = ?
+                LIMIT 1
+                """, schemaName);
+        List<Integer> rows = jdbcTemplate.query(sql, (rs, n) -> toInteger(rs.getObject("language_id")), userId);
+        return rows.stream().findFirst();
+    }
+
+    public void updateUserLanguageId(String schemaName, Long userId, Integer languageId) {
+        validateSchemaName(schemaName);
+        ensureUserLanguageIdColumn(schemaName);
+        String sql = String.format("""
+                UPDATE %s.user_table
+                SET language_id = ?, updated_at = NOW()
+                WHERE id = ?
+                """, schemaName);
+        jdbcTemplate.update(sql, languageId, userId);
+    }
+
+    public Optional<Integer> findSchemeChannel(String schemaName, Long schemeId) {
+        validateSchemaName(schemaName);
+        String channelColumn = resolveSelectColumn(schemaName, "scheme_master_table", "channel", "NULL::integer AS channel");
+        String sql = String.format("""
+                SELECT channel
+                FROM %s.scheme_master_table
+                WHERE id = ?
+                LIMIT 1
+                """, schemaName);
+        sql = sql.replace("channel", channelColumn);
+        List<Integer> rows = jdbcTemplate.query(sql, (rs, n) -> toInteger(rs.getObject("channel")), schemeId);
+        return rows.stream().findFirst();
+    }
+
+    public void updateSchemeChannel(String schemaName, Long schemeId, Integer channel) {
+        validateSchemaName(schemaName);
+        ensureSchemeChannelColumn(schemaName);
+        String sql = String.format("""
+                UPDATE %s.scheme_master_table
+                SET channel = ?, updated_at = NOW()
+                WHERE id = ?
+                """, schemaName);
+        jdbcTemplate.update(sql, channel, schemeId);
     }
 
     public boolean isOperatorMappedToScheme(String schemaName, Long operatorId, Long schemeId) {
@@ -328,20 +382,23 @@ public class TelemetryTenantRepository {
 
     private Optional<TelemetryOperator> findOperatorByPhone(String schemaName, String rawPhoneNumber, String normalizedPhone) {
         validateSchemaName(schemaName);
+        String languageColumn = resolveSelectColumn(schemaName, "user_table", "language_id", "NULL::integer AS language_id");
         String sql = String.format("""
-                SELECT id, tenant_id, title, email, phone_number
+                SELECT id, tenant_id, title, email, phone_number, language_id
                 FROM %s.user_table
                 WHERE phone_number = ?
                    OR regexp_replace(COALESCE(phone_number, ''), '\\\\D', '', 'g') = ?
                 LIMIT 1
                 """, schemaName);
+        sql = sql.replace("language_id", languageColumn);
         List<TelemetryOperator> rows = jdbcTemplate.query(sql, (rs, n) ->
                 new TelemetryOperator(
                         toLong(rs.getObject("id")),
                         toInteger(rs.getObject("tenant_id")),
                         rs.getString("title"),
                         rs.getString("email"),
-                        rs.getString("phone_number")
+                        rs.getString("phone_number"),
+                        toInteger(rs.getObject("language_id"))
                 ), rawPhoneNumber, normalizedPhone);
         return rows.stream().findFirst();
     }
@@ -357,6 +414,34 @@ public class TelemetryTenantRepository {
         if (schemaName == null || !schemaName.matches("^[a-z_][a-z0-9_]*$")) {
             throw new IllegalArgumentException("Invalid schema name: " + schemaName);
         }
+    }
+
+    private boolean columnExists(String schemaName, String tableName, String columnName) {
+        String sql = """
+                SELECT EXISTS (
+                    SELECT 1
+                    FROM information_schema.columns
+                    WHERE table_schema = ?
+                      AND table_name = ?
+                      AND column_name = ?
+                )
+                """;
+        Boolean exists = jdbcTemplate.queryForObject(sql, Boolean.class, schemaName, tableName, columnName);
+        return Boolean.TRUE.equals(exists);
+    }
+
+    private String resolveSelectColumn(String schemaName, String tableName, String columnName, String fallbackExpression) {
+        return columnExists(schemaName, tableName, columnName) ? columnName : fallbackExpression;
+    }
+
+    private void ensureUserLanguageIdColumn(String schemaName) {
+        String sql = String.format("ALTER TABLE %s.user_table ADD COLUMN IF NOT EXISTS language_id INTEGER", schemaName);
+        jdbcTemplate.execute(sql);
+    }
+
+    private void ensureSchemeChannelColumn(String schemaName) {
+        String sql = String.format("ALTER TABLE %s.scheme_master_table ADD COLUMN IF NOT EXISTS channel INTEGER", schemaName);
+        jdbcTemplate.execute(sql);
     }
 
     private Long toLong(Object value) {

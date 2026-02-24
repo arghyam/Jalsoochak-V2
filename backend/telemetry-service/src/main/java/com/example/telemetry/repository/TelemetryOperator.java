@@ -5,6 +5,7 @@ public record TelemetryOperator(
         Integer tenantId,
         String title,
         String email,
-        String phoneNumber
+        String phoneNumber,
+        Integer languageId
 ) {
 }
