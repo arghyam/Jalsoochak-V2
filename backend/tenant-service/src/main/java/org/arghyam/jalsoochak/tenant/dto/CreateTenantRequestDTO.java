@@ -23,28 +23,37 @@ public class CreateTenantRequestDTO {
     @Schema(description = "Display name of the tenant / state", example = "Karnataka", requiredMode = Schema.RequiredMode.REQUIRED)
     private String name;
 
-    @Schema(description = "ID of the admin user creating this tenant", example = "1")
-    private Integer createdBy;
-
     public CreateTenantRequestDTO() {
     }
 
-    public CreateTenantRequestDTO(String stateCode, Integer lgdCode, String name, Integer createdBy) {
+    public CreateTenantRequestDTO(String stateCode, Integer lgdCode, String name) {
         this.stateCode = stateCode;
         this.lgdCode = lgdCode;
         this.name = name;
-        this.createdBy = createdBy;
     }
 
-    public String getStateCode() { return stateCode; }
-    public void setStateCode(String stateCode) { this.stateCode = stateCode; }
+    public String getStateCode() {
+        return stateCode;
+    }
 
-    public Integer getLgdCode() { return lgdCode; }
-    public void setLgdCode(Integer lgdCode) { this.lgdCode = lgdCode; }
+    public void setStateCode(String stateCode) {
+        this.stateCode = stateCode;
+    }
 
-    public String getName() { return name; }
-    public void setName(String name) { this.name = name; }
+    public Integer getLgdCode() {
+        return lgdCode;
+    }
 
-    public Integer getCreatedBy() { return createdBy; }
-    public void setCreatedBy(Integer createdBy) { this.createdBy = createdBy; }
+    public void setLgdCode(Integer lgdCode) {
+        this.lgdCode = lgdCode;
+    }
+
+    public String getName() {
+        return name;
+    }
+
+    public void setName(String name) {
+        this.name = name;
+    }
+
 }
