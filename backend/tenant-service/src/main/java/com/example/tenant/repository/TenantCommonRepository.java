@@ -72,15 +72,16 @@ public class TenantCommonRepository {
         log.info("Provisioning tenant schema: {}", schemaName);
 
         jdbcTemplate.execute((ConnectionCallback<Void>) connection -> {
+            // Explicitly cast to text to match PostgreSQL function signature
             try (PreparedStatement ps = connection.prepareStatement(
-                    "SELECT create_tenant_schema(?)")) {
+                    "SELECT common_schema.create_tenant_schema(?::text)")) {
                 ps.setString(1, schemaName);
                 ps.execute();
             }
             return null;
         });
 
-        // Keycloak owns credentials; tenant user_table.password should be nullable.
+        // Make password nullable (Keycloak owns credentials)
         String alterPasswordNullabilitySql = String.format(
                 "ALTER TABLE IF EXISTS %s.user_table ALTER COLUMN password DROP NOT NULL", schemaName);
         jdbcTemplate.execute(alterPasswordNullabilitySql);
