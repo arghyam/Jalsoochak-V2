@@ -28,4 +28,7 @@ public class SampleEntity {
 
     @Column(name = "scheme_code")
     private String schemeCode;
+
+    @Column(name = "channel")
+    private Integer channel;
 }

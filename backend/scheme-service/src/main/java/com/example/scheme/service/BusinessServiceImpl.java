@@ -14,8 +14,8 @@ public class BusinessServiceImpl implements BusinessService {
     public List<SampleDTO> getAllSchemes() {
         log.info("Fetching all schemes");
         return List.of(
-                SampleDTO.builder().id(1L).schemeName("Rural Water Supply").schemeCode("RWS-001").build(),
-                SampleDTO.builder().id(2L).schemeName("Urban Pipeline Network").schemeCode("UPN-002").build()
+                SampleDTO.builder().id(1L).schemeName("Rural Water Supply").schemeCode("RWS-001").channel(1).build(),
+                SampleDTO.builder().id(2L).schemeName("Urban Pipeline Network").schemeCode("UPN-002").channel(2).build()
         );
     }
 }
