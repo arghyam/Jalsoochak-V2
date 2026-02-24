@@ -85,7 +85,7 @@ public class EscalationSchedulerService {
             // days_since_last_upload is NULL when the operator has never uploaded
             Number daysSinceObj = (Number) row.get("days_since_last_upload");
             boolean neverUploaded = (daysSinceObj == null);
-            int daysSinceLastUpload = neverUploaded ? 0 : daysSinceObj.intValue();
+            int daysSinceLastUpload = neverUploaded ? Integer.MAX_VALUE : daysSinceObj.intValue();
 
             // Never-uploaded operators go straight to level-2 (most severe)
             int escalationLevel = (neverUploaded || daysSinceLastUpload >= level2Days) ? 2 : 1;

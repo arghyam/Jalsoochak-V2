@@ -65,6 +65,22 @@ public class ApiController {
     }
 
     // ── GET escalation report PDF ─────────────────────────────
+    // TODO: Verify each finding against the current code and only fix it if needed.
+    //
+    //In
+    //`@backend/message-service/src/main/java/com/example/message/controller/ApiController.java`
+    //around lines 69 - 88, The getReport method in ApiController currently serves
+    //PDFs containing PII without requiring authentication; modify
+    //ApiController.getReport to enforce access control by requiring an authenticated
+    //user and appropriate role/permission (e.g., via Spring Security annotations like
+    //`@PreAuthorize`("hasRole('REPORT_VIEWER')") or by checking SecurityContextHolder
+    //inside getReport) before loading the FileSystemResource, and deny access with
+    //401/403 if unauthorized; additionally, stop relying on guessable filenames by
+    //generating and storing unpredictable filenames (e.g., include a UUID when saving
+    //reports and keep a mapping from business id → stored filename) and update any
+    //code paths that create/read files to use the UUID-backed filename (related
+    //symbols: getReport, reportDir, filename) so only authorized users can fetch
+    //reports and filenames cannot be guessed.
 
     @GetMapping("/v1/reports/{filename}")
     public ResponseEntity<Resource> getReport(@PathVariable String filename) {
@@ -81,9 +97,13 @@ public class ApiController {
             return ResponseEntity.notFound().build();
         }
 
+        // Allow only safe characters in filename for header use
+        String safeFilename = filename.replaceAll("[^a-zA-Z0-9._\\-]", "_");
+
         return ResponseEntity.ok()
                 .contentType(MediaType.APPLICATION_PDF)
                 .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"" + filename + "\"")
+                .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"" + safeFilename + "\"")
                 .body(resource);
     }
 }

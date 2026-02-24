@@ -47,7 +47,8 @@ public class EscalationPdfService {
         ensureReportDirExists();
 
         String dateStr = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd"));
-        String safeOfficerName = officerName.replaceAll("[^a-zA-Z0-9_\\-]", "_");
+        String safeOfficerName = (officerName != null ? officerName : "Unknown")
+                .replaceAll("[^a-zA-Z0-9_\\-]", "_");
         String filename = String.format("escalation_L%d_%s_%s.pdf", level, safeOfficerName, dateStr);
         Path filePath = Paths.get(reportDir, filename);
 

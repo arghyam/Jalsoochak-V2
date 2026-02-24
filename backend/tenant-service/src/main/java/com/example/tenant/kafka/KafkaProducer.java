@@ -28,10 +28,11 @@ public class KafkaProducer {
     public void publishJson(String topic, Object event) {
         try {
             String json = objectMapper.writeValueAsString(event);
-            log.info("Publishing event to topic [{}]: {}", topic, json);
+            log.debug("Publishing event to topic [{}]: {}", topic, json);
             kafkaTemplate.send(topic, json);
         } catch (JsonProcessingException e) {
             log.error("Failed to serialize event for topic [{}]: {}", topic, e.getMessage(), e);
+            throw new RuntimeException("Failed to serialize Kafka event", e);
         }
     }
 }

@@ -15,7 +15,7 @@ public class KafkaConsumer {
 
     @KafkaListener(topics = "common-topic", groupId = "${spring.kafka.consumer.group-id}")
     public void consume(String message) {
-        log.info("[message-service] Received message from common-topic: {}", message);
+        log.debug("[message-service] Received message from common-topic: {}", message);
         notificationEventRouter.route(message);
     }
 }

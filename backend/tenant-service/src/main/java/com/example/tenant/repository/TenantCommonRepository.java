@@ -81,9 +81,10 @@ public class TenantCommonRepository {
             return null;
         });
 
-        // Make password nullable (Keycloak owns credentials)
+        // Make password nullable (Keycloak owns credentials). No IF EXISTS: missing table
+        // indicates a provisioning failure that should surface immediately.
         String alterPasswordNullabilitySql = String.format(
-                "ALTER TABLE IF EXISTS %s.user_table ALTER COLUMN password DROP NOT NULL", schemaName);
+               "ALTER TABLE %s.user_table ALTER COLUMN password DROP NOT NULL", schemaName);
         jdbcTemplate.execute(alterPasswordNullabilitySql);
     }
 

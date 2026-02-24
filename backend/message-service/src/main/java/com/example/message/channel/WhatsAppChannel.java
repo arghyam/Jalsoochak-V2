@@ -6,6 +6,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
 
+import java.time.Duration;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -68,7 +69,7 @@ public class WhatsAppChannel implements NotificationChannel {
                     .bodyValue(payload)
                     .retrieve()
                     .toBodilessEntity()
-                    .block();
+                    .block(Duration.ofSeconds(30));
 
             log.info("[WHATSAPP] WhatsApp message delivered successfully via Gliffic");
             return true;
@@ -93,7 +94,7 @@ public class WhatsAppChannel implements NotificationChannel {
         }
 
         try {
-            log.info("[WHATSAPP] Sending document to {} via Gliffic: {}", toPhone, documentUrl);
+            log.debug("[WHATSAPP] Sending document to {} via Gliffic: {}", toPhone, documentUrl);
 
             Map<String, Object> document = new HashMap<>();
             document.put("url", documentUrl);
@@ -112,7 +113,7 @@ public class WhatsAppChannel implements NotificationChannel {
                     .bodyValue(payload)
                     .retrieve()
                     .toBodilessEntity()
-                    .block();
+                    .block(Duration.ofSeconds(30));
 
             log.info("[WHATSAPP] Document delivered successfully to {}", toPhone);
             return true;

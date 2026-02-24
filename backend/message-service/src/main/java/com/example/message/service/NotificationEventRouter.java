@@ -5,6 +5,7 @@ import com.example.message.dto.NotificationRequest;
 import com.example.message.dto.OperatorEscalationDetail;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -35,6 +36,26 @@ public class NotificationEventRouter {
     @Value("${app.base-url:http://localhost:8085}")
     private String baseUrl;
 
+    @PostConstruct
+    void validateBaseUrl() {
+        if (baseUrl.contains("localhost") || baseUrl.contains("127.0.0.1")) {
+            log.warn("[Router] app.base-url is set to a local address ('{}')."
+                    + " PDF links embedded in escalation WhatsApp messages will be unreachable by Glific."
+                    + " Set the 'app.base-url' property to a publicly reachable URL"
+                    + " (e.g., 'APP_BASE_URL=https://<id>.ngrok.io' for demos,"
+                    + " or your server's public hostname in production) before sending escalation reports.",
+                    baseUrl);
+        }
+    }
+
+    /**
+     * Routes the message and re-throws any processing exception so the Kafka
+     * container's error handler can apply its retry/back-off policy and, if
+     * configured, forward the payload to a dead-letter topic.
+     *
+     * <p>Unknown {@code eventType} values are silently skipped — they are
+     * permanent non-retryable conditions and must not cause infinite retries.</p>
+     */
     public void route(String json) {
         try {
             JsonNode root = objectMapper.readTree(json);
@@ -46,7 +67,9 @@ public class NotificationEventRouter {
                 default -> log.warn("[Router] Unknown eventType '{}', ignoring message", eventType);
             }
         } catch (Exception e) {
-            log.error("[Router] Failed to process Kafka message: {}", e.getMessage(), e);
+            log.error("[Router] Failed to process Kafka message, rethrowing for container retry/DLT: {}",
+                    e.getMessage(), e);
+            throw new RuntimeException("Notification event processing failed", e);
         }
     }
 

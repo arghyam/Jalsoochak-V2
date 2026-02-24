@@ -62,7 +62,7 @@ public class NudgeSchedulerService {
                     .eventType("NUDGE")
                     .recipientPhone(phone)
                     .operatorName((String) row.get("name"))
-                    .schemeId(String.valueOf(row.get("scheme_id")))
+                    .schemeId(row.get("scheme_id") != null ? row.get("scheme_id").toString() : "")
                     .build();
             kafkaProducer.publishJson(COMMON_TOPIC, event);
             log.debug("[NudgeJob] Published NudgeEvent for phone={}", phone);
