@@ -18,6 +18,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 @Configuration
 @EnableWebSecurity
@@ -61,7 +62,41 @@ public class SecurityConfig {
                     );
                 }
             }
+
+            // API-specific permissions (from `permissions` claim) and OAuth scopes.
+            // This keeps backward compatibility with role checks while enabling fine-grained checks.
+            extractPermissionAuthorities(jwt).forEach(permission ->
+                    authorities.add(new SimpleGrantedAuthority(permission))
+            );
             return authorities;
         };
+    }
+
+    private List<String> extractPermissionAuthorities(Jwt jwt) {
+        List<String> permissions = new ArrayList<>();
+
+        @SuppressWarnings("unchecked")
+        List<String> permissionClaim = (List<String>) jwt.getClaim("permissions");
+        if (permissionClaim != null) {
+            permissions.addAll(permissionClaim);
+        }
+
+        List<String> scopeClaim = extractScopeAuthorities(jwt);
+        permissions.addAll(scopeClaim);
+
+        return permissions.stream().filter(Objects::nonNull).distinct().toList();
+    }
+
+    private List<String> extractScopeAuthorities(Jwt jwt) {
+        List<String> scopes = new ArrayList<>();
+        String scope = jwt.getClaimAsString("scope");
+        if (scope != null && !scope.isBlank()) {
+            for (String token : scope.split(" ")) {
+                if (!token.isBlank()) {
+                    scopes.add("SCOPE_" + token);
+                }
+            }
+        }
+        return scopes;
     }
 }

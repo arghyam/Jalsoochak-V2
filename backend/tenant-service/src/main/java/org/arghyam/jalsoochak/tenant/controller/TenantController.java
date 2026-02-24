@@ -64,7 +64,7 @@ public class TenantController {
                     content = @Content(array = @ArraySchema(schema = @Schema(implementation = TenantResponseDTO.class)))),
             @ApiResponse(responseCode = "500", description = "Internal server error")
     })
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'TENANT_ADMIN')")
+    @PreAuthorize("hasAuthority('tenant.read')")
     @GetMapping
     public ResponseEntity<List<TenantResponseDTO>> getAllTenants() {
         log.info("GET /api/v1/tenants");
@@ -82,7 +82,7 @@ public class TenantController {
             @ApiResponse(responseCode = "400", description = "Tenant could not be resolved — missing X-Tenant-Code header"),
             @ApiResponse(responseCode = "500", description = "Internal server error")
     })
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'TENANT_ADMIN', 'DEPT_MANAGER')")
+    @PreAuthorize("hasAuthority('tenant.department.read')")
     @GetMapping("/departments")
     public ResponseEntity<List<DepartmentResponseDTO>> getTenantDepartments() {
         log.info("GET /api/v1/tenants/departments");
@@ -100,7 +100,7 @@ public class TenantController {
             @ApiResponse(responseCode = "400", description = "Invalid request or tenant could not be resolved"),
             @ApiResponse(responseCode = "500", description = "Internal server error")
     })
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'TENANT_ADMIN')")
+    @PreAuthorize("hasAuthority('tenant.department.create')")
     @PostMapping("/departments")
     public ResponseEntity<DepartmentResponseDTO> createDepartment(
             @Valid @RequestBody CreateDepartmentRequestDTO request) {
