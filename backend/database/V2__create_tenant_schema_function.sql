@@ -179,6 +179,7 @@ BEGIN
             house_hold_count    INTEGER             NOT NULL DEFAULT 0,
             latitude            DOUBLE PRECISION,
             longitude           DOUBLE PRECISION,
+            channel             INTEGER,
             work_status         INTEGER             NOT NULL,
             operating_status    INTEGER             NOT NULL,
             created_at          TIMESTAMP           NOT NULL DEFAULT NOW(),
