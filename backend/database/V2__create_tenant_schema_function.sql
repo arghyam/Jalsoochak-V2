@@ -397,6 +397,44 @@ BEGIN
             CONSTRAINT uq_language_name UNIQUE (language_name)
         )', schema_name);
 
+    -- --------------------------------------------------------
+    -- 2.13 user_invite_table
+    --      Stores invitation links/tokens for onboarding users.
+    -- --------------------------------------------------------
+
+    EXECUTE format('
+        CREATE TABLE %1$I.user_invite_table (
+            id                  SERIAL          PRIMARY KEY,
+            uuid                VARCHAR(36)     NOT NULL UNIQUE DEFAULT gen_random_uuid()::TEXT,
+            user_id             INTEGER         NOT NULL,
+            invite_channel      INTEGER         NOT NULL,
+            invite_token        TEXT            NOT NULL,
+            status              INTEGER         NOT NULL,
+            invite_expires_at   TIMESTAMP,
+            created_by          INTEGER,
+            created_at          TIMESTAMP       NOT NULL DEFAULT NOW(),
+            updated_by          INTEGER,
+            updated_at          TIMESTAMP       NOT NULL DEFAULT NOW(),
+            deleted_at          TIMESTAMP,
+            deleted_by          INTEGER,
+
+            CONSTRAINT fk_user_invite_user
+                FOREIGN KEY (user_id)
+                REFERENCES %1$I.user_table(id),
+            CONSTRAINT fk_user_invite_channel
+                FOREIGN KEY (invite_channel)
+                REFERENCES common_schema.channel_master_table(id),
+            CONSTRAINT fk_user_invite_created_by
+                FOREIGN KEY (created_by)
+                REFERENCES common_schema.tenant_admin_user_master_table(id),
+            CONSTRAINT fk_user_invite_updated_by
+                FOREIGN KEY (updated_by)
+                REFERENCES common_schema.tenant_admin_user_master_table(id),
+            CONSTRAINT fk_user_invite_deleted_by
+                FOREIGN KEY (deleted_by)
+                REFERENCES common_schema.tenant_admin_user_master_table(id)
+        )', schema_name);
+
     -- ============================================================
     -- 3. Indexes
     -- ============================================================
@@ -451,6 +489,12 @@ BEGIN
     EXECUTE format('CREATE INDEX idx_%1$s_anom_type         ON %1$I.anomaly_table(type)',      schema_name);
     EXECUTE format('CREATE INDEX idx_%1$s_anom_status       ON %1$I.anomaly_table(status)',    schema_name);
 
+    -- user_invite_table
+    EXECUTE format('CREATE INDEX idx_%1$s_inv_user          ON %1$I.user_invite_table(user_id)',         schema_name);
+    EXECUTE format('CREATE INDEX idx_%1$s_inv_status        ON %1$I.user_invite_table(status)',          schema_name);
+    EXECUTE format('CREATE INDEX idx_%1$s_inv_channel       ON %1$I.user_invite_table(invite_channel)',  schema_name);
+    EXECUTE format('CREATE INDEX idx_%1$s_inv_expires_at    ON %1$I.user_invite_table(invite_expires_at)',schema_name);
+
     -- ============================================================
     -- Done
     -- ============================================================
@@ -465,3 +509,55 @@ $func$;
 -- Example: provision a tenant for Madhya Pradesh
 -- ============================================================
 -- SELECT create_tenant_schema('tenant_mp');
+
+-- ============================================================
+-- Backfill: create invite table for existing tenant schemas
+-- ============================================================
+DO $$
+DECLARE
+    tenant_schema TEXT;
+BEGIN
+    FOR tenant_schema IN
+        SELECT nspname
+        FROM pg_namespace
+        WHERE nspname LIKE 'tenant\_%' ESCAPE '\'
+    LOOP
+        EXECUTE format('
+            CREATE TABLE IF NOT EXISTS %1$I.user_invite_table (
+                id                  SERIAL          PRIMARY KEY,
+                uuid                VARCHAR(36)     NOT NULL UNIQUE DEFAULT gen_random_uuid()::TEXT,
+                user_id             INTEGER         NOT NULL,
+                invite_channel      INTEGER         NOT NULL,
+                invite_token        TEXT            NOT NULL,
+                status              INTEGER         NOT NULL,
+                invite_expires_at   TIMESTAMP,
+                created_by          INTEGER,
+                created_at          TIMESTAMP       NOT NULL DEFAULT NOW(),
+                updated_by          INTEGER,
+                updated_at          TIMESTAMP       NOT NULL DEFAULT NOW(),
+                deleted_at          TIMESTAMP,
+                deleted_by          INTEGER,
+
+                CONSTRAINT fk_user_invite_user
+                    FOREIGN KEY (user_id)
+                    REFERENCES %1$I.user_table(id),
+                CONSTRAINT fk_user_invite_channel
+                    FOREIGN KEY (invite_channel)
+                    REFERENCES common_schema.channel_master_table(id),
+                CONSTRAINT fk_user_invite_created_by
+                    FOREIGN KEY (created_by)
+                    REFERENCES common_schema.tenant_admin_user_master_table(id),
+                CONSTRAINT fk_user_invite_updated_by
+                    FOREIGN KEY (updated_by)
+                    REFERENCES common_schema.tenant_admin_user_master_table(id),
+                CONSTRAINT fk_user_invite_deleted_by
+                    FOREIGN KEY (deleted_by)
+                    REFERENCES common_schema.tenant_admin_user_master_table(id)
+            )', tenant_schema);
+
+        EXECUTE format('CREATE INDEX IF NOT EXISTS idx_%1$s_inv_user       ON %1$I.user_invite_table(user_id)', tenant_schema);
+        EXECUTE format('CREATE INDEX IF NOT EXISTS idx_%1$s_inv_status     ON %1$I.user_invite_table(status)', tenant_schema);
+        EXECUTE format('CREATE INDEX IF NOT EXISTS idx_%1$s_inv_channel    ON %1$I.user_invite_table(invite_channel)', tenant_schema);
+        EXECUTE format('CREATE INDEX IF NOT EXISTS idx_%1$s_inv_expires_at ON %1$I.user_invite_table(invite_expires_at)', tenant_schema);
+    END LOOP;
+END $$;
