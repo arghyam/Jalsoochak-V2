@@ -111,10 +111,17 @@ public class BfmReadingService {
                 .orElse(null);
 
         String finalMessage;
+        String readingText = finalReading != null ? finalReading.stripTrailingZeros().toPlainString() : null;
         if (isValid) {
-            finalMessage = "Reading captured successfully";
+            if (ocrResult != null && readingText != null) {
+                finalMessage = "Reading captured successfully. Extracted reading: " + readingText;
+            } else {
+                finalMessage = "Reading captured successfully";
+            }
         } else if (finalReading == null || finalReading.compareTo(BigDecimal.ZERO) <= 0) {
             finalMessage = "Invalid reading value";
+        } else if (ocrResult != null && readingText != null) {
+            finalMessage = "Low OCR confidence. Extracted reading: " + readingText + ". Please confirm reading.";
         } else {
             finalMessage = "Low OCR confidence. Please confirm reading.";
         }
