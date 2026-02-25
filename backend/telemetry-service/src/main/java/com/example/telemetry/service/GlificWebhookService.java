@@ -255,6 +255,7 @@ public class GlificWebhookService {
             return IntroResponse.builder()
                     .success(true)
                     .message(message.toString())
+                    .correlationId(String.valueOf(languageOptions.size()))
                     .build();
         } catch (Exception e) {
             log.error("Error building language selection message for contactId {}: {}", request.getContactId(), e.getMessage(), e);
@@ -354,6 +355,7 @@ public class GlificWebhookService {
             return IntroResponse.builder()
                     .success(true)
                     .message(message.toString())
+                    .correlationId(String.valueOf(channelOptions.size()))
                     .build();
         } catch (Exception e) {
             log.error("Error building channel selection message for contactId {}: {}", request.getContactId(), e.getMessage(), e);
