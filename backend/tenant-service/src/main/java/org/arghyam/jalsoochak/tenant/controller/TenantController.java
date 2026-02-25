@@ -5,6 +5,8 @@ import org.arghyam.jalsoochak.tenant.dto.CreateDepartmentRequestDTO;
 import org.arghyam.jalsoochak.tenant.dto.CreateTenantRequestDTO;
 import org.arghyam.jalsoochak.tenant.dto.DepartmentResponseDTO;
 import org.arghyam.jalsoochak.tenant.dto.PageResponseDTO;
+import org.arghyam.jalsoochak.tenant.dto.SetTenantConfigRequestDTO;
+import org.arghyam.jalsoochak.tenant.dto.TenantConfigResponseDTO;
 import org.arghyam.jalsoochak.tenant.dto.TenantResponseDTO;
 import org.arghyam.jalsoochak.tenant.dto.UpdateTenantRequestDTO;
 import org.arghyam.jalsoochak.tenant.service.TenantManagementService;
@@ -131,7 +133,53 @@ public class TenantController {
         }
 
         /**
-         * 5. API for getting departments for the current tenant - accessible by super
+         * 5. API for getting all configurations for a tenant - accessible by super
+         * admin and tenant admin
+         */
+        @Operation(summary = "Get all configurations for a tenant", description = "Retrieves all active configuration key-value pairs for a specific tenant in a Map format.")
+        @ApiResponses({
+                        @ApiResponse(responseCode = "200", description = "Tenant configurations retrieved successfully"),
+                        @ApiResponse(responseCode = "404", description = "Tenant not found"),
+                        @ApiResponse(responseCode = "500", description = "Internal server error")
+        })
+        // TODO: Change this to permission based authorization
+        // @PreAuthorize("hasAuthority('tenant.config.read')")
+        @PreAuthorize("permitAll")
+        @GetMapping("/{tenantId}/config")
+        public ResponseEntity<ApiResponseDTO<TenantConfigResponseDTO>> getTenantConfigs(
+                        @PathVariable Integer tenantId) {
+                log.info("GET /api/v1/tenants/{}/config", tenantId);
+                return ResponseEntity.ok(ApiResponseDTO.of(200, "Tenant configurations retrieved successfully",
+                                tenantManagementService.getTenantConfigs(tenantId)));
+        }
+
+        /**
+         * 6. API for setting or updating multiple configurations for a tenant -
+         * accessible by super admin and tenant admin
+         */
+        @Operation(summary = "Set or update multiple tenant configurations", description = "Batch updates or creates configurations for the specified tenant using a Map structure.")
+        @ApiResponses({
+                        @ApiResponse(responseCode = "200", description = "Configurations set successfully"),
+                        @ApiResponse(responseCode = "404", description = "Tenant not found"),
+                        @ApiResponse(responseCode = "500", description = "Internal server error")
+        })
+        // TODO: Change this to permission based authorization
+        /*
+         * @PreAuthorize("hasAuthority('tenant.config.update') or hasAuthority('tenant.config.create')"
+         * )
+         */
+        @PreAuthorize("permitAll")
+        @PutMapping("/{tenantId}/config")
+        public ResponseEntity<ApiResponseDTO<TenantConfigResponseDTO>> setTenantConfigs(
+                        @PathVariable Integer tenantId,
+                        @Valid @RequestBody SetTenantConfigRequestDTO request) {
+                log.info("PUT /api/v1/tenants/{}/config mapping received", tenantId);
+                return ResponseEntity.ok(ApiResponseDTO.of(200, "Tenant configurations set successfully",
+                                tenantManagementService.setTenantConfigs(tenantId, request)));
+        }
+
+        /**
+         * 7. API for getting departments for the current tenant - accessible by super
          * admin and tenant admin
          */
         @Operation(summary = "Get departments for the current tenant", description = "Fetches the department hierarchy from the tenant-specific schema. "
@@ -153,7 +201,7 @@ public class TenantController {
         }
 
         /**
-         * 6. API for creating a department for the current tenant - accessible by super
+         * 8. API for creating a department for the current tenant - accessible by super
          * admin and tenant admin
          */
         @Operation(summary = "Create a department for the current tenant", description = "Inserts a new department into the tenant-specific schema's department_location_master_table. "
@@ -175,5 +223,4 @@ public class TenantController {
                 return ResponseEntity.status(HttpStatus.CREATED)
                                 .body(ApiResponseDTO.of(201, "Department created successfully", dept));
         }
-
 }

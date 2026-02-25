@@ -6,13 +6,16 @@ import java.util.List;
 import java.util.Optional;
 
 import org.arghyam.jalsoochak.tenant.dto.CreateTenantRequestDTO;
+import org.arghyam.jalsoochak.tenant.dto.InternalTenantConfigDTO;
 import org.arghyam.jalsoochak.tenant.dto.TenantResponseDTO;
 import org.arghyam.jalsoochak.tenant.dto.UpdateTenantRequestDTO;
+import org.arghyam.jalsoochak.tenant.enums.TenantConfigKeyEnum;
 import org.arghyam.jalsoochak.tenant.enums.TenantStatusEnum;
 import org.springframework.jdbc.core.ConnectionCallback;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -46,6 +49,26 @@ public class TenantCommonRepository {
             .onboardedAt(rs.getTimestamp("onboarded_at") != null
                     ? rs.getTimestamp("onboarded_at").toLocalDateTime()
                     : null)
+            .updatedAt(rs.getTimestamp("updated_at") != null
+                    ? rs.getTimestamp("updated_at").toLocalDateTime()
+                    : null)
+            .updatedBy((Integer) rs.getObject("updated_by"))
+            .build();
+
+    /**
+     * Row mapper for {@code common_schema.tenant_config_master_table}.
+     */
+    private static final RowMapper<InternalTenantConfigDTO> CONFIG_ROW_MAPPER = (rs, rowNum) -> InternalTenantConfigDTO
+            .builder()
+            .id(rs.getInt("id"))
+            .uuid(rs.getString("uuid"))
+            .tenantId(rs.getInt("tenant_id"))
+            .configKey(TenantConfigKeyEnum.valueOf(rs.getString("config_key")))
+            .configValue(rs.getString("config_value"))
+            .createdAt(rs.getTimestamp("created_at") != null
+                    ? rs.getTimestamp("created_at").toLocalDateTime()
+                    : null)
+            .createdBy((Integer) rs.getObject("created_by"))
             .updatedAt(rs.getTimestamp("updated_at") != null
                     ? rs.getTimestamp("updated_at").toLocalDateTime()
                     : null)
@@ -175,6 +198,55 @@ public class TenantCommonRepository {
         String sql = "SELECT id FROM common_schema.tenant_admin_user_master_table WHERE uuid = ?";
         List<Integer> ids = jdbcTemplate.queryForList(sql, Integer.class, uuid);
         return ids.isEmpty() ? Optional.empty() : Optional.of(ids.get(0));
+    }
+
+    /**
+     * Finds all configurations for a given tenant.
+     */
+    public List<InternalTenantConfigDTO> findConfigsByTenantId(Integer tenantId) {
+        String sql = "SELECT * FROM common_schema.tenant_config_master_table WHERE tenant_id = ? AND deleted_at IS NULL";
+        return jdbcTemplate.query(sql, CONFIG_ROW_MAPPER, tenantId);
+    }
+
+    /**
+     * Finds a specific configuration for a tenant by key.
+     */
+    public Optional<InternalTenantConfigDTO> findConfigByTenantAndKey(Integer tenantId, TenantConfigKeyEnum key) {
+        String sql = "SELECT * FROM common_schema.tenant_config_master_table WHERE tenant_id = ? AND config_key = ? AND deleted_at IS NULL";
+        List<InternalTenantConfigDTO> results = jdbcTemplate.query(sql, CONFIG_ROW_MAPPER, tenantId, key.name());
+        return results.stream().findFirst();
+    }
+
+    /**
+     * Upserts a tenant configuration. If it exists, updates it; otherwise, creates
+     * it.
+     */
+    @Transactional
+    public Optional<InternalTenantConfigDTO> upsertTenantConfig(Integer tenantId, TenantConfigKeyEnum key,
+            String value, Integer currentUserId) {
+        // Check if exists
+        Optional<InternalTenantConfigDTO> existing = findConfigByTenantAndKey(tenantId, key);
+
+        if (existing.isPresent()) {
+            String sql = """
+                    UPDATE common_schema.tenant_config_master_table
+                    SET config_value = ?, updated_at = NOW(), updated_by = ?
+                    WHERE id = ? RETURNING *
+                    """;
+            List<InternalTenantConfigDTO> results = jdbcTemplate.query(sql, CONFIG_ROW_MAPPER, value, currentUserId,
+                    existing.get().getId());
+            return results.stream().findFirst();
+        } else {
+            String sql = """
+                    INSERT INTO common_schema.tenant_config_master_table
+                        (tenant_id, config_key, config_value, created_by, updated_by)
+                    VALUES (?, ?, ?, ?, ?)
+                    RETURNING *
+                    """;
+            List<InternalTenantConfigDTO> results = jdbcTemplate.query(sql, CONFIG_ROW_MAPPER,
+                    tenantId, key.name(), value, currentUserId, currentUserId);
+            return results.stream().findFirst();
+        }
     }
 
     /**
