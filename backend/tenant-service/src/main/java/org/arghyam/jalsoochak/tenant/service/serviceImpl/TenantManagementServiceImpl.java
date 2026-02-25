@@ -4,6 +4,7 @@ import org.arghyam.jalsoochak.tenant.config.TenantContext;
 import org.arghyam.jalsoochak.tenant.dto.CreateDepartmentRequestDTO;
 import org.arghyam.jalsoochak.tenant.dto.CreateTenantRequestDTO;
 import org.arghyam.jalsoochak.tenant.dto.DepartmentResponseDTO;
+import org.arghyam.jalsoochak.tenant.dto.PageResponseDTO;
 import org.arghyam.jalsoochak.tenant.dto.TenantResponseDTO;
 import org.arghyam.jalsoochak.tenant.dto.UpdateTenantRequestDTO;
 import org.arghyam.jalsoochak.tenant.kafka.KafkaProducer;
@@ -161,9 +162,13 @@ public class TenantManagementServiceImpl implements TenantManagementService {
     }
 
     @Override
-    public List<TenantResponseDTO> getAllTenants() {
+    public PageResponseDTO<TenantResponseDTO> getAllTenants(int page, int size) {
         try {
-            return tenantCommonRepository.findAll();
+            int offset = page * size;
+            List<TenantResponseDTO> tenants = tenantCommonRepository.findAll(size, offset);
+            long totalElements = tenantCommonRepository.countAllTenants();
+
+            return PageResponseDTO.of(tenants, totalElements, page, size);
         } catch (Exception e) {
             log.error("Failed to fetch tenants", e);
             throw new RuntimeException("Failed to fetch tenants: " + e.getMessage(), e);

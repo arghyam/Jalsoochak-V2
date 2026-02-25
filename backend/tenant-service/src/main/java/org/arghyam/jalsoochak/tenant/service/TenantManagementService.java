@@ -1,12 +1,13 @@
 package org.arghyam.jalsoochak.tenant.service;
 
+import java.util.List;
+
 import org.arghyam.jalsoochak.tenant.dto.CreateDepartmentRequestDTO;
 import org.arghyam.jalsoochak.tenant.dto.CreateTenantRequestDTO;
 import org.arghyam.jalsoochak.tenant.dto.DepartmentResponseDTO;
+import org.arghyam.jalsoochak.tenant.dto.PageResponseDTO;
 import org.arghyam.jalsoochak.tenant.dto.TenantResponseDTO;
 import org.arghyam.jalsoochak.tenant.dto.UpdateTenantRequestDTO;
-
-import java.util.List;
 
 public interface TenantManagementService {
 
@@ -20,5 +21,5 @@ public interface TenantManagementService {
 
     DepartmentResponseDTO createDepartment(CreateDepartmentRequestDTO request);
 
-    List<TenantResponseDTO> getAllTenants();
+    PageResponseDTO<TenantResponseDTO> getAllTenants(int page, int size);
 }

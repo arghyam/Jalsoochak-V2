@@ -4,10 +4,12 @@ import org.arghyam.jalsoochak.tenant.dto.ApiResponseDTO;
 import org.arghyam.jalsoochak.tenant.dto.CreateDepartmentRequestDTO;
 import org.arghyam.jalsoochak.tenant.dto.CreateTenantRequestDTO;
 import org.arghyam.jalsoochak.tenant.dto.DepartmentResponseDTO;
+import org.arghyam.jalsoochak.tenant.dto.PageResponseDTO;
 import org.arghyam.jalsoochak.tenant.dto.TenantResponseDTO;
 import org.arghyam.jalsoochak.tenant.dto.UpdateTenantRequestDTO;
 import org.arghyam.jalsoochak.tenant.service.TenantManagementService;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.ArraySchema;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -28,6 +30,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
@@ -66,18 +69,20 @@ public class TenantController {
         /**
          * 2. API for getting all tenants - accessible by super admin and tenant admin
          */
-        @Operation(summary = "List all tenants", description = "Returns every tenant registered in the common schema, ordered by ID.")
+        @Operation(summary = "List all tenants with pagination", description = "Returns a paginated list of tenants registered in the common schema, ordered by ID.")
         @ApiResponses({
-                        @ApiResponse(responseCode = "200", description = "List of all tenants", content = @Content(array = @ArraySchema(schema = @Schema(implementation = TenantResponseDTO.class)))),
+                        @ApiResponse(responseCode = "200", description = "Paginated list of tenants", content = @Content(schema = @Schema(implementation = PageResponseDTO.class))),
                         @ApiResponse(responseCode = "500", description = "Internal server error")
         })
-        // TODO: Change this to role based authorization for SUPER_ADMIN and TENANT_ADMIN
+        // TODO: Change this to role based authorization for SUPER_ADMIN & TENANT_ADMIN
         @PreAuthorize("permitAll")
         @GetMapping
-        public ResponseEntity<ApiResponseDTO<List<TenantResponseDTO>>> getAllTenants() {
-                log.info("GET /api/v1/tenants");
+        public ResponseEntity<ApiResponseDTO<PageResponseDTO<TenantResponseDTO>>> getAllTenants(
+                        @Parameter(description = "Page number (0-indexed)", example = "0") @RequestParam(defaultValue = "0") int page,
+                        @Parameter(description = "Page size", example = "10") @RequestParam(defaultValue = "10") int size) {
+                log.info("GET /api/v1/tenants – page: {}, size: {}", page, size);
                 return ResponseEntity.ok(ApiResponseDTO.of(200, "Tenants retrieved successfully",
-                                tenantManagementService.getAllTenants()));
+                                tenantManagementService.getAllTenants(page, size)));
         }
 
         /**
@@ -131,7 +136,7 @@ public class TenantController {
                         @ApiResponse(responseCode = "400", description = "Tenant could not be resolved — missing X-Tenant-Code header"),
                         @ApiResponse(responseCode = "500", description = "Internal server error")
         })
-        // TODO: Change this to role based authorization for SUPER_ADMIN and TENANT_ADMIN
+        // TODO: Change this to role based authorization for SUPER_ADMIN & TENANT_ADMIN
         @PreAuthorize("permitAll")
         @GetMapping("/departments")
         public ResponseEntity<ApiResponseDTO<List<DepartmentResponseDTO>>> getTenantDepartments() {
@@ -151,7 +156,7 @@ public class TenantController {
                         @ApiResponse(responseCode = "400", description = "Invalid request or tenant could not be resolved"),
                         @ApiResponse(responseCode = "500", description = "Internal server error")
         })
-        // TODO: Change this to role based authorization for SUPER_ADMIN and TENANT_ADMIN
+        // TODO: Change this to role based authorization for SUPER_ADMIN & TENANT_ADMIN
         @PreAuthorize("permitAll")
         @PostMapping("/departments")
         public ResponseEntity<ApiResponseDTO<DepartmentResponseDTO>> createDepartment(

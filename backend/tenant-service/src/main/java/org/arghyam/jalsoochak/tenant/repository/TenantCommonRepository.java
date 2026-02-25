@@ -100,12 +100,21 @@ public class TenantCommonRepository {
     }
 
     /**
-     * Lists all tenants in the common_schema.tenant_master_table.
+     * Lists all tenants in the common_schema.tenant_master_table with pagination.
      */
-    public List<TenantResponseDTO> findAll() {
+    public List<TenantResponseDTO> findAll(int limit, int offset) {
         return jdbcTemplate.query(
-                "SELECT * FROM common_schema.tenant_master_table ORDER BY id",
-                TENANT_ROW_MAPPER);
+                "SELECT * FROM common_schema.tenant_master_table ORDER BY id LIMIT ? OFFSET ?",
+                TENANT_ROW_MAPPER, limit, offset);
+    }
+
+    /**
+     * Counts the total number of tenants in common_schema.tenant_master_table.
+     */
+    public long countAllTenants() {
+        return jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM common_schema.tenant_master_table",
+                Long.class);
     }
 
     /**
