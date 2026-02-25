@@ -27,7 +27,7 @@ public class NudgeRepository {
     public List<Map<String, Object>> findUsersWithNoUploadToday(String schema) {
         validateSchemaName(schema);
         String sql = String.format("""
-                SELECT u.id, u.name, u.phone_number, usm.scheme_id
+                SELECT u.id, u.name, u.phone_number, u.language_id, usm.scheme_id
                 FROM %s.user_scheme_mapping_table usm
                 JOIN %s.user_table u ON u.id = usm.user_id
                 JOIN common_schema.user_type_master_table ut ON ut.id = u.user_type_id
@@ -62,13 +62,14 @@ public class NudgeRepository {
     public List<Map<String, Object>> findUsersWithMissedDays(String schema, int minMissedDays) {
         validateSchemaName(schema);
         String sql = String.format("""
-                SELECT id, name, phone_number, scheme_id, scheme_name,
+                SELECT id, name, phone_number, language_id, scheme_id, scheme_name,
                        last_reading_date, days_since_last_upload
                 FROM (
                     SELECT
                       u.id,
                       u.name,
                       u.phone_number,
+                      u.language_id,
                       usm.scheme_id,
                       sm.state_scheme_id AS scheme_name,
                       MAX(fr.reading_date) AS last_reading_date,
@@ -84,7 +85,7 @@ public class NudgeRepository {
                     LEFT JOIN %s.scheme_master_table sm ON sm.id = usm.scheme_id
                     WHERE usm.status = 'ACTIVE'
                       AND ut.c_name = 'OPERATOR'
-                    GROUP BY u.id, u.name, u.phone_number, usm.scheme_id, sm.state_scheme_id
+                    GROUP BY u.id, u.name, u.phone_number, u.language_id, usm.scheme_id, sm.state_scheme_id
                 ) sub
                 WHERE days_since_last_upload IS NULL
                    OR days_since_last_upload >= ?
@@ -101,7 +102,7 @@ public class NudgeRepository {
     public Map<String, Object> findOfficerByUserType(String schema, Object schemeId, String userTypeName) {
         validateSchemaName(schema);
         String sql = String.format("""
-                SELECT u.name, u.phone_number
+                SELECT u.name, u.phone_number, u.language_id
                 FROM %s.user_scheme_mapping_table usm
                 JOIN %s.user_table u ON u.id = usm.user_id
                 JOIN common_schema.user_type_master_table ut ON ut.id = u.user_type_id

@@ -82,6 +82,12 @@
             <artifactId>pdfbox</artifactId>
             <version>3.0.2</version>
         </dependency>
+        <!-- MinIO client for escalation PDF upload -->
+        <dependency>
+            <groupId>io.minio</groupId>
+            <artifactId>minio</artifactId>
+            <version>8.5.9</version>
+        </dependency>
     </dependencies>
 
     <build>

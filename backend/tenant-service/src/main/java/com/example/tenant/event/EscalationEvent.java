@@ -17,4 +17,6 @@ public class EscalationEvent {
     private String officerPhone;
     private String officerName;
     private List<OperatorEscalationDetail> operators;
+    private int tenantId;
+    private int officerLanguageId;
 }

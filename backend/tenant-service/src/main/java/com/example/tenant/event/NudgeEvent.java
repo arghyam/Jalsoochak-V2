@@ -14,4 +14,6 @@ public class NudgeEvent {
     private String recipientPhone;
     private String operatorName;
     private String schemeId;
+    private int tenantId;
+    private int languageId;
 }
