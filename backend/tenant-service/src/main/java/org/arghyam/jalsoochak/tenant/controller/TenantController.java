@@ -55,7 +55,8 @@ public class TenantController {
                         @ApiResponse(responseCode = "409", description = "Tenant with the given state code already exists"),
                         @ApiResponse(responseCode = "500", description = "Internal server error during tenant creation")
         })
-        // TODO: Change this to role based authorization for SUPER_ADMIN
+        // TODO: Change this to permission / role based authorization for SUPER_ADMIN
+        // @PreAuthorize("hasAuthority('tenant.create')")
         @PreAuthorize("permitAll")
         @PostMapping
         public ResponseEntity<ApiResponseDTO<TenantResponseDTO>> createTenant(
@@ -74,7 +75,9 @@ public class TenantController {
                         @ApiResponse(responseCode = "200", description = "Paginated list of tenants", content = @Content(schema = @Schema(implementation = PageResponseDTO.class))),
                         @ApiResponse(responseCode = "500", description = "Internal server error")
         })
-        // TODO: Change this to role based authorization for SUPER_ADMIN & TENANT_ADMIN
+        // TODO: Change this to permission / role based authorization for SUPER_ADMIN &
+        // TENANT_ADMIN
+        // @PreAuthorize("hasAuthority('tenant.read')")
         @PreAuthorize("permitAll")
         @GetMapping
         public ResponseEntity<ApiResponseDTO<PageResponseDTO<TenantResponseDTO>>> getAllTenants(
@@ -95,7 +98,8 @@ public class TenantController {
                         @ApiResponse(responseCode = "404", description = "Tenant with given tenantId does not exist"),
                         @ApiResponse(responseCode = "500", description = "Internal server error")
         })
-        // TODO: Change this to role based authorization for SUPER_ADMIN
+        // TODO: Change this to permission / role based authorization for SUPER_ADMIN
+        // @PreAuthorize("hasAuthority('tenant.update')")
         @PreAuthorize("permitAll")
         @PutMapping("/{tenantId}")
         public ResponseEntity<ApiResponseDTO<TenantResponseDTO>> updateTenant(
@@ -116,7 +120,8 @@ public class TenantController {
                         @ApiResponse(responseCode = "404", description = "Tenant with given tenantId does not exist"),
                         @ApiResponse(responseCode = "500", description = "Internal server error")
         })
-        // TODO: Change this to role based authorization for SUPER_ADMIN
+        // TODO: Change this to permission / role based authorization for SUPER_ADMIN
+        // @PreAuthorize("hasAuthority('tenant.delete')")
         @PreAuthorize("permitAll")
         @DeleteMapping("/{tenantId}")
         public ResponseEntity<ApiResponseDTO<Void>> deactivateTenant(@PathVariable Integer tenantId) {
@@ -136,7 +141,9 @@ public class TenantController {
                         @ApiResponse(responseCode = "400", description = "Tenant could not be resolved — missing X-Tenant-Code header"),
                         @ApiResponse(responseCode = "500", description = "Internal server error")
         })
-        // TODO: Change this to role based authorization for SUPER_ADMIN & TENANT_ADMIN
+        // TODO: Change this to permission / role based authorization for SUPER_ADMIN &
+        // TENANT_ADMIN
+        // @PreAuthorize("hasAuthority('tenant.department.read')")
         @PreAuthorize("permitAll")
         @GetMapping("/departments")
         public ResponseEntity<ApiResponseDTO<List<DepartmentResponseDTO>>> getTenantDepartments() {
@@ -156,7 +163,9 @@ public class TenantController {
                         @ApiResponse(responseCode = "400", description = "Invalid request or tenant could not be resolved"),
                         @ApiResponse(responseCode = "500", description = "Internal server error")
         })
-        // TODO: Change this to role based authorization for SUPER_ADMIN & TENANT_ADMIN
+        // TODO: Change this to permission / role based authorization for SUPER_ADMIN &
+        // TENANT_ADMIN
+        // @PreAuthorize("hasAuthority('tenant.department.create')")
         @PreAuthorize("permitAll")
         @PostMapping("/departments")
         public ResponseEntity<ApiResponseDTO<DepartmentResponseDTO>> createDepartment(
@@ -166,4 +175,5 @@ public class TenantController {
                 return ResponseEntity.status(HttpStatus.CREATED)
                                 .body(ApiResponseDTO.of(201, "Department created successfully", dept));
         }
+
 }

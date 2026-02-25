@@ -130,6 +130,86 @@ docker run -d \
 
 ---
 
+## Redis Setup (Local Docker and Cloud)
+
+All services are configured to connect to Redis via environment variables:
+
+```yaml
+spring:
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      database: ${REDIS_DATABASE:0}
+```
+
+### Option A: Local Redis with Docker
+
+```bash
+# Start Redis locally
+docker run -d --name common-redis -p 6379:6379 redis:7-alpine
+
+# Verify connectivity
+docker exec common-redis redis-cli ping
+# Expected: PONG
+```
+
+Start each service with Redis env vars (example):
+
+```bash
+cd tenant-service
+REDIS_HOST=localhost REDIS_PORT=6379 REDIS_DATABASE=0 mvn spring-boot:run
+```
+
+### Option B: Cloud-hosted Redis
+
+Set the Redis connection env vars in your deployment (VM/container/Kubernetes):
+
+```bash
+export REDIS_HOST=<your-redis-host>
+export REDIS_PORT=<your-redis-port>
+export REDIS_PASSWORD=<your-redis-password>
+export REDIS_DATABASE=0
+```
+
+If your Redis provider requires TLS, add:
+
+```bash
+export SPRING_DATA_REDIS_SSL_ENABLED=true
+```
+
+If ACL username is required by your provider, also set:
+
+```bash
+export SPRING_DATA_REDIS_USERNAME=<your-redis-username>
+```
+
+### Key Namespace Convention
+
+Each service writes to its own dedicated Redis namespace:
+
+- `<service-name>:meta:service`
+- `<service-name>:meta:lastHeartbeat`
+
+Example tenant cache keys:
+
+- `tenant-service:tenants:index`
+- `tenant-service:tenants:<STATE_CODE>:profile` (example: `tenant-service:tenants:TR:profile`)
+
+### Quick Verification
+
+```bash
+# List service namespace keys
+docker exec common-redis redis-cli KEYS "*:meta:*"
+
+# Verify tenant-service keys
+docker exec common-redis redis-cli KEYS "tenant-service:*"
+docker exec common-redis redis-cli HGETALL "tenant-service:tenants:TR:profile"
+```
+
+---
+
 ## Database Schema & Flyway Migrations
 
 The platform uses a **two-layer schema** strategy managed by [Flyway](https://flywaydb.org/):

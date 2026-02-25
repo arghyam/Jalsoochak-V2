@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -29,7 +30,7 @@ public class SecurityConfig {
                 .csrf(csrf -> csrf.disable())
                 .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                        // TODO: Remove this after role based authorization is implemented
+                        // TODO: Remove this after role/permission based authorization is implemented
                         .requestMatchers("/api/v1/tenants/**").permitAll()
                         .requestMatchers("/actuator/**", "/swagger-ui/**", "/v3/api-docs/**").permitAll()
                         .anyRequest().authenticated())
@@ -57,7 +58,41 @@ public class SecurityConfig {
                     roles.forEach(role -> authorities.add(new SimpleGrantedAuthority("ROLE_" + role)));
                 }
             }
+
+            // API-specific permissions (from `permissions` claim) and OAuth scopes.
+            // This keeps backward compatibility with role checks while enabling
+            // fine-grained checks.
+            extractPermissionAuthorities(jwt)
+                    .forEach(permission -> authorities.add(new SimpleGrantedAuthority(permission)));
             return authorities;
         };
+    }
+
+    private List<String> extractPermissionAuthorities(Jwt jwt) {
+        List<String> permissions = new ArrayList<>();
+
+        @SuppressWarnings("unchecked")
+        List<String> permissionClaim = (List<String>) jwt.getClaim("permissions");
+        if (permissionClaim != null) {
+            permissions.addAll(permissionClaim);
+        }
+
+        List<String> scopeClaim = extractScopeAuthorities(jwt);
+        permissions.addAll(scopeClaim);
+
+        return permissions.stream().filter(Objects::nonNull).distinct().toList();
+    }
+
+    private List<String> extractScopeAuthorities(Jwt jwt) {
+        List<String> scopes = new ArrayList<>();
+        String scope = jwt.getClaimAsString("scope");
+        if (scope != null && !scope.isBlank()) {
+            for (String token : scope.split(" ")) {
+                if (!token.isBlank()) {
+                    scopes.add("SCOPE_" + token);
+                }
+            }
+        }
+        return scopes;
     }
 }
