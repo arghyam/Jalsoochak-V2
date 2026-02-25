@@ -5,7 +5,15 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
 
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
 @Schema(description = "Request payload for creating a new tenant")
 public class CreateTenantRequestDTO {
 
@@ -22,38 +30,5 @@ public class CreateTenantRequestDTO {
     @NotBlank(message = "Tenant name is required")
     @Schema(description = "Display name of the tenant / state", example = "Karnataka", requiredMode = Schema.RequiredMode.REQUIRED)
     private String name;
-
-    public CreateTenantRequestDTO() {
-    }
-
-    public CreateTenantRequestDTO(String stateCode, Integer lgdCode, String name) {
-        this.stateCode = stateCode;
-        this.lgdCode = lgdCode;
-        this.name = name;
-    }
-
-    public String getStateCode() {
-        return stateCode;
-    }
-
-    public void setStateCode(String stateCode) {
-        this.stateCode = stateCode;
-    }
-
-    public Integer getLgdCode() {
-        return lgdCode;
-    }
-
-    public void setLgdCode(Integer lgdCode) {
-        this.lgdCode = lgdCode;
-    }
-
-    public String getName() {
-        return name;
-    }
-
-    public void setName(String name) {
-        this.name = name;
-    }
 
 }

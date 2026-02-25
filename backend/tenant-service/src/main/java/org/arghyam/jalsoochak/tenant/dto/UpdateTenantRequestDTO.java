@@ -1,7 +1,15 @@
 package org.arghyam.jalsoochak.tenant.dto;
 
 import io.swagger.v3.oas.annotations.media.Schema;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
 
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
 @Schema(description = "Request payload for updating an existing tenant")
 public class UpdateTenantRequestDTO {
 
@@ -9,18 +17,4 @@ public class UpdateTenantRequestDTO {
             "ARCHIVED" })
     private String status;
 
-    public UpdateTenantRequestDTO() {
-    }
-
-    public UpdateTenantRequestDTO(String status) {
-        this.status = status;
-    }
-
-    public String getStatus() {
-        return status;
-    }
-
-    public void setStatus(String status) {
-        this.status = status;
-    }
 }
