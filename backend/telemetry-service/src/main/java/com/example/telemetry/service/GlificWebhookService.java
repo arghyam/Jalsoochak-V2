@@ -352,10 +352,15 @@ public class GlificWebhookService {
                         .append(channelOptions.get(i));
             }
 
+            boolean hasBfm = channelOptions.stream().anyMatch(this::isBfmChannel);
+            boolean hasElectric = channelOptions.stream().anyMatch(this::isElectricChannel);
+
             return IntroResponse.builder()
                     .success(true)
                     .message(message.toString())
                     .correlationId(String.valueOf(channelOptions.size()))
+                    .hasBfm(hasBfm)
+                    .hasElectric(hasElectric)
                     .build();
         } catch (Exception e) {
             log.error("Error building channel selection message for contactId {}: {}", request.getContactId(), e.getMessage(), e);
@@ -787,6 +792,22 @@ public class GlificWebhookService {
             case 4 -> "languageChange";
             default -> normalizeLanguageKey(selectedItemLabel);
         };
+    }
+
+    private boolean isBfmChannel(String channelOption) {
+        if (channelOption == null) {
+            return false;
+        }
+        String normalized = channelOption.toLowerCase().replaceAll("[^a-z0-9]+", "");
+        return normalized.contains("bfm");
+    }
+
+    private boolean isElectricChannel(String channelOption) {
+        if (channelOption == null) {
+            return false;
+        }
+        String normalized = channelOption.toLowerCase().replaceAll("[^a-z0-9]+", "");
+        return normalized.contains("electric");
     }
 
     private byte[] downloadImageFromGlific(String mediaId) throws IOException {

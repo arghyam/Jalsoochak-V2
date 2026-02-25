@@ -9,4 +9,6 @@ public class IntroResponse {
     private boolean success;
     private String message;
     private String correlationId;
+    private Boolean hasBfm;
+    private Boolean hasElectric;
 }
