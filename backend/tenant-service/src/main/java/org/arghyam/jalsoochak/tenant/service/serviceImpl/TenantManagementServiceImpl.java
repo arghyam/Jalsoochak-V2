@@ -13,9 +13,11 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -28,6 +30,7 @@ public class TenantManagementServiceImpl implements TenantManagementService {
     private final TenantSchemaRepository tenantSchemaRepository;
     private final KafkaProducer kafkaProducer;
     private final ObjectMapper objectMapper;
+    private final StringRedisTemplate redisTemplate;
 
     @Override
     @Transactional
@@ -47,6 +50,7 @@ public class TenantManagementServiceImpl implements TenantManagementService {
             tenantCommonRepository.provisionTenantSchema(schemaName);
             log.info("Tenant schema '{}' provisioned successfully", schemaName);
 
+            cacheTenantInRedis(tenant, schemaName);
             publishTenantEvent(tenant, "TENANT_CREATED");
 
             return tenant;
@@ -119,5 +123,21 @@ public class TenantManagementServiceImpl implements TenantManagementService {
             log.error("Failed to publish {} event for tenant [id={}]: {}",
                     eventType, tenant.getId(), e.getMessage());
         }
+    }
+
+    private void cacheTenantInRedis(TenantResponseDTO tenant, String schemaName) {
+        String tenantStateCode = tenant.getStateCode().toUpperCase();
+        String tenantKey = "tenant-service:tenants:" + tenantStateCode + ":profile";
+
+        Map<String, String> tenantPayload = new HashMap<>();
+        tenantPayload.put("id", String.valueOf(tenant.getId()));
+        tenantPayload.put("stateCode", tenantStateCode);
+        tenantPayload.put("name", tenant.getName());
+        tenantPayload.put("status", tenant.getStatus());
+        tenantPayload.put("schemaName", schemaName);
+
+        redisTemplate.opsForHash().putAll(tenantKey, tenantPayload);
+        redisTemplate.opsForSet().add("tenant-service:tenants:index", tenantStateCode);
+        log.info("Tenant cached in Redis under key: {}", tenantKey);
     }
 }
