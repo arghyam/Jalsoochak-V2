@@ -411,9 +411,14 @@ public class GlificWebhookService {
                     .or(() -> tenantConfigRepository.findConfigValue(tenantId, "channel_selection_confirmation_template"))
                     .orElse("Channel selected: {channel}");
 
+            boolean isBfm = isBfmChannel(selectedChannel);
+            boolean isElectrical = isElectricChannel(selectedChannel);
+
             return IntroResponse.builder()
                     .success(true)
                     .message(confirmationTemplate.replace("{channel}", selectedChannel))
+                    .isBfm(isBfm)
+                    .isElectrical(isElectrical)
                     .build();
         } catch (Exception e) {
             log.error("Error saving selected channel for contactId {}: {}", request.getContactId(), e.getMessage(), e);
