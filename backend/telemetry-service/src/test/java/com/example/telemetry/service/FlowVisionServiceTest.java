@@ -20,44 +20,31 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 class FlowVisionServiceTest {
 
     @Test
-    void extractReadingRetriesAndSucceeds() {
+    void extractReadingReturnsResultOnSuccess() {
         ScriptedRestTemplate restTemplate = new ScriptedRestTemplate();
-        restTemplate.enqueue(new RestClientException("temporary-1"));
-        restTemplate.enqueue(new RestClientException("temporary-2"));
         restTemplate.enqueue(new ResponseEntity<>(buildSuccessResponse(), HttpStatus.OK));
 
-        FlowVisionService service = new FlowVisionService(
-                restTemplate,
-                "https://example.com/flowvision",
-                3,
-                1
-        );
+        FlowVisionService service = new FlowVisionService(restTemplate);
 
         FlowVisionResult result = service.extractReading("https://image-url");
 
         assertNotNull(result);
         assertEquals("corr-123", result.getCorrelationId());
         assertEquals("123.4", result.getAdjustedReading().toPlainString());
-        assertEquals(3, restTemplate.getCallCount());
+        assertEquals(1, restTemplate.getCallCount());
     }
 
     @Test
-    void extractReadingReturnsNullAfterMaxAttempts() {
+    void extractReadingReturnsNullOnException() {
         ScriptedRestTemplate restTemplate = new ScriptedRestTemplate();
-        restTemplate.enqueue(new RestClientException("temporary-1"));
-        restTemplate.enqueue(new RestClientException("temporary-2"));
+        restTemplate.enqueue(new RestClientException("temporary"));
 
-        FlowVisionService service = new FlowVisionService(
-                restTemplate,
-                "https://example.com/flowvision",
-                2,
-                1
-        );
+        FlowVisionService service = new FlowVisionService(restTemplate);
 
         FlowVisionResult result = service.extractReading("https://image-url");
 
         assertNull(result);
-        assertEquals(2, restTemplate.getCallCount());
+        assertEquals(1, restTemplate.getCallCount());
     }
 
     @SuppressWarnings("unchecked")
