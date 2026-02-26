@@ -27,15 +27,15 @@ public class NudgeRepository {
     public List<Map<String, Object>> findUsersWithNoUploadToday(String schema) {
         validateSchemaName(schema);
         String sql = String.format("""
-                SELECT u.id, u.name, u.phone_number, u.language_id, usm.scheme_id
+                SELECT u.id, u.title as name, u.phone_number, u.language_id, usm.scheme_id
                 FROM %s.user_scheme_mapping_table usm
                 JOIN %s.user_table u ON u.id = usm.user_id
-                JOIN common_schema.user_type_master_table ut ON ut.id = u.user_type_id
+                JOIN common_schema.user_type_master_table ut ON ut.id = u.user_type
                 LEFT JOIN %s.flow_reading_table fr
                     ON fr.scheme_id = usm.scheme_id
                     AND fr.created_by = u.id
                     AND fr.reading_date = CURRENT_DATE
-                WHERE usm.status = 'ACTIVE'
+                WHERE usm.status = 1
                   AND ut.c_name = 'OPERATOR'
                   AND fr.id IS NULL
                 """, schema, schema, schema);
@@ -62,12 +62,12 @@ public class NudgeRepository {
     public List<Map<String, Object>> findUsersWithMissedDays(String schema, int minMissedDays) {
         validateSchemaName(schema);
         String sql = String.format("""
-                SELECT id, name, phone_number, language_id, scheme_id, scheme_name,
+                SELECT id, title as name, phone_number, language_id, scheme_id, scheme_name,
                        last_reading_date, days_since_last_upload
                 FROM (
                     SELECT
                       u.id,
-                      u.name,
+                      u.title,
                       u.phone_number,
                       u.language_id,
                       usm.scheme_id,
@@ -79,13 +79,13 @@ public class NudgeRepository {
                       END AS days_since_last_upload
                     FROM %s.user_scheme_mapping_table usm
                     JOIN %s.user_table u ON u.id = usm.user_id
-                    JOIN common_schema.user_type_master_table ut ON ut.id = u.user_type_id
+                    JOIN common_schema.user_type_master_table ut ON ut.id = u.user_type
                     LEFT JOIN %s.flow_reading_table fr
                         ON fr.scheme_id = usm.scheme_id AND fr.created_by = u.id
                     LEFT JOIN %s.scheme_master_table sm ON sm.id = usm.scheme_id
-                    WHERE usm.status = 'ACTIVE'
+                    WHERE usm.status = 1
                       AND ut.c_name = 'OPERATOR'
-                    GROUP BY u.id, u.name, u.phone_number, u.language_id, usm.scheme_id, sm.state_scheme_id
+                    GROUP BY u.id, u.title, u.phone_number, u.language_id, usm.scheme_id, sm.state_scheme_id
                 ) sub
                 WHERE days_since_last_upload IS NULL
                    OR days_since_last_upload >= ?
@@ -102,11 +102,11 @@ public class NudgeRepository {
     public Map<String, Object> findOfficerByUserType(String schema, Object schemeId, String userTypeName) {
         validateSchemaName(schema);
         String sql = String.format("""
-                SELECT u.name, u.phone_number, u.language_id
+                SELECT u.title as name, u.phone_number, u.language_id
                 FROM %s.user_scheme_mapping_table usm
                 JOIN %s.user_table u ON u.id = usm.user_id
-                JOIN common_schema.user_type_master_table ut ON ut.id = u.user_type_id
-                WHERE usm.scheme_id = ? AND ut.c_name = ? AND usm.status = 'ACTIVE'
+                JOIN common_schema.user_type_master_table ut ON ut.id = u.user_type
+                WHERE usm.scheme_id = ? AND ut.c_name = ? AND usm.status = 1
                 LIMIT 1
                 """, schema, schema);
         List<Map<String, Object>> rows = jdbcTemplate.queryForList(sql, schemeId, userTypeName);

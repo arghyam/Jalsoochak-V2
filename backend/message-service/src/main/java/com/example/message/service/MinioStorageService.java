@@ -25,8 +25,8 @@ public class MinioStorageService {
 
     public MinioStorageService(
             @Value("${minio.endpoint:http://localhost:9000}") String endpoint,
-            @Value("${minio.access-key:}") String accessKey,
-            @Value("${minio.secret-key:}") String secretKey) {
+            @Value("${minio.access-key:minioadmin}") String accessKey,
+            @Value("${minio.secret-key:minioadmin}") String secretKey) {
         this.minioClient = MinioClient.builder()
                 .endpoint(endpoint)
                 .credentials(accessKey, secretKey)
