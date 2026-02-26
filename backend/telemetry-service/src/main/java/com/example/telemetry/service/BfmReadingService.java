@@ -22,7 +22,6 @@ import java.util.UUID;
 @Service
 @RequiredArgsConstructor
 @Slf4j
-@Transactional
 public class BfmReadingService {
 
     private final TelemetryTenantRepository telemetryTenantRepository;

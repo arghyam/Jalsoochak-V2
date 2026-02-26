@@ -1,0 +1,106 @@
+package com.example.telemetry.service;
+
+import com.example.telemetry.dto.response.FlowVisionResult;
+import org.junit.jupiter.api.Test;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.client.RestClientException;
+import org.springframework.web.client.RestTemplate;
+
+import java.net.URI;
+import java.util.ArrayDeque;
+import java.util.Deque;
+import java.util.Map;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+
+class FlowVisionServiceTest {
+
+    @Test
+    void extractReadingRetriesAndSucceeds() {
+        ScriptedRestTemplate restTemplate = new ScriptedRestTemplate();
+        restTemplate.enqueue(new RestClientException("temporary-1"));
+        restTemplate.enqueue(new RestClientException("temporary-2"));
+        restTemplate.enqueue(new ResponseEntity<>(buildSuccessResponse(), HttpStatus.OK));
+
+        FlowVisionService service = new FlowVisionService(
+                restTemplate,
+                "https://example.com/flowvision",
+                3,
+                1
+        );
+
+        FlowVisionResult result = service.extractReading("https://image-url");
+
+        assertNotNull(result);
+        assertEquals("corr-123", result.getCorrelationId());
+        assertEquals("123.4", result.getAdjustedReading().toPlainString());
+        assertEquals(3, restTemplate.getCallCount());
+    }
+
+    @Test
+    void extractReadingReturnsNullAfterMaxAttempts() {
+        ScriptedRestTemplate restTemplate = new ScriptedRestTemplate();
+        restTemplate.enqueue(new RestClientException("temporary-1"));
+        restTemplate.enqueue(new RestClientException("temporary-2"));
+
+        FlowVisionService service = new FlowVisionService(
+                restTemplate,
+                "https://example.com/flowvision",
+                2,
+                1
+        );
+
+        FlowVisionResult result = service.extractReading("https://image-url");
+
+        assertNull(result);
+        assertEquals(2, restTemplate.getCallCount());
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> buildSuccessResponse() {
+        return Map.of(
+                "result", Map.of(
+                        "status", "SUCCESS",
+                        "correlationId", "corr-123",
+                        "data", Map.of(
+                                "meterReading", "123.4",
+                                "qualityStatus", "GOOD",
+                                "qualityConfidence", "0.95"
+                        )
+                )
+        );
+    }
+
+    private static final class ScriptedRestTemplate extends RestTemplate {
+        private final Deque<Object> scriptedResponses = new ArrayDeque<>();
+        private int callCount;
+
+        void enqueue(Object responseOrException) {
+            scriptedResponses.addLast(responseOrException);
+        }
+
+        int getCallCount() {
+            return callCount;
+        }
+
+        @Override
+        public <T> ResponseEntity<T> exchange(URI url, HttpMethod method, org.springframework.http.HttpEntity<?> requestEntity, Class<T> responseType) throws RestClientException {
+            throw new UnsupportedOperationException("URI-based overload not used");
+        }
+
+        @Override
+        @SuppressWarnings("unchecked")
+        public <T> ResponseEntity<T> exchange(String url, HttpMethod method, org.springframework.http.HttpEntity<?> requestEntity, Class<T> responseType, Object... uriVariables) throws RestClientException {
+            callCount++;
+            Object next = scriptedResponses.removeFirst();
+            if (next instanceof RestClientException exception) {
+                throw exception;
+            }
+            return (ResponseEntity<T>) next;
+        }
+    }
+}

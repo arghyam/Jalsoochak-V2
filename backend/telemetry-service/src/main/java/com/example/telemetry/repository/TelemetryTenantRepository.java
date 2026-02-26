@@ -7,7 +7,10 @@ import org.springframework.stereotype.Repository;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -16,6 +19,15 @@ import java.util.UUID;
 public class TelemetryTenantRepository {
 
     private final JdbcTemplate jdbcTemplate;
+    private static final int OPERATOR_LOOKUP_CACHE_SIZE = 10_000;
+    private final Map<String, String> phoneToSchemaCache = Collections.synchronizedMap(
+            new LinkedHashMap<>(256, 0.75f, true) {
+                @Override
+                protected boolean removeEldestEntry(Map.Entry<String, String> eldest) {
+                    return size() > OPERATOR_LOOKUP_CACHE_SIZE;
+                }
+            }
+    );
 
     public boolean existsSchemeById(String schemaName, Long schemeId) {
         validateSchemaName(schemaName);
@@ -56,6 +68,30 @@ public class TelemetryTenantRepository {
             return Optional.empty();
         }
 
+        if (preferredTenantId != null) {
+            Optional<String> preferredSchema = findSchemaByTenantId(preferredTenantId);
+            if (preferredSchema.isPresent()) {
+                Optional<TelemetryOperator> preferredMatch = findOperatorByPhone(
+                        preferredSchema.get(),
+                        phoneNumber,
+                        normalizedPhone
+                );
+                if (preferredMatch.isPresent()) {
+                    phoneToSchemaCache.put(normalizedPhone, preferredSchema.get());
+                    return Optional.of(new TelemetryOperatorWithSchema(preferredSchema.get(), preferredMatch.get()));
+                }
+            }
+        }
+
+        String cachedSchema = phoneToSchemaCache.get(normalizedPhone);
+        if (cachedSchema != null) {
+            Optional<TelemetryOperator> cachedMatch = findOperatorByPhone(cachedSchema, phoneNumber, normalizedPhone);
+            if (cachedMatch.isPresent()) {
+                return Optional.of(new TelemetryOperatorWithSchema(cachedSchema, cachedMatch.get()));
+            }
+            phoneToSchemaCache.remove(normalizedPhone);
+        }
+
         String schemaSql = """
                 SELECT nspname
                 FROM pg_namespace
@@ -69,12 +105,16 @@ public class TelemetryTenantRepository {
             if (operator.isPresent()) {
                 TelemetryOperatorWithSchema match = new TelemetryOperatorWithSchema(schemaName, operator.get());
                 if (preferredTenantId != null && preferredTenantId.equals(match.operator().tenantId())) {
+                    phoneToSchemaCache.put(normalizedPhone, schemaName);
                     return Optional.of(match);
                 }
                 if (firstMatch == null) {
                     firstMatch = match;
                 }
             }
+        }
+        if (firstMatch != null) {
+            phoneToSchemaCache.put(normalizedPhone, firstMatch.schemaName());
         }
         return Optional.ofNullable(firstMatch);
     }
@@ -110,7 +150,9 @@ public class TelemetryTenantRepository {
 
     public void updateUserLanguageId(String schemaName, Long userId, Integer languageId) {
         validateSchemaName(schemaName);
-        ensureUserLanguageIdColumn(schemaName);
+        if (!columnExists(schemaName, "user_table", "language_id")) {
+            throw new IllegalStateException("Missing required column " + schemaName + ".user_table.language_id");
+        }
         String sql = String.format("""
                 UPDATE %s.user_table
                 SET language_id = ?, updated_at = NOW()
@@ -135,7 +177,9 @@ public class TelemetryTenantRepository {
 
     public void updateSchemeChannel(String schemaName, Long schemeId, Integer channel) {
         validateSchemaName(schemaName);
-        ensureSchemeChannelColumn(schemaName);
+        if (!columnExists(schemaName, "scheme_master_table", "channel")) {
+            throw new IllegalStateException("Missing required column " + schemaName + ".scheme_master_table.channel");
+        }
         String sql = String.format("""
                 UPDATE %s.scheme_master_table
                 SET channel = ?, updated_at = NOW()
@@ -434,14 +478,18 @@ public class TelemetryTenantRepository {
         return columnExists(schemaName, tableName, columnName) ? columnName : fallbackExpression;
     }
 
-    private void ensureUserLanguageIdColumn(String schemaName) {
-        String sql = String.format("ALTER TABLE %s.user_table ADD COLUMN IF NOT EXISTS language_id INTEGER", schemaName);
-        jdbcTemplate.execute(sql);
-    }
-
-    private void ensureSchemeChannelColumn(String schemaName) {
-        String sql = String.format("ALTER TABLE %s.scheme_master_table ADD COLUMN IF NOT EXISTS channel INTEGER", schemaName);
-        jdbcTemplate.execute(sql);
+    private Optional<String> findSchemaByTenantId(Integer tenantId) {
+        String sql = """
+                SELECT state_code
+                FROM common_schema.tenant_master_table
+                WHERE id = ?
+                LIMIT 1
+                """;
+        List<String> rows = jdbcTemplate.query(sql, (rs, n) -> rs.getString("state_code"), tenantId);
+        return rows.stream()
+                .filter(code -> code != null && !code.isBlank())
+                .map(code -> "tenant_" + code.trim().toLowerCase())
+                .findFirst();
     }
 
     private Long toLong(Object value) {
