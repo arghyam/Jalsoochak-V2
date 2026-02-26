@@ -16,6 +16,7 @@ import com.example.telemetry.service.GlificWebhookService;
 import jakarta.validation.Valid;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -53,7 +54,7 @@ public class GlificWebhookController {
                     .lastConfirmedReading(null)
                     .build();
 
-            return ResponseEntity.ok(errorResponse);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorResponse);
         }
 
     }
@@ -71,7 +72,7 @@ public class GlificWebhookController {
                     .message("Something went wrong. Please try again.")
                     .build();
 
-            return ResponseEntity.ok(fallbackResponse);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(fallbackResponse);
         }
     }
 
@@ -88,7 +89,7 @@ public class GlificWebhookController {
                     .message("Something went wrong. Please try again.")
                     .build();
 
-            return ResponseEntity.ok(fallbackResponse);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(fallbackResponse);
         }
     }
 
@@ -99,7 +100,7 @@ public class GlificWebhookController {
             return ResponseEntity.ok(response);
         } catch (Exception e) {
             log.error("Error preparing language selection for contactId {}: {}", request.getContactId(), e.getMessage(), e);
-            return ResponseEntity.ok(
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(
                     IntroResponse.builder()
                             .success(false)
                             .message("Language selection could not be prepared.")
@@ -115,7 +116,7 @@ public class GlificWebhookController {
             return ResponseEntity.ok(response);
         } catch (Exception e) {
             log.error("Error processing selected language for contactId {}: {}", request.getContactId(), e.getMessage(), e);
-            return ResponseEntity.ok(
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(
                     IntroResponse.builder()
                             .success(false)
                             .message("Language selection could not be saved.")
@@ -131,7 +132,7 @@ public class GlificWebhookController {
             return ResponseEntity.ok(response);
         } catch (Exception e) {
             log.error("Error preparing channel selection for contactId {}: {}", request.getContactId(), e.getMessage(), e);
-            return ResponseEntity.ok(
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(
                     IntroResponse.builder()
                             .success(false)
                             .message("Channel selection could not be prepared.")
@@ -147,7 +148,7 @@ public class GlificWebhookController {
             return ResponseEntity.ok(response);
         } catch (Exception e) {
             log.error("Error processing selected channel for contactId {}: {}", request.getContactId(), e.getMessage(), e);
-            return ResponseEntity.ok(
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(
                     IntroResponse.builder()
                             .success(false)
                             .message("Channel selection could not be saved.")
@@ -163,7 +164,7 @@ public class GlificWebhookController {
             return ResponseEntity.ok(response);
         } catch (Exception e) {
             log.error("Error preparing item selection for contactId {}: {}", request.getContactId(), e.getMessage(), e);
-            return ResponseEntity.ok(
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(
                     IntroResponse.builder()
                             .success(false)
                             .message("Item selection could not be prepared.")
@@ -179,7 +180,7 @@ public class GlificWebhookController {
             return ResponseEntity.ok(response);
         } catch (Exception e) {
             log.error("Error processing selected item for contactId {}: {}", request.getContactId(), e.getMessage(), e);
-            return ResponseEntity.ok(
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(
                     SelectionResponse.builder()
                             .success(false)
                             .selected(null)
@@ -196,7 +197,7 @@ public class GlificWebhookController {
             return ResponseEntity.ok(response);
         } catch (Exception e) {
             log.error("Error preparing meter change reasons for contactId {}: {}", request.getContactId(), e.getMessage(), e);
-            return ResponseEntity.ok(
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(
                     IntroResponse.builder()
                             .success(false)
                             .message("Meter change reasons could not be prepared.")
@@ -212,7 +213,7 @@ public class GlificWebhookController {
             return ResponseEntity.ok(response);
         } catch (Exception e) {
             log.error("Error preparing take meter reading prompt for contactId {}: {}", request.getContactId(), e.getMessage(), e);
-            return ResponseEntity.ok(
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(
                     IntroResponse.builder()
                             .success(false)
                             .message("Take meter reading prompt could not be prepared.")
@@ -228,7 +229,7 @@ public class GlificWebhookController {
             return ResponseEntity.ok(response);
         } catch (Exception e) {
             log.error("Error saving manual reading for contactId {}: {}", request.getContactId(), e.getMessage(), e);
-            return ResponseEntity.ok(
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(
                     CreateReadingResponse.builder()
                             .success(false)
                             .message("Manual reading could not be saved.")

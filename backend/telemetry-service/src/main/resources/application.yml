@@ -36,6 +36,18 @@ minio:
 
 glific:
   api-token: ${GLIFIC_API_TOKEN:}
+  media-base-url: ${GLIFIC_MEDIA_BASE_URL:https://api.glific.org/v1/media}
+
+flowvision:
+  url: ${FLOWVISION_URL:https://jalsoochak.beehyv.com/flowvision/v1/extract-reading}
+  retry:
+    max-attempts: ${FLOWVISION_RETRY_MAX_ATTEMPTS:3}
+    initial-backoff-ms: ${FLOWVISION_RETRY_INITIAL_BACKOFF_MS:300}
+
+media-download:
+  retry:
+    max-attempts: ${MEDIA_DOWNLOAD_RETRY_MAX_ATTEMPTS:3}
+    initial-backoff-ms: ${MEDIA_DOWNLOAD_RETRY_INITIAL_BACKOFF_MS:300}
 
 eureka:
   client:
@@ -49,4 +61,4 @@ management:
   endpoints:
     web:
       exposure:
-        include: "*"
+        include: ${MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE:health,info}
