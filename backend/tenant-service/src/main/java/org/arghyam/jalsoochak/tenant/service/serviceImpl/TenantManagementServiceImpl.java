@@ -1,34 +1,41 @@
 package org.arghyam.jalsoochak.tenant.service.serviceImpl;
 
+import java.util.EnumSet;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
 import org.arghyam.jalsoochak.tenant.config.TenantContext;
 import org.arghyam.jalsoochak.tenant.dto.CreateDepartmentRequestDTO;
 import org.arghyam.jalsoochak.tenant.dto.CreateTenantRequestDTO;
 import org.arghyam.jalsoochak.tenant.dto.DepartmentResponseDTO;
-import org.arghyam.jalsoochak.tenant.dto.InternalTenantConfigDTO;
+import org.arghyam.jalsoochak.tenant.dto.InternalConfigDTO;
+import org.arghyam.jalsoochak.tenant.dto.LanguageConfigDTO;
 import org.arghyam.jalsoochak.tenant.dto.PageResponseDTO;
 import org.arghyam.jalsoochak.tenant.dto.SetTenantConfigRequestDTO;
 import org.arghyam.jalsoochak.tenant.dto.TenantConfigResponseDTO;
+import org.arghyam.jalsoochak.tenant.dto.TenantLanguageConfigDTO;
+import org.arghyam.jalsoochak.tenant.dto.TenantLocationHierarchyConfigDTO;
 import org.arghyam.jalsoochak.tenant.dto.TenantResponseDTO;
 import org.arghyam.jalsoochak.tenant.dto.UpdateTenantRequestDTO;
+import org.arghyam.jalsoochak.tenant.enums.RegionTypeEnum;
 import org.arghyam.jalsoochak.tenant.enums.TenantConfigKeyEnum;
+import org.arghyam.jalsoochak.tenant.enums.TenantConfigKeyEnum.ConfigType;
+import org.arghyam.jalsoochak.tenant.exception.ResourceNotFoundException;
 import org.arghyam.jalsoochak.tenant.kafka.KafkaProducer;
 import org.arghyam.jalsoochak.tenant.repository.TenantCommonRepository;
 import org.arghyam.jalsoochak.tenant.repository.TenantSchemaRepository;
 import org.arghyam.jalsoochak.tenant.service.TenantManagementService;
-import org.arghyam.jalsoochak.tenant.exception.ResourceNotFoundException;
 import org.arghyam.jalsoochak.tenant.util.SecurityUtils;
-import com.fasterxml.jackson.databind.ObjectMapper;
-
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.stream.Collectors;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 @Service
 @RequiredArgsConstructor
@@ -185,20 +192,68 @@ public class TenantManagementServiceImpl implements TenantManagementService {
     }
 
     @Override
-    public TenantConfigResponseDTO getTenantConfigs(Integer tenantId) {
-        log.info("Fetching configurations for tenant [id={}]", tenantId);
-        tenantCommonRepository.findById(tenantId)
+    public TenantConfigResponseDTO getTenantConfigs(Integer tenantId, Set<TenantConfigKeyEnum> keys) {
+        log.info("Fetching tenant configurations [id={}, keys={}]", tenantId, keys);
+        TenantResponseDTO tenant = tenantCommonRepository.findById(tenantId)
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "Tenant with tenantId " + tenantId + " does not exist"));
 
+        // Normalize keys: if null or empty, fetch all available keys
+        Set<TenantConfigKeyEnum> effectiveKeys = (keys == null || keys.isEmpty())
+                ? EnumSet.allOf(TenantConfigKeyEnum.class)
+                : keys;
+
         try {
-            List<InternalTenantConfigDTO> configs = tenantCommonRepository.findConfigsByTenantId(tenantId);
-            Map<TenantConfigKeyEnum, String> configMap = configs.stream()
-                    .collect(Collectors.toMap(
-                            InternalTenantConfigDTO::getConfigKey,
-                            InternalTenantConfigDTO::getConfigValue,
-                            (u, v) -> v // Keep the latest if duplicates exist
-                    ));
+            // 1. Fetch generic configs from common_schema
+            List<InternalConfigDTO> configs = tenantCommonRepository.findConfigsByTenantId(tenantId);
+            Map<TenantConfigKeyEnum, String> configMap = new HashMap<>();
+
+            for (InternalConfigDTO cfg : configs) {
+                try {
+                    TenantConfigKeyEnum key = TenantConfigKeyEnum.valueOf(cfg.getConfigKey());
+                    if (effectiveKeys.contains(key)) {
+                        configMap.put(key, cfg.getConfigValue());
+                    }
+                } catch (IllegalArgumentException e) {
+                    log.error("Invalid tenant config key [key={}]", cfg.getConfigKey(), e);
+                    throw new RuntimeException("Invalid tenant config key: " + cfg.getConfigKey());
+                }
+            }
+
+            // 2. Fetch specialized configs from tenant-specific schema
+            String schemaName = "tenant_" + tenant.getStateCode().toLowerCase();
+
+            // Add Languages
+            if (effectiveKeys.contains(TenantConfigKeyEnum.SUPPORTED_LANGUAGES)) {
+                List<LanguageConfigDTO> langs = tenantSchemaRepository.getSupportedLanguages(schemaName);
+                if (langs != null && langs.size() > 0) {
+                    TenantLanguageConfigDTO languageConfig = TenantLanguageConfigDTO.builder().languages(langs).build();
+                    configMap.put(TenantConfigKeyEnum.SUPPORTED_LANGUAGES,
+                            objectMapper.writeValueAsString(languageConfig));
+                }
+            }
+
+            // Add LGD Location Hierarchy
+            if (effectiveKeys.contains(TenantConfigKeyEnum.LGD_LOCATION_HIERARCHY)) {
+                TenantLocationHierarchyConfigDTO lgdHierarchy = tenantSchemaRepository.getLocationHierarchy(schemaName,
+                        RegionTypeEnum.LGD);
+                if (lgdHierarchy != null && lgdHierarchy.getLocationHierarchy() != null
+                        && lgdHierarchy.getLocationHierarchy().size() > 0) {
+                    configMap.put(TenantConfigKeyEnum.LGD_LOCATION_HIERARCHY,
+                            objectMapper.writeValueAsString(lgdHierarchy));
+                }
+            }
+
+            // Add Dept Location Hierarchy
+            if (effectiveKeys.contains(TenantConfigKeyEnum.DEPT_LOCATION_HIERARCHY)) {
+                TenantLocationHierarchyConfigDTO deptHierarchy = tenantSchemaRepository.getLocationHierarchy(schemaName,
+                        RegionTypeEnum.DEPARTMENT);
+                if (deptHierarchy != null && deptHierarchy.getLocationHierarchy() != null
+                        && deptHierarchy.getLocationHierarchy().size() > 0) {
+                    configMap.put(TenantConfigKeyEnum.DEPT_LOCATION_HIERARCHY,
+                            objectMapper.writeValueAsString(deptHierarchy));
+                }
+            }
 
             return TenantConfigResponseDTO.builder()
                     .tenantId(tenantId)
@@ -213,8 +268,8 @@ public class TenantManagementServiceImpl implements TenantManagementService {
     @Override
     @Transactional
     public TenantConfigResponseDTO setTenantConfigs(Integer tenantId, SetTenantConfigRequestDTO request) {
-        log.info("Setting configurations for tenant [id={}]", tenantId);
-        tenantCommonRepository.findById(tenantId)
+        log.info("Setting tenant configurations [id={}]", tenantId);
+        TenantResponseDTO tenant = tenantCommonRepository.findById(tenantId)
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "Tenant with tenantId " + tenantId + " does not exist"));
 
@@ -224,19 +279,23 @@ public class TenantManagementServiceImpl implements TenantManagementService {
 
             Map<TenantConfigKeyEnum, String> results = new HashMap<>();
 
-            request.getConfigs().forEach((key, value) -> {
-                InternalTenantConfigDTO cfg = tenantCommonRepository.upsertTenantConfig(tenantId, key, value,
-                        currentUserId)
-                        .orElseThrow(() -> new RuntimeException("Failed to upsert configuration for key: " + key));
-                results.put(cfg.getConfigKey(), cfg.getConfigValue());
-            });
+            for (Map.Entry<TenantConfigKeyEnum, String> entry : request.getConfigs().entrySet()) {
+                TenantConfigKeyEnum key = entry.getKey();
+                String value = entry.getValue();
 
-            if (results.size() != request.getConfigs().size()) {
-                throw new RuntimeException("Mismatch in number of configurations set: expected "
-                        + request.getConfigs().size() + " but got " + results.size());
+                if (key.getType() == ConfigType.GENERIC) {
+                    InternalConfigDTO cfg = tenantCommonRepository
+                            .upsertConfig(tenantId, key.name(), value, currentUserId)
+                            .orElseThrow(() -> new RuntimeException("Failed to upsert configuration for key: " + key));
+                    results.put(TenantConfigKeyEnum.valueOf(cfg.getConfigKey()), cfg.getConfigValue());
+                } else {
+                    // Specialized handling
+                    String schemaName = "tenant_" + tenant.getStateCode().toLowerCase();
+                    handleSpecializedConfig(schemaName, key, value, currentUserId);
+                    results.put(key, value);
+                }
             }
 
-            log.info("Finished updating {} configurations for tenant [id={}]", results.size(), tenantId);
             return TenantConfigResponseDTO.builder()
                     .tenantId(tenantId)
                     .configs(results)
@@ -244,6 +303,30 @@ public class TenantManagementServiceImpl implements TenantManagementService {
         } catch (Exception e) {
             log.error("Failed to set configurations for tenant [id={}]", tenantId, e);
             throw new RuntimeException("Tenant configurations upsert failed: " + e.getMessage(), e);
+        }
+    }
+
+    private void handleSpecializedConfig(String schemaName, TenantConfigKeyEnum key, String value,
+            Integer currentUserId) throws Exception {
+        switch (key) {
+            case SUPPORTED_LANGUAGES:
+                TenantLanguageConfigDTO langReq = objectMapper.readValue(value, TenantLanguageConfigDTO.class);
+                tenantSchemaRepository.setSupportedLanguages(schemaName, langReq.getLanguages(), currentUserId);
+                break;
+            case LGD_LOCATION_HIERARCHY:
+                TenantLocationHierarchyConfigDTO lgdReq = objectMapper.readValue(value,
+                        TenantLocationHierarchyConfigDTO.class);
+                tenantSchemaRepository.setLocationHierarchy(schemaName, RegionTypeEnum.LGD,
+                        lgdReq.getLocationHierarchy(), currentUserId);
+                break;
+            case DEPT_LOCATION_HIERARCHY:
+                TenantLocationHierarchyConfigDTO deptReq = objectMapper.readValue(value,
+                        TenantLocationHierarchyConfigDTO.class);
+                tenantSchemaRepository.setLocationHierarchy(schemaName, RegionTypeEnum.DEPARTMENT,
+                        deptReq.getLocationHierarchy(), currentUserId);
+                break;
+            default:
+                throw new UnsupportedOperationException("No specialized handler for: " + key);
         }
     }
 
@@ -281,5 +364,4 @@ public class TenantManagementServiceImpl implements TenantManagementService {
         redisTemplate.opsForSet().add("tenant-service:tenants:index", tenantStateCode);
         log.info("Tenant cached in Redis under key: {}", tenantKey);
     }
-
 }

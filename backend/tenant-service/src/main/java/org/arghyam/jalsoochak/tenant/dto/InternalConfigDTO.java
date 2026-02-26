@@ -4,7 +4,6 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-import org.arghyam.jalsoochak.tenant.enums.TenantConfigKeyEnum;
 
 import java.time.LocalDateTime;
 
@@ -12,11 +11,11 @@ import java.time.LocalDateTime;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class InternalTenantConfigDTO {
+public class InternalConfigDTO {
     private Integer id;
     private String uuid;
     private Integer tenantId;
-    private TenantConfigKeyEnum configKey;
+    private String configKey;
     private String configValue;
     private LocalDateTime createdAt;
     private Integer createdBy;

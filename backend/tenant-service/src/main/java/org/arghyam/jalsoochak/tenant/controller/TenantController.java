@@ -1,5 +1,8 @@
 package org.arghyam.jalsoochak.tenant.controller;
 
+import java.util.Set;
+import org.arghyam.jalsoochak.tenant.enums.TenantConfigKeyEnum;
+
 import org.arghyam.jalsoochak.tenant.dto.ApiResponseDTO;
 import org.arghyam.jalsoochak.tenant.dto.CreateDepartmentRequestDTO;
 import org.arghyam.jalsoochak.tenant.dto.CreateTenantRequestDTO;
@@ -147,10 +150,11 @@ public class TenantController {
         @PreAuthorize("permitAll")
         @GetMapping("/{tenantId}/config")
         public ResponseEntity<ApiResponseDTO<TenantConfigResponseDTO>> getTenantConfigs(
-                        @PathVariable Integer tenantId) {
-                log.info("GET /api/v1/tenants/{}/config", tenantId);
+                        @PathVariable Integer tenantId,
+                        @RequestParam(required = false) Set<TenantConfigKeyEnum> keys) {
+                log.info("GET /api/v1/tenants/{}/config with keys: {}", tenantId, keys);
                 return ResponseEntity.ok(ApiResponseDTO.of(200, "Tenant configurations retrieved successfully",
-                                tenantManagementService.getTenantConfigs(tenantId)));
+                                tenantManagementService.getTenantConfigs(tenantId, keys)));
         }
 
         /**
@@ -164,10 +168,8 @@ public class TenantController {
                         @ApiResponse(responseCode = "500", description = "Internal server error")
         })
         // TODO: Change this to permission based authorization
-        /*
-         * @PreAuthorize("hasAuthority('tenant.config.update') or hasAuthority('tenant.config.create')"
-         * )
-         */
+        // @PreAuthorize("hasAuthority('tenant.config.update') or
+        // hasAuthority('tenant.config.create')")
         @PreAuthorize("permitAll")
         @PutMapping("/{tenantId}/config")
         public ResponseEntity<ApiResponseDTO<TenantConfigResponseDTO>> setTenantConfigs(
