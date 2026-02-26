@@ -32,6 +32,7 @@ import java.io.IOException;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -358,11 +359,15 @@ public class GlificWebhookService {
             }
 
             int correlationCount = channelOptions.size();
+            boolean hasBfmOrElectric = channelOptions.stream().anyMatch(option -> isBfmChannel(option) || isElectricChannel(option));
+            String correlationWord = toWords(correlationCount);
+            String isBfmOrIsElectricValue = buildBfmOrElectricCorrelationFlag(hasBfmOrElectric, correlationWord);
 
             return IntroResponse.builder()
                     .success(true)
                     .message(message.toString())
-                    .correlationId(toWords(correlationCount))
+                    .correlationId(correlationWord)
+                    .isBfmOrIsElectric(isBfmOrIsElectricValue)
                     .build();
         } catch (Exception e) {
             log.error("Error building channel selection message for contactId {}: {}", request.getContactId(), e.getMessage(), e);
@@ -817,6 +822,18 @@ public class GlificWebhookService {
             return result;
         }
         return result + " " + toWordsInternal(remainder);
+    }
+
+    private String buildBfmOrElectricCorrelationFlag(boolean hasBfmOrElectric, String correlationWord) {
+        if (correlationWord == null || correlationWord.isBlank()) {
+            return null;
+        }
+        String normalized = correlationWord.trim();
+        String capitalized = normalized.substring(0, 1).toUpperCase(Locale.ROOT) + normalized.substring(1);
+        if (hasBfmOrElectric) {
+            return "bfmOrElectricpresentandcorrelationIs" + capitalized;
+        }
+        return "bfmOrElectricNotpresentandcorrelationIs" + capitalized;
     }
 
     private static final String[] SMALL_NUMBERS = {

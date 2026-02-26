@@ -16,4 +16,5 @@ public class IntroResponse {
     private Boolean isBfmorIsElectrical;
     private Boolean isBfm;
     private Boolean isElectrical;
+    private String isBfmOrIsElectric;
 }
