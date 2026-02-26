@@ -263,7 +263,7 @@ public class GlificWebhookService {
             return IntroResponse.builder()
                     .success(true)
                     .message(message.toString())
-                    .correlationId(String.valueOf(languageOptions.size()))
+                    .correlationId(toWords(languageOptions.size()))
                     .build();
         } catch (Exception e) {
             log.error("Error building language selection message for contactId {}: {}", request.getContactId(), e.getMessage(), e);
@@ -362,7 +362,7 @@ public class GlificWebhookService {
             return IntroResponse.builder()
                     .success(true)
                     .message(message.toString())
-                    .correlationId(String.valueOf(correlationCount))
+                    .correlationId(toWords(correlationCount))
                     .build();
         } catch (Exception e) {
             log.error("Error building channel selection message for contactId {}: {}", request.getContactId(), e.getMessage(), e);
@@ -775,6 +775,90 @@ public class GlificWebhookService {
 
         return lower.replaceAll("[^a-z0-9]+", "_").replaceAll("^_+|_+$", "");
     }
+
+    private String toWords(int number) {
+        if (number == 0) {
+            return "zero";
+        }
+        return toWordsInternal(number).trim();
+    }
+
+    private String toWordsInternal(int number) {
+        if (number < 0) {
+            return "minus " + toWordsInternal(-number);
+        }
+        if (number < 20) {
+            return SMALL_NUMBERS[number];
+        }
+        if (number < 100) {
+            String tensWord = TENS[(number / 10)];
+            int remainder = number % 10;
+            if (remainder == 0) {
+                return tensWord;
+            }
+            return tensWord + " " + SMALL_NUMBERS[remainder];
+        }
+        if (number < 1_000) {
+            int remainder = number % 100;
+            String result = SMALL_NUMBERS[number / 100] + " hundred";
+            if (remainder == 0) {
+                return result;
+            }
+            return result + " " + toWordsInternal(remainder);
+        }
+        if (number < 1_000_000) {
+            return withRemainder(number, 1_000, "thousand");
+        }
+        if (number < 1_000_000_000) {
+            return withRemainder(number, 1_000_000, "million");
+        }
+        return withRemainder(number, 1_000_000_000, "billion");
+    }
+
+    private String withRemainder(int number, int divisor, String unit) {
+        int remainder = number % divisor;
+        String result = toWordsInternal(number / divisor) + " " + unit;
+        if (remainder == 0) {
+            return result;
+        }
+        return result + " " + toWordsInternal(remainder);
+    }
+
+    private static final String[] SMALL_NUMBERS = {
+            "zero",
+            "one",
+            "two",
+            "three",
+            "four",
+            "five",
+            "six",
+            "seven",
+            "eight",
+            "nine",
+            "ten",
+            "eleven",
+            "twelve",
+            "thirteen",
+            "fourteen",
+            "fifteen",
+            "sixteen",
+            "seventeen",
+            "eighteen",
+            "nineteen"
+    };
+
+    private static final String[] TENS = {
+            "",
+            "",
+            "twenty",
+            "thirty",
+            "forty",
+            "fifty",
+            "sixty",
+            "seventy",
+            "eighty",
+            "ninety"
+    };
 
     private String toItemCode(String selectedItemLabel, List<String> itemOptions) {
         int index = -1;
