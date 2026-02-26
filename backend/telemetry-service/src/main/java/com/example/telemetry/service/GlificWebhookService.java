@@ -352,15 +352,12 @@ public class GlificWebhookService {
                         .append(channelOptions.get(i));
             }
 
-            boolean hasBfm = channelOptions.stream().anyMatch(this::isBfmChannel);
-            boolean hasElectric = channelOptions.stream().anyMatch(this::isElectricChannel);
+            int correlationCount = channelOptions.size();
 
             return IntroResponse.builder()
                     .success(true)
                     .message(message.toString())
-                    .correlationId(String.valueOf(channelOptions.size()))
-                    .hasBfm(hasBfm)
-                    .hasElectric(hasElectric)
+                    .correlationId(String.valueOf(correlationCount))
                     .build();
         } catch (Exception e) {
             log.error("Error building channel selection message for contactId {}: {}", request.getContactId(), e.getMessage(), e);
@@ -413,10 +410,12 @@ public class GlificWebhookService {
 
             boolean isBfm = isBfmChannel(selectedChannel);
             boolean isElectrical = isElectricChannel(selectedChannel);
+            boolean isBfmorIsElectrical = isBfm || isElectrical;
 
             return IntroResponse.builder()
                     .success(true)
                     .message(confirmationTemplate.replace("{channel}", selectedChannel))
+                    .isBfmorIsElectrical(isBfmorIsElectrical)
                     .isBfm(isBfm)
                     .isElectrical(isElectrical)
                     .build();
@@ -454,13 +453,14 @@ public class GlificWebhookService {
             if (itemOptions.isEmpty()) {
                 throw new IllegalStateException("No item options configured. Add item_1/item_2... or language-specific keys.");
             }
+            List<String> visibleItemOptions = applyItemVisibilityRules(operatorWithSchema, tenantId, languageKey, itemOptions);
 
             StringBuilder message = new StringBuilder(prompt.trim());
-            for (int i = 0; i < itemOptions.size(); i++) {
+            for (int i = 0; i < visibleItemOptions.size(); i++) {
                 message.append("\n")
                         .append(i + 1)
                         .append(". ")
-                        .append(itemOptions.get(i));
+                        .append(visibleItemOptions.get(i));
             }
 
             return IntroResponse.builder()
@@ -501,8 +501,9 @@ public class GlificWebhookService {
             if (itemOptions.isEmpty()) {
                 throw new IllegalStateException("No item options configured for tenant");
             }
+            List<String> visibleItemOptions = applyItemVisibilityRules(operatorWithSchema, tenantId, languageKey, itemOptions);
 
-            String selectedItemLabel = resolveLanguageSelection(request.getChannel(), itemOptions)
+            String selectedItemLabel = resolveLanguageSelection(request.getChannel(), visibleItemOptions)
                     .orElseThrow(() -> new IllegalStateException("Invalid item selection"));
 
             String selectedCode = toItemCode(selectedItemLabel, itemOptions);
@@ -797,6 +798,20 @@ public class GlificWebhookService {
             case 4 -> "languageChange";
             default -> normalizeLanguageKey(selectedItemLabel);
         };
+    }
+
+    private List<String> applyItemVisibilityRules(TelemetryOperatorWithSchema operatorWithSchema,
+                                                  Integer tenantId,
+                                                  String languageKey,
+                                                  List<String> itemOptions) {
+        List<String> filtered = new java.util.ArrayList<>();
+        for (String option : itemOptions) {
+            String itemCode = toItemCode(option, itemOptions);
+            if ("readingSubmission".equals(itemCode) || "meterChange".equals(itemCode)) {
+                filtered.add(option);
+            }
+        }
+        return filtered.isEmpty() ? itemOptions : filtered;
     }
 
     private boolean isBfmChannel(String channelOption) {

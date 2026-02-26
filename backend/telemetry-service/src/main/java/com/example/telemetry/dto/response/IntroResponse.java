@@ -13,6 +13,7 @@ public class IntroResponse {
     private String correlationId;
     private Boolean hasBfm;
     private Boolean hasElectric;
+    private Boolean isBfmorIsElectrical;
     private Boolean isBfm;
     private Boolean isElectrical;
 }
