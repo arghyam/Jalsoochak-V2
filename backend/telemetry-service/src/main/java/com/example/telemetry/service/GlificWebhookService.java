@@ -739,19 +739,14 @@ public class GlificWebhookService {
 
     private Optional<String> resolveLanguageSelection(String rawSelection, List<String> options) {
         String value = rawSelection.trim();
-        if (value.matches("^\\d+$")) {
-            int index = Integer.parseInt(value);
+        int digitEnd = 0;
+        while (digitEnd < value.length() && Character.isDigit(value.charAt(digitEnd))) {
+            digitEnd++;
+        }
+        if (digitEnd > 0) {
+            int index = Integer.parseInt(value.substring(0, digitEnd));
             if (index >= 1 && index <= options.size()) {
                 return Optional.of(options.get(index - 1));
-            }
-        }
-        if (value.matches("^\\d+\\..*$")) {
-            String numeric = value.substring(0, value.indexOf('.')).trim();
-            if (numeric.matches("^\\d+$")) {
-                int index = Integer.parseInt(numeric);
-                if (index >= 1 && index <= options.size()) {
-                    return Optional.of(options.get(index - 1));
-                }
             }
         }
         return options.stream().filter(v -> v.equalsIgnoreCase(value)).findFirst();
