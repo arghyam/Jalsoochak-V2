@@ -99,6 +99,7 @@ public class GlificWebhookService {
 
             String objectKey = "bfm/" + contactId + "/" + System.currentTimeMillis() + ".jpg";
             String imageStorageUrl = minioService.upload(imageBytes, objectKey);
+            log.info("imageStorageUrl: {}", imageStorageUrl);
             log.debug("Image uploaded for contactId {} with objectKey {}", contactId, objectKey);
 
             TelemetryOperatorWithSchema operatorWithSchema = resolveOperatorWithSchema(contactId);
