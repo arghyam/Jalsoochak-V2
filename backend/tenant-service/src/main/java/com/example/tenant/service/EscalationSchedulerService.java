@@ -57,8 +57,9 @@ public class EscalationSchedulerService {
                 continue;
             }
             String schema = "tenant_" + tenant.getStateCode().toLowerCase();
+            int tenantId = tenant.getId() != null ? tenant.getId() : 0;
             try {
-                processEscalationsForTenant(schema, level1Days, level2Days, level1UserType, level2UserType);
+                processEscalationsForTenant(schema, tenantId, level1Days, level2Days, level1UserType, level2UserType);
             } catch (Exception e) {
                 log.error("[EscalationJob] Failed for schema '{}': {}", schema, e.getMessage(), e);
             }
@@ -67,6 +68,7 @@ public class EscalationSchedulerService {
     }
 
     private void processEscalationsForTenant(String schema,
+                                              int tenantId,
                                               int level1Days,
                                               int level2Days,
                                               String level1UserType,
@@ -102,6 +104,8 @@ public class EscalationSchedulerService {
 
             String officerPhone = (String) officerRow.get("phone_number");
             String officerName = (String) officerRow.get("name");
+            int officerLanguageId = officerRow.get("language_id") != null
+                    ? ((Number) officerRow.get("language_id")).intValue() : 0;
             if (officerPhone == null || officerPhone.isBlank()) {
                 continue;
             }
@@ -134,7 +138,7 @@ public class EscalationSchedulerService {
 
             String groupKey = "LEVEL_" + escalationLevel + "|" + officerPhone;
             officerGroups.computeIfAbsent(groupKey, k ->
-                    new OfficerGroup(officerPhone, officerName, escalationLevel))
+                    new OfficerGroup(officerPhone, officerName, escalationLevel, officerLanguageId))
                     .details.add(detail);
         }
 
@@ -146,10 +150,12 @@ public class EscalationSchedulerService {
                     .officerPhone(group.officerPhone)
                     .officerName(group.officerName)
                     .operators(group.details)
+                    .tenantId(tenantId)
+                    .officerLanguageId(group.officerLanguageId)
                     .build();
             kafkaProducer.publishJson(COMMON_TOPIC, event);
-            log.info("[EscalationJob] Published EscalationEvent level={} for officer={} with {} operators",
-                    group.level, group.officerPhone, group.details.size());
+            log.info("[EscalationJob] Published EscalationEvent level={} officers={} with {} operators",
+                    group.level, group.details.size());
         }
     }
 
@@ -157,12 +163,14 @@ public class EscalationSchedulerService {
         final String officerPhone;
         final String officerName;
         final int level;
+        final int officerLanguageId;
         final List<OperatorEscalationDetail> details = new ArrayList<>();
 
-        OfficerGroup(String officerPhone, String officerName, int level) {
+        OfficerGroup(String officerPhone, String officerName, int level, int officerLanguageId) {
             this.officerPhone = officerPhone;
             this.officerName = officerName;
             this.level = level;
+            this.officerLanguageId = officerLanguageId;
         }
     }
 }

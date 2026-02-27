@@ -1,45 +1,27 @@
 package com.example.message.channel;
 
 import com.example.message.dto.NotificationRequest;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
-import org.springframework.web.reactive.function.client.WebClient;
-
-import java.time.Duration;
-import java.util.HashMap;
-import java.util.Map;
 
 /**
- * WhatsApp channel powered by <strong>Gliffic</strong>.
- * <p>
- * Sends WhatsApp messages through the Gliffic messaging API.
- * <p>
- * Configure credentials in application.yml:
- * <pre>
- *   notification.channel.whatsapp.gliffic-api-url=YOUR_GLIFFIC_API_URL
- *   notification.channel.whatsapp.gliffic-api-key=YOUR_GLIFFIC_API_KEY
- *   notification.channel.whatsapp.from-number=YOUR_WHATSAPP_SENDER_NUMBER
- * </pre>
+ * WhatsApp channel powered by <strong>Glific</strong> GraphQL HSM API.
+ *
+ * <p>Nudges use a text HSM template with {@code {{1}}} = localized message body.</p>
+ * <p>Escalations use a document HSM template with {@code {{1}}} = MinIO URL
+ * and {@code {{2}}} = localized body text.</p>
+ *
+ * <p>Configure Glific credentials and template IDs via environment variables:
+ * {@code GLIFIC_API_URL}, {@code GLIFIC_API_KEY},
+ * {@code GLIFIC_NUDGE_TEMPLATE_ID}, {@code GLIFIC_ESCALATION_TEMPLATE_ID}.</p>
  */
 @Component
+@RequiredArgsConstructor
 @Slf4j
 public class WhatsAppChannel implements NotificationChannel {
 
-    private final WebClient webClient;
-
-    @Value("${notification.channel.whatsapp.gliffic-api-url:}")
-    private String glificApiUrl;
-
-    @Value("${notification.channel.whatsapp.gliffic-api-key:}")
-    private String glificApiKey;
-
-    @Value("${notification.channel.whatsapp.from-number:}")
-    private String fromNumber;
-
-    public WhatsAppChannel(WebClient.Builder webClientBuilder) {
-        this.webClient = webClientBuilder.build();
-    }
+    private final GlificWhatsAppService glificWhatsAppService;
 
     @Override
     public String channelType() {
@@ -48,77 +30,35 @@ public class WhatsAppChannel implements NotificationChannel {
 
     @Override
     public boolean send(NotificationRequest request) {
-        if (glificApiUrl == null || glificApiUrl.isBlank()) {
-            log.warn("[WHATSAPP] Gliffic API URL not configured. Skipping WhatsApp delivery.");
-            return false;
-        }
-
         try {
-            log.info("[WHATSAPP] Sending WhatsApp message via Gliffic to {}", request.getRecipient());
-
-            Map<String, String> payload = Map.of(
-                    "from", fromNumber,
-                    "to", request.getRecipient(),
-                    "body", request.getBody() != null ? request.getBody() : ""
-            );
-
-            webClient.post()
-                    .uri(glificApiUrl)
-                    .header("Authorization", "Bearer " + glificApiKey)
-                    .header("Content-Type", "application/json")
-                    .bodyValue(payload)
-                    .retrieve()
-                    .toBodilessEntity()
-                    .block(Duration.ofSeconds(30));
-
-            log.info("[WHATSAPP] WhatsApp message delivered successfully via Gliffic");
+            Long contactId = glificWhatsAppService.optIn(request.getRecipient());
+            glificWhatsAppService.sendNudgeHsm(contactId, request.getBody());
+            log.info("[WHATSAPP] Nudge HSM sent");
+            log.debug("[WHATSAPP] Nudge HSM sent to {}", request.getRecipient());
             return true;
         } catch (Exception ex) {
-            log.error("[WHATSAPP] Failed to deliver WhatsApp message: {}", ex.getMessage(), ex);
+            log.error("[WHATSAPP] Failed nudge delivery: {}", ex.getMessage(), ex);
             return false;
         }
     }
 
     /**
-     * Sends a document (PDF) via WhatsApp using the Glific document message type.
+     * Sends the escalation PDF (document HSM) to the officer via Glific.
      *
-     * @param toPhone     recipient WhatsApp phone number
-     * @param documentUrl publicly reachable URL of the document
-     * @param caption     caption shown below the document in the chat
-     * @return {@code true} if the request was accepted by Glific
+     * @param toPhone     recipient WhatsApp phone number (E.164 format)
+     * @param documentUrl publicly reachable MinIO URL of the escalation PDF
+     * @param bodyText    localized body text for the HSM template {@code {{2}}}
+     * @return {@code true} if the message was accepted by Glific
      */
-    public boolean sendDocument(String toPhone, String documentUrl, String caption) {
-        if (glificApiUrl == null || glificApiUrl.isBlank()) {
-            log.warn("[WHATSAPP] Gliffic API URL not configured. Skipping document delivery.");
-            return false;
-        }
-
+    public boolean sendDocument(String toPhone, String documentUrl, String bodyText) {
         try {
-            log.debug("[WHATSAPP] Sending document to {} via Gliffic: {}", toPhone, documentUrl);
-
-            Map<String, Object> document = new HashMap<>();
-            document.put("url", documentUrl);
-            document.put("caption", caption != null ? caption : "");
-
-            Map<String, Object> payload = new HashMap<>();
-            payload.put("from", fromNumber);
-            payload.put("to", toPhone);
-            payload.put("type", "document");
-            payload.put("document", document);
-
-            webClient.post()
-                    .uri(glificApiUrl)
-                    .header("Authorization", "Bearer " + glificApiKey)
-                    .header("Content-Type", "application/json")
-                    .bodyValue(payload)
-                    .retrieve()
-                    .toBodilessEntity()
-                    .block(Duration.ofSeconds(30));
-
-            log.info("[WHATSAPP] Document delivered successfully to {}", toPhone);
+            Long contactId = glificWhatsAppService.optIn(toPhone);
+            glificWhatsAppService.sendEscalationHsm(contactId, documentUrl, bodyText);
+            log.info("[WHATSAPP] Escalation HSM sent");
+            log.debug("[WHATSAPP] Escalation HSM sent to {}", toPhone);
             return true;
         } catch (Exception ex) {
-            log.error("[WHATSAPP] Failed to deliver document to {}: {}", toPhone, ex.getMessage(), ex);
+            log.error("[WHATSAPP] Failed escalation delivery: {}", ex.getMessage(), ex);
             return false;
         }
     }

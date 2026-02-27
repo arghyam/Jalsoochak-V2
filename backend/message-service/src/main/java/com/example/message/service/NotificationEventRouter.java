@@ -11,6 +11,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -19,9 +20,10 @@ import java.util.List;
  * based on the {@code eventType} field.
  *
  * <ul>
- *   <li>{@code NUDGE} — sends a WhatsApp text message to the operator.</li>
- *   <li>{@code ESCALATION} — generates a PDF and sends it as a WhatsApp document
- *       to the escalation officer.</li>
+ *   <li>{@code NUDGE} — fetches the localized message from tenant config and
+ *       sends it as a WhatsApp HSM to the operator.</li>
+ *   <li>{@code ESCALATION} — generates a PDF, uploads it to MinIO, fetches
+ *       the localized body text, and sends a document HSM to the officer.</li>
  * </ul>
  */
 @Service
@@ -32,6 +34,11 @@ public class NotificationEventRouter {
     private final ObjectMapper objectMapper;
     private final WhatsAppChannel whatsAppChannel;
     private final EscalationPdfService escalationPdfService;
+    private final MinioStorageService minioStorageService;
+    private final MessageTemplateService messageTemplateService;
+
+    @Value("${escalation.report.dir:/tmp/escalation-reports/}")
+    private String reportDir;
 
     @Value("${app.base-url:http://localhost:8085}")
     private String baseUrl;
@@ -77,30 +84,34 @@ public class NotificationEventRouter {
         String phone = root.path("recipientPhone").asText("");
         String operatorName = root.path("operatorName").asText("Operator");
         String schemeId = root.path("schemeId").asText("");
+        int tenantId = root.path("tenantId").asInt(0);
+        int languageId = root.path("languageId").asInt(0);
 
         if (phone.isBlank()) {
             log.warn("[Router/NUDGE] recipientPhone is blank, skipping");
             return;
         }
 
-        String text = String.format(
-                "Dear %s, please submit your daily water reading for scheme %s. Thank you.",
-                operatorName, schemeId);
+        String localizedMessage = messageTemplateService.findNudgeMessage(
+                tenantId, languageId, operatorName, schemeId);
 
         NotificationRequest request = NotificationRequest.builder()
                 .recipient(phone)
-                .body(text)
+                .body(localizedMessage)
                 .channel("WHATSAPP")
                 .build();
 
         boolean sent = whatsAppChannel.send(request);
-        log.info("[Router/NUDGE] phone={} → {}", phone, sent ? "SENT" : "FAILED");
+        log.info("[Router/NUDGE] → {}", sent ? "SENT" : "FAILED");
+        log.debug("[Router/NUDGE] phone={} → {}", phone, sent ? "SENT" : "FAILED");
     }
 
     private void handleEscalation(JsonNode root) throws Exception {
         String officerPhone = root.path("officerPhone").asText("");
         String officerName = root.path("officerName").asText("Officer");
         int level = root.path("escalationLevel").asInt(1);
+        int tenantId = root.path("tenantId").asInt(0);
+        int officerLanguageId = root.path("officerLanguageId").asInt(0);
 
         if (officerPhone.isBlank()) {
             log.warn("[Router/ESCALATION] officerPhone is blank, skipping");
@@ -116,16 +127,19 @@ public class NotificationEventRouter {
         }
 
         if (operators.isEmpty()) {
-            log.warn("[Router/ESCALATION] No operators in event for officer={}, skipping", officerPhone);
+            log.warn("[Router/ESCALATION] No operators in event, skipping");
             return;
         }
 
         String filename = escalationPdfService.generate(operators, level, officerName);
-        String pdfUrl = baseUrl + "/api/v1/reports/" + filename;
+        java.nio.file.Path localPath = Paths.get(reportDir, filename);
+        String minioUrl = minioStorageService.upload(localPath);
 
-        String caption = String.format("Escalation Report – Level %d – %s", level, officerName);
-        boolean sent = whatsAppChannel.sendDocument(officerPhone, pdfUrl, caption);
-        log.info("[Router/ESCALATION] officer={} level={} → {} ({})", officerPhone, level,
-                sent ? "SENT" : "FAILED", pdfUrl);
+        String localizedBody = messageTemplateService.findEscalationMessage(tenantId, officerLanguageId);
+
+        boolean sent = whatsAppChannel.sendDocument(officerPhone, minioUrl, localizedBody);
+        log.info("[Router/ESCALATION] level={} → {} ({})", level, sent ? "SENT" : "FAILED", minioUrl);
+        log.debug("[Router/ESCALATION] officer={} level={} → {} ({})", officerPhone, level,
+                sent ? "SENT" : "FAILED", minioUrl);
     }
 }

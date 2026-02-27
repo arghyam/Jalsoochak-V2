@@ -41,7 +41,7 @@ public class NudgeSchedulerService {
             }
             String schema = "tenant_" + tenant.getStateCode().toLowerCase();
             try {
-                processNudgesForTenant(schema);
+                processNudgesForTenant(schema, tenant.getId() != null ? tenant.getId() : 0);
             } catch (Exception e) {
                 log.error("[NudgeJob] Failed for tenant schema '{}': {}", schema, e.getMessage(), e);
             }
@@ -49,7 +49,7 @@ public class NudgeSchedulerService {
         log.info("[NudgeJob] Nudge cron job completed");
     }
 
-    private void processNudgesForTenant(String schema) {
+    private void processNudgesForTenant(String schema, int tenantId) {
         List<Map<String, Object>> users = nudgeRepository.findUsersWithNoUploadToday(schema);
         log.info("[NudgeJob] schema={} → {} users have no upload today", schema, users.size());
 
@@ -63,6 +63,8 @@ public class NudgeSchedulerService {
                     .recipientPhone(phone)
                     .operatorName((String) row.get("name"))
                     .schemeId(row.get("scheme_id") != null ? row.get("scheme_id").toString() : "")
+                    .tenantId(tenantId)
+                    .languageId(row.get("language_id") != null ? ((Number) row.get("language_id")).intValue() : 0)
                     .build();
             kafkaProducer.publishJson(COMMON_TOPIC, event);
             log.debug("[NudgeJob] Published NudgeEvent for phone={}", phone);
