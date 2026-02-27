@@ -1,8 +1,8 @@
 package org.arghyam.jalsoochak.tenant.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.arghyam.jalsoochak.tenant.dto.SetSystemConfigRequestDTO;
-import org.arghyam.jalsoochak.tenant.dto.SystemConfigResponseDTO;
+import org.arghyam.jalsoochak.tenant.dto.request.SetSystemConfigRequestDTO;
+import org.arghyam.jalsoochak.tenant.dto.response.SystemConfigResponseDTO;
 import org.arghyam.jalsoochak.tenant.enums.SystemConfigKeyEnum;
 import org.arghyam.jalsoochak.tenant.service.SystemManagementService;
 import org.junit.jupiter.api.Test;

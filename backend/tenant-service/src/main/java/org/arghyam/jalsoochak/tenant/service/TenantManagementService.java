@@ -1,6 +1,13 @@
 package org.arghyam.jalsoochak.tenant.service;
 
-import org.arghyam.jalsoochak.tenant.dto.*;
+import org.arghyam.jalsoochak.tenant.dto.common.PageResponseDTO;
+import org.arghyam.jalsoochak.tenant.dto.request.CreateDepartmentRequestDTO;
+import org.arghyam.jalsoochak.tenant.dto.request.CreateTenantRequestDTO;
+import org.arghyam.jalsoochak.tenant.dto.request.SetTenantConfigRequestDTO;
+import org.arghyam.jalsoochak.tenant.dto.request.UpdateTenantRequestDTO;
+import org.arghyam.jalsoochak.tenant.dto.response.DepartmentResponseDTO;
+import org.arghyam.jalsoochak.tenant.dto.response.TenantConfigResponseDTO;
+import org.arghyam.jalsoochak.tenant.dto.response.TenantResponseDTO;
 import org.arghyam.jalsoochak.tenant.enums.TenantConfigKeyEnum;
 
 import java.util.List;

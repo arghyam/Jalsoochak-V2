@@ -1,4 +1,4 @@
-package org.arghyam.jalsoochak.tenant.dto;
+package org.arghyam.jalsoochak.tenant.dto.common;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.AllArgsConstructor;

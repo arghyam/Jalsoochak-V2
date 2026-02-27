@@ -1,4 +1,4 @@
-package org.arghyam.jalsoochak.tenant.dto;
+package org.arghyam.jalsoochak.tenant.dto.internal;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;

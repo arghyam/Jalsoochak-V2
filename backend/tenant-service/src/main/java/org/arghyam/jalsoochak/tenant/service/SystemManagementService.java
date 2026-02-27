@@ -1,7 +1,7 @@
 package org.arghyam.jalsoochak.tenant.service;
 
-import org.arghyam.jalsoochak.tenant.dto.SetSystemConfigRequestDTO;
-import org.arghyam.jalsoochak.tenant.dto.SystemConfigResponseDTO;
+import org.arghyam.jalsoochak.tenant.dto.request.SetSystemConfigRequestDTO;
+import org.arghyam.jalsoochak.tenant.dto.response.SystemConfigResponseDTO;
 import org.arghyam.jalsoochak.tenant.enums.SystemConfigKeyEnum;
 
 import java.util.Set;

@@ -2,7 +2,15 @@ package org.arghyam.jalsoochak.tenant.service.serviceImpl;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.arghyam.jalsoochak.tenant.config.TenantContext;
-import org.arghyam.jalsoochak.tenant.dto.*;
+import org.arghyam.jalsoochak.tenant.dto.common.PageResponseDTO;
+import org.arghyam.jalsoochak.tenant.dto.request.CreateDepartmentRequestDTO;
+import org.arghyam.jalsoochak.tenant.dto.request.CreateTenantRequestDTO;
+import org.arghyam.jalsoochak.tenant.dto.request.SetTenantConfigRequestDTO;
+import org.arghyam.jalsoochak.tenant.dto.request.UpdateTenantRequestDTO;
+import org.arghyam.jalsoochak.tenant.dto.response.DepartmentResponseDTO;
+import org.arghyam.jalsoochak.tenant.dto.response.TenantConfigResponseDTO;
+import org.arghyam.jalsoochak.tenant.dto.response.TenantResponseDTO;
+import org.arghyam.jalsoochak.tenant.dto.internal.ConfigDTO;
 import org.arghyam.jalsoochak.tenant.enums.TenantConfigKeyEnum;
 import org.arghyam.jalsoochak.tenant.exception.ResourceNotFoundException;
 import org.arghyam.jalsoochak.tenant.kafka.KafkaProducer;
@@ -320,12 +328,12 @@ class TenantManagementServiceImplTest {
             // Arrange
             Integer tenantId = 1;
             TenantResponseDTO tenant = TenantResponseDTO.builder().id(tenantId).stateCode("TN").build();
-            List<InternalConfigDTO> configsList = Arrays.asList(
-                    InternalConfigDTO.builder()
+            List<ConfigDTO> configsList = Arrays.asList(
+                    ConfigDTO.builder()
                             .configKey(TenantConfigKeyEnum.TENANT_LOGO_URL.name())
                             .configValue("https://brand.com/logo.png")
                             .build(),
-                    InternalConfigDTO.builder()
+                    ConfigDTO.builder()
                             .configKey(TenantConfigKeyEnum.SUPPORTED_LANGUAGES.name())
                             .configValue("en,ta")
                             .build()
@@ -352,8 +360,8 @@ class TenantManagementServiceImplTest {
             // Arrange
             Integer tenantId = 1;
             TenantResponseDTO tenant = TenantResponseDTO.builder().id(tenantId).stateCode("TN").build();
-            List<InternalConfigDTO> configsList = Collections.singletonList(
-                    InternalConfigDTO.builder()
+            List<ConfigDTO> configsList = Collections.singletonList(
+                    ConfigDTO.builder()
                             .configKey(TenantConfigKeyEnum.TENANT_LOGO_URL.name())
                             .configValue("https://brand.com/logo.png")
                             .build()
@@ -421,7 +429,7 @@ class TenantManagementServiceImplTest {
                     .configs(newConfigs)
                     .build();
 
-            InternalConfigDTO savedConfig = InternalConfigDTO.builder()
+            ConfigDTO savedConfig = ConfigDTO.builder()
                     .configKey(TenantConfigKeyEnum.EMAIL_TEMPLATE_JSON.name())
                     .configValue("{\"welcome\": \"...\"}")
                     .build();

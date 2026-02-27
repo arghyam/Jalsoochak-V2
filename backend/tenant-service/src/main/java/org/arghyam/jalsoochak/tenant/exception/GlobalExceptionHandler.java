@@ -1,6 +1,6 @@
 package org.arghyam.jalsoochak.tenant.exception;
 
-import org.arghyam.jalsoochak.tenant.dto.ApiErrorResponseDTO;
+import org.arghyam.jalsoochak.tenant.dto.common.ApiErrorResponseDTO;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;

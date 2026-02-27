@@ -2,9 +2,9 @@ package org.arghyam.jalsoochak.tenant.service.serviceImpl;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.arghyam.jalsoochak.tenant.dto.InternalConfigDTO;
-import org.arghyam.jalsoochak.tenant.dto.SetSystemConfigRequestDTO;
-import org.arghyam.jalsoochak.tenant.dto.SystemConfigResponseDTO;
+import org.arghyam.jalsoochak.tenant.dto.internal.ConfigDTO;
+import org.arghyam.jalsoochak.tenant.dto.request.SetSystemConfigRequestDTO;
+import org.arghyam.jalsoochak.tenant.dto.response.SystemConfigResponseDTO;
 import org.arghyam.jalsoochak.tenant.enums.SystemConfigKeyEnum;
 import org.arghyam.jalsoochak.tenant.repository.TenantCommonRepository;
 import org.arghyam.jalsoochak.tenant.service.SystemManagementService;
@@ -34,10 +34,10 @@ public class SystemManagementServiceImpl implements SystemManagementService {
                 : keys;
 
         try {
-            List<InternalConfigDTO> configs = tenantCommonRepository.findConfigsByTenantId(SYSTEM_TENANT_ID);
+            List<ConfigDTO> configs = tenantCommonRepository.findConfigsByTenantId(SYSTEM_TENANT_ID);
             Map<SystemConfigKeyEnum, String> configMap = new HashMap<>();
 
-            for (InternalConfigDTO cfg : configs) {
+            for (ConfigDTO cfg : configs) {
                 try {
                     SystemConfigKeyEnum key = SystemConfigKeyEnum.valueOf(cfg.getConfigKey());
                     if (effectiveKeys.contains(key)) {
@@ -68,7 +68,7 @@ public class SystemManagementServiceImpl implements SystemManagementService {
                 SystemConfigKeyEnum key = entry.getKey();
                 String value = entry.getValue();
 
-                InternalConfigDTO cfg = tenantCommonRepository
+                ConfigDTO cfg = tenantCommonRepository
                         .upsertConfig(SYSTEM_TENANT_ID, key.name(), value, currentUserId)
                         .orElseThrow(() -> new RuntimeException("Failed to upsert system config: " + key));
                 results.put(SystemConfigKeyEnum.valueOf(cfg.getConfigKey()), cfg.getConfigValue());

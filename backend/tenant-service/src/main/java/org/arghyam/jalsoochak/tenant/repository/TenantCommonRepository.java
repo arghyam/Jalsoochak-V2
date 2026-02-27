@@ -5,10 +5,10 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
-import org.arghyam.jalsoochak.tenant.dto.CreateTenantRequestDTO;
-import org.arghyam.jalsoochak.tenant.dto.InternalConfigDTO;
-import org.arghyam.jalsoochak.tenant.dto.TenantResponseDTO;
-import org.arghyam.jalsoochak.tenant.dto.UpdateTenantRequestDTO;
+import org.arghyam.jalsoochak.tenant.dto.request.CreateTenantRequestDTO;
+import org.arghyam.jalsoochak.tenant.dto.request.UpdateTenantRequestDTO;
+import org.arghyam.jalsoochak.tenant.dto.response.TenantResponseDTO;
+import org.arghyam.jalsoochak.tenant.dto.internal.ConfigDTO;
 import org.arghyam.jalsoochak.tenant.enums.TenantStatusEnum;
 import org.springframework.jdbc.core.ConnectionCallback;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -57,7 +57,7 @@ public class TenantCommonRepository {
     /**
      * Row mapper for {@code common_schema.tenant_config_master_table}.
      */
-    private static final RowMapper<InternalConfigDTO> CONFIG_ROW_MAPPER = (rs, rowNum) -> InternalConfigDTO
+    private static final RowMapper<ConfigDTO> CONFIG_ROW_MAPPER = (rs, rowNum) -> ConfigDTO
             .builder()
             .id(rs.getInt("id"))
             .uuid(rs.getString("uuid"))
@@ -202,7 +202,7 @@ public class TenantCommonRepository {
     /**
      * Finds all configurations for a given tenant.
      */
-    public List<InternalConfigDTO> findConfigsByTenantId(Integer tenantId) {
+    public List<ConfigDTO> findConfigsByTenantId(Integer tenantId) {
         String sql = "SELECT * FROM common_schema.tenant_config_master_table WHERE tenant_id = ? AND deleted_at IS NULL";
         return jdbcTemplate.query(sql, CONFIG_ROW_MAPPER, tenantId);
     }
@@ -210,9 +210,9 @@ public class TenantCommonRepository {
     /**
      * Finds a specific configuration for a tenant by key name.
      */
-    public Optional<InternalConfigDTO> findConfigByTenantAndKey(Integer tenantId, String keyName) {
+    public Optional<ConfigDTO> findConfigByTenantAndKey(Integer tenantId, String keyName) {
         String sql = "SELECT * FROM common_schema.tenant_config_master_table WHERE tenant_id = ? AND config_key = ? AND deleted_at IS NULL";
-        List<InternalConfigDTO> results = jdbcTemplate.query(sql, CONFIG_ROW_MAPPER, tenantId, keyName);
+        List<ConfigDTO> results = jdbcTemplate.query(sql, CONFIG_ROW_MAPPER, tenantId, keyName);
         return results.stream().findFirst();
     }
 
@@ -220,10 +220,10 @@ public class TenantCommonRepository {
      * Upserts configuration. If it exists, updates it; otherwise, creates it.
      */
     @Transactional
-    public Optional<InternalConfigDTO> upsertConfig(Integer tenantId, String keyName,
+    public Optional<ConfigDTO> upsertConfig(Integer tenantId, String keyName,
             String value, Integer currentUserId) {
         // Check if exists
-        Optional<InternalConfigDTO> existing = findConfigByTenantAndKey(tenantId, keyName);
+        Optional<ConfigDTO> existing = findConfigByTenantAndKey(tenantId, keyName);
 
         if (existing.isPresent()) {
             String sql = """
@@ -231,7 +231,7 @@ public class TenantCommonRepository {
                     SET config_value = ?, updated_at = NOW(), updated_by = ?
                     WHERE id = ? RETURNING *
                     """;
-            List<InternalConfigDTO> results = jdbcTemplate.query(sql, CONFIG_ROW_MAPPER, value, currentUserId,
+            List<ConfigDTO> results = jdbcTemplate.query(sql, CONFIG_ROW_MAPPER, value, currentUserId,
                     existing.get().getId());
             return results.stream().findFirst();
         } else {
@@ -241,7 +241,7 @@ public class TenantCommonRepository {
                     VALUES (?, ?, ?, ?, ?)
                     RETURNING *
                     """;
-            List<InternalConfigDTO> results = jdbcTemplate.query(sql, CONFIG_ROW_MAPPER,
+            List<ConfigDTO> results = jdbcTemplate.query(sql, CONFIG_ROW_MAPPER,
                     tenantId, keyName, value, currentUserId, currentUserId);
             return results.stream().findFirst();
         }

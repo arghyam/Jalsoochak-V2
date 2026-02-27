@@ -3,12 +3,12 @@ package org.arghyam.jalsoochak.tenant.repository;
 import java.util.List;
 import java.util.Optional;
 
-import org.arghyam.jalsoochak.tenant.dto.CreateDepartmentRequestDTO;
-import org.arghyam.jalsoochak.tenant.dto.DepartmentResponseDTO;
-import org.arghyam.jalsoochak.tenant.dto.LanguageConfigDTO;
-import org.arghyam.jalsoochak.tenant.dto.LocationLevelConfigDTO;
-import org.arghyam.jalsoochak.tenant.dto.LocationLevelNameDTO;
-import org.arghyam.jalsoochak.tenant.dto.TenantLocationHierarchyConfigDTO;
+import org.arghyam.jalsoochak.tenant.dto.request.CreateDepartmentRequestDTO;
+import org.arghyam.jalsoochak.tenant.dto.response.DepartmentResponseDTO;
+import org.arghyam.jalsoochak.tenant.dto.internal.LanguageConfigDTO;
+import org.arghyam.jalsoochak.tenant.dto.internal.LocationLevelConfigDTO;
+import org.arghyam.jalsoochak.tenant.dto.internal.LocationLevelNameDTO;
+import org.arghyam.jalsoochak.tenant.dto.internal.TenantLocationHierarchyConfigDTO;
 import org.arghyam.jalsoochak.tenant.enums.RegionTypeEnum;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;

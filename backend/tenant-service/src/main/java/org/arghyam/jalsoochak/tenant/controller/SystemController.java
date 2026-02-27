@@ -2,9 +2,9 @@ package org.arghyam.jalsoochak.tenant.controller;
 
 import java.util.Set;
 
-import org.arghyam.jalsoochak.tenant.dto.ApiResponseDTO;
-import org.arghyam.jalsoochak.tenant.dto.SetSystemConfigRequestDTO;
-import org.arghyam.jalsoochak.tenant.dto.SystemConfigResponseDTO;
+import org.arghyam.jalsoochak.tenant.dto.common.ApiResponseDTO;
+import org.arghyam.jalsoochak.tenant.dto.request.SetSystemConfigRequestDTO;
+import org.arghyam.jalsoochak.tenant.dto.response.SystemConfigResponseDTO;
 import org.arghyam.jalsoochak.tenant.enums.SystemConfigKeyEnum;
 import org.arghyam.jalsoochak.tenant.service.SystemManagementService;
 import org.springframework.http.ResponseEntity;

@@ -1,8 +1,8 @@
 package org.arghyam.jalsoochak.tenant.service.serviceImpl;
 
-import org.arghyam.jalsoochak.tenant.dto.InternalConfigDTO;
-import org.arghyam.jalsoochak.tenant.dto.SetSystemConfigRequestDTO;
-import org.arghyam.jalsoochak.tenant.dto.SystemConfigResponseDTO;
+import org.arghyam.jalsoochak.tenant.dto.internal.ConfigDTO;
+import org.arghyam.jalsoochak.tenant.dto.request.SetSystemConfigRequestDTO;
+import org.arghyam.jalsoochak.tenant.dto.response.SystemConfigResponseDTO;
 import org.arghyam.jalsoochak.tenant.enums.SystemConfigKeyEnum;
 import org.arghyam.jalsoochak.tenant.repository.TenantCommonRepository;
 import org.arghyam.jalsoochak.tenant.util.SecurityUtils;
@@ -47,8 +47,8 @@ class SystemManagementServiceImplTest {
 
     @Test
     void getSystemConfigs_Success() {
-        List<InternalConfigDTO> configs = List.of(
-                InternalConfigDTO.builder()
+        List<ConfigDTO> configs = List.of(
+                ConfigDTO.builder()
                         .configKey(SystemConfigKeyEnum.DEFAULT_LGD_LOCATION_HIERARCHY.name())
                         .configValue("{\"levels\": []}")
                         .build());
@@ -60,8 +60,8 @@ class SystemManagementServiceImplTest {
 
     @Test
     void getSystemConfigs_InvalidKeyInDB_IgnoresKey() {
-        List<InternalConfigDTO> configs = List.of(
-                InternalConfigDTO.builder()
+        List<ConfigDTO> configs = List.of(
+                ConfigDTO.builder()
                         .configKey("INVALID_KEY")
                         .configValue("{\"levels\": []}")
                         .build());
@@ -77,7 +77,7 @@ class SystemManagementServiceImplTest {
         newConfigs.put(SystemConfigKeyEnum.DEFAULT_LGD_LOCATION_HIERARCHY, "{\"levels\": []}");
         SetSystemConfigRequestDTO request = SetSystemConfigRequestDTO.builder().configs(newConfigs).build();
 
-        InternalConfigDTO savedConfig = InternalConfigDTO.builder()
+        ConfigDTO savedConfig = ConfigDTO.builder()
                 .configKey(SystemConfigKeyEnum.DEFAULT_LGD_LOCATION_HIERARCHY.name())
                 .configValue("{\"levels\": []}")
                 .build();

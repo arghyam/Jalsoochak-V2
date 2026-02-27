@@ -7,18 +7,18 @@ import java.util.Map;
 import java.util.Set;
 
 import org.arghyam.jalsoochak.tenant.config.TenantContext;
-import org.arghyam.jalsoochak.tenant.dto.CreateDepartmentRequestDTO;
-import org.arghyam.jalsoochak.tenant.dto.CreateTenantRequestDTO;
-import org.arghyam.jalsoochak.tenant.dto.DepartmentResponseDTO;
-import org.arghyam.jalsoochak.tenant.dto.InternalConfigDTO;
-import org.arghyam.jalsoochak.tenant.dto.LanguageConfigDTO;
-import org.arghyam.jalsoochak.tenant.dto.PageResponseDTO;
-import org.arghyam.jalsoochak.tenant.dto.SetTenantConfigRequestDTO;
-import org.arghyam.jalsoochak.tenant.dto.TenantConfigResponseDTO;
-import org.arghyam.jalsoochak.tenant.dto.TenantLanguageConfigDTO;
-import org.arghyam.jalsoochak.tenant.dto.TenantLocationHierarchyConfigDTO;
-import org.arghyam.jalsoochak.tenant.dto.TenantResponseDTO;
-import org.arghyam.jalsoochak.tenant.dto.UpdateTenantRequestDTO;
+import org.arghyam.jalsoochak.tenant.dto.common.PageResponseDTO;
+import org.arghyam.jalsoochak.tenant.dto.request.CreateDepartmentRequestDTO;
+import org.arghyam.jalsoochak.tenant.dto.request.CreateTenantRequestDTO;
+import org.arghyam.jalsoochak.tenant.dto.request.SetTenantConfigRequestDTO;
+import org.arghyam.jalsoochak.tenant.dto.request.UpdateTenantRequestDTO;
+import org.arghyam.jalsoochak.tenant.dto.response.DepartmentResponseDTO;
+import org.arghyam.jalsoochak.tenant.dto.response.TenantConfigResponseDTO;
+import org.arghyam.jalsoochak.tenant.dto.response.TenantResponseDTO;
+import org.arghyam.jalsoochak.tenant.dto.internal.ConfigDTO;
+import org.arghyam.jalsoochak.tenant.dto.internal.LanguageConfigDTO;
+import org.arghyam.jalsoochak.tenant.dto.internal.TenantLanguageConfigDTO;
+import org.arghyam.jalsoochak.tenant.dto.internal.TenantLocationHierarchyConfigDTO;
 import org.arghyam.jalsoochak.tenant.enums.RegionTypeEnum;
 import org.arghyam.jalsoochak.tenant.enums.TenantConfigKeyEnum;
 import org.arghyam.jalsoochak.tenant.enums.TenantConfigKeyEnum.ConfigType;
@@ -205,10 +205,10 @@ public class TenantManagementServiceImpl implements TenantManagementService {
 
         try {
             // 1. Fetch generic configs from common_schema
-            List<InternalConfigDTO> configs = tenantCommonRepository.findConfigsByTenantId(tenantId);
+            List<ConfigDTO> configs = tenantCommonRepository.findConfigsByTenantId(tenantId);
             Map<TenantConfigKeyEnum, String> configMap = new HashMap<>();
 
-            for (InternalConfigDTO cfg : configs) {
+            for (ConfigDTO cfg : configs) {
                 try {
                     TenantConfigKeyEnum key = TenantConfigKeyEnum.valueOf(cfg.getConfigKey());
                     if (effectiveKeys.contains(key)) {
@@ -284,7 +284,7 @@ public class TenantManagementServiceImpl implements TenantManagementService {
                 String value = entry.getValue();
 
                 if (key.getType() == ConfigType.GENERIC) {
-                    InternalConfigDTO cfg = tenantCommonRepository
+                    ConfigDTO cfg = tenantCommonRepository
                             .upsertConfig(tenantId, key.name(), value, currentUserId)
                             .orElseThrow(() -> new RuntimeException("Failed to upsert configuration for key: " + key));
                     results.put(TenantConfigKeyEnum.valueOf(cfg.getConfigKey()), cfg.getConfigValue());
