@@ -21,11 +21,15 @@ public class SecurityUtils {
 
     /**
      * Gets the current user's name from the JWT.
+     * Returns "System" if no authentication is present or name claim is null.
      */
     public static String getCurrentUserName() {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
         if (authentication != null && authentication.getPrincipal() instanceof Jwt jwt) {
-            return jwt.getClaimAsString("name");
+            String name = jwt.getClaimAsString("name");
+            if (name != null) {
+                return name;
+            }
         }
         return "System";
     }
