@@ -128,9 +128,9 @@ public class TenantController {
         // TODO: Change this to permission / role based authorization for SUPER_ADMIN
         // @PreAuthorize("hasAuthority('tenant.delete')")
         @PreAuthorize("permitAll")
-        @DeleteMapping("/{tenantId}")
+        @PutMapping("/{tenantId}/deactivate")
         public ResponseEntity<ApiResponseDTO<Void>> deactivateTenant(@PathVariable Integer tenantId) {
-                log.info("DELETE /api/v1/tenants/{}", tenantId);
+                log.info("PUT /api/v1/tenants/{}/deactivate", tenantId);
                 tenantManagementService.deactivateTenant(tenantId);
                 return ResponseEntity.ok(ApiResponseDTO.of(200, "Tenant deactivated successfully"));
         }
@@ -151,6 +151,10 @@ public class TenantController {
         @GetMapping("/{tenantId}/config")
         public ResponseEntity<ApiResponseDTO<TenantConfigResponseDTO>> getTenantConfigs(
                         @PathVariable Integer tenantId,
+                        @Parameter(
+                                description = "Optional set of configuration keys to retrieve. If not provided, all configurations are returned.",
+                                example = "KEY1, KEY2"
+                        )
                         @RequestParam(required = false) Set<TenantConfigKeyEnum> keys) {
                 log.info("GET /api/v1/tenants/{}/config with keys: {}", tenantId, keys);
                 return ResponseEntity.ok(ApiResponseDTO.of(200, "Tenant configurations retrieved successfully",
