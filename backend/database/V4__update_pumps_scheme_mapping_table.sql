@@ -151,11 +151,11 @@ BEGIN
             reading_date        DATE            NOT NULL,
             correlation_id      VARCHAR(255),
             quantity            NUMERIC         NOT NULL DEFAULT 0,
-            quality_flag        VARCHAR(20)     NOT NULL DEFAULT ''provisional'',
-            status              VARCHAR(20)     NOT NULL DEFAULT ''active'',
+            quality_flag        INTEGER,
+            status              INTEGER         NOT NULL,
             payload_json        JSONB,
-            channel             VARCHAR(50),
-            reported_via        VARCHAR(50),
+            channel             INTEGER, -- common_schema.channel_master_table(id)
+            reported_via        INTEGER, -- common_schema.channel_master_table(id)
             duration            INTEGER,
             created_by          INTEGER         NOT NULL,
             created_at          TIMESTAMP       NOT NULL DEFAULT NOW(),
