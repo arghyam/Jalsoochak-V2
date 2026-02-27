@@ -15,6 +15,7 @@ import org.arghyam.jalsoochak.telemetry.dto.requests.SelectedLanguageRequest;
 import org.arghyam.jalsoochak.telemetry.repository.TenantConfigRepository;
 import org.arghyam.jalsoochak.telemetry.repository.TelemetryOperatorWithSchema;
 import org.arghyam.jalsoochak.telemetry.repository.TelemetryTenantRepository;
+import org.arghyam.jalsoochak.telemetry.repository.UserLanguagePreferenceRepository;
 import org.arghyam.jalsoochak.telemetry.dto.response.SelectionResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -31,6 +32,7 @@ import java.io.IOException;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -43,20 +45,34 @@ public class GlificWebhookService {
     private final BfmReadingService bfmReadingService;
     private final TelemetryTenantRepository telemetryTenantRepository;
     private final TenantConfigRepository tenantConfigRepository;
+    private final UserLanguagePreferenceRepository userLanguagePreferenceRepository;
 
     private final String glificApiToken;
+    private final String glificMediaBaseUrl;
+    private final int mediaDownloadRetryMaxAttempts;
+    private final long mediaDownloadRetryInitialBackoffMs;
 
     public GlificWebhookService(MinioService minioService,
                                 RestTemplate restTemplate,
                                 BfmReadingService bfmReadingService,
                                 TelemetryTenantRepository telemetryTenantRepository,
                                 TenantConfigRepository tenantConfigRepository,
+                                UserLanguagePreferenceRepository userLanguagePreferenceRepository,
+                                @Value("${glific.media-base-url:https://api.glific.org/v1/media}") String glificMediaBaseUrl,
+                                @Value("${media-download.retry.max-attempts:3}") int mediaDownloadRetryMaxAttempts,
+                                @Value("${media-download.retry.initial-backoff-ms:300}") long mediaDownloadRetryInitialBackoffMs,
                                 @Value("${glific.api-token:}") String glificApiToken) {
         this.minioService = minioService;
         this.restTemplate = restTemplate;
         this.bfmReadingService = bfmReadingService;
         this.telemetryTenantRepository = telemetryTenantRepository;
         this.tenantConfigRepository = tenantConfigRepository;
+        this.userLanguagePreferenceRepository = userLanguagePreferenceRepository;
+        this.glificMediaBaseUrl = glificMediaBaseUrl.endsWith("/")
+                ? glificMediaBaseUrl.substring(0, glificMediaBaseUrl.length() - 1)
+                : glificMediaBaseUrl;
+        this.mediaDownloadRetryMaxAttempts = Math.max(1, mediaDownloadRetryMaxAttempts);
+        this.mediaDownloadRetryInitialBackoffMs = Math.max(0L, mediaDownloadRetryInitialBackoffMs);
         this.glificApiToken = glificApiToken;
     }
 
@@ -80,15 +96,14 @@ public class GlificWebhookService {
                     ? downloadImageFromGlific(mediaId)
                     : downloadImage(mediaUrl);
 
-            log.info("imageBytes: {}", imageBytes);
+            log.debug("Downloaded image for contactId {} (bytes={})", contactId, imageBytes.length);
 
             String objectKey = "bfm/" + contactId + "/" + System.currentTimeMillis() + ".jpg";
             String imageStorageUrl = minioService.upload(imageBytes, objectKey);
-            log.info("imageStorage url: {}", imageStorageUrl);
+            log.info("imageStorageUrl: {}", imageStorageUrl);
+            log.debug("Image uploaded for contactId {} with objectKey {}", contactId, objectKey);
 
-            TelemetryOperatorWithSchema operatorWithSchema = telemetryTenantRepository
-                    .findOperatorByPhoneAcrossTenants(contactId)
-                    .orElseThrow(() -> new IllegalStateException("No operator found for contactId " + contactId));
+            TelemetryOperatorWithSchema operatorWithSchema = resolveOperatorWithSchema(contactId);
 
             Long schemeId = telemetryTenantRepository
                     .findFirstSchemeForUser(operatorWithSchema.schemaName(), operatorWithSchema.operator().id())
@@ -125,9 +140,7 @@ public class GlificWebhookService {
                 throw new IllegalStateException("contactId is required");
             }
 
-            TelemetryOperatorWithSchema operatorWithSchema = telemetryTenantRepository
-                    .findOperatorByPhoneAcrossTenants(introRequest.getContactId())
-                    .orElseThrow(() -> new IllegalStateException("Operator not found"));
+            TelemetryOperatorWithSchema operatorWithSchema = resolveOperatorWithSchema(introRequest.getContactId());
 
             Integer tenantId = operatorWithSchema.operator().tenantId();
             if (tenantId == null) {
@@ -178,9 +191,7 @@ public class GlificWebhookService {
                 throw new IllegalStateException("contactId is required");
             }
 
-            TelemetryOperatorWithSchema operatorWithSchema = telemetryTenantRepository
-                    .findOperatorByPhoneAcrossTenants(closingRequest.getContactId())
-                    .orElseThrow(() -> new IllegalStateException("Operator not found"));
+            TelemetryOperatorWithSchema operatorWithSchema = resolveOperatorWithSchema(closingRequest.getContactId());
 
             Integer tenantId = operatorWithSchema.operator().tenantId();
             if (tenantId == null) {
@@ -227,9 +238,7 @@ public class GlificWebhookService {
                 throw new IllegalStateException("contactId is required");
             }
 
-            TelemetryOperatorWithSchema operatorWithSchema = telemetryTenantRepository
-                    .findOperatorByPhoneAcrossTenants(request.getContactId())
-                    .orElseThrow(() -> new IllegalStateException("No operator found for contactId " + request.getContactId()));
+            TelemetryOperatorWithSchema operatorWithSchema = resolveOperatorWithSchema(request.getContactId());
 
             Integer tenantId = operatorWithSchema.operator().tenantId();
             if (tenantId == null) {
@@ -255,6 +264,7 @@ public class GlificWebhookService {
             return IntroResponse.builder()
                     .success(true)
                     .message(message.toString())
+                    .correlationId(toWords(languageOptions.size()))
                     .build();
         } catch (Exception e) {
             log.error("Error building language selection message for contactId {}: {}", request.getContactId(), e.getMessage(), e);
@@ -274,9 +284,7 @@ public class GlificWebhookService {
                 throw new IllegalStateException("language selection is required");
             }
 
-            TelemetryOperatorWithSchema operatorWithSchema = telemetryTenantRepository
-                    .findOperatorByPhoneAcrossTenants(request.getContactId())
-                    .orElseThrow(() -> new IllegalStateException("No operator found for contactId " + request.getContactId()));
+            TelemetryOperatorWithSchema operatorWithSchema = resolveOperatorWithSchema(request.getContactId());
 
             Integer tenantId = operatorWithSchema.operator().tenantId();
             if (tenantId == null) {
@@ -297,6 +305,7 @@ public class GlificWebhookService {
                     operatorWithSchema.operator().id(),
                     selectedLanguageId
             );
+            userLanguagePreferenceRepository.upsert(tenantId, request.getContactId(), selectedLanguage);
 
             String languageSpecificKey = "language_selection_confirmation_template_" + normalizeLanguageKey(selectedLanguage);
             String confirmationTemplate = tenantConfigRepository
@@ -323,9 +332,7 @@ public class GlificWebhookService {
                 throw new IllegalStateException("contactId is required");
             }
 
-            TelemetryOperatorWithSchema operatorWithSchema = telemetryTenantRepository
-                    .findOperatorByPhoneAcrossTenants(request.getContactId())
-                    .orElseThrow(() -> new IllegalStateException("No operator found for contactId " + request.getContactId()));
+            TelemetryOperatorWithSchema operatorWithSchema = resolveOperatorWithSchema(request.getContactId());
 
             Integer tenantId = operatorWithSchema.operator().tenantId();
             if (tenantId == null) {
@@ -351,9 +358,16 @@ public class GlificWebhookService {
                         .append(channelOptions.get(i));
             }
 
+            int correlationCount = channelOptions.size();
+            boolean hasBfmOrElectric = channelOptions.stream().anyMatch(option -> isBfmChannel(option) || isElectricChannel(option));
+            String correlationWord = toWords(correlationCount);
+            String isBfmOrIsElectricValue = buildBfmOrElectricCorrelationFlag(hasBfmOrElectric, correlationWord);
+
             return IntroResponse.builder()
                     .success(true)
                     .message(message.toString())
+                    .correlationId(correlationWord)
+                    .isBfmOrIsElectric(isBfmOrIsElectricValue)
                     .build();
         } catch (Exception e) {
             log.error("Error building channel selection message for contactId {}: {}", request.getContactId(), e.getMessage(), e);
@@ -373,9 +387,7 @@ public class GlificWebhookService {
                 throw new IllegalStateException("channel selection is required");
             }
 
-            TelemetryOperatorWithSchema operatorWithSchema = telemetryTenantRepository
-                    .findOperatorByPhoneAcrossTenants(request.getContactId())
-                    .orElseThrow(() -> new IllegalStateException("No operator found for contactId " + request.getContactId()));
+            TelemetryOperatorWithSchema operatorWithSchema = resolveOperatorWithSchema(request.getContactId());
 
             Integer tenantId = operatorWithSchema.operator().tenantId();
             if (tenantId == null) {
@@ -404,9 +416,16 @@ public class GlificWebhookService {
                     .or(() -> tenantConfigRepository.findConfigValue(tenantId, "channel_selection_confirmation_template"))
                     .orElse("Channel selected: {channel}");
 
+            boolean isBfm = isBfmChannel(selectedChannel);
+            boolean isElectrical = isElectricChannel(selectedChannel);
+            boolean isBfmorIsElectrical = isBfm || isElectrical;
+
             return IntroResponse.builder()
                     .success(true)
                     .message(confirmationTemplate.replace("{channel}", selectedChannel))
+                    .isBfmorIsElectrical(isBfmorIsElectrical)
+                    .isBfm(isBfm)
+                    .isElectrical(isElectrical)
                     .build();
         } catch (Exception e) {
             log.error("Error saving selected channel for contactId {}: {}", request.getContactId(), e.getMessage(), e);
@@ -423,9 +442,7 @@ public class GlificWebhookService {
                 throw new IllegalStateException("contactId is required");
             }
 
-            TelemetryOperatorWithSchema operatorWithSchema = telemetryTenantRepository
-                    .findOperatorByPhoneAcrossTenants(request.getContactId())
-                    .orElseThrow(() -> new IllegalStateException("No operator found for contactId " + request.getContactId()));
+            TelemetryOperatorWithSchema operatorWithSchema = resolveOperatorWithSchema(request.getContactId());
 
             Integer tenantId = operatorWithSchema.operator().tenantId();
             if (tenantId == null) {
@@ -442,13 +459,14 @@ public class GlificWebhookService {
             if (itemOptions.isEmpty()) {
                 throw new IllegalStateException("No item options configured. Add item_1/item_2... or language-specific keys.");
             }
+            List<String> visibleItemOptions = applyItemVisibilityRules(operatorWithSchema, tenantId, languageKey, itemOptions);
 
             StringBuilder message = new StringBuilder(prompt.trim());
-            for (int i = 0; i < itemOptions.size(); i++) {
+            for (int i = 0; i < visibleItemOptions.size(); i++) {
                 message.append("\n")
                         .append(i + 1)
                         .append(". ")
-                        .append(itemOptions.get(i));
+                        .append(visibleItemOptions.get(i));
             }
 
             return IntroResponse.builder()
@@ -473,9 +491,7 @@ public class GlificWebhookService {
                 throw new IllegalStateException("item selection is required");
             }
 
-            TelemetryOperatorWithSchema operatorWithSchema = telemetryTenantRepository
-                    .findOperatorByPhoneAcrossTenants(request.getContactId())
-                    .orElseThrow(() -> new IllegalStateException("No operator found for contactId " + request.getContactId()));
+            TelemetryOperatorWithSchema operatorWithSchema = resolveOperatorWithSchema(request.getContactId());
 
             Integer tenantId = operatorWithSchema.operator().tenantId();
             if (tenantId == null) {
@@ -489,8 +505,9 @@ public class GlificWebhookService {
             if (itemOptions.isEmpty()) {
                 throw new IllegalStateException("No item options configured for tenant");
             }
+            List<String> visibleItemOptions = applyItemVisibilityRules(operatorWithSchema, tenantId, languageKey, itemOptions);
 
-            String selectedItemLabel = resolveLanguageSelection(request.getChannel(), itemOptions)
+            String selectedItemLabel = resolveLanguageSelection(request.getChannel(), visibleItemOptions)
                     .orElseThrow(() -> new IllegalStateException("Invalid item selection"));
 
             String selectedCode = toItemCode(selectedItemLabel, itemOptions);
@@ -529,9 +546,7 @@ public class GlificWebhookService {
                 throw new IllegalStateException("contactId is required");
             }
 
-            TelemetryOperatorWithSchema operatorWithSchema = telemetryTenantRepository
-                    .findOperatorByPhoneAcrossTenants(request.getContactId())
-                    .orElseThrow(() -> new IllegalStateException("No operator found for contactId " + request.getContactId()));
+            TelemetryOperatorWithSchema operatorWithSchema = resolveOperatorWithSchema(request.getContactId());
 
             Integer tenantId = operatorWithSchema.operator().tenantId();
             if (tenantId == null) {
@@ -581,9 +596,7 @@ public class GlificWebhookService {
                 throw new IllegalStateException("meter change reason selection is required");
             }
 
-            TelemetryOperatorWithSchema operatorWithSchema = telemetryTenantRepository
-                    .findOperatorByPhoneAcrossTenants(request.getContactId())
-                    .orElseThrow(() -> new IllegalStateException("No operator found for contactId " + request.getContactId()));
+            TelemetryOperatorWithSchema operatorWithSchema = resolveOperatorWithSchema(request.getContactId());
 
             Integer tenantId = operatorWithSchema.operator().tenantId();
             if (tenantId == null) {
@@ -648,9 +661,7 @@ public class GlificWebhookService {
                 throw new IllegalStateException("manualReading must be greater than zero");
             }
 
-            TelemetryOperatorWithSchema operatorWithSchema = telemetryTenantRepository
-                    .findOperatorByPhoneAcrossTenants(request.getContactId())
-                    .orElseThrow(() -> new IllegalStateException("No operator found for contactId " + request.getContactId()));
+            TelemetryOperatorWithSchema operatorWithSchema = resolveOperatorWithSchema(request.getContactId());
 
             Integer tenantId = operatorWithSchema.operator().tenantId();
             if (tenantId == null) {
@@ -733,19 +744,14 @@ public class GlificWebhookService {
 
     private Optional<String> resolveLanguageSelection(String rawSelection, List<String> options) {
         String value = rawSelection.trim();
-        if (value.matches("^\\d+$")) {
-            int index = Integer.parseInt(value);
+        int digitEnd = 0;
+        while (digitEnd < value.length() && Character.isDigit(value.charAt(digitEnd))) {
+            digitEnd++;
+        }
+        if (digitEnd > 0) {
+            int index = Integer.parseInt(value.substring(0, digitEnd));
             if (index >= 1 && index <= options.size()) {
                 return Optional.of(options.get(index - 1));
-            }
-        }
-        if (value.matches("^\\d+\\..*$")) {
-            String numeric = value.substring(0, value.indexOf('.')).trim();
-            if (numeric.matches("^\\d+$")) {
-                int index = Integer.parseInt(numeric);
-                if (index >= 1 && index <= options.size()) {
-                    return Optional.of(options.get(index - 1));
-                }
             }
         }
         return options.stream().filter(v -> v.equalsIgnoreCase(value)).findFirst();
@@ -770,6 +776,102 @@ public class GlificWebhookService {
         return lower.replaceAll("[^a-z0-9]+", "_").replaceAll("^_+|_+$", "");
     }
 
+    private String toWords(int number) {
+        if (number == 0) {
+            return "zero";
+        }
+        return toWordsInternal(number).trim();
+    }
+
+    private String toWordsInternal(int number) {
+        if (number < 0) {
+            return "minus " + toWordsInternal(-number);
+        }
+        if (number < 20) {
+            return SMALL_NUMBERS[number];
+        }
+        if (number < 100) {
+            String tensWord = TENS[(number / 10)];
+            int remainder = number % 10;
+            if (remainder == 0) {
+                return tensWord;
+            }
+            return tensWord + " " + SMALL_NUMBERS[remainder];
+        }
+        if (number < 1_000) {
+            int remainder = number % 100;
+            String result = SMALL_NUMBERS[number / 100] + " hundred";
+            if (remainder == 0) {
+                return result;
+            }
+            return result + " " + toWordsInternal(remainder);
+        }
+        if (number < 1_000_000) {
+            return withRemainder(number, 1_000, "thousand");
+        }
+        if (number < 1_000_000_000) {
+            return withRemainder(number, 1_000_000, "million");
+        }
+        return withRemainder(number, 1_000_000_000, "billion");
+    }
+
+    private String withRemainder(int number, int divisor, String unit) {
+        int remainder = number % divisor;
+        String result = toWordsInternal(number / divisor) + " " + unit;
+        if (remainder == 0) {
+            return result;
+        }
+        return result + " " + toWordsInternal(remainder);
+    }
+
+    private String buildBfmOrElectricCorrelationFlag(boolean hasBfmOrElectric, String correlationWord) {
+        if (correlationWord == null || correlationWord.isBlank()) {
+            return null;
+        }
+        String normalized = correlationWord.trim();
+        String capitalized = normalized.substring(0, 1).toUpperCase(Locale.ROOT) + normalized.substring(1);
+        if (hasBfmOrElectric) {
+            return "bfmOrElectricpresentandcorrelationIs" + capitalized;
+        }
+        return "bfmOrElectricNotpresentandcorrelationIs" + capitalized;
+    }
+
+    private static final String[] SMALL_NUMBERS = {
+            "zero",
+            "one",
+            "two",
+            "three",
+            "four",
+            "five",
+            "six",
+            "seven",
+            "eight",
+            "nine",
+            "ten",
+            "eleven",
+            "twelve",
+            "thirteen",
+            "fourteen",
+            "fifteen",
+            "sixteen",
+            "seventeen",
+            "eighteen",
+            "nineteen"
+    };
+
+    private static final String[] TENS = {
+            "",
+            "",
+            "twenty",
+            "thirty",
+            "forty",
+            "fifty",
+            "sixty",
+            "seventy",
+            "eighty",
+            "ninety"
+    };
+
     private String toItemCode(String selectedItemLabel, List<String> itemOptions) {
         int index = -1;
         for (int i = 0; i < itemOptions.size(); i++) {
@@ -787,50 +889,117 @@ public class GlificWebhookService {
         };
     }
 
-    private byte[] downloadImageFromGlific(String mediaId) throws IOException {
-        try {
-            HttpHeaders headers = new HttpHeaders();
-            if (glificApiToken != null && !glificApiToken.isBlank()) {
-                headers.setBearerAuth(glificApiToken);
+    private List<String> applyItemVisibilityRules(TelemetryOperatorWithSchema operatorWithSchema,
+                                                  Integer tenantId,
+                                                  String languageKey,
+                                                  List<String> itemOptions) {
+        List<String> filtered = new java.util.ArrayList<>();
+        for (String option : itemOptions) {
+            String itemCode = toItemCode(option, itemOptions);
+            if ("readingSubmission".equals(itemCode) || "meterChange".equals(itemCode)) {
+                filtered.add(option);
             }
-            headers.set(HttpHeaders.USER_AGENT, "WaterSupplyBot/1.0");
-            HttpEntity<Void> entity = new HttpEntity<>(headers);
-
-            ResponseEntity<byte[]> response = restTemplate.exchange(
-                    "https://api.glific.org/v1/media/" + mediaId,
-                    HttpMethod.GET,
-                    entity,
-                    byte[].class
-            );
-
-            if (response.getStatusCode() != HttpStatus.OK || response.getBody() == null) {
-                throw new IOException("Failed to download image from Glific, status: " + response.getStatusCode());
-            }
-            return response.getBody();
-        } catch (RestClientException e) {
-            throw new IOException("Failed to download image from Glific: " + e.getMessage(), e);
         }
+        return filtered.isEmpty() ? itemOptions : filtered;
+    }
+
+    private boolean isBfmChannel(String channelOption) {
+        if (channelOption == null) {
+            return false;
+        }
+        String normalized = channelOption.toLowerCase().replaceAll("[^a-z0-9]+", "");
+        return normalized.contains("bfm");
+    }
+
+    private boolean isElectricChannel(String channelOption) {
+        if (channelOption == null) {
+            return false;
+        }
+        String normalized = channelOption.toLowerCase().replaceAll("[^a-z0-9]+", "");
+        return normalized.contains("electric");
+    }
+
+    private TelemetryOperatorWithSchema resolveOperatorWithSchema(String contactId) {
+        Integer preferredTenantId = userLanguagePreferenceRepository
+                .findPreferredTenantIdByContactId(contactId)
+                .orElse(null);
+
+        return telemetryTenantRepository
+                .findOperatorByPhoneAcrossTenants(contactId, preferredTenantId)
+                .orElseThrow(() -> new IllegalStateException("No operator found for contactId " + contactId));
+    }
+
+    private byte[] downloadImageFromGlific(String mediaId) throws IOException {
+        for (int attempt = 1; attempt <= mediaDownloadRetryMaxAttempts; attempt++) {
+            try {
+                HttpHeaders headers = new HttpHeaders();
+                if (glificApiToken != null && !glificApiToken.isBlank()) {
+                    headers.setBearerAuth(glificApiToken);
+                }
+                headers.set(HttpHeaders.USER_AGENT, "WaterSupplyBot/1.0");
+                HttpEntity<Void> entity = new HttpEntity<>(headers);
+
+                ResponseEntity<byte[]> response = restTemplate.exchange(
+                        glificMediaBaseUrl + "/" + mediaId,
+                        HttpMethod.GET,
+                        entity,
+                        byte[].class
+                );
+
+                if (response.getStatusCode() != HttpStatus.OK || response.getBody() == null) {
+                    throw new IOException("Failed to download image from Glific, status: " + response.getStatusCode());
+                }
+                return response.getBody();
+            } catch (RestClientException e) {
+                if (attempt == mediaDownloadRetryMaxAttempts) {
+                    throw new IOException("Failed to download image from Glific after " + attempt + " attempts: " + e.getMessage(), e);
+                }
+                long backoffMs = mediaDownloadRetryInitialBackoffMs * (1L << (attempt - 1));
+                log.warn("Glific media download attempt {} failed for mediaId {}. Retrying in {} ms", attempt, mediaId, backoffMs);
+                sleepBackoff(backoffMs);
+            }
+        }
+        throw new IOException("Failed to download image from Glific");
     }
 
     private byte[] downloadImage(String url) throws IOException {
-        try {
-            HttpHeaders headers = new HttpHeaders();
-            headers.set(HttpHeaders.USER_AGENT, "WaterSupplyBot/1.0");
-            HttpEntity<Void> entity = new HttpEntity<>(headers);
+        for (int attempt = 1; attempt <= mediaDownloadRetryMaxAttempts; attempt++) {
+            try {
+                HttpHeaders headers = new HttpHeaders();
+                headers.set(HttpHeaders.USER_AGENT, "WaterSupplyBot/1.0");
+                HttpEntity<Void> entity = new HttpEntity<>(headers);
 
-            ResponseEntity<byte[]> response = restTemplate.exchange(
-                    url,
-                    HttpMethod.GET,
-                    entity,
-                    byte[].class
-            );
+                ResponseEntity<byte[]> response = restTemplate.exchange(
+                        url,
+                        HttpMethod.GET,
+                        entity,
+                        byte[].class
+                );
 
-            if (response.getStatusCode() != HttpStatus.OK || response.getBody() == null) {
-                throw new IOException("Failed to download image, status: " + response.getStatusCode());
+                if (response.getStatusCode() != HttpStatus.OK || response.getBody() == null) {
+                    throw new IOException("Failed to download image, status: " + response.getStatusCode());
+                }
+                return response.getBody();
+            } catch (RestClientException e) {
+                if (attempt == mediaDownloadRetryMaxAttempts) {
+                    throw new IOException("Failed to download image after " + attempt + " attempts: " + e.getMessage(), e);
+                }
+                long backoffMs = mediaDownloadRetryInitialBackoffMs * (1L << (attempt - 1));
+                log.warn("Media download attempt {} failed for URL {}. Retrying in {} ms", attempt, url, backoffMs);
+                sleepBackoff(backoffMs);
             }
-            return response.getBody();
-        } catch (RestClientException e) {
-            throw new IOException("Failed to download image: " + e.getMessage(), e);
+        }
+        throw new IOException("Failed to download image");
+    }
+
+    private void sleepBackoff(long backoffMs) {
+        if (backoffMs <= 0) {
+            return;
+        }
+        try {
+            Thread.sleep(backoffMs);
+        } catch (InterruptedException ie) {
+            Thread.currentThread().interrupt();
         }
     }
 }
