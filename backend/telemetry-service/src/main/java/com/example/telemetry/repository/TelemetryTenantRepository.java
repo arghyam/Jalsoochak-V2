@@ -216,8 +216,8 @@ public class TelemetryTenantRepository {
         String sql = String.format("""
                 INSERT INTO %s.flow_reading_table
                     (scheme_id, reading_at, reading_date, extracted_reading, confirmed_reading,
-                     correlation_id, quantity, channel, meter_change_reason, image_url, created_by, created_at, updated_by, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, 0, NULL, ?, ?, ?, NOW(), ?, NOW())
+                     correlation_id, quantity, channel, meter_change_reason, issue_report_reason, image_url, created_by, created_at, updated_by, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, 0, NULL, ?, NULL, ?, ?, NOW(), ?, NOW())
                 RETURNING id
                 """, schemaName);
 
@@ -248,8 +248,8 @@ public class TelemetryTenantRepository {
         String sql = String.format("""
                 INSERT INTO %s.flow_reading_table
                     (scheme_id, reading_at, reading_date, extracted_reading, confirmed_reading,
-                     correlation_id, quantity, channel, meter_change_reason, image_url, created_by, created_at, updated_by, updated_at)
-                VALUES (?, ?, ?, 0, 0, ?, 0, NULL, ?, '', ?, NOW(), ?, NOW())
+                     correlation_id, quantity, channel, meter_change_reason, issue_report_reason, image_url, created_by, created_at, updated_by, updated_at)
+                VALUES (?, ?, ?, 0, 0, ?, 0, NULL, ?, NULL, '', ?, NOW(), ?, NOW())
                 RETURNING id
                 """, schemaName);
 
@@ -261,6 +261,35 @@ public class TelemetryTenantRepository {
                 LocalDate.from(readingAt),
                 correlationId,
                 reason,
+                operatorId,
+                operatorId
+        );
+        return id != null ? id.longValue() : null;
+    }
+
+    public Long createIssueReportRecord(String schemaName,
+                                        Long schemeId,
+                                        Long operatorId,
+                                        LocalDateTime readingAt,
+                                        String correlationId,
+                                        String issueReason) {
+        validateSchemaName(schemaName);
+        String sql = String.format("""
+                INSERT INTO %s.flow_reading_table
+                    (scheme_id, reading_at, reading_date, extracted_reading, confirmed_reading,
+                     correlation_id, quantity, channel, meter_change_reason, issue_report_reason, image_url, created_by, created_at, updated_by, updated_at)
+                VALUES (?, ?, ?, 0, 0, ?, 0, NULL, NULL, ?, '', ?, NOW(), ?, NOW())
+                RETURNING id
+                """, schemaName);
+
+        Number id = jdbcTemplate.queryForObject(
+                sql,
+                Number.class,
+                schemeId,
+                readingAt,
+                LocalDate.from(readingAt),
+                correlationId,
+                issueReason,
                 operatorId,
                 operatorId
         );
