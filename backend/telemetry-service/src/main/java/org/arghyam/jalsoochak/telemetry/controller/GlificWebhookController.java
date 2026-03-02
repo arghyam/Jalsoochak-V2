@@ -7,6 +7,7 @@ import org.arghyam.jalsoochak.telemetry.dto.response.SelectionResponse;
 import org.arghyam.jalsoochak.telemetry.dto.requests.ClosingRequest;
 import org.arghyam.jalsoochak.telemetry.dto.requests.GlificWebhookRequest;
 import org.arghyam.jalsoochak.telemetry.dto.requests.IntroRequest;
+import org.arghyam.jalsoochak.telemetry.dto.requests.IssueReportRequest;
 import org.arghyam.jalsoochak.telemetry.dto.requests.ManualReadingRequest;
 import org.arghyam.jalsoochak.telemetry.dto.requests.MeterChangeRequest;
 import org.arghyam.jalsoochak.telemetry.dto.requests.SelectedChannelRequest;
@@ -201,6 +202,38 @@ public class GlificWebhookController {
                     IntroResponse.builder()
                             .success(false)
                             .message("Meter change reasons could not be prepared.")
+                            .build()
+            );
+        }
+    }
+
+    @PostMapping("/issueReport")
+    public ResponseEntity<IntroResponse> issueReportPrompt(@RequestBody @Valid IntroRequest request) {
+        try {
+            IntroResponse response = glificWebhookService.issueReportPromptMessage(request);
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            log.error("Error preparing issue report prompt for contactId {}: {}", request.getContactId(), e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(
+                    IntroResponse.builder()
+                            .success(false)
+                            .message("Issue report prompt could not be prepared.")
+                            .build()
+            );
+        }
+    }
+
+    @PostMapping("/issueReport/submit")
+    public ResponseEntity<IntroResponse> issueReportSubmit(@RequestBody @Valid IssueReportRequest request) {
+        try {
+            IntroResponse response = glificWebhookService.issueReportSubmitMessage(request);
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            log.error("Error saving issue report for contactId {}: {}", request.getContactId(), e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(
+                    IntroResponse.builder()
+                            .success(false)
+                            .message("Issue report could not be saved.")
                             .build()
             );
         }

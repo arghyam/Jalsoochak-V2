@@ -7,6 +7,7 @@ import org.arghyam.jalsoochak.telemetry.dto.requests.ClosingRequest;
 import org.arghyam.jalsoochak.telemetry.dto.requests.CreateReadingRequest;
 import org.arghyam.jalsoochak.telemetry.dto.requests.GlificWebhookRequest;
 import org.arghyam.jalsoochak.telemetry.dto.requests.IntroRequest;
+import org.arghyam.jalsoochak.telemetry.dto.requests.IssueReportRequest;
 import org.arghyam.jalsoochak.telemetry.dto.requests.ManualReadingRequest;
 import org.arghyam.jalsoochak.telemetry.dto.requests.MeterChangeRequest;
 import org.arghyam.jalsoochak.telemetry.dto.requests.SelectedChannelRequest;
@@ -643,6 +644,100 @@ public class GlificWebhookService {
         }
     }
 
+    public IntroResponse issueReportPromptMessage(IntroRequest request) {
+        try {
+            if (request.getContactId() == null || request.getContactId().isBlank()) {
+                throw new IllegalStateException("contactId is required");
+            }
+
+            TelemetryOperatorWithSchema operatorWithSchema = resolveOperatorWithSchema(request.getContactId());
+
+            Integer tenantId = operatorWithSchema.operator().tenantId();
+            if (tenantId == null) {
+                throw new IllegalStateException("Operator tenant could not be resolved");
+            }
+
+            String selectedLanguage = resolveOperatorLanguage(operatorWithSchema, tenantId);
+            String languageKey = normalizeLanguageKey(selectedLanguage);
+
+            String fallbackPrompt = "Please type your issue in a few words.";
+            if ("hindi".equals(languageKey)) {
+                fallbackPrompt = "कृपया अपनी समस्या संक्षेप में लिखें।";
+            }
+
+            String prompt = tenantConfigRepository.findIssueReportPrompt(tenantId, languageKey)
+                    .orElse(fallbackPrompt);
+
+            return IntroResponse.builder()
+                    .success(true)
+                    .message(prompt)
+                    .build();
+        } catch (Exception e) {
+            log.error("Error preparing issue report prompt for contactId {}: {}", request.getContactId(), e.getMessage(), e);
+            return IntroResponse.builder()
+                    .success(false)
+                    .message("Issue report prompt could not be prepared.")
+                    .build();
+        }
+    }
+
+    public IntroResponse issueReportSubmitMessage(IssueReportRequest request) {
+        try {
+            if (request.getContactId() == null || request.getContactId().isBlank()) {
+                throw new IllegalStateException("contactId is required");
+            }
+            if (request.getIssueReason() == null || request.getIssueReason().isBlank()) {
+                throw new IllegalStateException("issueReason is required");
+            }
+
+            TelemetryOperatorWithSchema operatorWithSchema = resolveOperatorWithSchema(request.getContactId());
+
+            Integer tenantId = operatorWithSchema.operator().tenantId();
+            if (tenantId == null) {
+                throw new IllegalStateException("Operator tenant could not be resolved");
+            }
+
+            Long schemeId = telemetryTenantRepository
+                    .findFirstSchemeForUser(operatorWithSchema.schemaName(), operatorWithSchema.operator().id())
+                    .orElseThrow(() -> new IllegalStateException("Operator is not mapped to any scheme"));
+
+            String correlationId = "issue-report-" + UUID.randomUUID();
+            String issueReason = request.getIssueReason().trim();
+
+            telemetryTenantRepository.createIssueReportRecord(
+                    operatorWithSchema.schemaName(),
+                    schemeId,
+                    operatorWithSchema.operator().id(),
+                    LocalDateTime.now(),
+                    correlationId,
+                    issueReason
+            );
+
+            String selectedLanguage = resolveOperatorLanguage(operatorWithSchema, tenantId);
+            String languageKey = normalizeLanguageKey(selectedLanguage);
+
+            String fallbackMessage = "Issue reported. Thank you.";
+            if ("hindi".equals(languageKey)) {
+                fallbackMessage = "समस्या रिपोर्ट हो गई है। धन्यवाद।";
+            }
+
+            String message = tenantConfigRepository.findIssueReportConfirmationTemplate(tenantId, languageKey)
+                    .orElse(fallbackMessage);
+
+            return IntroResponse.builder()
+                    .success(true)
+                    .message(message)
+                    .correlationId(correlationId)
+                    .build();
+        } catch (Exception e) {
+            log.error("Error saving issue report for contactId {}: {}", request.getContactId(), e.getMessage(), e);
+            return IntroResponse.builder()
+                    .success(false)
+                    .message("Issue report could not be saved.")
+                    .build();
+        }
+    }
+
     public CreateReadingResponse manualReadingMessage(ManualReadingRequest request) {
         try {
             if (request.getContactId() == null || request.getContactId().isBlank()) {
@@ -883,7 +978,7 @@ public class GlificWebhookService {
         return switch (index) {
             case 1 -> "readingSubmission";
             case 2 -> "channelChange";
-            case 3 -> "meterChange";
+            case 3 -> "issueReport";
             case 4 -> "languageChange";
             default -> normalizeLanguageKey(selectedItemLabel);
         };
@@ -896,7 +991,7 @@ public class GlificWebhookService {
         List<String> filtered = new java.util.ArrayList<>();
         for (String option : itemOptions) {
             String itemCode = toItemCode(option, itemOptions);
-            if ("readingSubmission".equals(itemCode) || "meterChange".equals(itemCode)) {
+            if ("readingSubmission".equals(itemCode) || "issueReport".equals(itemCode)) {
                 filtered.add(option);
             }
         }
