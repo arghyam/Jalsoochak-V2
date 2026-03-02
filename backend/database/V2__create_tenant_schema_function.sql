@@ -87,6 +87,7 @@ BEGIN
             status                      INTEGER         NOT NULL,
             email_verification_status   BOOLEAN         DEFAULT FALSE,
             phone_verification_status   BOOLEAN         DEFAULT FALSE,
+            language_id                 INTEGER,
             created_by                  INTEGER,        -- loosely coupled to common_schema.tenant_admin_user_master_table
             created_at                  TIMESTAMP       NOT NULL DEFAULT NOW(),
             updated_by                  INTEGER,        -- loosely coupled to common_schema.tenant_admin_user_master_table
@@ -131,14 +132,14 @@ BEGIN
         )', schema_name);
 
     -- --------------------------------------------------------
-    -- 2.4  department_master_table
+    -- 2.4  department_location_master_table
     --      Departmental hierarchy for this tenant
     --      (e.g. zone > circle > division > sub-division).
     --      Self-referencing via parent_id.
     -- --------------------------------------------------------
 
     EXECUTE format('
-        CREATE TABLE %1$I.department_master_table (
+        CREATE TABLE %1$I.department_location_master_table (
             id                              SERIAL          PRIMARY KEY,
             uuid                            VARCHAR(36)     NOT NULL UNIQUE DEFAULT gen_random_uuid()::TEXT,
             title                           VARCHAR(255)    NOT NULL,
@@ -157,7 +158,7 @@ BEGIN
                 REFERENCES %1$I.location_config_master_table(id),
             CONSTRAINT fk_dept_parent
                 FOREIGN KEY (parent_id)
-                REFERENCES %1$I.department_master_table(id)
+                REFERENCES %1$I.department_location_master_table(id)
             -- created_by, updated_by, deleted_by -> common_schema.tenant_admin_user_master_table (enforced at app level)
         )', schema_name);
 
@@ -178,6 +179,7 @@ BEGIN
             house_hold_count    INTEGER             NOT NULL DEFAULT 0,
             latitude            DOUBLE PRECISION,
             longitude           DOUBLE PRECISION,
+            channel             INTEGER,
             work_status         INTEGER             NOT NULL,
             operating_status    INTEGER             NOT NULL,
             created_at          TIMESTAMP           NOT NULL DEFAULT NOW(),
@@ -245,7 +247,7 @@ BEGIN
                 REFERENCES %1$I.scheme_master_table(id),
             CONSTRAINT fk_scheme_dept_parent
                 FOREIGN KEY (parent_department_id)
-                REFERENCES %1$I.department_master_table(id),
+                REFERENCES %1$I.department_location_master_table(id),
             CONSTRAINT fk_scheme_dept_created_by
                 FOREIGN KEY (created_by)
                 REFERENCES %1$I.user_table(id),
@@ -362,6 +364,9 @@ BEGIN
             detail          TEXT            NOT NULL,
             created_at      TIMESTAMP       NOT NULL DEFAULT NOW(),
             status          INTEGER         NOT NULL,
+            remark          TEXT,
+            resolved_by     INTEGER,
+            resolved_at     TIMESTAMP,
             deleted_at      TIMESTAMP,
             deleted_by      INTEGER,
 
@@ -372,6 +377,63 @@ BEGIN
                 FOREIGN KEY (scheme_id)
                 REFERENCES %1$I.scheme_master_table(id)
             -- deleted_by -> common_schema.tenant_admin_user_master_table (enforced at app level)
+        )', schema_name);
+
+    -- 2.12 language_master_table
+    --      Master list of supported languages for the tenant.
+
+    EXECUTE format('
+        CREATE TABLE %1$I.language_master_table (
+            id              SERIAL          PRIMARY KEY,
+            language_name   VARCHAR(255)    NOT NULL,
+            preference      INTEGER,
+            created_at      TIMESTAMP       NOT NULL DEFAULT NOW(),
+            updated_at      TIMESTAMP       NOT NULL DEFAULT NOW(),
+            status          INTEGER         NOT NULL,
+            created_by      INTEGER,
+            updated_by      INTEGER,
+            deleted_at      TIMESTAMP,
+            deleted_by      INTEGER,
+            -- created_by, updated_by, deleted_by -> common_schema.tenant_admin_user_master_table (enforced at app level)
+            CONSTRAINT uq_language_name UNIQUE (language_name)
+        )', schema_name);
+
+    -- --------------------------------------------------------
+    -- 2.13 user_invite_table
+    --      Stores invitation links/tokens for onboarding users.
+    -- --------------------------------------------------------
+
+    EXECUTE format('
+        CREATE TABLE %1$I.user_invite_table (
+            id                  SERIAL          PRIMARY KEY,
+            uuid                VARCHAR(36)     NOT NULL UNIQUE DEFAULT gen_random_uuid()::TEXT,
+            user_id             INTEGER         NOT NULL,
+            invite_channel      INTEGER         NOT NULL,
+            invite_token        TEXT            NOT NULL,
+            status              INTEGER         NOT NULL,
+            invite_expires_at   TIMESTAMP,
+            created_by          INTEGER,
+            created_at          TIMESTAMP       NOT NULL DEFAULT NOW(),
+            updated_by          INTEGER,
+            updated_at          TIMESTAMP       NOT NULL DEFAULT NOW(),
+            deleted_at          TIMESTAMP,
+            deleted_by          INTEGER,
+
+            CONSTRAINT fk_user_invite_user
+                FOREIGN KEY (user_id)
+                REFERENCES %1$I.user_table(id),
+            CONSTRAINT fk_user_invite_channel
+                FOREIGN KEY (invite_channel)
+                REFERENCES common_schema.channel_master_table(id),
+            CONSTRAINT fk_user_invite_created_by
+                FOREIGN KEY (created_by)
+                REFERENCES common_schema.tenant_admin_user_master_table(id),
+            CONSTRAINT fk_user_invite_updated_by
+                FOREIGN KEY (updated_by)
+                REFERENCES common_schema.tenant_admin_user_master_table(id),
+            CONSTRAINT fk_user_invite_deleted_by
+                FOREIGN KEY (deleted_by)
+                REFERENCES common_schema.tenant_admin_user_master_table(id)
         )', schema_name);
 
     -- ============================================================
@@ -388,9 +450,9 @@ BEGIN
     EXECUTE format('CREATE INDEX idx_%1$s_lgd_parent        ON %1$I.lgd_location_master_table(parent_id)',  schema_name);
     EXECUTE format('CREATE INDEX idx_%1$s_lgd_status        ON %1$I.lgd_location_master_table(status)',     schema_name);
 
-    -- department_master_table
-    EXECUTE format('CREATE INDEX idx_%1$s_dept_parent       ON %1$I.department_master_table(parent_id)', schema_name);
-    EXECUTE format('CREATE INDEX idx_%1$s_dept_status       ON %1$I.department_master_table(status)',    schema_name);
+    -- department_location_master_table
+    EXECUTE format('CREATE INDEX idx_%1$s_dept_parent       ON %1$I.department_location_master_table(parent_id)', schema_name);
+    EXECUTE format('CREATE INDEX idx_%1$s_dept_status       ON %1$I.department_location_master_table(status)',    schema_name);
 
     -- scheme_master_table
     EXECUTE format('CREATE INDEX idx_%1$s_scheme_work_st    ON %1$I.scheme_master_table(work_status)',       schema_name);
@@ -428,6 +490,12 @@ BEGIN
     EXECUTE format('CREATE INDEX idx_%1$s_anom_type         ON %1$I.anomaly_table(type)',      schema_name);
     EXECUTE format('CREATE INDEX idx_%1$s_anom_status       ON %1$I.anomaly_table(status)',    schema_name);
 
+    -- user_invite_table
+    EXECUTE format('CREATE INDEX idx_%1$s_inv_user          ON %1$I.user_invite_table(user_id)',         schema_name);
+    EXECUTE format('CREATE INDEX idx_%1$s_inv_status        ON %1$I.user_invite_table(status)',          schema_name);
+    EXECUTE format('CREATE INDEX idx_%1$s_inv_channel       ON %1$I.user_invite_table(invite_channel)',  schema_name);
+    EXECUTE format('CREATE INDEX idx_%1$s_inv_expires_at    ON %1$I.user_invite_table(invite_expires_at)',schema_name);
+
     -- ============================================================
     -- Done
     -- ============================================================
@@ -442,3 +510,55 @@ $func$;
 -- Example: provision a tenant for Madhya Pradesh
 -- ============================================================
 -- SELECT create_tenant_schema('tenant_mp');
+
+-- ============================================================
+-- Backfill: create invite table for existing tenant schemas
+-- ============================================================
+DO $$
+DECLARE
+    tenant_schema TEXT;
+BEGIN
+    FOR tenant_schema IN
+        SELECT nspname
+        FROM pg_namespace
+        WHERE nspname LIKE 'tenant\_%' ESCAPE '\'
+    LOOP
+        EXECUTE format('
+            CREATE TABLE IF NOT EXISTS %1$I.user_invite_table (
+                id                  SERIAL          PRIMARY KEY,
+                uuid                VARCHAR(36)     NOT NULL UNIQUE DEFAULT gen_random_uuid()::TEXT,
+                user_id             INTEGER         NOT NULL,
+                invite_channel      INTEGER         NOT NULL,
+                invite_token        TEXT            NOT NULL,
+                status              INTEGER         NOT NULL,
+                invite_expires_at   TIMESTAMP,
+                created_by          INTEGER,
+                created_at          TIMESTAMP       NOT NULL DEFAULT NOW(),
+                updated_by          INTEGER,
+                updated_at          TIMESTAMP       NOT NULL DEFAULT NOW(),
+                deleted_at          TIMESTAMP,
+                deleted_by          INTEGER,
+
+                CONSTRAINT fk_user_invite_user
+                    FOREIGN KEY (user_id)
+                    REFERENCES %1$I.user_table(id),
+                CONSTRAINT fk_user_invite_channel
+                    FOREIGN KEY (invite_channel)
+                    REFERENCES common_schema.channel_master_table(id),
+                CONSTRAINT fk_user_invite_created_by
+                    FOREIGN KEY (created_by)
+                    REFERENCES common_schema.tenant_admin_user_master_table(id),
+                CONSTRAINT fk_user_invite_updated_by
+                    FOREIGN KEY (updated_by)
+                    REFERENCES common_schema.tenant_admin_user_master_table(id),
+                CONSTRAINT fk_user_invite_deleted_by
+                    FOREIGN KEY (deleted_by)
+                    REFERENCES common_schema.tenant_admin_user_master_table(id)
+            )', tenant_schema);
+
+        EXECUTE format('CREATE INDEX IF NOT EXISTS idx_%1$s_inv_user       ON %1$I.user_invite_table(user_id)', tenant_schema);
+        EXECUTE format('CREATE INDEX IF NOT EXISTS idx_%1$s_inv_status     ON %1$I.user_invite_table(status)', tenant_schema);
+        EXECUTE format('CREATE INDEX IF NOT EXISTS idx_%1$s_inv_channel    ON %1$I.user_invite_table(invite_channel)', tenant_schema);
+        EXECUTE format('CREATE INDEX IF NOT EXISTS idx_%1$s_inv_expires_at ON %1$I.user_invite_table(invite_expires_at)', tenant_schema);
+    END LOOP;
+END $$;

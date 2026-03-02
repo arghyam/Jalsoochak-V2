@@ -1,33 +1,42 @@
--- Update create_tenant_schema() so newly created tenant schemas include
+-- Ensure newly provisioned tenant schemas include
 -- flow_reading_table.meter_change_reason.
 DO $$
-DECLARE
-    fn_definition TEXT;
-    patched_definition TEXT;
 BEGIN
-    IF to_regprocedure('create_tenant_schema(text)') IS NULL THEN
-        RAISE NOTICE 'Function create_tenant_schema(text) not found. Skipping function patch.';
-        RETURN;
+    -- Preserve the current common_schema implementation once.
+    IF EXISTS (
+        SELECT 1
+        FROM pg_proc p
+        JOIN pg_namespace n ON n.oid = p.pronamespace
+        WHERE p.proname = 'create_tenant_schema'
+          AND n.nspname = 'common_schema'
+          AND pg_get_function_identity_arguments(p.oid) = 'schema_name text'
+    )
+    AND NOT EXISTS (
+        SELECT 1
+        FROM pg_proc p
+        JOIN pg_namespace n ON n.oid = p.pronamespace
+        WHERE p.proname = 'create_tenant_schema_v10_base'
+          AND n.nspname = 'common_schema'
+          AND pg_get_function_identity_arguments(p.oid) = 'schema_name text'
+    ) THEN
+        ALTER FUNCTION common_schema.create_tenant_schema(text) RENAME TO create_tenant_schema_v10_base;
     END IF;
-
-    SELECT pg_get_functiondef('create_tenant_schema(text)'::regprocedure)
-      INTO fn_definition;
-
-    IF position('meter_change_reason' IN fn_definition) > 0 THEN
-        RAISE NOTICE 'create_tenant_schema(text) already includes meter_change_reason. Skipping.';
-        RETURN;
-    END IF;
-
-    patched_definition := replace(
-        fn_definition,
-        E'            channel             INTEGER,\n            image_url',
-        E'            channel             INTEGER,\n            meter_change_reason TEXT,\n            image_url'
-    );
-
-    IF patched_definition = fn_definition THEN
-        RAISE EXCEPTION 'Unable to patch create_tenant_schema(text): flow_reading_table block not found.';
-    END IF;
-
-    EXECUTE patched_definition;
 END $$;
+
+CREATE OR REPLACE FUNCTION common_schema.create_tenant_schema(schema_name TEXT)
+RETURNS VOID
+LANGUAGE plpgsql
+AS $func$
+BEGIN
+    -- Execute the existing provisioning logic first.
+    PERFORM common_schema.create_tenant_schema_v10_base(schema_name);
+
+    -- Apply new column only for newly created tenant schemas.
+    EXECUTE format(
+        'ALTER TABLE IF EXISTS %1$I.flow_reading_table
+         ADD COLUMN IF NOT EXISTS meter_change_reason TEXT',
+        schema_name
+    );
+END;
+$func$;
 
