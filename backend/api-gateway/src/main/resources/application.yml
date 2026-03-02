@@ -1,0 +1,75 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: api-gateway
+  cloud:
+    gateway:
+      routes:
+        - id: tenant-service
+          uri: ${TENANT_SERVICE_URI:http://localhost:8081}
+          predicates:
+            - Path=/tenant/**
+          filters:
+            - StripPrefix=1
+
+        - id: user-service
+          uri: ${USER_SERVICE_URI:http://localhost:8082}
+          predicates:
+            - Path=/user/**
+          filters:
+            - StripPrefix=1
+
+        - id: anomaly-service
+          uri: ${ANOMALY_SERVICE_URI:http://localhost:8083}
+          predicates:
+            - Path=/anomaly/**
+          filters:
+            - StripPrefix=1
+
+        - id: telemetry-service
+          uri: ${TELEMETRY_SERVICE_URI:http://localhost:8084}
+          predicates:
+            - Path=/telemetry/**
+          filters:
+            - StripPrefix=1
+
+        - id: message-service
+          uri: ${MESSAGE_SERVICE_URI:http://localhost:8085}
+          predicates:
+            - Path=/message/**
+          filters:
+            - StripPrefix=1
+
+        - id: scheme-service
+          uri: ${SCHEME_SERVICE_URI:http://localhost:8086}
+          predicates:
+            - Path=/scheme/**
+          filters:
+            - StripPrefix=1
+
+        - id: analytics-service
+          uri: ${ANALYTICS_SERVICE_URI:http://localhost:8087}
+          predicates:
+            - Path=/analytics/**
+          filters:
+            - StripPrefix=1
+
+eureka:
+  client:
+    enabled: ${EUREKA_ENABLED:false}
+    service-url:
+      defaultZone: ${EUREKA_URL:http://localhost:8761/eureka/}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "health,info,prometheus,gateway"
+
+logging:
+  file:
+    name: ${LOG_FILE_PATH:../logger/logs/backend-services.log}
+  pattern:
+    level: "service=${spring.application.name} %5p"
