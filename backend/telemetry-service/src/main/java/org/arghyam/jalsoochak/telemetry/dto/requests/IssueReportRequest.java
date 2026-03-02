@@ -1,4 +1,4 @@
-package com.example.telemetry.dto.requests;
+package org.arghyam.jalsoochak.telemetry.dto.requests;
 
 import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
