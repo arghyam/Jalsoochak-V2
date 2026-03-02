@@ -1,5 +1,5 @@
 server:
-  port: 8085
+  port: 8084
 
 spring:
   config:
@@ -65,4 +65,10 @@ management:
   endpoints:
     web:
       exposure:
-        include: ${MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE:health,info}
+        include: ${MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE:health,info,prometheus}
+
+logging:
+  file:
+    name: ${LOG_FILE_PATH:../logger/logs/backend-services.log}
+  pattern:
+    level: "service=${spring.application.name} %5p"

@@ -24,8 +24,14 @@ A production-ready multi-module Spring Boot microservices platform built with **
 │  Telemetry       │ │  Message Service │ │  Scheme Service  │
 │  Service  :8084  │ │     :8085        │ │     :8086        │
 └──────────────────┘ └──────────────────┘ └──────────────────┘
+                               │
+                    ┌──────────┴───────────┐
+                    │  Analytics Service   │
+                    │  (DW Consumer) :8087 │
+                    └──────────────────────┘
 
 All business services register with Eureka and communicate via Kafka topics.
+Analytics service consumes events from all service topics and populates the DW schema.
 
 Infrastructure: PostgreSQL (shared_db) + Apache Kafka
 ```
@@ -43,6 +49,7 @@ Infrastructure: PostgreSQL (shared_db) + Apache Kafka
 | `telemetry-service`          | 8084   | Manages sensor and meter telemetry data          |
 | `message-service`            | 8085   | Manages notifications (Email, WhatsApp, Webhook) |
 | `scheme-service`             | 8086   | Manages water supply schemes                     |
+| `analytics-service`          | 8087   | Consumes events; populates analytics DW (`dw` schema) |
 
 ---
 
@@ -123,6 +130,86 @@ docker run -d \
 
 ---
 
+## Redis Setup (Local Docker and Cloud)
+
+All services are configured to connect to Redis via environment variables:
+
+```yaml
+spring:
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      database: ${REDIS_DATABASE:0}
+```
+
+### Option A: Local Redis with Docker
+
+```bash
+# Start Redis locally
+docker run -d --name common-redis -p 6379:6379 redis:7-alpine
+
+# Verify connectivity
+docker exec common-redis redis-cli ping
+# Expected: PONG
+```
+
+Start each service with Redis env vars (example):
+
+```bash
+cd tenant-service
+REDIS_HOST=localhost REDIS_PORT=6379 REDIS_DATABASE=0 mvn spring-boot:run
+```
+
+### Option B: Cloud-hosted Redis
+
+Set the Redis connection env vars in your deployment (VM/container/Kubernetes):
+
+```bash
+export REDIS_HOST=<your-redis-host>
+export REDIS_PORT=<your-redis-port>
+export REDIS_PASSWORD=<your-redis-password>
+export REDIS_DATABASE=0
+```
+
+If your Redis provider requires TLS, add:
+
+```bash
+export SPRING_DATA_REDIS_SSL_ENABLED=true
+```
+
+If ACL username is required by your provider, also set:
+
+```bash
+export SPRING_DATA_REDIS_USERNAME=<your-redis-username>
+```
+
+### Key Namespace Convention
+
+Each service writes to its own dedicated Redis namespace:
+
+- `<service-name>:meta:service`
+- `<service-name>:meta:lastHeartbeat`
+
+Example tenant cache keys:
+
+- `tenant-service:tenants:index`
+- `tenant-service:tenants:<STATE_CODE>:profile` (example: `tenant-service:tenants:TR:profile`)
+
+### Quick Verification
+
+```bash
+# List service namespace keys
+docker exec common-redis redis-cli KEYS "*:meta:*"
+
+# Verify tenant-service keys
+docker exec common-redis redis-cli KEYS "tenant-service:*"
+docker exec common-redis redis-cli HGETALL "tenant-service:tenants:TR:profile"
+```
+
+---
+
 ## Database Schema & Flyway Migrations
 
 The platform uses a **two-layer schema** strategy managed by [Flyway](https://flywaydb.org/):
@@ -131,6 +218,7 @@ The platform uses a **two-layer schema** strategy managed by [Flyway](https://fl
 |-------|--------|---------|
 | **Common** | `common_schema` | Shared lookup tables (tenants, admin users, user types, channels, etc.) |
 | **Per-tenant** | `tenant_<state_code>` (e.g. `tenant_mp`) | Tenant-specific operational tables (users, schemes, readings, etc.) |
+| **Data Warehouse** | `analytics_schema` | Analytics star-schema (dimensions + facts) managed by `analytics-service` |
 
 ### Migration files
 
@@ -242,6 +330,7 @@ java -jar anomaly-service/target/*.jar
 java -jar telemetry-service/target/*.jar
 java -jar message-service/target/*.jar
 java -jar scheme-service/target/*.jar
+java -jar analytics-service/target/*.jar
 ```
 
 ### Option 2: Run Individual Service via Maven
@@ -348,6 +437,18 @@ docker run -p 8081:8081 tenant-service
 ]
 ```
 
+### Analytics Service (`:8087`)
+
+| Method | Endpoint                                  | Description                              |
+|--------|-------------------------------------------|------------------------------------------|
+| GET    | `/api/v1/analytics/tenants`               | List all tenants in the DW               |
+| GET    | `/api/v1/analytics/schemes`               | List schemes (optional `?tenantId=`)     |
+| GET    | `/api/v1/analytics/meter-readings`        | Query meter readings (filters: tenantId, schemeId, startDate, endDate) |
+| GET    | `/api/v1/analytics/water-quantity`        | Query water quantity data                |
+| GET    | `/api/v1/analytics/escalations`           | Query escalations (filters: tenantId, schemeId, resolutionStatus) |
+| GET    | `/api/v1/analytics/scheme-performance`    | Query scheme performance data            |
+| POST   | `/api/v1/analytics/date-dimension/populate` | Pre-populate dim_date for a date range |
+
 ### Kafka Publishing (All Services)
 
 ```bash
@@ -376,6 +477,7 @@ GET http://localhost:<port>/actuator/health
 | `telemetry-service`        | `telemetry-service-topic`            | `common-topic`   |
 | `message-service`          | `message-service-topic`              | `common-topic`   |
 | `scheme-service`           | `scheme-service-topic`               | `common-topic`   |
+| `analytics-service`        | `analytics-service-topic`            | `tenant-service-topic`, `user-service-topic`, `scheme-service-topic`, `telemetry-service-topic`, `anomaly-service-topic`, `common-topic` |
 
 ---
 
@@ -432,5 +534,27 @@ water-management-platform/
 ├── anomaly-service/                 # Port 8083
 ├── telemetry-service/               # Port 8084
 ├── message-service/                 # Port 8085
-└── scheme-service/                  # Port 8086
+├── scheme-service/                  # Port 8086
+│
+└── analytics-service/               # Port 8087 — DW event consumer
+    ├── pom.xml
+    ├── Dockerfile
+    └── src/main/
+        ├── java/com/example/analytics/
+        │   ├── AnalyticsServiceApplication.java
+        │   ├── controller/AnalyticsController.java
+        │   ├── service/{DimensionService,FactService,DateDimensionService}.java
+        │   ├── service/serviceImpl/
+        │   ├── entity/{DimDate,DimTenant,DimUser,...,FactMeterReading,...}.java
+        │   ├── repository/
+        │   ├── dto/event/{TenantEvent,UserEvent,SchemeEvent,...}.java
+        │   ├── kafka/
+        │   │   ├── KafkaConfig.java
+        │   │   ├── KafkaProducer.java
+        │   │   └── AnalyticsKafkaConsumer.java
+        │   ├── config/OpenApiConfig.java
+        │   └── exception/GlobalExceptionHandler.java
+        └── resources/
+            ├── application.yml
+            └── db/migration/V1__create_dw_schema.sql
 ```
