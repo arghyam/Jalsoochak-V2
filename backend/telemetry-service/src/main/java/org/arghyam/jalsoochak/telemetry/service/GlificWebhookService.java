@@ -978,7 +978,7 @@ public class GlificWebhookService {
         return switch (index) {
             case 1 -> "readingSubmission";
             case 2 -> "channelChange";
-            case 3 -> "issueReport";
+            case 3 -> "reportIssue";
             case 4 -> "languageChange";
             default -> normalizeLanguageKey(selectedItemLabel);
         };
@@ -988,14 +988,45 @@ public class GlificWebhookService {
                                                   Integer tenantId,
                                                   String languageKey,
                                                   List<String> itemOptions) {
+        List<String> channelOptions = tenantConfigRepository.findChannelOptions(tenantId, languageKey);
+        boolean showChannelChange = channelOptions.size() > 1;
+
+        List<String> languageOptions = tenantConfigRepository.findLanguageOptions(tenantId);
+        boolean showLanguageChange = languageOptions.size() > 1;
+
         List<String> filtered = new java.util.ArrayList<>();
         for (String option : itemOptions) {
             String itemCode = toItemCode(option, itemOptions);
-            if ("readingSubmission".equals(itemCode) || "issueReport".equals(itemCode)) {
-                filtered.add(option);
+            if ("channelChange".equals(itemCode) && !showChannelChange) {
+                continue;
             }
+            if ("languageChange".equals(itemCode) && !showLanguageChange) {
+                continue;
+            }
+            if ("reportIssue".equals(itemCode)) {
+                filtered.add(normalizeIssueReportLabel(option, languageKey));
+                continue;
+            }
+            filtered.add(option);
         }
         return filtered.isEmpty() ? itemOptions : filtered;
+    }
+
+    private String normalizeIssueReportLabel(String option, String languageKey) {
+        if (option == null) {
+            return option;
+        }
+        String trimmed = option.trim();
+        if ("hindi".equals(languageKey)) {
+            if ("मीटर परिवर्तन".equalsIgnoreCase(trimmed)) {
+                return "समस्या रिपोर्ट करें";
+            }
+            return option;
+        }
+        if ("meter change".equalsIgnoreCase(trimmed)) {
+            return "Report Issue";
+        }
+        return option;
     }
 
     private boolean isBfmChannel(String channelOption) {
