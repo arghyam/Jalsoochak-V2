@@ -1,5 +1,6 @@
 package com.example.tenant.repository;
 
+import com.example.tenant.service.TenantSchedulerManager;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -52,6 +53,10 @@ class NudgeRepositoryIntegrationTest {
     @MockBean
     @SuppressWarnings("rawtypes")
     private KafkaTemplate kafkaTemplate;
+
+    /** Suppress @PostConstruct scheduling – not under test here. */
+    @MockBean
+    private TenantSchedulerManager tenantSchedulerManager;
 
     @Autowired
     private NudgeRepository nudgeRepository;

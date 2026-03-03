@@ -49,11 +49,6 @@ notification:
       from-address: "noreply@example.com"
       from-name: "Water Management Platform"
 
-    # ── WhatsApp via Gliffic ────────────────────────────────
-    whatsapp:
-      gliffic-api-url: ""              # Gliffic API base URL
-      gliffic-api-key: ""              # Gliffic API key / auth token
-      from-number: ""                  # WhatsApp sender number
 
 eureka:
   client:
@@ -93,6 +88,9 @@ glific:
   template:
     nudge-id: ${GLIFIC_NUDGE_TEMPLATE_ID:}
     escalation-id: ${GLIFIC_ESCALATION_TEMPLATE_ID:}
+  media:
+    escalation-caption: ${GLIFIC_ESCALATION_CAPTION:Escalations}
+    escalation-thumbnail: ${GLIFIC_ESCALATION_THUMBNAIL:}
 
 # ──────────────────────────────────────────────────────────────
 # MinIO Object Storage (escalation PDF hosting)

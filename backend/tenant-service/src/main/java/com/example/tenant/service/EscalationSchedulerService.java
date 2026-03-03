@@ -1,14 +1,12 @@
 package com.example.tenant.service;
 
-import com.example.tenant.dto.TenantResponseDTO;
+import com.example.tenant.config.EscalationScheduleConfig;
 import com.example.tenant.event.EscalationEvent;
 import com.example.tenant.event.OperatorEscalationDetail;
 import com.example.tenant.kafka.KafkaProducer;
 import com.example.tenant.repository.NudgeRepository;
-import com.example.tenant.repository.TenantCommonRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -17,15 +15,11 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Scheduled job that fires every morning (after the nudge job) and sends
- * one batched WhatsApp escalation per officer containing a PDF listing all
- * operators who have missed uploads beyond the configured threshold.
+ * Processes escalations for a single tenant. Called by {@link TenantSchedulerManager}
+ * on each tenant's individual schedule.
  *
  * <p>Users who missed &ge; level2Threshold days are escalated to the district
- * officer; those between level1 and level2 thresholds go to the section
- * officer.</p>
- *
- * <p>Cron is configurable via {@code escalation.cron} (default 09:00 daily).</p>
+ * officer; those between level1 and level2 thresholds go to the section officer.</p>
  */
 @Service
 @RequiredArgsConstructor
@@ -34,49 +28,21 @@ public class EscalationSchedulerService {
 
     private static final String COMMON_TOPIC = "common-topic";
 
-    private final TenantCommonRepository tenantCommonRepository;
     private final NudgeRepository nudgeRepository;
     private final TenantConfigService tenantConfigService;
     private final KafkaProducer kafkaProducer;
 
-    @Scheduled(cron = "${escalation.cron:0 0 9 * * ?}")
-    public void runEscalationJob() {
-        log.info("[EscalationJob] Starting escalation cron job");
+    public void processEscalationsForTenant(String schema, int tenantId) {
+        EscalationScheduleConfig cfg = tenantConfigService.getEscalationConfig(tenantId);
+        int level1Days = cfg.getLevel1Days();
+        int level2Days = cfg.getLevel2Days();
+        String level1UserType = cfg.getLevel1OfficerType();
+        String level2UserType = cfg.getLevel2OfficerType();
 
-        int level1Days = tenantConfigService.getLevel1ThresholdDays();
-        int level2Days = tenantConfigService.getLevel2ThresholdDays();
-        String level1UserType = tenantConfigService.getLevel1OfficerUserType();
-        String level2UserType = tenantConfigService.getLevel2OfficerUserType();
+        log.info("[EscalationJob] schema={} – L1: {} days ({}), L2: {} days ({})",
+                schema, level1Days, level1UserType, level2Days, level2UserType);
 
-        log.info("[EscalationJob] Thresholds – L1: {} days ({}), L2: {} days ({})",
-                level1Days, level1UserType, level2Days, level2UserType);
-
-        List<TenantResponseDTO> tenants = tenantCommonRepository.findAll();
-        for (TenantResponseDTO tenant : tenants) {
-            if (!"ACTIVE".equalsIgnoreCase(tenant.getStatus())) {
-                continue;
-            }
-            String schema = "tenant_" + tenant.getStateCode().toLowerCase();
-            int tenantId = tenant.getId() != null ? tenant.getId() : 0;
-            try {
-                processEscalationsForTenant(schema, tenantId, level1Days, level2Days, level1UserType, level2UserType);
-            } catch (Exception e) {
-                log.error("[EscalationJob] Failed for schema '{}': {}", schema, e.getMessage(), e);
-            }
-        }
-        log.info("[EscalationJob] Escalation cron job completed");
-    }
-
-    private void processEscalationsForTenant(String schema,
-                                              int tenantId,
-                                              int level1Days,
-                                              int level2Days,
-                                              String level1UserType,
-                                              String level2UserType) {
-        // Fetch all OPERATOR users whose consecutive missed days >= level1 threshold
-        List<Map<String, Object>> rows =
-                nudgeRepository.findUsersWithMissedDays(schema, level1Days);
-
+        List<Map<String, Object>> rows = nudgeRepository.findUsersWithMissedDays(schema, level1Days);
         log.info("[EscalationJob] schema={} → {} users exceeded level1 threshold", schema, rows.size());
 
         // officer-key → (officerRow, level, detailList)
@@ -154,7 +120,7 @@ public class EscalationSchedulerService {
                     .officerLanguageId(group.officerLanguageId)
                     .build();
             kafkaProducer.publishJson(COMMON_TOPIC, event);
-            log.info("[EscalationJob] Published EscalationEvent level={} officers={} with {} operators",
+            log.info("[EscalationJob] Published EscalationEvent level={} with {} operators",
                     group.level, group.details.size());
         }
     }

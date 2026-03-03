@@ -68,3 +68,24 @@ management:
     web:
       exposure:
         include: "*"
+
+# ────────────────────────────────────────────────────────────── # Nudge & Escalation Scheduler Configuration # ──────────────────────────────────────────────────────────────
+# Fallback defaults used when a tenant has no row in tenant_config_master_table
+nudge:
+  schedule:
+    hour: 18
+    minute: 00
+escalation:
+  schedule:
+    hour: 18
+    minute: 00
+  level1:
+    threshold:
+      days: 3 # Days of missed uploads before level-1 officer is notified
+    officer:
+      user_type: SECTION_OFFICER
+  level2:
+    threshold:
+      days: 7 # Days before level-2 officer is notified
+    officer:
+      user_type: DISTRICT_OFFICER

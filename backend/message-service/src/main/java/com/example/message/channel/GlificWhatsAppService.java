@@ -74,6 +74,12 @@ public class GlificWhatsAppService {
     @Value("${glific.template.escalation-id:}")
     private String escalationTemplateId;
 
+    @Value("${glific.media.escalation-caption:Escalations}")
+    private String escalationCaption;
+
+    @Value("${glific.media.escalation-thumbnail:}")
+    private String escalationThumbnail;
+
     /**
      * Opts in the contact by phone number and returns the Glific contact ID.
      * Phone must be in E.164 format (e.g., 919876543210).
@@ -108,7 +114,9 @@ public class GlificWhatsAppService {
                         "input", Map.of(
                                 "url", publicUrl,
                                 "source_url", publicUrl,
-                                "isTemplateMedia", false)))
+                                "caption", escalationCaption,
+                                "thumbnail", escalationThumbnail,
+                                "isTemplateMedia", true)))
                 .path("createMessageMedia").path("messageMedia").path("id").asText();
         log.info("[Glific] Media uploaded, mediaId={}", mediaId);
         return mediaId;
@@ -135,8 +143,9 @@ public class GlificWhatsAppService {
         Map<String, Object> input = new HashMap<>();
         input.put("templateId", Integer.parseInt(escalationTemplateId));
         input.put("receiverId", contactId.intValue());
+        input.put("isHsm", true);
+        input.put("params", List.of());
 
-        // only include mediaId if present
         if (mediaId != null && !mediaId.isBlank()) {
             input.put("mediaId", Integer.parseInt(mediaId));
         }
