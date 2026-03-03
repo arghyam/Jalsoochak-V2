@@ -3,14 +3,21 @@ package org.arghyam.jalsoochak.tenant.service.serviceImpl;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.arghyam.jalsoochak.tenant.dto.internal.ConfigDTO;
+import org.arghyam.jalsoochak.tenant.dto.internal.ConfigValueDTO;
 import org.arghyam.jalsoochak.tenant.dto.request.SetSystemConfigRequestDTO;
 import org.arghyam.jalsoochak.tenant.dto.response.SystemConfigResponseDTO;
 import org.arghyam.jalsoochak.tenant.enums.SystemConfigKeyEnum;
+import org.arghyam.jalsoochak.tenant.exception.InvalidConfigKeyException;
+import org.arghyam.jalsoochak.tenant.exception.InvalidConfigValueException;
 import org.arghyam.jalsoochak.tenant.repository.TenantCommonRepository;
 import org.arghyam.jalsoochak.tenant.service.SystemManagementService;
 import org.arghyam.jalsoochak.tenant.util.SecurityUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.util.EnumSet;
 import java.util.HashMap;
@@ -24,7 +31,9 @@ import java.util.Set;
 public class SystemManagementServiceImpl implements SystemManagementService {
 
     private static final Integer SYSTEM_TENANT_ID = 0;
+
     private final TenantCommonRepository tenantCommonRepository;
+    private final ObjectMapper objectMapper;
 
     @Override
     public SystemConfigResponseDTO getSystemConfigs(Set<SystemConfigKeyEnum> keys) {
@@ -33,51 +42,67 @@ public class SystemManagementServiceImpl implements SystemManagementService {
                 ? EnumSet.allOf(SystemConfigKeyEnum.class)
                 : keys;
 
-        try {
-            List<ConfigDTO> configs = tenantCommonRepository.findConfigsByTenantId(SYSTEM_TENANT_ID);
-            Map<SystemConfigKeyEnum, String> configMap = new HashMap<>();
+        List<ConfigDTO> configs = tenantCommonRepository.findConfigsByTenantId(SYSTEM_TENANT_ID);
+        Map<SystemConfigKeyEnum, ConfigValueDTO> configMap = new HashMap<>();
 
-            for (ConfigDTO cfg : configs) {
-                try {
-                    SystemConfigKeyEnum key = SystemConfigKeyEnum.valueOf(cfg.getConfigKey());
-                    if (effectiveKeys.contains(key)) {
-                        configMap.put(key, cfg.getConfigValue());
-                    }
-                } catch (IllegalArgumentException e) {
-                    log.error("Invalid system config key: {}", cfg.getConfigKey(), e);
+        for (ConfigDTO cfg : configs) {
+            try {
+                SystemConfigKeyEnum key = SystemConfigKeyEnum.valueOf(cfg.getConfigKey());
+                if (effectiveKeys.contains(key)) {
+                    configMap.put(key, objectMapper.readValue(cfg.getConfigValue(), key.getDtoClass()));
                 }
+            } catch (IllegalArgumentException e) {
+                log.error("Invalid system config key: {}", cfg.getConfigKey(), e);
+                throw new InvalidConfigKeyException("Invalid system config key: " + cfg.getConfigKey(), e);
+            } catch (JsonProcessingException e) {
+                log.error("Malformed system config value for key [key={}]", cfg.getConfigKey(), e);
+                throw new InvalidConfigValueException("Malformed config value for key: " + cfg.getConfigKey(), e);
             }
-
-            return SystemConfigResponseDTO.builder().configs(configMap).build();
-        } catch (Exception e) {
-            log.error("Failed to retrieve system configurations", e);
-            throw new RuntimeException("Failed to retrieve system configurations" + e.getMessage(), e);
         }
+
+        return SystemConfigResponseDTO.builder().configs(configMap).build();
     }
 
     @Override
     @Transactional
     public SystemConfigResponseDTO setSystemConfigs(SetSystemConfigRequestDTO request) {
         log.info("Setting system configurations");
-        try {
-            String currentUuid = SecurityUtils.getCurrentUserUuid();
-            Integer currentUserId = tenantCommonRepository.findUserIdByUuid(currentUuid).orElse(null);
+        String currentUuid = SecurityUtils.getCurrentUserUuid();
+        Integer currentUserId = tenantCommonRepository.findUserIdByUuid(currentUuid).orElse(null);
 
-            Map<SystemConfigKeyEnum, String> results = new HashMap<>();
-            for (Map.Entry<SystemConfigKeyEnum, String> entry : request.getConfigs().entrySet()) {
-                SystemConfigKeyEnum key = entry.getKey();
-                String value = entry.getValue();
+        Map<SystemConfigKeyEnum, ConfigValueDTO> results = new HashMap<>();
 
-                ConfigDTO cfg = tenantCommonRepository
-                        .upsertConfig(SYSTEM_TENANT_ID, key.name(), value, currentUserId)
-                        .orElseThrow(() -> new RuntimeException("Failed to upsert system config: " + key));
-                results.put(SystemConfigKeyEnum.valueOf(cfg.getConfigKey()), cfg.getConfigValue());
+        for (Map.Entry<SystemConfigKeyEnum, JsonNode> entry : request.getConfigs().entrySet()) {
+            SystemConfigKeyEnum key = entry.getKey();
+            ConfigValueDTO dto;
+            try {
+                dto = objectMapper.treeToValue(entry.getValue(), key.getDtoClass());
+            } catch (JsonProcessingException e) {
+                throw new InvalidConfigValueException(
+                        "Invalid value for config key " + key + ": " + e.getMessage(), e);
             }
 
-            return SystemConfigResponseDTO.builder().configs(results).build();
-        } catch (Exception e) {
-            log.error("Failed to update system configurations", e);
-            throw new RuntimeException("Failed to update system configurations" + e.getMessage(), e);
+            String serialized;
+            try {
+                serialized = objectMapper.writeValueAsString(dto);
+            } catch (JsonProcessingException e) {
+                throw new InvalidConfigValueException(
+                        "Failed to serialize config value for key: " + key, e);
+            }
+
+            ConfigDTO cfg = tenantCommonRepository
+                    .upsertConfig(SYSTEM_TENANT_ID, key.name(), serialized, currentUserId)
+                    .orElseThrow(() -> new RuntimeException("Failed to upsert system config: " + key));
+
+            try {
+                results.put(SystemConfigKeyEnum.valueOf(cfg.getConfigKey()),
+                        objectMapper.readValue(cfg.getConfigValue(), key.getDtoClass()));
+            } catch (JsonProcessingException e) {
+                throw new InvalidConfigValueException(
+                        "Malformed saved config value for key: " + key, e);
+            }
         }
+
+        return SystemConfigResponseDTO.builder().configs(results).build();
     }
 }

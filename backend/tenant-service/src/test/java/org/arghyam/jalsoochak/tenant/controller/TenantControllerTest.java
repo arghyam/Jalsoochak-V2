@@ -1,7 +1,10 @@
 package org.arghyam.jalsoochak.tenant.controller;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.arghyam.jalsoochak.tenant.dto.common.PageResponseDTO;
+import org.arghyam.jalsoochak.tenant.dto.internal.ConfigValueDTO;
+import org.arghyam.jalsoochak.tenant.dto.internal.SimpleConfigValueDTO;
 import org.arghyam.jalsoochak.tenant.dto.request.CreateDepartmentRequestDTO;
 import org.arghyam.jalsoochak.tenant.dto.request.CreateTenantRequestDTO;
 import org.arghyam.jalsoochak.tenant.dto.request.SetTenantConfigRequestDTO;
@@ -236,8 +239,8 @@ class TenantControllerTest {
         @Test
         void getTenantConfigs_Success() throws Exception {
             Integer tenantId = 1;
-            Map<TenantConfigKeyEnum, String> configs = new HashMap<>();
-            configs.put(TenantConfigKeyEnum.TENANT_LOGO_URL, "url");
+            Map<TenantConfigKeyEnum, ConfigValueDTO> configs = new HashMap<>();
+            configs.put(TenantConfigKeyEnum.TENANT_LOGO_URL, new SimpleConfigValueDTO("url"));
             TenantConfigResponseDTO response = TenantConfigResponseDTO.builder().tenantId(tenantId).configs(configs).build();
 
             when(tenantManagementService.getTenantConfigs(eq(tenantId), any())).thenReturn(response);
@@ -246,7 +249,7 @@ class TenantControllerTest {
                     .contentType(MediaType.APPLICATION_JSON))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.status").value(200))
-                    .andExpect(jsonPath("$.data.configs.TENANT_LOGO_URL").value("url"));
+                    .andExpect(jsonPath("$.data.configs.TENANT_LOGO_URL.value").value("url"));
 
             verify(tenantManagementService).getTenantConfigs(eq(tenantId), any());
         }
@@ -254,8 +257,8 @@ class TenantControllerTest {
         @Test
         void getTenantConfigs_WithKeys() throws Exception {
             Integer tenantId = 1;
-            Map<TenantConfigKeyEnum, String> configs = new HashMap<>();
-            configs.put(TenantConfigKeyEnum.TENANT_LOGO_URL, "url");
+            Map<TenantConfigKeyEnum, ConfigValueDTO> configs = new HashMap<>();
+            configs.put(TenantConfigKeyEnum.TENANT_LOGO_URL, new SimpleConfigValueDTO("url"));
             TenantConfigResponseDTO response = TenantConfigResponseDTO.builder().tenantId(tenantId).configs(configs).build();
 
             when(tenantManagementService.getTenantConfigs(eq(tenantId), any())).thenReturn(response);
@@ -264,7 +267,7 @@ class TenantControllerTest {
                     .param("keys", "TENANT_LOGO_URL")
                     .contentType(MediaType.APPLICATION_JSON))
                     .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.data.configs.TENANT_LOGO_URL").value("url"));
+                    .andExpect(jsonPath("$.data.configs.TENANT_LOGO_URL.value").value("url"));
         }
 
         @Test
@@ -284,10 +287,13 @@ class TenantControllerTest {
         @Test
         void setTenantConfigs_Success() throws Exception {
             Integer tenantId = 1;
-            Map<TenantConfigKeyEnum, String> configs = new HashMap<>();
-            configs.put(TenantConfigKeyEnum.TENANT_LOGO_URL, "url");
-            SetTenantConfigRequestDTO request = SetTenantConfigRequestDTO.builder().configs(configs).build();
-            TenantConfigResponseDTO response = TenantConfigResponseDTO.builder().tenantId(tenantId).configs(configs).build();
+            Map<TenantConfigKeyEnum, JsonNode> requestConfigs = new HashMap<>();
+            requestConfigs.put(TenantConfigKeyEnum.TENANT_LOGO_URL, objectMapper.readTree("{\"value\":\"url\"}"));
+            SetTenantConfigRequestDTO request = SetTenantConfigRequestDTO.builder().configs(requestConfigs).build();
+            
+            Map<TenantConfigKeyEnum, ConfigValueDTO> responseConfigs = new HashMap<>();
+            responseConfigs.put(TenantConfigKeyEnum.TENANT_LOGO_URL, new SimpleConfigValueDTO("url"));
+            TenantConfigResponseDTO response = TenantConfigResponseDTO.builder().tenantId(tenantId).configs(responseConfigs).build();
 
             when(tenantManagementService.setTenantConfigs(eq(tenantId), any(SetTenantConfigRequestDTO.class)))
                     .thenReturn(response);
@@ -297,7 +303,7 @@ class TenantControllerTest {
                     .content(objectMapper.writeValueAsString(request)))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.status").value(200))
-                    .andExpect(jsonPath("$.data.configs.TENANT_LOGO_URL").value("url"));
+                    .andExpect(jsonPath("$.data.configs.TENANT_LOGO_URL.value").value("url"));
 
             verify(tenantManagementService).setTenantConfigs(eq(tenantId), any());
         }
@@ -305,8 +311,8 @@ class TenantControllerTest {
         @Test
         void setTenantConfigs_NotFound() throws Exception {
             Integer tenantId = 999;
-            Map<TenantConfigKeyEnum, String> configs = new HashMap<>();
-            configs.put(TenantConfigKeyEnum.TENANT_LOGO_URL, "url");
+            Map<TenantConfigKeyEnum, JsonNode> configs = new HashMap<>();
+            configs.put(TenantConfigKeyEnum.TENANT_LOGO_URL, objectMapper.readTree("{\"value\":\"url\"}"));
             SetTenantConfigRequestDTO request = SetTenantConfigRequestDTO.builder().configs(configs).build();
 
             when(tenantManagementService.setTenantConfigs(eq(tenantId), any()))

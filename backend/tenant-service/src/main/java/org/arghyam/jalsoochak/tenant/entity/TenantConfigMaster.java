@@ -2,7 +2,7 @@ package org.arghyam.jalsoochak.tenant.entity;
 
 import jakarta.persistence.*;
 import lombok.*;
-import org.arghyam.jalsoochak.tenant.enums.TenantConfigKeyEnum;
+
 import java.time.LocalDateTime;
 
 @Entity
@@ -25,9 +25,8 @@ public class TenantConfigMaster {
     @JoinColumn(name = "tenant_id", nullable = false)
     private TenantMaster tenant;
 
-    @Enumerated(EnumType.STRING)
     @Column(name = "config_key", columnDefinition = "text")
-    private TenantConfigKeyEnum configKey;
+    private String configKey;
 
     @Column(name = "config_value", columnDefinition = "text")
     private String configValue;

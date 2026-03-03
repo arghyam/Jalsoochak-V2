@@ -26,11 +26,6 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
-/**
- * Controller for platform-wide system configurations.
- * These settings affect the entire system and are managed only by Super
- * Admins.
- */
 @RestController
 @RequestMapping("/api/v1/system")
 @RequiredArgsConstructor
@@ -41,8 +36,7 @@ public class SystemController {
     private final SystemManagementService systemManagementService;
 
     /**
-     * 1. API for getting system-wide configurations - accessible only by super
-     * admin
+     * 1. Get system configurations
      */
     @Operation(summary = "Get system configurations", description = "Retrieves global platform settings. Super Admin only.")
     @ApiResponses(value = {
@@ -62,8 +56,7 @@ public class SystemController {
     }
 
     /**
-     * 2. API for updating system-wide configurations - accessible only by super
-     * admin
+     * 2. Update system configurations 
      */
     @Operation(summary = "Set system configurations", description = "Updates global system settings. Super Admin only.")
     @ApiResponses(value = {

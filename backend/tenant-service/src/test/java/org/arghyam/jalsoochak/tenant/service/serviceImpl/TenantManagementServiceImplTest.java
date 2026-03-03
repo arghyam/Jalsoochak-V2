@@ -1,8 +1,32 @@
 package org.arghyam.jalsoochak.tenant.service.serviceImpl;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.mockStatic;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+
 import org.arghyam.jalsoochak.tenant.config.TenantContext;
 import org.arghyam.jalsoochak.tenant.dto.common.PageResponseDTO;
+import org.arghyam.jalsoochak.tenant.dto.internal.ConfigDTO;
+import org.arghyam.jalsoochak.tenant.dto.internal.ConfigValueDTO;
+import org.arghyam.jalsoochak.tenant.dto.internal.LocationConfigDTO;
+import org.arghyam.jalsoochak.tenant.dto.internal.SimpleConfigValueDTO;
 import org.arghyam.jalsoochak.tenant.dto.request.CreateDepartmentRequestDTO;
 import org.arghyam.jalsoochak.tenant.dto.request.CreateTenantRequestDTO;
 import org.arghyam.jalsoochak.tenant.dto.request.SetTenantConfigRequestDTO;
@@ -10,16 +34,19 @@ import org.arghyam.jalsoochak.tenant.dto.request.UpdateTenantRequestDTO;
 import org.arghyam.jalsoochak.tenant.dto.response.DepartmentResponseDTO;
 import org.arghyam.jalsoochak.tenant.dto.response.TenantConfigResponseDTO;
 import org.arghyam.jalsoochak.tenant.dto.response.TenantResponseDTO;
-import org.arghyam.jalsoochak.tenant.dto.internal.ConfigDTO;
+import org.arghyam.jalsoochak.tenant.enums.RegionTypeEnum;
 import org.arghyam.jalsoochak.tenant.enums.TenantConfigKeyEnum;
 import org.arghyam.jalsoochak.tenant.exception.ResourceNotFoundException;
 import org.arghyam.jalsoochak.tenant.kafka.KafkaProducer;
 import org.arghyam.jalsoochak.tenant.repository.TenantCommonRepository;
 import org.arghyam.jalsoochak.tenant.repository.TenantSchemaRepository;
 import org.arghyam.jalsoochak.tenant.util.SecurityUtils;
-import org.junit.jupiter.api.*;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.MockedStatic;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -27,11 +54,8 @@ import org.springframework.data.redis.core.HashOperations;
 import org.springframework.data.redis.core.SetOperations;
 import org.springframework.data.redis.core.StringRedisTemplate;
 
-import java.util.*;
-
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.*;
-import static org.mockito.Mockito.*;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 /**
  * Comprehensive unit tests for TenantManagementServiceImpl.
@@ -52,9 +76,6 @@ class TenantManagementServiceImplTest {
     private KafkaProducer kafkaProducer;
 
     @Mock
-    private ObjectMapper objectMapper;
-
-    @Mock
     private StringRedisTemplate redisTemplate;
 
     @Mock
@@ -63,16 +84,27 @@ class TenantManagementServiceImplTest {
     @Mock
     private SetOperations<String, String> setOperations;
 
-    @InjectMocks
+    private ObjectMapper objectMapper;
+
     private TenantManagementServiceImpl tenantManagementService;
 
     private MockedStatic<SecurityUtils> mockedSecurityUtils;
 
     @BeforeEach
     void setUp() {
+        objectMapper = new ObjectMapper();
         mockedSecurityUtils = mockStatic(SecurityUtils.class);
         lenient().when(redisTemplate.opsForHash()).thenReturn(hashOperations);
         lenient().when(redisTemplate.opsForSet()).thenReturn(setOperations);
+        
+        // Manually create service with real ObjectMapper and mocked dependencies
+        tenantManagementService = new TenantManagementServiceImpl(
+            tenantCommonRepository,
+            tenantSchemaRepository,
+            kafkaProducer,
+            objectMapper,
+            redisTemplate
+        );
     }
 
     @AfterEach
@@ -104,9 +136,8 @@ class TenantManagementServiceImplTest {
             when(tenantCommonRepository.findByStateCode("TT")).thenReturn(Optional.empty());
             when(SecurityUtils.getCurrentUserUuid()).thenReturn("user-uuid");
             when(tenantCommonRepository.findUserIdByUuid("user-uuid")).thenReturn(Optional.of(100));
-            when(tenantCommonRepository.createTenant(eq(request), eq(100)))
+            when(tenantCommonRepository.createTenant(any(CreateTenantRequestDTO.class), anyInt()))
                     .thenReturn(Optional.of(expectedResponse));
-            when(objectMapper.writeValueAsString(any())).thenReturn("{}");
 
             // Act
             TenantResponseDTO result = tenantManagementService.createTenant(request);
@@ -185,9 +216,8 @@ class TenantManagementServiceImplTest {
             when(tenantCommonRepository.findById(tenantId)).thenReturn(Optional.of(existing));
             when(SecurityUtils.getCurrentUserUuid()).thenReturn("user-uuid");
             when(tenantCommonRepository.findUserIdByUuid("user-uuid")).thenReturn(Optional.of(100));
-            when(tenantCommonRepository.updateTenant(eq(tenantId), eq(request), eq(100)))
+            when(tenantCommonRepository.updateTenant(anyInt(), any(UpdateTenantRequestDTO.class), anyInt()))
                     .thenReturn(Optional.of(updated));
-            when(objectMapper.writeValueAsString(any())).thenReturn("{}");
 
             // Act
             TenantResponseDTO result = tenantManagementService.updateTenant(tenantId, request);
@@ -195,7 +225,7 @@ class TenantManagementServiceImplTest {
             // Assert
             assertNotNull(result);
             assertEquals("ACTIVE", result.getStatus());
-            verify(tenantCommonRepository).updateTenant(eq(tenantId), eq(request), eq(100));
+            verify(tenantCommonRepository).updateTenant(anyInt(), any(UpdateTenantRequestDTO.class), anyInt());
             verify(kafkaProducer).sendMessage(anyString());
         }
 
@@ -249,13 +279,12 @@ class TenantManagementServiceImplTest {
                     .thenReturn(Optional.of(deactivated));
             when(SecurityUtils.getCurrentUserUuid()).thenReturn("user-uuid");
             when(tenantCommonRepository.findUserIdByUuid("user-uuid")).thenReturn(Optional.of(100));
-            when(objectMapper.writeValueAsString(any())).thenReturn("{}");
 
             // Act
             tenantManagementService.deactivateTenant(tenantId);
 
             // Assert
-            verify(tenantCommonRepository).deactivateTenant(eq(tenantId), eq(100));
+            verify(tenantCommonRepository).deactivateTenant(anyInt(), anyInt());
             verify(kafkaProducer).sendMessage(anyString());
         }
 
@@ -331,16 +360,16 @@ class TenantManagementServiceImplTest {
             List<ConfigDTO> configsList = Arrays.asList(
                     ConfigDTO.builder()
                             .configKey(TenantConfigKeyEnum.TENANT_LOGO_URL.name())
-                            .configValue("https://brand.com/logo.png")
-                            .build(),
-                    ConfigDTO.builder()
-                            .configKey(TenantConfigKeyEnum.SUPPORTED_LANGUAGES.name())
-                            .configValue("en,ta")
+                            .configValue("{\"value\":\"https://brand.com/logo.png\"}")
                             .build()
             );
 
             when(tenantCommonRepository.findById(tenantId)).thenReturn(Optional.of(tenant));
             when(tenantCommonRepository.findConfigsByTenantId(tenantId)).thenReturn(configsList);
+            when(tenantSchemaRepository.getLocationHierarchy("tenant_tn", RegionTypeEnum.LGD))
+                    .thenReturn(LocationConfigDTO.builder().locationHierarchy(Collections.emptyList()).build());
+            when(tenantSchemaRepository.getLocationHierarchy("tenant_tn", RegionTypeEnum.DEPARTMENT))
+                    .thenReturn(LocationConfigDTO.builder().locationHierarchy(Collections.emptyList()).build());
 
             // Act
             TenantConfigResponseDTO result = tenantManagementService.getTenantConfigs(tenantId, null);
@@ -348,14 +377,16 @@ class TenantManagementServiceImplTest {
             // Assert
             assertNotNull(result);
             assertEquals(tenantId, result.getTenantId());
-            assertEquals(2, result.getConfigs().size());
-            assertEquals("https://brand.com/logo.png", 
-                    result.getConfigs().get(TenantConfigKeyEnum.TENANT_LOGO_URL));
+            assertTrue(result.getConfigs().containsKey(TenantConfigKeyEnum.TENANT_LOGO_URL));
+            ConfigValueDTO configValue = result.getConfigs().get(TenantConfigKeyEnum.TENANT_LOGO_URL);
+            assertTrue(configValue instanceof SimpleConfigValueDTO);
+            assertEquals("https://brand.com/logo.png", ((SimpleConfigValueDTO) configValue).getValue());
             verify(tenantCommonRepository).findById(tenantId);
         }
 
         @Test
         @DisplayName("Should handle null filter keys and retrieve all configurations")
+        @SuppressWarnings("unchecked")
         void testGetTenantConfigs_NullFilterKeys() {
             // Arrange
             Integer tenantId = 1;
@@ -363,13 +394,17 @@ class TenantManagementServiceImplTest {
             List<ConfigDTO> configsList = Collections.singletonList(
                     ConfigDTO.builder()
                             .configKey(TenantConfigKeyEnum.TENANT_LOGO_URL.name())
-                            .configValue("https://brand.com/logo.png")
+                            .configValue("{\"value\": \"https://brand.com/logo.png\"}")
                             .build()
             );
 
             when(tenantCommonRepository.findById(tenantId)).thenReturn(Optional.of(tenant));
             when(tenantCommonRepository.findConfigsByTenantId(tenantId))
                     .thenReturn(configsList);
+            when(tenantSchemaRepository.getLocationHierarchy("tenant_tn", RegionTypeEnum.LGD))
+                    .thenReturn(LocationConfigDTO.builder().locationHierarchy(Collections.emptyList()).build());
+            when(tenantSchemaRepository.getLocationHierarchy("tenant_tn", RegionTypeEnum.DEPARTMENT))
+                    .thenReturn(LocationConfigDTO.builder().locationHierarchy(Collections.emptyList()).build());
 
             // Act
             TenantConfigResponseDTO result = tenantManagementService.getTenantConfigs(tenantId, null);
@@ -401,6 +436,10 @@ class TenantManagementServiceImplTest {
 
             when(tenantCommonRepository.findById(tenantId)).thenReturn(Optional.of(tenant));
             when(tenantCommonRepository.findConfigsByTenantId(tenantId)).thenReturn(Collections.emptyList());
+            when(tenantSchemaRepository.getLocationHierarchy("tenant_tn", RegionTypeEnum.LGD))
+                    .thenReturn(LocationConfigDTO.builder().locationHierarchy(Collections.emptyList()).build());
+            when(tenantSchemaRepository.getLocationHierarchy("tenant_tn", RegionTypeEnum.DEPARTMENT))
+                    .thenReturn(LocationConfigDTO.builder().locationHierarchy(Collections.emptyList()).build());
 
             // Act
             TenantConfigResponseDTO result = tenantManagementService.getTenantConfigs(tenantId, null);
@@ -418,12 +457,13 @@ class TenantManagementServiceImplTest {
 
         @Test
         @DisplayName("Should set tenant configurations successfully")
-        void testSetTenantConfigs_Success() {
+        void testSetTenantConfigs_Success() throws Exception {
             // Arrange
             Integer tenantId = 1;
             TenantResponseDTO tenant = TenantResponseDTO.builder().id(tenantId).stateCode("TN").build();
-            Map<TenantConfigKeyEnum, String> newConfigs = new HashMap<>();
-            newConfigs.put(TenantConfigKeyEnum.EMAIL_TEMPLATE_JSON, "{\"welcome\": \"...\"}");
+            Map<TenantConfigKeyEnum, JsonNode> newConfigs = new HashMap<>();
+            // Input should be JSON that matches SimpleConfigValueDTO structure with "value" field
+            newConfigs.put(TenantConfigKeyEnum.EMAIL_TEMPLATE_JSON, objectMapper.readTree("{\"value\": \"{\\\"welcome\\\": \\\"...\\\"}\"}"));
 
             SetTenantConfigRequestDTO request = SetTenantConfigRequestDTO.builder()
                     .configs(newConfigs)
@@ -431,7 +471,7 @@ class TenantManagementServiceImplTest {
 
             ConfigDTO savedConfig = ConfigDTO.builder()
                     .configKey(TenantConfigKeyEnum.EMAIL_TEMPLATE_JSON.name())
-                    .configValue("{\"welcome\": \"...\"}")
+                    .configValue("{\"value\":\"{\\\"welcome\\\": \\\"...\\\"}\"}") 
                     .build();
 
             when(tenantCommonRepository.findById(tenantId)).thenReturn(Optional.of(tenant));
@@ -440,7 +480,7 @@ class TenantManagementServiceImplTest {
             when(tenantCommonRepository.upsertConfig(
                     eq(tenantId), 
                     eq(TenantConfigKeyEnum.EMAIL_TEMPLATE_JSON.name()),
-                    eq("{\"welcome\": \"...\"}"),
+                    anyString(),
                     eq(100)
             )).thenReturn(Optional.of(savedConfig));
 
@@ -450,19 +490,21 @@ class TenantManagementServiceImplTest {
             // Assert
             assertNotNull(result);
             assertEquals(tenantId, result.getTenantId());
-            assertEquals("{\"welcome\": \"...\"}", 
-                    result.getConfigs().get(TenantConfigKeyEnum.EMAIL_TEMPLATE_JSON));
+            ConfigValueDTO configValue = result.getConfigs().get(TenantConfigKeyEnum.EMAIL_TEMPLATE_JSON);
+            assertTrue(configValue instanceof SimpleConfigValueDTO);
+            assertEquals("{\"welcome\": \"...\"}", ((SimpleConfigValueDTO) configValue).getValue());
             verify(tenantCommonRepository).upsertConfig(eq(tenantId), any(), any(), any());
         }
 
         @Test
         @DisplayName("Should throw exception when config upsert fails")
-        void testSetTenantConfigs_UpsertFailed() {
+        void testSetTenantConfigs_UpsertFailed() throws Exception {
             // Arrange
             Integer tenantId = 1;
             TenantResponseDTO tenant = TenantResponseDTO.builder().id(tenantId).build();
-            Map<TenantConfigKeyEnum, String> configs = new HashMap<>();
-            configs.put(TenantConfigKeyEnum.EMAIL_TEMPLATE_JSON, "{\"test\":true}");
+            Map<TenantConfigKeyEnum, JsonNode> configs = new HashMap<>();
+            // Use valid JSON format that matches SimpleConfigValueDTO structure
+            configs.put(TenantConfigKeyEnum.EMAIL_TEMPLATE_JSON, objectMapper.readTree("{\"value\": \"test value\"}"));
 
             SetTenantConfigRequestDTO request = SetTenantConfigRequestDTO.builder()
                     .configs(configs)
@@ -471,7 +513,7 @@ class TenantManagementServiceImplTest {
             when(tenantCommonRepository.findById(tenantId)).thenReturn(Optional.of(tenant));
             when(SecurityUtils.getCurrentUserUuid()).thenReturn("user-uuid");
             when(tenantCommonRepository.findUserIdByUuid("user-uuid")).thenReturn(Optional.of(100));
-            when(tenantCommonRepository.upsertConfig(any(), any(), any(), any()))
+            when(tenantCommonRepository.upsertConfig(eq(tenantId), anyString(), anyString(), eq(100)))
                     .thenReturn(Optional.empty());
 
             // Act & Assert

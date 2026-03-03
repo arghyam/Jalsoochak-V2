@@ -1,5 +1,6 @@
 package org.arghyam.jalsoochak.tenant.dto.request;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import jakarta.validation.constraints.NotEmpty;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -22,5 +23,5 @@ public class SetSystemConfigRequestDTO {
      * Map of configuration keys and their corresponding values.
      */
     @NotEmpty(message = "Configurations map cannot be empty")
-    private Map<SystemConfigKeyEnum, String> configs;
+    private Map<SystemConfigKeyEnum, JsonNode> configs;
 }

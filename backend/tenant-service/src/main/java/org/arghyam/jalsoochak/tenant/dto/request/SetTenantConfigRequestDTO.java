@@ -1,5 +1,6 @@
 package org.arghyam.jalsoochak.tenant.dto.request;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotEmpty;
 import lombok.AllArgsConstructor;
@@ -18,6 +19,6 @@ import java.util.Map;
 public class SetTenantConfigRequestDTO {
 
     @NotEmpty(message = "Configurations map cannot be empty")
-    @Schema(description = "Map of configuration keys to their stringified values")
-    private Map<TenantConfigKeyEnum, String> configs;
+    @Schema(description = "Map of configuration keys to their typed config values")
+    private Map<TenantConfigKeyEnum, JsonNode> configs;
 }

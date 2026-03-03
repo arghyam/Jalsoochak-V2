@@ -49,7 +49,7 @@ public class TenantController {
         private final TenantManagementService tenantManagementService;
 
         /**
-         * 1. API for creating a new tenant - accessible only by super admin
+         * 1. Create a new tenant
          */
         @Operation(summary = "Create a new tenant", description = "Registers a new tenant in the common schema and provisions a dedicated "
                         + "database schema (tenant_<stateCode>) with all required tables and indexes.")
@@ -72,7 +72,7 @@ public class TenantController {
         }
 
         /**
-         * 2. API for getting all tenants - accessible by super admin and tenant admin
+         * 2. Get all tenants
          */
         @Operation(summary = "List all tenants with pagination", description = "Returns a paginated list of tenants registered in the common schema, ordered by ID.")
         @ApiResponses({
@@ -93,7 +93,7 @@ public class TenantController {
         }
 
         /**
-         * 3. API for updating a tenant - accessible by super admin
+         * 3. Update a tenant
          */
         @Operation(summary = "Update tenant", description = "Updates the status of an existing tenant identified by tenantId.")
         @ApiResponses({
@@ -115,7 +115,7 @@ public class TenantController {
         }
 
         /**
-         * 4. API for deactivating a tenant - accessible by super admin
+         * 4. Deactivate a tenant
          */
         @Operation(summary = "Deactivate (soft-delete) a tenant", description = "Sets the tenant status to INACTIVE for the given tenantId.")
         @ApiResponses({
@@ -135,8 +135,7 @@ public class TenantController {
         }
 
         /**
-         * 5. API for getting all configurations for a tenant - accessible by super
-         * admin and tenant admin
+         * 5. Get all configurations for a tenant
          */
         @Operation(summary = "Get all configurations for a tenant", description = "Retrieves all active configuration key-value pairs for a specific tenant in a Map format.")
         @ApiResponses({
@@ -161,8 +160,7 @@ public class TenantController {
         }
 
         /**
-         * 6. API for setting or updating multiple configurations for a tenant -
-         * accessible by super admin and tenant admin
+         * 6. Set or update multiple configurations for a tenant
          */
         @Operation(summary = "Set or update multiple tenant configurations", description = "Batch updates or creates configurations for the specified tenant using a Map structure.")
         @ApiResponses({
@@ -184,8 +182,7 @@ public class TenantController {
         }
 
         /**
-         * 7. API for getting departments for the current tenant - accessible by super
-         * admin and tenant admin
+         * 7. Get departments for the current tenant
          */
         @Operation(summary = "Get departments for the current tenant", description = "Fetches the department hierarchy from the tenant-specific schema. "
                         + "Requires the X-Tenant-Code header to be set by the API gateway.")
@@ -206,8 +203,7 @@ public class TenantController {
         }
 
         /**
-         * 8. API for creating a department for the current tenant - accessible by super
-         * admin and tenant admin
+         * 8. Create a department for the current tenant
          */
         @Operation(summary = "Create a department for the current tenant", description = "Inserts a new department into the tenant-specific schema's department_location_master_table. "
                         + "Requires the X-Tenant-Code header to identify the target tenant schema.")

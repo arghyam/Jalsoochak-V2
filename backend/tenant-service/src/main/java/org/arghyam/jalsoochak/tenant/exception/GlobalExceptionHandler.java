@@ -7,6 +7,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 import java.util.List;
 
@@ -36,6 +37,31 @@ public class GlobalExceptionHandler {
         return build(HttpStatus.FORBIDDEN, ex.getMessage());
     }
 
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<ApiErrorResponseDTO> handleTypeMismatch(MethodArgumentTypeMismatchException ex) {
+        String message = String.format("Invalid value '%s' for parameter '%s'", ex.getValue(), ex.getParameter().getParameterName());
+        log.warn("Type mismatch: {}", message);
+        return build(HttpStatus.BAD_REQUEST, message);
+    }
+
+    @ExceptionHandler(InvalidConfigKeyException.class)
+    public ResponseEntity<ApiErrorResponseDTO> handleInvalidConfigKey(InvalidConfigKeyException ex) {
+        log.warn("Invalid config key: {}", ex.getMessage());
+        return build(HttpStatus.BAD_REQUEST, ex.getMessage());
+    }
+
+    @ExceptionHandler(InvalidConfigValueException.class)
+    public ResponseEntity<ApiErrorResponseDTO> handleInvalidConfigValue(InvalidConfigValueException ex) {
+        log.warn("Invalid config value: {}", ex.getMessage());
+        return build(HttpStatus.BAD_REQUEST, ex.getMessage());
+    }
+
+    @ExceptionHandler(ConfigurationException.class)
+    public ResponseEntity<ApiErrorResponseDTO> handleConfigurationException(ConfigurationException ex) {
+        log.error("Configuration error: {}", ex.getMessage(), ex);
+        return build(HttpStatus.INTERNAL_SERVER_ERROR, "Configuration processing failed");
+    }
+
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<ApiErrorResponseDTO> handleBadRequest(IllegalArgumentException ex) {
         log.warn("Bad request: {}", ex.getMessage());
@@ -50,13 +76,13 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(RuntimeException.class)
     public ResponseEntity<ApiErrorResponseDTO> handleRuntimeException(RuntimeException ex) {
-        log.error("Runtime error: {}", ex.getMessage(), ex);
-        return build(HttpStatus.BAD_REQUEST, ex.getMessage());
+        log.error("Unexpected runtime error: {}", ex.getMessage(), ex);
+        return build(HttpStatus.INTERNAL_SERVER_ERROR, "An unexpected error occurred");
     }
 
     @ExceptionHandler(Exception.class)
-    public ResponseEntity<ApiErrorResponseDTO> handleGeneral(Exception ex) {
-        log.error("Unexpected error", ex);
+    public ResponseEntity<ApiErrorResponseDTO> handleException(Exception ex) {
+        log.error("Unexpected error: {}", ex.getMessage(), ex);
         return build(HttpStatus.INTERNAL_SERVER_ERROR, "An unexpected error occurred");
     }
 

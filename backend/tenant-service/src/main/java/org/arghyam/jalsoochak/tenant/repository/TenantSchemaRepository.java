@@ -8,7 +8,7 @@ import org.arghyam.jalsoochak.tenant.dto.response.DepartmentResponseDTO;
 import org.arghyam.jalsoochak.tenant.dto.internal.LanguageConfigDTO;
 import org.arghyam.jalsoochak.tenant.dto.internal.LocationLevelConfigDTO;
 import org.arghyam.jalsoochak.tenant.dto.internal.LocationLevelNameDTO;
-import org.arghyam.jalsoochak.tenant.dto.internal.TenantLocationHierarchyConfigDTO;
+import org.arghyam.jalsoochak.tenant.dto.internal.LocationConfigDTO;
 import org.arghyam.jalsoochak.tenant.enums.RegionTypeEnum;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
@@ -149,7 +149,7 @@ public class TenantSchemaRepository {
          * Fetches location hierarchy configuration from the specified schema for a
          * given region type.
          */
-        public TenantLocationHierarchyConfigDTO getLocationHierarchy(String schemaName, RegionTypeEnum regionType) {
+        public LocationConfigDTO getLocationHierarchy(String schemaName, RegionTypeEnum regionType) {
                 validateSchemaName(schemaName);
                 String sql = String.format(
                                 "SELECT level, level_name FROM %s.location_config_master_table WHERE region_type = ? ORDER BY level",
@@ -167,7 +167,7 @@ public class TenantSchemaRepository {
                                 throw new RuntimeException("Failed to parse level_name JSON", e);
                         }
                 }, regionType.getCode());
-                return TenantLocationHierarchyConfigDTO.builder().locationHierarchy(levels).build();
+                return LocationConfigDTO.builder().locationHierarchy(levels).build();
         }
 
         /**
