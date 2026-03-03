@@ -14,7 +14,9 @@ import org.arghyam.jalsoochak.telemetry.dto.requests.SelectedChannelRequest;
 import org.arghyam.jalsoochak.telemetry.dto.requests.SelectedItemRequest;
 import org.arghyam.jalsoochak.telemetry.dto.requests.SelectedLanguageRequest;
 import org.arghyam.jalsoochak.telemetry.repository.TenantConfigRepository;
+import org.arghyam.jalsoochak.telemetry.repository.TelemetryConfirmedReadingSnapshot;
 import org.arghyam.jalsoochak.telemetry.repository.TelemetryOperatorWithSchema;
+import org.arghyam.jalsoochak.telemetry.repository.TelemetryPendingMeterChangeRecord;
 import org.arghyam.jalsoochak.telemetry.repository.TelemetryTenantRepository;
 import org.arghyam.jalsoochak.telemetry.repository.UserLanguagePreferenceRepository;
 import org.arghyam.jalsoochak.telemetry.dto.response.SelectionResponse;
@@ -31,6 +33,7 @@ import org.springframework.web.client.RestTemplate;
 
 import java.io.IOException;
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Locale;
@@ -767,35 +770,128 @@ public class GlificWebhookService {
                     .findFirstSchemeForUser(operatorWithSchema.schemaName(), operatorWithSchema.operator().id())
                     .orElseThrow(() -> new IllegalStateException("Operator is not mapped to any scheme"));
 
-            org.arghyam.jalsoochak.telemetry.repository.TelemetryReadingRecord pending;
+            Optional<TelemetryPendingMeterChangeRecord> pendingOpt = Optional.empty();
+            String correlationId = (request.getCorrelationId() != null && !request.getCorrelationId().isBlank())
+                    ? request.getCorrelationId().trim()
+                    : "manual-" + UUID.randomUUID();
+
             if (request.getCorrelationId() != null && !request.getCorrelationId().isBlank()) {
-                pending = telemetryTenantRepository
-                        .findPendingMeterChangeRecordByCorrelation(
-                                operatorWithSchema.schemaName(),
-                                schemeId,
-                                operatorWithSchema.operator().id(),
-                                request.getCorrelationId().trim()
-                        )
-                        .orElseThrow(() -> new IllegalStateException("Invalid or expired correlationId"));
-            } else {
-                pending = telemetryTenantRepository
-                        .findLatestPendingMeterChangeRecord(
-                                operatorWithSchema.schemaName(),
-                                schemeId,
-                                operatorWithSchema.operator().id()
-                        )
-                        .orElseThrow(() -> new IllegalStateException("No pending meter-change session found"));
+                pendingOpt = telemetryTenantRepository.findPendingMeterChangeRecordByCorrelation(
+                        operatorWithSchema.schemaName(),
+                        schemeId,
+                        operatorWithSchema.operator().id(),
+                        correlationId
+                );
             }
 
-            telemetryTenantRepository.updatePendingMeterChangeReading(
+            Optional<TelemetryConfirmedReadingSnapshot> previousSnapshotOpt = telemetryTenantRepository
+                    .findLatestConfirmedReadingSnapshot(operatorWithSchema.schemaName(), schemeId, null);
+
+            if (previousSnapshotOpt.isPresent()
+                    && manualReadingValue.compareTo(previousSnapshotOpt.get().confirmedReading()) < 0) {
+                TelemetryConfirmedReadingSnapshot previousSnapshot = previousSnapshotOpt.get();
+                telemetryTenantRepository.createAnomalyRecord(
+                        operatorWithSchema.schemaName(),
+                        AnomalyConstants.TYPE_READING_LESS_THAN_PREVIOUS,
+                        operatorWithSchema.operator().id(),
+                        schemeId,
+                        pendingOpt.map(TelemetryPendingMeterChangeRecord::extractedReading).orElse(null),
+                        null,
+                        manualReadingValue,
+                        0,
+                        previousSnapshot.confirmedReading(),
+                        previousSnapshot.createdAt(),
+                        0,
+                        "Manual reading is less than previous confirmed reading.",
+                        AnomalyConstants.STATUS_OPEN
+                );
+                return CreateReadingResponse.builder()
+                        .success(false)
+                        .message("Manual reading cannot be less than previous reading.")
+                        .qualityStatus("REJECTED")
+                        .correlationId(correlationId)
+                        .meterReading(manualReadingValue)
+                        .lastConfirmedReading(previousSnapshot.confirmedReading())
+                        .build();
+            }
+
+            if (pendingOpt.isPresent()) {
+                telemetryTenantRepository.updatePendingMeterChangeReading(
+                        operatorWithSchema.schemaName(),
+                        pendingOpt.get().id(),
+                        manualReadingValue,
+                        operatorWithSchema.operator().id()
+                );
+                correlationId = pendingOpt.get().correlationId();
+            } else {
+                telemetryTenantRepository.createFlowReading(
+                        operatorWithSchema.schemaName(),
+                        schemeId,
+                        operatorWithSchema.operator().id(),
+                        LocalDateTime.now(),
+                        manualReadingValue,
+                        manualReadingValue,
+                        correlationId,
+                        "",
+                        request.getMeterChangeReason()
+                );
+            }
+
+            int unreadableRetryCountToday = telemetryTenantRepository.countAnomaliesByTypeForToday(
                     operatorWithSchema.schemaName(),
-                    pending.id(),
-                    manualReadingValue,
-                    operatorWithSchema.operator().id()
+                    operatorWithSchema.operator().id(),
+                    schemeId,
+                    AnomalyConstants.TYPE_UNREADABLE_IMAGE
             );
+
+            telemetryTenantRepository.createAnomalyRecord(
+                    operatorWithSchema.schemaName(),
+                    AnomalyConstants.TYPE_MANUAL_OVERRIDE,
+                    operatorWithSchema.operator().id(),
+                    schemeId,
+                    pendingOpt.map(TelemetryPendingMeterChangeRecord::extractedReading).orElse(null),
+                    null,
+                    manualReadingValue,
+                    unreadableRetryCountToday,
+                    previousSnapshotOpt.map(TelemetryConfirmedReadingSnapshot::confirmedReading).orElse(null),
+                    previousSnapshotOpt.map(TelemetryConfirmedReadingSnapshot::createdAt).orElse(null),
+                    0,
+                    "Manual reading submitted as override.",
+                    AnomalyConstants.STATUS_OPEN
+            );
+
+            int consecutiveOverrideDays = calculateConsecutiveDays(
+                    telemetryTenantRepository.findAnomalyDatesByType(
+                            operatorWithSchema.schemaName(),
+                            operatorWithSchema.operator().id(),
+                            schemeId,
+                            AnomalyConstants.TYPE_MANUAL_OVERRIDE,
+                            10
+                    ),
+                    LocalDate.now()
+            );
+
+            if (consecutiveOverrideDays >= 5) {
+                telemetryTenantRepository.createAnomalyRecord(
+                        operatorWithSchema.schemaName(),
+                        AnomalyConstants.TYPE_CONSECUTIVE_OVERRIDE_5_DAYS,
+                        operatorWithSchema.operator().id(),
+                        schemeId,
+                        pendingOpt.map(TelemetryPendingMeterChangeRecord::extractedReading).orElse(null),
+                        null,
+                        manualReadingValue,
+                        0,
+                        previousSnapshotOpt.map(TelemetryConfirmedReadingSnapshot::confirmedReading).orElse(null),
+                        previousSnapshotOpt.map(TelemetryConfirmedReadingSnapshot::createdAt).orElse(null),
+                        consecutiveOverrideDays,
+                        "Manual overrides recorded for five or more consecutive days.",
+                        AnomalyConstants.STATUS_OPEN
+                );
+            }
+
             CreateReadingResponse response = CreateReadingResponse.builder()
                     .success(true)
-                    .correlationId(pending.correlationId())
+                    .correlationId(correlationId)
                     .meterReading(manualReadingValue)
                     .qualityStatus("CONFIRMED")
                     .build();
@@ -876,6 +972,26 @@ public class GlificWebhookService {
             return "zero";
         }
         return toWordsInternal(number).trim();
+    }
+
+    private int calculateConsecutiveDays(List<LocalDate> dates, LocalDate startDate) {
+        if (dates == null || dates.isEmpty() || startDate == null) {
+            return 0;
+        }
+        int count = 0;
+        LocalDate cursor = startDate;
+        for (LocalDate date : dates) {
+            if (date == null) {
+                continue;
+            }
+            if (date.isEqual(cursor)) {
+                count++;
+                cursor = cursor.minusDays(1);
+            } else if (date.isBefore(cursor)) {
+                break;
+            }
+        }
+        return count;
     }
 
     private String toWordsInternal(int number) {

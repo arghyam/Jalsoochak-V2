@@ -2,13 +2,16 @@ server:
   port: 8082
 
 spring:
+  config:
+    import: optional:file:./tenant-service/.env[.properties],optional:file:.env[.properties]
+
   application:
     name: tenant-service
 
   datasource:
-    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/jalsoochak_db?stringtype=unspecified}
-    username: ${SPRING_DATASOURCE_USERNAME:jalsoochak_user}
-    password: ${SPRING_DATASOURCE_PASSWORD:Password7@}
+    url: ${SPRING_DATASOURCE_URL}
+    username: ${SPRING_DATASOURCE_USERNAME}
+    password: ${SPRING_DATASOURCE_PASSWORD}
     driver-class-name: org.postgresql.Driver
     hikari:
       maximum-pool-size: 10
