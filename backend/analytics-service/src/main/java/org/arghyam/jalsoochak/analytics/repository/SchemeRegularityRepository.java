@@ -47,6 +47,40 @@ public class SchemeRegularityRepository {
         return new SchemeRegularityMetrics(schemeCount, totalSupplyDays);
     }
 
+    public SchemeRegularityMetrics getReadingSubmissionRateMetrics(Integer lgdId, LocalDate startDate, LocalDate endDate) {
+        Integer lgdLevel = getLgdLevel(lgdId);
+        if (lgdLevel == null) {
+            throw new IllegalArgumentException("lgd_id not found in dim_lgd_location_table: " + lgdId);
+        }
+        String schemeLgdColumn = resolveSchemeLgdColumn(lgdLevel);
+
+        String sql = String.format("""
+                WITH schemes_in_lgd AS (
+                    SELECT DISTINCT s.scheme_id
+                    FROM analytics_schema.dim_scheme_table s
+                    WHERE s.%1$s = ?
+                ),
+                scheme_submission_days AS (
+                    SELECT m.scheme_id, COUNT(DISTINCT m.reading_date)::int AS submission_days
+                    FROM analytics_schema.fact_meter_reading_table m
+                    JOIN schemes_in_lgd sl
+                        ON sl.scheme_id = m.scheme_id
+                    WHERE m.reading_date BETWEEN ? AND ?
+                      AND m.confirmed_reading >= 0
+                    GROUP BY m.scheme_id
+                )
+                SELECT
+                    (SELECT COUNT(*)::int FROM schemes_in_lgd) AS scheme_count,
+                    COALESCE((SELECT SUM(submission_days)::int FROM scheme_submission_days), 0) AS total_supply_days
+                """, schemeLgdColumn);
+
+        Map<String, Object> result = jdbcTemplate.queryForMap(sql, lgdId, startDate, endDate);
+        int schemeCount = result.get("scheme_count") instanceof Number value ? value.intValue() : 0;
+        int totalSupplyDays = result.get("total_supply_days") instanceof Number value ? value.intValue() : 0;
+
+        return new SchemeRegularityMetrics(schemeCount, totalSupplyDays);
+    }
+
     private Integer getLgdLevel(Integer lgdId) {
         String sql = """
                 SELECT l.lgd_level
