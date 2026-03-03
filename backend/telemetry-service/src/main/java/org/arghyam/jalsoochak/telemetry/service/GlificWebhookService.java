@@ -329,9 +329,10 @@ public class GlificWebhookService {
                     .build();
         } catch (Exception e) {
             log.error("Error saving selected language for contactId {}: {}", request.getContactId(), e.getMessage(), e);
+            String languageKey = resolveLanguageKeyForContact(request.getContactId());
             return IntroResponse.builder()
                     .success(false)
-                    .message("Language selection could not be saved.")
+                    .message(resolveUserFacingErrorMessage(e, "Language selection could not be saved.", languageKey))
                     .build();
         }
     }
@@ -439,9 +440,10 @@ public class GlificWebhookService {
                     .build();
         } catch (Exception e) {
             log.error("Error saving selected channel for contactId {}: {}", request.getContactId(), e.getMessage(), e);
+            String languageKey = resolveLanguageKeyForContact(request.getContactId());
             return IntroResponse.builder()
                     .success(false)
-                    .message("Channel selection could not be saved.")
+                    .message(resolveUserFacingErrorMessage(e, "Channel selection could not be saved.", languageKey))
                     .build();
         }
     }
@@ -538,10 +540,11 @@ public class GlificWebhookService {
                     .build();
         } catch (Exception e) {
             log.error("Error processing selected item for contactId {}: {}", request.getContactId(), e.getMessage(), e);
+            String languageKey = resolveLanguageKeyForContact(request.getContactId());
             return SelectionResponse.builder()
                     .success(false)
                     .selected(null)
-                    .message("Item selection could not be saved.")
+                    .message(resolveUserFacingErrorMessage(e, "Item selection could not be saved.", languageKey))
                     .build();
         }
     }
@@ -1024,6 +1027,33 @@ public class GlificWebhookService {
         if (normalized.contains("manualreading must be greater than zero")) {
             return localizeMessage("manualReading must be greater than zero.", languageKey);
         }
+        if (normalized.contains("language selection is required")) {
+            return localizeMessage("Language selection is required. Please choose one of the listed options.", languageKey);
+        }
+        if (normalized.contains("invalid language selection")) {
+            return localizeMessage("Invalid language selection. Please choose a valid number or language from the list.", languageKey);
+        }
+        if (normalized.contains("no language options configured")) {
+            return localizeMessage("Language options are not configured for this tenant.", languageKey);
+        }
+        if (normalized.contains("channel selection is required")) {
+            return localizeMessage("Channel selection is required. Please choose one of the listed options.", languageKey);
+        }
+        if (normalized.contains("invalid channel selection")) {
+            return localizeMessage("Invalid channel selection. Please choose a valid number or channel from the list.", languageKey);
+        }
+        if (normalized.contains("no channel options configured")) {
+            return localizeMessage("Channel options are not configured for this tenant.", languageKey);
+        }
+        if (normalized.contains("item selection is required")) {
+            return localizeMessage("Item selection is required. Please choose one of the listed options.", languageKey);
+        }
+        if (normalized.contains("invalid item selection")) {
+            return localizeMessage("Invalid item selection. Please choose a valid option from the list.", languageKey);
+        }
+        if (normalized.contains("no item options configured")) {
+            return localizeMessage("Item options are not configured for this tenant.", languageKey);
+        }
         if (normalized.contains("operator is not mapped to any scheme")) {
             return localizeMessage("No scheme is mapped to this operator.", languageKey);
         }
@@ -1078,6 +1108,33 @@ public class GlificWebhookService {
         }
         if (normalized.contains("manualreading must be greater than zero")) {
             return "manualReading शून्य से बड़ा होना चाहिए।";
+        }
+        if (normalized.contains("language selection is required")) {
+            return "भाषा चयन आवश्यक है। कृपया सूची में से एक विकल्प चुनें।";
+        }
+        if (normalized.contains("invalid language selection")) {
+            return "अमान्य भाषा चयन। कृपया सूची से सही संख्या या भाषा चुनें।";
+        }
+        if (normalized.contains("language options are not configured")) {
+            return "इस टेनेंट के लिए भाषा विकल्प कॉन्फ़िगर नहीं हैं।";
+        }
+        if (normalized.contains("channel selection is required")) {
+            return "चैनल चयन आवश्यक है। कृपया सूची में से एक विकल्प चुनें।";
+        }
+        if (normalized.contains("invalid channel selection")) {
+            return "अमान्य चैनल चयन। कृपया सूची से सही संख्या या चैनल चुनें।";
+        }
+        if (normalized.contains("channel options are not configured")) {
+            return "इस टेनेंट के लिए चैनल विकल्प कॉन्फ़िगर नहीं हैं।";
+        }
+        if (normalized.contains("item selection is required")) {
+            return "विकल्प चयन आवश्यक है। कृपया सूची में से एक विकल्प चुनें।";
+        }
+        if (normalized.contains("invalid item selection")) {
+            return "अमान्य विकल्प चयन। कृपया सूची से सही विकल्प चुनें।";
+        }
+        if (normalized.contains("item options are not configured")) {
+            return "इस टेनेंट के लिए विकल्प कॉन्फ़िगर नहीं हैं।";
         }
         if (normalized.contains("no scheme is mapped to this operator")) {
             return "इस ऑपरेटर के लिए कोई स्कीम मैप नहीं है।";
