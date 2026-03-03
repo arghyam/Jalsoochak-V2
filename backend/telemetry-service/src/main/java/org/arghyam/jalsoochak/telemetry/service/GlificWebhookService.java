@@ -540,10 +540,11 @@ public class GlificWebhookService {
                     .build();
         } catch (Exception e) {
             log.error("Error processing selected item for contactId {}: {}", request.getContactId(), e.getMessage(), e);
+            String languageKey = resolveLanguageKeyForContact(request.getContactId());
             return SelectionResponse.builder()
                     .success(false)
                     .selected(null)
-                    .message("Item selection could not be saved.")
+                    .message(resolveUserFacingErrorMessage(e, "Item selection could not be saved.", languageKey))
                     .build();
         }
     }
@@ -1044,6 +1045,15 @@ public class GlificWebhookService {
         if (normalized.contains("no channel options configured")) {
             return localizeMessage("Channel options are not configured for this tenant.", languageKey);
         }
+        if (normalized.contains("item selection is required")) {
+            return localizeMessage("Item selection is required. Please choose one of the listed options.", languageKey);
+        }
+        if (normalized.contains("invalid item selection")) {
+            return localizeMessage("Invalid item selection. Please choose a valid option from the list.", languageKey);
+        }
+        if (normalized.contains("no item options configured")) {
+            return localizeMessage("Item options are not configured for this tenant.", languageKey);
+        }
         if (normalized.contains("operator is not mapped to any scheme")) {
             return localizeMessage("No scheme is mapped to this operator.", languageKey);
         }
@@ -1116,6 +1126,15 @@ public class GlificWebhookService {
         }
         if (normalized.contains("channel options are not configured")) {
             return "इस टेनेंट के लिए चैनल विकल्प कॉन्फ़िगर नहीं हैं।";
+        }
+        if (normalized.contains("item selection is required")) {
+            return "विकल्प चयन आवश्यक है। कृपया सूची में से एक विकल्प चुनें।";
+        }
+        if (normalized.contains("invalid item selection")) {
+            return "अमान्य विकल्प चयन। कृपया सूची से सही विकल्प चुनें।";
+        }
+        if (normalized.contains("item options are not configured")) {
+            return "इस टेनेंट के लिए विकल्प कॉन्फ़िगर नहीं हैं।";
         }
         if (normalized.contains("no scheme is mapped to this operator")) {
             return "इस ऑपरेटर के लिए कोई स्कीम मैप नहीं है।";
