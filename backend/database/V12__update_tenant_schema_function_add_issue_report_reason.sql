@@ -33,7 +33,24 @@ BEGIN
     END IF;
 
     IF patched_definition = fn_definition THEN
-        RAISE EXCEPTION 'Unable to patch create_tenant_schema(text): flow_reading_table block not found.';
+        patched_definition := replace(
+            fn_definition,
+            E'meter_change_reason TEXT,',
+            E'meter_change_reason TEXT,\n            issue_report_reason TEXT,'
+        );
+    END IF;
+
+    IF patched_definition = fn_definition THEN
+        patched_definition := replace(
+            fn_definition,
+            E'image_url           TEXT            DEFAULT '''''',',
+            E'issue_report_reason TEXT,\n            image_url           TEXT            DEFAULT '''''','
+        );
+    END IF;
+
+    IF patched_definition = fn_definition THEN
+        RAISE NOTICE 'Unable to patch create_tenant_schema(text): flow_reading_table block not found. Skipping.';
+        RETURN;
     END IF;
 
     EXECUTE patched_definition;
