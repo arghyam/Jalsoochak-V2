@@ -10,6 +10,7 @@ import org.arghyam.jalsoochak.tenant.dto.request.UpdateTenantRequestDTO;
 import org.arghyam.jalsoochak.tenant.dto.response.TenantResponseDTO;
 import org.arghyam.jalsoochak.tenant.dto.internal.ConfigDTO;
 import org.arghyam.jalsoochak.tenant.enums.TenantStatusEnum;
+
 import org.springframework.jdbc.core.ConnectionCallback;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
@@ -18,6 +19,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+
 
 /**
  * Repository for operations on {@code common_schema} tables.
@@ -103,13 +105,20 @@ public class TenantCommonRepository {
         log.info("Provisioning tenant schema: {}", schemaName);
 
         jdbcTemplate.execute((ConnectionCallback<Void>) connection -> {
+            // Explicitly cast to text to match PostgreSQL function signature
             try (PreparedStatement ps = connection.prepareStatement(
-                    "SELECT create_tenant_schema(?)")) {
+                    "SELECT common_schema.create_tenant_schema(?::text)")) {
                 ps.setString(1, schemaName);
                 ps.execute();
             }
             return null;
         });
+
+        // Make password nullable (Keycloak owns credentials). No IF EXISTS: missing table
+        // indicates a provisioning failure that should surface immediately.
+        String alterPasswordNullabilitySql = String.format(
+               "ALTER TABLE %s.user_table ALTER COLUMN password DROP NOT NULL", schemaName);
+        jdbcTemplate.execute(alterPasswordNullabilitySql);
     }
 
     /**
@@ -119,6 +128,15 @@ public class TenantCommonRepository {
         String sql = "SELECT * FROM common_schema.tenant_master_table WHERE state_code = ?";
         List<TenantResponseDTO> results = jdbcTemplate.query(sql, TENANT_ROW_MAPPER, stateCode);
         return results.isEmpty() ? Optional.empty() : Optional.of(results.get(0));
+    }
+
+    /**
+     * Lists all tenants in the common_schema.tenant_master_table (no pagination).
+     */
+    public List<TenantResponseDTO> findAll() {
+        return jdbcTemplate.query(
+                "SELECT * FROM common_schema.tenant_master_table ORDER BY id",
+                TENANT_ROW_MAPPER);
     }
 
     /**

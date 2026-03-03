@@ -46,18 +46,10 @@ management:
   endpoints:
     web:
       exposure:
-        include: "health,info,prometheus"
-
-  endpoint:
-    prometheus:
-      enabled: true
-  metrics:
-    tags:
-      application: scheme-service
+        include: "*"
 
 logging:
   file:
     name: ${LOG_FILE_PATH:../logger/logs/backend-services.log}
-
   pattern:
     level: "service=${spring.application.name} %5p"

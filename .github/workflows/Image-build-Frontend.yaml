@@ -75,3 +75,11 @@ jobs:
         run: |
           docker build -t $ECR_REGISTRY/frontend:$IMAGE_TAG frontend
           docker push $ECR_REGISTRY/frontend:$IMAGE_TAG
+
+  Deployment:
+    needs: Docker-Image-Build
+    if: github.ref == 'refs/heads/dev'
+    uses: arghyam/JalsoochakV2-Devops/.github/workflows/deploy.yaml@dev
+    with:
+      service_name: jalsoochak-frontend
+      image_tag: ${{ github.sha }}

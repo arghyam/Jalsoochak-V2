@@ -65,3 +65,11 @@ jobs:
         run: |
           docker build --build-arg WORK_DIR="backend/anomaly-service" -t $ECR_REGISTRY/anomaly-service:$IMAGE_TAG -f build/maven/Dockerfile .
           docker push $ECR_REGISTRY/anomaly-service:$IMAGE_TAG
+
+  Deployment:
+    needs: Docker-Image-Build
+    if: github.ref == 'refs/heads/dev'
+    uses: arghyam/JalsoochakV2-Devops/.github/workflows/deploy.yaml@dev
+    with:
+      service_name: anomaly-service
+      image_tag: ${{ github.sha }}

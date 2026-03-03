@@ -83,4 +83,5 @@ public interface TenantManagementService {
      * @return Tenant configurations response.
      */
     TenantConfigResponseDTO setTenantConfigs(Integer tenantId, SetTenantConfigRequestDTO request);
+
 }
