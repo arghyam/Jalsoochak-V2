@@ -66,6 +66,24 @@ BEGIN
             tenant_schema
         );
 
+        EXECUTE format(
+            'ALTER TABLE IF EXISTS %1$I.anomaly_table
+             ADD COLUMN IF NOT EXISTS resolved_by INTEGER',
+            tenant_schema
+        );
+
+        EXECUTE format(
+            'ALTER TABLE IF EXISTS %1$I.anomaly_table
+             ADD COLUMN IF NOT EXISTS resolved_at TIMESTAMP',
+            tenant_schema
+        );
+
+        EXECUTE format(
+            'ALTER TABLE IF EXISTS %1$I.anomaly_table
+             ADD COLUMN IF NOT EXISTS deleted_by INTEGER',
+            tenant_schema
+        );
+
         IF EXISTS (
             SELECT 1
             FROM information_schema.columns
@@ -219,7 +237,10 @@ BEGIN
          ADD COLUMN IF NOT EXISTS previous_reading_date TIMESTAMP,
          ADD COLUMN IF NOT EXISTS consecutive_days_overridden INTEGER,
          ADD COLUMN IF NOT EXISTS reason TEXT,
-         ADD COLUMN IF NOT EXISTS remarks TEXT',
+         ADD COLUMN IF NOT EXISTS remarks TEXT,
+         ADD COLUMN IF NOT EXISTS resolved_by INTEGER,
+         ADD COLUMN IF NOT EXISTS resolved_at TIMESTAMP,
+         ADD COLUMN IF NOT EXISTS deleted_by INTEGER',
         schema_name
     );
 
