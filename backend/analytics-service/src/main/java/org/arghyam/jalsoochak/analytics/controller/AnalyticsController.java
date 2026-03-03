@@ -7,6 +7,7 @@ import org.arghyam.jalsoochak.analytics.entity.FactMeterReading;
 import org.arghyam.jalsoochak.analytics.entity.FactSchemePerformance;
 import org.arghyam.jalsoochak.analytics.entity.FactWaterQuantity;
 import org.arghyam.jalsoochak.analytics.dto.response.AverageSchemeRegularityResponse;
+import org.arghyam.jalsoochak.analytics.dto.response.ReadingSubmissionRateResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.TenantDetailsResponse;
 import org.arghyam.jalsoochak.analytics.repository.DimSchemeRepository;
 import org.arghyam.jalsoochak.analytics.repository.DimTenantRepository;
@@ -176,6 +177,16 @@ public class AnalyticsController {
             @RequestParam(name = "start_date") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
             @RequestParam(name = "end_date") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
         return ResponseEntity.ok(schemeRegularityService.getAverageSchemeRegularity(lgdId, startDate, endDate));
+    }
+
+    @GetMapping("/scheme-regularity/reading-submission-rate")
+    @Operation(summary = "Get reading submission rate of schemes for an LGD area within a date range")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'TENANT_ADMIN', 'ANALYST', 'FIELD_OPERATOR')")
+    public ResponseEntity<ReadingSubmissionRateResponse> getReadingSubmissionRate(
+            @RequestParam(name = "lgd_id") Integer lgdId,
+            @RequestParam(name = "start_date") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam(name = "end_date") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
+        return ResponseEntity.ok(schemeRegularityService.getReadingSubmissionRate(lgdId, startDate, endDate));
     }
 
 
