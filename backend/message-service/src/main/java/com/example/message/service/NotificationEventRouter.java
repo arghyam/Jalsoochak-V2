@@ -1,7 +1,6 @@
 package com.example.message.service;
 
 import com.example.message.channel.WhatsAppChannel;
-import com.example.message.dto.NotificationRequest;
 import com.example.message.dto.OperatorEscalationDetail;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -12,6 +11,8 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.nio.file.Paths;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -83,25 +84,15 @@ public class NotificationEventRouter {
     private void handleNudge(JsonNode root) {
         String phone = root.path("recipientPhone").asText("");
         String operatorName = root.path("operatorName").asText("Operator");
-        String schemeId = root.path("schemeId").asText("");
-        int tenantId = root.path("tenantId").asInt(0);
-        int languageId = root.path("languageId").asInt(0);
 
         if (phone.isBlank()) {
             log.warn("[Router/NUDGE] recipientPhone is blank, skipping");
             return;
         }
 
-        String localizedMessage = messageTemplateService.findNudgeMessage(
-                tenantId, languageId, operatorName, schemeId);
-
-        NotificationRequest request = NotificationRequest.builder()
-                .recipient(phone)
-                .body(localizedMessage)
-                .channel("WHATSAPP")
-                .build();
-
-        boolean sent = whatsAppChannel.send(request);
+        String todayDate = LocalDate.now()
+                .format(DateTimeFormatter.ofPattern("dd MMMM yyyy"));
+        boolean sent = whatsAppChannel.sendNudge(phone, operatorName, todayDate);
         log.info("[Router/NUDGE] → {}", sent ? "SENT" : "FAILED");
         log.debug("[Router/NUDGE] phone={} → {}", phone, sent ? "SENT" : "FAILED");
     }

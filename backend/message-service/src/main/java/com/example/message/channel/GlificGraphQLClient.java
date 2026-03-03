@@ -11,33 +11,37 @@ import java.util.Map;
 
 /**
  * Thin WebClient wrapper for the Glific GraphQL API.
- * POSTs {@code {"query": ..., "variables": ...}} with Bearer auth and
- * throws on any {@code errors[]} returned by Glific.
+ * POSTs {@code {"query": ..., "variables": ...}} with {@code Authorization: <token>} header
+ * obtained from {@link GlificAuthService} (no Bearer prefix). On an unauthenticated error,
+ * refreshes the token and retries once.
  */
 @Component
 @Slf4j
 public class GlificGraphQLClient {
 
     private final WebClient webClient;
+    private final GlificAuthService glificAuthService;
 
     @Value("${glific.api-url:}")
     private String apiUrl;
 
-    @Value("${glific.api-key:}")
-    private String apiKey;
-
-    public GlificGraphQLClient(WebClient.Builder builder) {
+    public GlificGraphQLClient(WebClient.Builder builder, GlificAuthService glificAuthService) {
         this.webClient = builder.build();
+        this.glificAuthService = glificAuthService;
     }
 
     public JsonNode execute(String query, Map<String, Object> variables) {
+        return executeWithRetry(query, variables, false);
+    }
+
+    private JsonNode executeWithRetry(String query, Map<String, Object> variables, boolean isRetry) {
         if (apiUrl == null || apiUrl.isBlank()) {
             throw new RuntimeException("Glific API URL is not configured (glific.api-url)");
         }
 
         JsonNode response = webClient.post()
                 .uri(apiUrl)
-                .header("Authorization", "Bearer " + apiKey)
+                .header("Authorization", glificAuthService.getAccessToken())
                 .header("Content-Type", "application/json")
                 .bodyValue(Map.of("query", query, "variables", variables))
                 .retrieve()
@@ -47,9 +51,15 @@ public class GlificGraphQLClient {
         if (response == null) {
             throw new RuntimeException("Null response from Glific GraphQL");
         }
+
         if (response.has("errors") && response.get("errors").size() > 0) {
-            throw new RuntimeException("Glific GraphQL error: "
-                    + response.get("errors").get(0).path("message").asText("unknown"));
+            String msg = response.get("errors").get(0).path("message").asText("unknown");
+            if (!isRetry && (msg.toLowerCase().contains("unauthenticated")
+                    || msg.toLowerCase().contains("unauthorized"))) {
+                glificAuthService.refresh();
+                return executeWithRetry(query, variables, true);
+            }
+            throw new RuntimeException("Glific GraphQL error: " + msg);
         }
         return response.get("data");
     }

@@ -58,6 +58,13 @@ spring:
     consumer:
       group-id: user-service-group
       auto-offset-reset: earliest
+      enable-auto-commit: false
+      max-poll-records: 50
+      properties:
+        session.timeout.ms: 30000
+        heartbeat.interval.ms: 10000
+        max.poll.interval.ms: 600000
+        fetch.max.wait.ms: 500
 
 keycloak:
   realm: jalsoochak-realm
