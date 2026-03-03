@@ -6,6 +6,8 @@ import org.arghyam.jalsoochak.analytics.entity.FactEscalation;
 import org.arghyam.jalsoochak.analytics.entity.FactMeterReading;
 import org.arghyam.jalsoochak.analytics.entity.FactSchemePerformance;
 import org.arghyam.jalsoochak.analytics.entity.FactWaterQuantity;
+import org.arghyam.jalsoochak.analytics.dto.response.AverageSchemeRegularityResponse;
+import org.arghyam.jalsoochak.analytics.dto.response.TenantDetailsResponse;
 import org.arghyam.jalsoochak.analytics.repository.DimSchemeRepository;
 import org.arghyam.jalsoochak.analytics.repository.DimTenantRepository;
 import org.arghyam.jalsoochak.analytics.repository.FactEscalationRepository;
@@ -13,6 +15,8 @@ import org.arghyam.jalsoochak.analytics.repository.FactMeterReadingRepository;
 import org.arghyam.jalsoochak.analytics.repository.FactSchemePerformanceRepository;
 import org.arghyam.jalsoochak.analytics.repository.FactWaterQuantityRepository;
 import org.arghyam.jalsoochak.analytics.service.DateDimensionService;
+import org.arghyam.jalsoochak.analytics.service.SchemeRegularityService;
+import org.arghyam.jalsoochak.analytics.service.TenantDetailsService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
@@ -41,12 +45,23 @@ public class AnalyticsController {
     private final FactEscalationRepository escalationRepository;
     private final FactSchemePerformanceRepository schemePerformanceRepository;
     private final DateDimensionService dateDimensionService;
+    private final TenantDetailsService tenantDetailsService;
+    private final SchemeRegularityService schemeRegularityService;
 
     @GetMapping("/tenants")
     @Operation(summary = "List all tenants in the DW")
     @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ANALYST')")
     public ResponseEntity<List<DimTenant>> getTenants() {
         return ResponseEntity.ok(dimTenantRepository.findAll());
+    }
+
+    @GetMapping("/tenant_data")
+    @Operation(summary = "Get tenant boundary, optionally filtered by parent_lgd_id")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'TENANT_ADMIN', 'ANALYST')")
+    public ResponseEntity<TenantDetailsResponse> getTenantDetails(
+            @RequestParam(name = "tenant_id") Integer tenantId,
+            @RequestParam(name = "parent_lgd_id", required = false) Integer parentLgdId) {
+        return ResponseEntity.ok(tenantDetailsService.getTenantDetails(tenantId, parentLgdId));
     }
 
 
@@ -151,6 +166,16 @@ public class AnalyticsController {
             return ResponseEntity.ok(schemePerformanceRepository.findByTenantId(tenantId));
         }
         return ResponseEntity.ok(schemePerformanceRepository.findAll());
+    }
+
+    @GetMapping("/scheme-regularity/average")
+    @Operation(summary = "Get average regularity of schemes for an LGD area within a date range")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'TENANT_ADMIN', 'ANALYST', 'FIELD_OPERATOR')")
+    public ResponseEntity<AverageSchemeRegularityResponse> getAverageSchemeRegularity(
+            @RequestParam(name = "lgd_id") Integer lgdId,
+            @RequestParam(name = "start_date") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam(name = "end_date") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
+        return ResponseEntity.ok(schemeRegularityService.getAverageSchemeRegularity(lgdId, startDate, endDate));
     }
 
 
