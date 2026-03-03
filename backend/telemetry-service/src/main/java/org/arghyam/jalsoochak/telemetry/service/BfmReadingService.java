@@ -186,6 +186,15 @@ public class BfmReadingService {
                     "Duplicate image submission detected. Extracted reading matches previous confirmed reading.",
                     AnomalyConstants.STATUS_OPEN
             );
+            return CreateReadingResponse.builder()
+                    .success(false)
+                    .message("Duplicate image submission detected. The extracted reading matches the previous reading.")
+                    .correlationId(correlationId)
+                    .meterReading(confirmedReading)
+                    .qualityConfidence(confidenceLevel)
+                    .qualityStatus("REJECTED")
+                    .lastConfirmedReading(previousSnapshot.confirmedReading())
+                    .build();
         }
 
         Long readingId = telemetryTenantRepository.createFlowReading(
