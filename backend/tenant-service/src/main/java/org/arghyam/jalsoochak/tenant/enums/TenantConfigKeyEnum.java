@@ -11,6 +11,8 @@ import org.arghyam.jalsoochak.tenant.dto.internal.ReasonListConfigDTO;
 import org.arghyam.jalsoochak.tenant.dto.internal.SimpleConfigValueDTO;
 import org.arghyam.jalsoochak.tenant.dto.internal.StateITSystemConfigDTO;
 import org.arghyam.jalsoochak.tenant.dto.internal.TimeSettingsConfigDTO;
+import org.arghyam.jalsoochak.tenant.dto.internal.NudgeTimingConfigDTO;
+import org.arghyam.jalsoochak.tenant.dto.internal.EscalationRulesConfigDTO;
 
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
@@ -44,16 +46,9 @@ public enum TenantConfigKeyEnum implements ConfigKey {
     TENANT_SUPPORTED_CHANNELS(ConfigType.GENERIC, ChannelListConfigDTO.class),
 
     /**
-     * Tenant logo file/URL.
+     * Tenant logo file.
      */
-    TENANT_LOGO_URL(ConfigType.GENERIC, SimpleConfigValueDTO.class),
-
-    /**
-     * Supply outage reasons list with CRUD capability.
-     * Default reasons: Electrical Failure, Pump Failure, Pipeline Break, Source Drying, Natural Calamity, Others.
-     * State Admin can add, update, and delete reasons.
-     */
-    SUPPLY_OUTAGE_REASONS(ConfigType.GENERIC, ReasonListConfigDTO.class),
+    TENANT_LOGO(ConfigType.GENERIC, SimpleConfigValueDTO.class),
 
     /**
      * Meter change reasons list with CRUD capability.
@@ -91,7 +86,7 @@ public enum TenantConfigKeyEnum implements ConfigKey {
      * State IT Systems API Endpoint and Credentials.
      * For integration with state-level systems and data exchange.
      */
-    STATE_IT_SYSTEMS_API_CREDENTIALS(ConfigType.GENERIC, StateITSystemConfigDTO.class),
+    STATE_IT_SYSTEM_CONNECTION(ConfigType.GENERIC, StateITSystemConfigDTO.class),
 
     /**
      * Water Norm for this tenant.
@@ -104,20 +99,21 @@ public enum TenantConfigKeyEnum implements ConfigKey {
      * Quantity (in litres or kilo-liters) below which water supply for a day
      * is considered as No Supply.
      */
-    MINIMUM_WATER_QUANTITY_SUPPLY(ConfigType.GENERIC, SimpleConfigValueDTO.class),
+    TENANT_WATER_QUANTITY_SUPPLY_THRESHOLD(ConfigType.GENERIC, SimpleConfigValueDTO.class),
 
     /**
-     * Pump Operator Reminder Nudge Time.
-     * Absolute time by which reminder message is sent if meter reading not submitted.
+     * Pump Operator Reminder Nudge Configuration.
+     * Defines the absolute time by which reminder message is sent if meter reading not submitted.
+     * Format: { nudge: { schedule: { hour: 8, minute: 0 } } }
      */
-    PUMP_OPERATOR_REMINDER_NUDGE_TIME(ConfigType.GENERIC, TimeSettingsConfigDTO.class),
+    PUMP_OPERATOR_REMINDER_NUDGE_TIME(ConfigType.GENERIC, NudgeTimingConfigDTO.class),
 
     /**
-     * Field Staff Escalation Time.
-     * Absolute time on which system sends escalation messages to field staff
-     * (Section Officer, SDO, Executive Engineer).
+     * Field Staff Escalation Rules.
+     * Defines escalation schedule and multi-level escalation rules based on thresholds and officer types.
+     * Escalation messages are sent to field staff (Section Officer, District Officer,ExecutiveEngineer, etc.).
      */
-    FIELD_STAFF_ESCALATION_TIME(ConfigType.GENERIC, TimeSettingsConfigDTO.class),
+    FIELD_STAFF_ESCALATION_RULES(ConfigType.GENERIC, EscalationRulesConfigDTO.class),
 
     /**
      * Data Consolidation Time.

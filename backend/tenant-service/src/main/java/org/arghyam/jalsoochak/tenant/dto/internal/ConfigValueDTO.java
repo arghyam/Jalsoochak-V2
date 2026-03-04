@@ -7,13 +7,13 @@ package org.arghyam.jalsoochak.tenant.dto.internal;
 public sealed interface ConfigValueDTO permits
         SimpleConfigValueDTO,
         DateFormatConfigDTO,
-        EmailProviderConfigDTO,
-        EmailSenderConfigDTO,
         ChannelListConfigDTO,
         ReasonListConfigDTO,
         LocationConfigDTO,
         LanguageListConfigDTO,
         MessageBrokerConfigDTO,
         StateITSystemConfigDTO,
-        TimeSettingsConfigDTO {
+        TimeSettingsConfigDTO,
+        NudgeTimingConfigDTO,
+        EscalationRulesConfigDTO {
 }
