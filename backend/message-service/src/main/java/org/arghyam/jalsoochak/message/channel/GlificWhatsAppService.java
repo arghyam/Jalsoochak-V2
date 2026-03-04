@@ -1,6 +1,7 @@
 package org.arghyam.jalsoochak.message.channel;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -74,6 +75,14 @@ public class GlificWhatsAppService {
 
     @Value("${glific.template.escalation-id:}")
     private String escalationTemplateId;
+
+    @PostConstruct
+    void validateTemplates() {
+        if (nudgeTemplateId == null || nudgeTemplateId.isBlank()
+                || escalationTemplateId == null || escalationTemplateId.isBlank()) {
+            throw new IllegalStateException("glific.template.nudge-id and glific.template.escalation-id must be configured");
+        }
+    }
 
     @Value("${glific.media.escalation-caption:Escalations}")
     private String escalationCaption;
@@ -163,7 +172,11 @@ public class GlificWhatsAppService {
     }
 
     private void checkErrors(JsonNode response, String mutationKey) {
-        JsonNode errors = response.path(mutationKey).path("errors");
+        JsonNode mutationNode = response.path(mutationKey);
+        if (mutationNode.isMissingNode() || mutationNode.isNull()) {
+            throw new RuntimeException("Glific GraphQL response missing key: " + mutationKey);
+        }
+        JsonNode errors = mutationNode.path("errors");
         if (errors.isArray() && !errors.isEmpty()) {
             String msg = errors.toString();
             log.error("[Glific] GraphQL errors in {}: {}", mutationKey, msg);

@@ -10,6 +10,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
+import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
@@ -140,7 +141,17 @@ public class NotificationEventRouter {
 
         String filename = escalationPdfService.generate(operators, level, officerName);
         java.nio.file.Path localPath = Paths.get(reportDir, filename);
-        String minioUrl = minioStorageService.upload(localPath);
+        String minioUrl;
+        try {
+            minioUrl = minioStorageService.upload(localPath);
+        } finally {
+            try {
+                Files.deleteIfExists(localPath);
+            } catch (Exception cleanupEx) {
+                log.warn("[Router/ESCALATION] Could not delete local PDF {}: {}",
+                                localPath, cleanupEx.getMessage());
+            }
+        }
 
         boolean sent = whatsAppChannel.sendDocument(officerPhone, minioUrl);
         if (!sent) {

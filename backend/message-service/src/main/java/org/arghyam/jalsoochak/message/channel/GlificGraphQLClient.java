@@ -72,6 +72,10 @@ public class GlificGraphQLClient {
             }
             throw new RuntimeException("Glific GraphQL error: " + msg);
         }
-        return response.get("data");
+        JsonNode dataNode = response.get("data");
+        if (dataNode == null || dataNode.isNull()) {
+            throw new RuntimeException("Glific GraphQL response missing 'data' node");
+        }
+        return dataNode;
     }
 }

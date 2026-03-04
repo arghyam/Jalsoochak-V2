@@ -38,9 +38,15 @@ public class EscalationScheduleConfig {
         public Builder hour(int hour) { this.hour = hour; return this; }
         public Builder minute(int minute) { this.minute = minute; return this; }
         public Builder level1Days(int level1Days) { this.level1Days = level1Days; return this; }
-        public Builder level1OfficerType(String level1OfficerType) { this.level1OfficerType = level1OfficerType; return this; }
+        public Builder level1OfficerType(String level1OfficerType) {
+            this.level1OfficerType = level1OfficerType == null ? null : level1OfficerType.trim();
+            return this;
+        }
         public Builder level2Days(int level2Days) { this.level2Days = level2Days; return this; }
-        public Builder level2OfficerType(String level2OfficerType) { this.level2OfficerType = level2OfficerType; return this; }
+        public Builder level2OfficerType(String level2OfficerType) {
+            this.level2OfficerType = level2OfficerType == null ? null : level2OfficerType.trim();
+            return this;
+        }
 
         public EscalationScheduleConfig build() {
             if (hour < 0 || hour > 23) {

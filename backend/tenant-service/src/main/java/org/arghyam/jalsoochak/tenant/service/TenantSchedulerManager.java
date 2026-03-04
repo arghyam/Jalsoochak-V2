@@ -39,6 +39,7 @@ public class TenantSchedulerManager {
     private final EscalationSchedulerService escalationSchedulerService;
 
     private final ConcurrentHashMap<String, ScheduledFuture<?>> futures = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<Integer, Object> tenantLocks = new ConcurrentHashMap<>();
 
     @PostConstruct
     public void loadAndScheduleAll() {
@@ -64,8 +65,11 @@ public class TenantSchedulerManager {
      * Called after a tenant's config is persisted to reschedule its jobs with the new cron times.
      */
     public void rescheduleForTenant(int tenantId, String stateCode) {
-        cancelFutures(tenantId);
-        scheduleForTenant(tenantId, stateCode);
+        Object lock = tenantLocks.computeIfAbsent(tenantId, k -> new Object());
+        synchronized (lock) {
+            cancelFutures(tenantId);
+            scheduleForTenant(tenantId, stateCode);
+        }
     }
 
     private void scheduleForTenant(int tenantId, String stateCode) {

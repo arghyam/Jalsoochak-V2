@@ -39,7 +39,8 @@ public class GlificAuthService {
     @PostConstruct
     public void login() {
         if (username == null || username.isBlank() || password == null || password.isBlank()) {
-            throw new IllegalStateException("[GlificAuth] glific.username and glific.password must be configured");
+            log.warn("[GlificAuth] Credentials are not configured; WhatsApp/Glific flows will remain disabled");
+            return;
         }
         log.info("[GlificAuth] Logging in to Glific...");
         JsonNode data = webClient.post()
@@ -60,6 +61,9 @@ public class GlificAuthService {
     }
 
     public String getAccessToken() {
+        if (accessToken == null || accessToken.isBlank()) {
+            throw new IllegalStateException("[GlificAuth] Access token unavailable; verify Glific credentials/login");
+        }
         return accessToken;
     }
 
