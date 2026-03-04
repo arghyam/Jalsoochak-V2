@@ -22,16 +22,22 @@ import java.util.Map;
 import java.util.Optional;
 
 import org.arghyam.jalsoochak.tenant.config.TenantContext;
+import org.arghyam.jalsoochak.tenant.config.TenantDefaultsProperties;
 import org.arghyam.jalsoochak.tenant.dto.common.PageResponseDTO;
 import org.arghyam.jalsoochak.tenant.dto.internal.ConfigDTO;
 import org.arghyam.jalsoochak.tenant.dto.internal.ConfigValueDTO;
 import org.arghyam.jalsoochak.tenant.dto.internal.LocationConfigDTO;
+import org.arghyam.jalsoochak.tenant.dto.internal.LocationLevelConfigDTO;
+import org.arghyam.jalsoochak.tenant.dto.internal.LocationLevelNameDTO;
+import org.arghyam.jalsoochak.tenant.dto.internal.ReasonItemDTO;
 import org.arghyam.jalsoochak.tenant.dto.internal.SimpleConfigValueDTO;
 import org.arghyam.jalsoochak.tenant.dto.request.CreateDepartmentRequestDTO;
 import org.arghyam.jalsoochak.tenant.dto.request.CreateTenantRequestDTO;
 import org.arghyam.jalsoochak.tenant.dto.request.SetTenantConfigRequestDTO;
 import org.arghyam.jalsoochak.tenant.dto.request.UpdateTenantRequestDTO;
 import org.arghyam.jalsoochak.tenant.dto.response.DepartmentResponseDTO;
+import org.arghyam.jalsoochak.tenant.dto.response.LocationHierarchyResponseDTO;
+import org.arghyam.jalsoochak.tenant.dto.response.LocationResponseDTO;
 import org.arghyam.jalsoochak.tenant.dto.response.TenantConfigResponseDTO;
 import org.arghyam.jalsoochak.tenant.dto.response.TenantResponseDTO;
 import org.arghyam.jalsoochak.tenant.enums.RegionTypeEnum;
@@ -79,6 +85,9 @@ class TenantManagementServiceImplTest {
     private StringRedisTemplate redisTemplate;
 
     @Mock
+    private TenantDefaultsProperties tenantDefaults;
+
+    @Mock
     private HashOperations<String, Object, Object> hashOperations;
 
     @Mock
@@ -96,6 +105,9 @@ class TenantManagementServiceImplTest {
         mockedSecurityUtils = mockStatic(SecurityUtils.class);
         lenient().when(redisTemplate.opsForHash()).thenReturn(hashOperations);
         lenient().when(redisTemplate.opsForSet()).thenReturn(setOperations);
+        lenient().when(tenantDefaults.getLgdLocationHierarchy()).thenReturn(Collections.emptyList());
+        lenient().when(tenantDefaults.getDeptLocationHierarchy()).thenReturn(Collections.emptyList());
+        lenient().when(tenantDefaults.getMeterChangeReasons()).thenReturn(Collections.emptyList());
         
         // Manually create service with real ObjectMapper and mocked dependencies
         tenantManagementService = new TenantManagementServiceImpl(
@@ -103,7 +115,8 @@ class TenantManagementServiceImplTest {
             tenantSchemaRepository,
             kafkaProducer,
             objectMapper,
-            redisTemplate
+            redisTemplate,
+            tenantDefaults
         );
     }
 
@@ -189,10 +202,62 @@ class TenantManagementServiceImplTest {
                     .thenReturn(Optional.empty());
 
             // Act & Assert
-            assertThrows(RuntimeException.class, 
+            assertThrows(RuntimeException.class,
                     () -> tenantManagementService.createTenant(request));
 
             verify(tenantCommonRepository).createTenant(any(), any());
+        }
+
+        @Test
+        @DisplayName("Should seed default configs for new tenant after creation")
+        void testCreateTenant_SeedsDefaultConfigs() throws Exception {
+            // Arrange
+            CreateTenantRequestDTO request = CreateTenantRequestDTO.builder()
+                    .name("Test Tenant")
+                    .stateCode("TT")
+                    .lgdCode(123)
+                    .build();
+
+            TenantResponseDTO tenant = TenantResponseDTO.builder()
+                    .id(1)
+                    .name("Test Tenant")
+                    .stateCode("TT")
+                    .status("ACTIVE")
+                    .build();
+
+            List<LocationLevelConfigDTO> lgdLevels = List.of(
+                    LocationLevelConfigDTO.builder().level(1)
+                            .levelName(List.of(LocationLevelNameDTO.builder().title("State").build())).build(),
+                    LocationLevelConfigDTO.builder().level(2)
+                            .levelName(List.of(LocationLevelNameDTO.builder().title("District").build())).build()
+            );
+            List<LocationLevelConfigDTO> deptLevels = List.of(
+                    LocationLevelConfigDTO.builder().level(1)
+                            .levelName(List.of(LocationLevelNameDTO.builder().title("Zone").build())).build()
+            );
+            List<ReasonItemDTO> reasons = List.of(
+                    ReasonItemDTO.builder().id("METER_REPLACED").name("Meter Replaced")
+                            .sequenceOrder(1).isDefault(true).editable(true).build()
+            );
+
+            when(tenantCommonRepository.findByStateCode("TT")).thenReturn(Optional.empty());
+            when(SecurityUtils.getCurrentUserUuid()).thenReturn("user-uuid");
+            when(tenantCommonRepository.findUserIdByUuid("user-uuid")).thenReturn(Optional.of(100));
+            when(tenantCommonRepository.createTenant(any(CreateTenantRequestDTO.class), anyInt()))
+                    .thenReturn(Optional.of(tenant));
+            when(tenantDefaults.getLgdLocationHierarchy()).thenReturn(lgdLevels);
+            when(tenantDefaults.getDeptLocationHierarchy()).thenReturn(deptLevels);
+            when(tenantDefaults.getMeterChangeReasons()).thenReturn(reasons);
+
+            // Act
+            tenantManagementService.createTenant(request);
+
+            // Assert — both hierarchy types seeded
+            verify(tenantSchemaRepository).setLocationHierarchy("tenant_tt", RegionTypeEnum.LGD, lgdLevels, 100);
+            verify(tenantSchemaRepository).setLocationHierarchy("tenant_tt", RegionTypeEnum.DEPARTMENT, deptLevels, 100);
+            // METER_CHANGE_REASONS and LOCATION_CHECK_REQUIRED written via upsertConfig
+            verify(tenantCommonRepository).upsertConfig(eq(1), eq("METER_CHANGE_REASONS"), anyString(), eq(100));
+            verify(tenantCommonRepository).upsertConfig(eq(1), eq("LOCATION_CHECK_REQUIRED"), anyString(), eq(100));
         }
     }
 
@@ -255,7 +320,25 @@ class TenantManagementServiceImplTest {
             when(tenantCommonRepository.findById(tenantId)).thenReturn(Optional.empty());
 
             // Act & Assert
-            assertThrows(ResourceNotFoundException.class, 
+            assertThrows(ResourceNotFoundException.class,
+                    () -> tenantManagementService.updateTenant(tenantId, request));
+        }
+
+        @Test
+        @DisplayName("Should throw RuntimeException when update returns empty optional")
+        void testUpdateTenant_UpdateReturnsEmpty() {
+            // Arrange
+            Integer tenantId = 1;
+            UpdateTenantRequestDTO request = UpdateTenantRequestDTO.builder().status("ACTIVE").build();
+            TenantResponseDTO existing = TenantResponseDTO.builder().id(tenantId).build();
+
+            when(tenantCommonRepository.findById(tenantId)).thenReturn(Optional.of(existing));
+            when(SecurityUtils.getCurrentUserUuid()).thenReturn("user-uuid");
+            when(tenantCommonRepository.findUserIdByUuid("user-uuid")).thenReturn(Optional.of(100));
+            when(tenantCommonRepository.updateTenant(anyInt(), any(), anyInt())).thenReturn(Optional.empty());
+
+            // Act & Assert
+            assertThrows(ResourceNotFoundException.class,
                     () -> tenantManagementService.updateTenant(tenantId, request));
         }
     }
@@ -359,7 +442,7 @@ class TenantManagementServiceImplTest {
             TenantResponseDTO tenant = TenantResponseDTO.builder().id(tenantId).stateCode("TN").build();
             List<ConfigDTO> configsList = Arrays.asList(
                     ConfigDTO.builder()
-                            .configKey(TenantConfigKeyEnum.TENANT_LOGO_URL.name())
+                            .configKey(TenantConfigKeyEnum.TENANT_LOGO.name())
                             .configValue("{\"value\":\"https://brand.com/logo.png\"}")
                             .build()
             );
@@ -377,8 +460,8 @@ class TenantManagementServiceImplTest {
             // Assert
             assertNotNull(result);
             assertEquals(tenantId, result.getTenantId());
-            assertTrue(result.getConfigs().containsKey(TenantConfigKeyEnum.TENANT_LOGO_URL));
-            ConfigValueDTO configValue = result.getConfigs().get(TenantConfigKeyEnum.TENANT_LOGO_URL);
+            assertTrue(result.getConfigs().containsKey(TenantConfigKeyEnum.TENANT_LOGO));
+            ConfigValueDTO configValue = result.getConfigs().get(TenantConfigKeyEnum.TENANT_LOGO);
             assertTrue(configValue instanceof SimpleConfigValueDTO);
             assertEquals("https://brand.com/logo.png", ((SimpleConfigValueDTO) configValue).getValue());
             verify(tenantCommonRepository).findById(tenantId);
@@ -386,14 +469,13 @@ class TenantManagementServiceImplTest {
 
         @Test
         @DisplayName("Should handle null filter keys and retrieve all configurations")
-        @SuppressWarnings("unchecked")
         void testGetTenantConfigs_NullFilterKeys() {
             // Arrange
             Integer tenantId = 1;
             TenantResponseDTO tenant = TenantResponseDTO.builder().id(tenantId).stateCode("TN").build();
             List<ConfigDTO> configsList = Collections.singletonList(
                     ConfigDTO.builder()
-                            .configKey(TenantConfigKeyEnum.TENANT_LOGO_URL.name())
+                            .configKey(TenantConfigKeyEnum.TENANT_LOGO.name())
                             .configValue("{\"value\": \"https://brand.com/logo.png\"}")
                             .build()
             );
@@ -412,7 +494,7 @@ class TenantManagementServiceImplTest {
             // Assert
             assertNotNull(result);
             assertEquals(1, result.getConfigs().size());
-            assertTrue(result.getConfigs().containsKey(TenantConfigKeyEnum.TENANT_LOGO_URL));
+            assertTrue(result.getConfigs().containsKey(TenantConfigKeyEnum.TENANT_LOGO));
         }
 
         @Test
@@ -632,5 +714,171 @@ class TenantManagementServiceImplTest {
                 assertThrows(RuntimeException.class, 
                         () -> tenantManagementService.createDepartment(request));
             }
-        }    }
+        }    
+    }
+
+    @Nested
+    @DisplayName("Location Hierarchy Tests")
+    class LocationHierarchyTests {
+        
+        @Test
+        @DisplayName("Should get location hierarchy successfully for LGD")
+        void testGetLocationHierarchy_Success() {
+            // Arrange
+            Integer tenantId = 1;
+            String hierarchyType = "LGD";
+            
+            TenantResponseDTO tenant = TenantResponseDTO.builder()
+                    .id(tenantId)
+                    .stateCode("mp")
+                    .build();
+            
+            List<LocationLevelConfigDTO> levels = List.of(
+                    LocationLevelConfigDTO.builder().level(1)
+                            .levelName(List.of(LocationLevelNameDTO.builder().title("State").build())).build(),
+                    LocationLevelConfigDTO.builder().level(2)
+                            .levelName(List.of(LocationLevelNameDTO.builder().title("District").build())).build()
+            );
+
+            LocationConfigDTO locationConfig = LocationConfigDTO.builder()
+                    .locationHierarchy(levels)
+                    .build();
+            
+            when(tenantCommonRepository.findById(tenantId)).thenReturn(Optional.of(tenant));
+            when(tenantSchemaRepository.getLocationHierarchy("tenant_mp", RegionTypeEnum.LGD))
+                    .thenReturn(locationConfig);
+            
+            // Act
+            LocationHierarchyResponseDTO result = tenantManagementService.getLocationHierarchy(tenantId, hierarchyType);
+            
+            // Assert
+            assertNotNull(result);
+            assertEquals("LGD", result.getHierarchyType());
+            assertEquals(2, result.getLevels().size());
+            verify(tenantCommonRepository).findById(tenantId);
+            verify(tenantSchemaRepository).getLocationHierarchy("tenant_mp", RegionTypeEnum.LGD);
+        }
+        
+        @Test
+        @DisplayName("Should throw exception when tenant not found")
+        void testGetLocationHierarchy_TenantNotFound() {
+            // Arrange
+            Integer tenantId = 999;
+            String hierarchyType = "LGD";
+            
+            when(tenantCommonRepository.findById(tenantId)).thenReturn(Optional.empty());
+            
+            // Act & Assert
+            assertThrows(ResourceNotFoundException.class,
+                    () -> tenantManagementService.getLocationHierarchy(tenantId, hierarchyType));
+            verify(tenantCommonRepository).findById(tenantId);
+        }
+        
+        @Test
+        @DisplayName("Should get location children successfully for root level (parentId=null)")
+        void testGetLocationChildren_RootLevel_Success() {
+            // Arrange
+            Integer tenantId = 1;
+            String hierarchyType = "LGD";
+            Integer parentId = null;
+            
+            TenantResponseDTO tenant = TenantResponseDTO.builder()
+                    .id(tenantId)
+                    .stateCode("mp")
+                    .build();
+            
+            List<LocationResponseDTO> children = List.of(
+                    LocationResponseDTO.builder().id(1).uuid("uuid-1").title("Madhya Pradesh").status(1).build()
+            );
+            
+            when(tenantCommonRepository.findById(tenantId)).thenReturn(Optional.of(tenant));
+            when(tenantSchemaRepository.findLgdLocationsByParentId("tenant_mp", parentId))
+                    .thenReturn(children);
+            
+            // Act
+            List<LocationResponseDTO> result = tenantManagementService.getLocationChildren(tenantId, hierarchyType, parentId);
+            
+            // Assert
+            assertNotNull(result);
+            assertEquals(1, result.size());
+            assertEquals("Madhya Pradesh", result.get(0).getTitle());
+            verify(tenantCommonRepository).findById(tenantId);
+            verify(tenantSchemaRepository).findLgdLocationsByParentId("tenant_mp", parentId);
+        }
+        
+        @Test
+        @DisplayName("Should get location children successfully for DEPARTMENT hierarchy")
+        void testGetLocationChildren_Department_Success() {
+            // Arrange
+            Integer tenantId = 1;
+            String hierarchyType = "DEPARTMENT";
+            Integer parentId = 1;
+            
+            TenantResponseDTO tenant = TenantResponseDTO.builder()
+                    .id(tenantId)
+                    .stateCode("mp")
+                    .build();
+            
+            List<LocationResponseDTO> children = List.of(
+                    LocationResponseDTO.builder().id(10).uuid("uuid-10").title("Zone A").parentId(1).status(1).build(),
+                    LocationResponseDTO.builder().id(11).uuid("uuid-11").title("Zone B").parentId(1).status(1).build()
+            );
+            
+            when(tenantCommonRepository.findById(tenantId)).thenReturn(Optional.of(tenant));
+            when(tenantSchemaRepository.findDepartmentLocationsByParentId("tenant_mp", parentId))
+                    .thenReturn(children);
+            
+            // Act
+            List<LocationResponseDTO> result = tenantManagementService.getLocationChildren(tenantId, hierarchyType, parentId);
+            
+            // Assert
+            assertNotNull(result);
+            assertEquals(2, result.size());
+            assertEquals("Zone A", result.get(0).getTitle());
+            verify(tenantCommonRepository).findById(tenantId);
+            verify(tenantSchemaRepository).findDepartmentLocationsByParentId("tenant_mp", parentId);
+        }
+        
+        @Test
+        @DisplayName("Should return empty list for children when no results found")
+        void testGetLocationChildren_EmptyResult() {
+            // Arrange
+            Integer tenantId = 1;
+            String hierarchyType = "LGD";
+            Integer parentId = 999;
+            
+            TenantResponseDTO tenant = TenantResponseDTO.builder()
+                    .id(tenantId)
+                    .stateCode("mp")
+                    .build();
+            
+            when(tenantCommonRepository.findById(tenantId)).thenReturn(Optional.of(tenant));
+            when(tenantSchemaRepository.findLgdLocationsByParentId("tenant_mp", parentId))
+                    .thenReturn(Collections.emptyList());
+            
+            // Act
+            List<LocationResponseDTO> result = tenantManagementService.getLocationChildren(tenantId, hierarchyType, parentId);
+            
+            // Assert
+            assertNotNull(result);
+            assertTrue(result.isEmpty());
+            verify(tenantSchemaRepository).findLgdLocationsByParentId("tenant_mp", parentId);
+        }
+        
+        @Test
+        @DisplayName("Should throw exception when tenant not found for location children")
+        void testGetLocationChildren_TenantNotFound() {
+            // Arrange
+            Integer tenantId = 999;
+            String hierarchyType = "LGD";
+            Integer parentId = 0;
+            
+            when(tenantCommonRepository.findById(tenantId)).thenReturn(Optional.empty());
+            
+            // Act & Assert
+            assertThrows(ResourceNotFoundException.class,
+                    () -> tenantManagementService.getLocationChildren(tenantId, hierarchyType, parentId));
+            verify(tenantCommonRepository).findById(tenantId);
+        }
+    }
 }

@@ -157,10 +157,10 @@ class GlobalExceptionHandlerTest {
     class ConfigurationExceptionHandlerTests {
 
         @Test
-        @DisplayName("Should handle configuration exception and return 500")
+        @DisplayName("Should handle configuration exception and return 500 with hardcoded safe message")
         void testHandleConfigurationException_Success() {
-            // Arrange
-            ConfigurationException ex = new ConfigurationException("Configuration processing failed");
+            // Arrange — handler returns a hardcoded message regardless of ex.getMessage()
+            ConfigurationException ex = new ConfigurationException("Internal details that must not leak");
 
             // Act
             ResponseEntity<ApiErrorResponseDTO> response = handler.handleConfigurationException(ex);
@@ -223,10 +223,10 @@ class GlobalExceptionHandlerTest {
     class GenericExceptionHandlerTests {
 
         @Test
-        @DisplayName("Should handle generic exception and return 500")
+        @DisplayName("Should handle generic exception and return 500 with hardcoded safe message")
         void testHandleException_Success() {
-            // Arrange
-            Exception ex = new Exception("An unexpected error occurred");
+            // Arrange — handler returns a hardcoded message regardless of ex.getMessage()
+            Exception ex = new Exception("Low-level internal detail that must not leak");
 
             // Act
             ResponseEntity<ApiErrorResponseDTO> response = handler.handleException(ex);
@@ -252,6 +252,39 @@ class GlobalExceptionHandlerTest {
             assertEquals(HttpStatus.INTERNAL_SERVER_ERROR, response.getStatusCode());
             assertNotNull(response.getBody());
             assertEquals(500, response.getBody().getStatus());
+        }
+    }
+
+    @Nested
+    @DisplayName("RuntimeException Handler Tests")
+    class RuntimeExceptionHandlerTests {
+
+        @Test
+        @DisplayName("Should handle RuntimeException and return 500 with hardcoded safe message")
+        void testHandleRuntimeException_Success() {
+            // Arrange — handler returns a hardcoded message regardless of ex.getMessage()
+            RuntimeException ex = new RuntimeException("Schema provisioning failed: connection timeout");
+
+            // Act
+            ResponseEntity<ApiErrorResponseDTO> response = handler.handleRuntimeException(ex);
+
+            // Assert
+            assertEquals(HttpStatus.INTERNAL_SERVER_ERROR, response.getStatusCode());
+            assertNotNull(response.getBody());
+            assertEquals(500, response.getBody().getStatus());
+            assertEquals("Internal Server Error", response.getBody().getError());
+            assertEquals("An unexpected error occurred", response.getBody().getMessage());
+        }
+
+        @Test
+        @DisplayName("Should handle IllegalStateException separately from RuntimeException handler")
+        void testIllegalStateException_HandledByConflictHandler_NotRuntimeHandler() {
+            // IllegalStateException is handled by handleConflict (409), not handleRuntimeException
+            IllegalStateException ex = new IllegalStateException("Tenant already exists");
+            ResponseEntity<ApiErrorResponseDTO> response = handler.handleConflict(ex);
+
+            assertEquals(HttpStatus.CONFLICT, response.getStatusCode());
+            assertEquals(409, response.getBody().getStatus());
         }
     }
 
