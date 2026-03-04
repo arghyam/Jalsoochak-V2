@@ -1,10 +1,13 @@
 package org.arghyam.jalsoochak.tenant.service;
 
+import org.arghyam.jalsoochak.tenant.dto.TenantResponseDTO;
 import org.arghyam.jalsoochak.tenant.event.NudgeEvent;
 import org.arghyam.jalsoochak.tenant.kafka.KafkaProducer;
 import org.arghyam.jalsoochak.tenant.repository.NudgeRepository;
+import org.arghyam.jalsoochak.tenant.repository.TenantCommonRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -24,6 +27,7 @@ public class NudgeSchedulerService {
 
     private static final String COMMON_TOPIC = "common-topic";
 
+    private final TenantCommonRepository tenantCommonRepository;
     private final NudgeRepository nudgeRepository;
     private final KafkaProducer kafkaProducer;
 

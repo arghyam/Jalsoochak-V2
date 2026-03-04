@@ -102,3 +102,9 @@ minio:
   secret-key: ${MINIO_SECRET_KEY:minioadmin}
   bucket:     ${MINIO_BUCKET:escalation-reports}
   base-url:   ${MINIO_BASE_URL:https://localhost:9000}
+
+logging:
+  file:
+    name: ${LOG_FILE_PATH:../logger/logs/backend-services.log}
+  pattern:
+    level: "service=${spring.application.name} %5p"

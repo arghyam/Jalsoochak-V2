@@ -163,4 +163,16 @@ public class TenantConfigRepository {
         return findConfigValue(tenantId, langSpecificKey)
                 .or(() -> findConfigValue(tenantId, "meter_change_confirmation_template"));
     }
+
+    public Optional<String> findIssueReportPrompt(Integer tenantId, String languageKey) {
+        String langSpecificKey = "issue_report_prompt_" + languageKey;
+        return findConfigValue(tenantId, langSpecificKey)
+                .or(() -> findConfigValue(tenantId, "issue_report_prompt"));
+    }
+
+    public Optional<String> findIssueReportConfirmationTemplate(Integer tenantId, String languageKey) {
+        String langSpecificKey = "issue_report_confirmation_template_" + languageKey;
+        return findConfigValue(tenantId, langSpecificKey)
+                .or(() -> findConfigValue(tenantId, "issue_report_confirmation_template"));
+    }
 }

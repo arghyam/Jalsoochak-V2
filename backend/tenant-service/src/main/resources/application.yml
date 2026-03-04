@@ -1,14 +1,17 @@
 server:
-  port: 8081
+  port: 8082
 
 spring:
+  config:
+    import: optional:file:./tenant-service/.env[.properties],optional:file:.env[.properties]
+
   application:
     name: tenant-service
 
   datasource:
-    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/jalsoochak_db}?stringtype=unspecified
-    username: ${SPRING_DATASOURCE_USERNAME:postgres}
-    password: ${SPRING_DATASOURCE_PASSWORD:Zaqwsx@1123}
+    url: ${SPRING_DATASOURCE_URL}
+    username: ${SPRING_DATASOURCE_USERNAME}
+    password: ${SPRING_DATASOURCE_PASSWORD}
     driver-class-name: org.postgresql.Driver
     hikari:
       maximum-pool-size: 10
@@ -89,3 +92,8 @@ escalation:
       days: 7 # Days before level-2 officer is notified
     officer:
       user_type: DISTRICT_OFFICER
+logging:
+  file:
+    name: ${LOG_FILE_PATH:../logger/logs/backend-services.log}
+  pattern:
+    level: "service=${spring.application.name} %5p"
