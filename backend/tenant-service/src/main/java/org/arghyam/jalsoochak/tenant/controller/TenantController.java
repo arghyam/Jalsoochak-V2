@@ -1,7 +1,7 @@
 package org.arghyam.jalsoochak.tenant.controller;
 
+import java.util.List;
 import java.util.Set;
-import org.arghyam.jalsoochak.tenant.enums.TenantConfigKeyEnum;
 
 import org.arghyam.jalsoochak.tenant.dto.common.ApiResponseDTO;
 import org.arghyam.jalsoochak.tenant.dto.common.PageResponseDTO;
@@ -10,24 +10,12 @@ import org.arghyam.jalsoochak.tenant.dto.request.CreateTenantRequestDTO;
 import org.arghyam.jalsoochak.tenant.dto.request.SetTenantConfigRequestDTO;
 import org.arghyam.jalsoochak.tenant.dto.request.UpdateTenantRequestDTO;
 import org.arghyam.jalsoochak.tenant.dto.response.DepartmentResponseDTO;
+import org.arghyam.jalsoochak.tenant.dto.response.LocationHierarchyResponseDTO;
+import org.arghyam.jalsoochak.tenant.dto.response.LocationResponseDTO;
 import org.arghyam.jalsoochak.tenant.dto.response.TenantConfigResponseDTO;
 import org.arghyam.jalsoochak.tenant.dto.response.TenantResponseDTO;
-import org.arghyam.jalsoochak.tenant.dto.response.LocationResponseDTO;
-import org.arghyam.jalsoochak.tenant.dto.response.LocationHierarchyResponseDTO;
+import org.arghyam.jalsoochak.tenant.enums.TenantConfigKeyEnum;
 import org.arghyam.jalsoochak.tenant.service.TenantManagementService;
-import io.swagger.v3.oas.annotations.Operation;
-import io.swagger.v3.oas.annotations.Parameter;
-
-import io.swagger.v3.oas.annotations.media.ArraySchema;
-import io.swagger.v3.oas.annotations.media.Content;
-import io.swagger.v3.oas.annotations.media.Schema;
-import io.swagger.v3.oas.annotations.responses.ApiResponse;
-import io.swagger.v3.oas.annotations.responses.ApiResponses;
-import io.swagger.v3.oas.annotations.tags.Tag;
-
-import jakarta.validation.Valid;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -38,10 +26,21 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
-
 import org.springframework.web.bind.annotation.RestController;
 
-import java.util.List;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.ArraySchema;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 @RestController
 @RequestMapping("/api/v1/tenants")
@@ -49,6 +48,8 @@ import java.util.List;
 @Slf4j
 @Tag(name = "Tenant Management", description = "APIs for tenant onboarding, schema provisioning, and tenant management")
 public class TenantController {
+
+        private static final int MAX_PAGE_SIZE = 100;
 
         private final TenantManagementService tenantManagementService;
 
@@ -89,8 +90,8 @@ public class TenantController {
         @PreAuthorize("permitAll")
         @GetMapping
         public ResponseEntity<ApiResponseDTO<PageResponseDTO<TenantResponseDTO>>> getAllTenants(
-                        @Parameter(description = "Page number (0-indexed)", example = "0") @RequestParam(defaultValue = "0") int page,
-                        @Parameter(description = "Page size", example = "10") @RequestParam(defaultValue = "10") int size) {
+                        @Parameter(description = "Page number (0-indexed)", example = "0") @RequestParam(defaultValue = "0") @Min(0) int page,
+                        @Parameter(description = "Page size", example = "10") @RequestParam(defaultValue = "10") @Min(1) @Max(MAX_PAGE_SIZE) int size) {
                 log.info("GET /api/v1/tenants – page: {}, size: {}", page, size);
                 return ResponseEntity.ok(ApiResponseDTO.of(200, "Tenants retrieved successfully",
                                 tenantManagementService.getAllTenants(page, size)));

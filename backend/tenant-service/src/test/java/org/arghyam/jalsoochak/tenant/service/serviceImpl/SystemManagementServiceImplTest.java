@@ -214,7 +214,9 @@ class SystemManagementServiceImplTest {
 
             when(SecurityUtils.getCurrentUserUuid()).thenReturn("admin-uuid");
             when(tenantCommonRepository.findUserIdByUuid("admin-uuid")).thenReturn(Optional.of(1));
-            // upsertConfig returns empty Optional → triggers RuntimeException
+            when(tenantCommonRepository.upsertConfig(eq(0),
+                    eq(SystemConfigKeyEnum.WATER_QUANTITY_SUPPLY_THRESHOLD.name()), anyString(), eq(1)))
+                    .thenReturn(Optional.empty());
 
             assertThrows(RuntimeException.class, () -> systemManagementService.setSystemConfigs(request));
         }

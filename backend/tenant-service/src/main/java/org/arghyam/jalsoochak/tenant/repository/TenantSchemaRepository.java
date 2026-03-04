@@ -154,6 +154,9 @@ public class TenantSchemaRepository {
          */
         public void setSupportedLanguages(String schemaName, List<LanguageConfigDTO> languages, Integer currentUserId) {
                 validateSchemaName(schemaName);
+                if (languages == null) {
+                        throw new InvalidConfigValueException("Languages cannot be null");
+                }
                 // Mark all as inactive
                 String deactivateSql = String.format(
                                 "UPDATE %s.language_master_table SET status = 0, updated_by = ?, updated_at = NOW()",
@@ -208,6 +211,9 @@ public class TenantSchemaRepository {
                         List<LocationLevelConfigDTO> hierarchy,
                         Integer currentUserId) {
                 validateSchemaName(schemaName);
+                if (hierarchy == null) {
+                        throw new InvalidConfigValueException("Hierarchy cannot be null");
+                }
 
                 String deleteSql = String.format(
                                 "DELETE FROM %s.location_config_master_table WHERE region_type = ?",

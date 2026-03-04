@@ -31,7 +31,7 @@ public class TenantResponseDTO {
     private String name;
 
     @Schema(description = "Current status of the tenant", example = "ACTIVE", allowableValues = { "ACTIVE",
-            "INACTIVE" })
+            "INACTIVE", "ARCHIVED" })
     private String status;
 
     @Schema(description = "Timestamp when the tenant was created")

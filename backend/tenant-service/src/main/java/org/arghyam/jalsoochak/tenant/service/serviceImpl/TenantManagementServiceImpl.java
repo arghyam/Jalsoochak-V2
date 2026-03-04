@@ -8,6 +8,9 @@ import java.util.Set;
 
 import org.arghyam.jalsoochak.tenant.config.TenantContext;
 import org.arghyam.jalsoochak.tenant.config.TenantDefaultsProperties;
+import org.arghyam.jalsoochak.tenant.event.TenantCreatedEvent;
+import org.arghyam.jalsoochak.tenant.event.TenantDeactivatedEvent;
+import org.arghyam.jalsoochak.tenant.event.TenantUpdatedEvent;
 import org.arghyam.jalsoochak.tenant.dto.common.PageResponseDTO;
 import org.arghyam.jalsoochak.tenant.dto.request.CreateDepartmentRequestDTO;
 import org.arghyam.jalsoochak.tenant.dto.request.CreateTenantRequestDTO;
@@ -29,15 +32,15 @@ import org.arghyam.jalsoochak.tenant.dto.internal.SimpleConfigValueDTO;
 import org.arghyam.jalsoochak.tenant.enums.RegionTypeEnum;
 import org.arghyam.jalsoochak.tenant.enums.TenantConfigKeyEnum;
 import org.arghyam.jalsoochak.tenant.enums.TenantConfigKeyEnum.ConfigType;
+import org.arghyam.jalsoochak.tenant.exception.ConfigurationException;
 import org.arghyam.jalsoochak.tenant.exception.InvalidConfigKeyException;
 import org.arghyam.jalsoochak.tenant.exception.InvalidConfigValueException;
 import org.arghyam.jalsoochak.tenant.exception.ResourceNotFoundException;
-import org.arghyam.jalsoochak.tenant.kafka.KafkaProducer;
 import org.arghyam.jalsoochak.tenant.repository.TenantCommonRepository;
 import org.arghyam.jalsoochak.tenant.repository.TenantSchemaRepository;
 import org.arghyam.jalsoochak.tenant.service.TenantManagementService;
 import org.arghyam.jalsoochak.tenant.util.SecurityUtils;
-import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -55,10 +58,9 @@ public class TenantManagementServiceImpl implements TenantManagementService {
 
     private final TenantCommonRepository tenantCommonRepository;
     private final TenantSchemaRepository tenantSchemaRepository;
-    private final KafkaProducer kafkaProducer;
     private final ObjectMapper objectMapper;
-    private final StringRedisTemplate redisTemplate;
     private final TenantDefaultsProperties tenantDefaults;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Override
     @Transactional
@@ -82,8 +84,7 @@ public class TenantManagementServiceImpl implements TenantManagementService {
         log.info("Tenant schema '{}' provisioned successfully", schemaName);
 
         setDefaultConfigs(tenant, schemaName, currentUserId);
-        cacheTenantInRedis(tenant, schemaName);
-        publishTenantEvent(tenant, "TENANT_CREATED");
+        eventPublisher.publishEvent(new TenantCreatedEvent(tenant, schemaName));
 
         return tenant;
     }
@@ -109,7 +110,7 @@ public class TenantManagementServiceImpl implements TenantManagementService {
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "Tenant with tenantId " + tenantId + " does not exist"));
         log.info("Tenant [id={}] updated successfully", tenantId);
-        publishTenantEvent(updated, "TENANT_UPDATED");
+        eventPublisher.publishEvent(new TenantUpdatedEvent(updated));
         return updated;
     }
 
@@ -129,7 +130,7 @@ public class TenantManagementServiceImpl implements TenantManagementService {
         log.info("Tenant [id={}] deactivated successfully", tenantId);
 
         tenantCommonRepository.findById(tenantId)
-                .ifPresent(tenant -> publishTenantEvent(tenant, "TENANT_DEACTIVATED"));
+                .ifPresent(tenant -> eventPublisher.publishEvent(new TenantDeactivatedEvent(tenant)));
     }
 
     @Override
@@ -206,8 +207,8 @@ public class TenantManagementServiceImpl implements TenantManagementService {
         }
 
         if (effectiveKeys.contains(TenantConfigKeyEnum.LGD_LOCATION_HIERARCHY)) {
-            List<LocationLevelConfigDTO> levels = tenantSchemaRepository
-                    .getLocationHierarchy(schemaName, RegionTypeEnum.LGD).getLocationHierarchy();
+            LocationConfigDTO lgdHierarchy = tenantSchemaRepository.getLocationHierarchy(schemaName, RegionTypeEnum.LGD);
+            List<LocationLevelConfigDTO> levels = lgdHierarchy != null ? lgdHierarchy.getLocationHierarchy() : null;
             if (levels != null && !levels.isEmpty()) {
                 configMap.put(TenantConfigKeyEnum.LGD_LOCATION_HIERARCHY,
                         LocationConfigDTO.builder().locationHierarchy(levels).build());
@@ -215,8 +216,8 @@ public class TenantManagementServiceImpl implements TenantManagementService {
         }
 
         if (effectiveKeys.contains(TenantConfigKeyEnum.DEPT_LOCATION_HIERARCHY)) {
-            List<LocationLevelConfigDTO> levels = tenantSchemaRepository
-                    .getLocationHierarchy(schemaName, RegionTypeEnum.DEPARTMENT).getLocationHierarchy();
+            LocationConfigDTO deptHierarchy = tenantSchemaRepository.getLocationHierarchy(schemaName, RegionTypeEnum.DEPARTMENT);
+            List<LocationLevelConfigDTO> levels = deptHierarchy != null ? deptHierarchy.getLocationHierarchy() : null;
             if (levels != null && !levels.isEmpty()) {
                 configMap.put(TenantConfigKeyEnum.DEPT_LOCATION_HIERARCHY,
                         LocationConfigDTO.builder().locationHierarchy(levels).build());
@@ -395,49 +396,19 @@ public class TenantManagementServiceImpl implements TenantManagementService {
                     .build();
             tenantCommonRepository.upsertConfig(tenant.getId(),
                     TenantConfigKeyEnum.METER_CHANGE_REASONS.name(),
-                    objectMapper.writeValueAsString(reasons), currentUserId);
+                    objectMapper.writeValueAsString(reasons), currentUserId)
+                    .orElseThrow(() -> new ConfigurationException(
+                            "Failed to seed METER_CHANGE_REASONS for tenant [id=" + tenant.getId() + ", userId=" + currentUserId + "]"));
 
             tenantCommonRepository.upsertConfig(tenant.getId(),
                     TenantConfigKeyEnum.LOCATION_CHECK_REQUIRED.name(),
-                    objectMapper.writeValueAsString(new SimpleConfigValueDTO("NO")), currentUserId);
+                    objectMapper.writeValueAsString(new SimpleConfigValueDTO("NO")), currentUserId)
+                    .orElseThrow(() -> new ConfigurationException(
+                            "Failed to seed LOCATION_CHECK_REQUIRED for tenant [id=" + tenant.getId() + ", userId=" + currentUserId + "]"));
         } catch (JsonProcessingException e) {
             throw new InvalidConfigValueException("Failed to serialize default tenant configs", e);
         }
 
         log.info("Default configs seeded for tenant [id={}]", tenant.getId());
-    }
-
-    private void publishTenantEvent(TenantResponseDTO tenant, String eventType) {
-        try {
-            int statusInt = "ACTIVE".equalsIgnoreCase(tenant.getStatus()) ? 1 : 0;
-            Map<String, Object> event = Map.of(
-                    "eventType", eventType,
-                    "tenantId", tenant.getId(),
-                    "stateCode", tenant.getStateCode(),
-                    "title", tenant.getName(),
-                    "countryCode", "IN",
-                    "status", statusInt);
-            kafkaProducer.sendMessage(objectMapper.writeValueAsString(event));
-            log.info("Published {} event for tenant [id={}]", eventType, tenant.getId());
-        } catch (Exception e) {
-            log.error("Failed to publish {} event for tenant [id={}]: {}",
-                    eventType, tenant.getId(), e.getMessage());
-        }
-    }
-
-    private void cacheTenantInRedis(TenantResponseDTO tenant, String schemaName) {
-        String tenantStateCode = tenant.getStateCode().toUpperCase();
-        String tenantKey = "tenant-service:tenants:" + tenantStateCode + ":profile";
-
-        Map<String, String> tenantPayload = new HashMap<>();
-        tenantPayload.put("id", String.valueOf(tenant.getId()));
-        tenantPayload.put("stateCode", tenantStateCode);
-        tenantPayload.put("name", tenant.getName());
-        tenantPayload.put("status", tenant.getStatus());
-        tenantPayload.put("schemaName", schemaName);
-
-        redisTemplate.opsForHash().putAll(tenantKey, tenantPayload);
-        redisTemplate.opsForSet().add("tenant-service:tenants:index", tenantStateCode);
-        log.info("Tenant cached in Redis under key: {}", tenantKey);
     }
 }

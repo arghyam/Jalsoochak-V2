@@ -2,6 +2,7 @@ package org.arghyam.jalsoochak.tenant.dto.internal;
 
 import com.fasterxml.jackson.annotation.JsonAnyGetter;
 import com.fasterxml.jackson.annotation.JsonAnySetter;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.validation.constraints.NotBlank;
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
@@ -9,6 +10,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import lombok.ToString;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -26,6 +28,8 @@ public final class StateITSystemConfigDTO implements ConfigValueDTO {
     private String username;
 
     @NotBlank(message = "Password is required")
+    @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
+    @ToString.Exclude
     private String password;
 
     @NotBlank(message = "Organization code is required")
@@ -33,6 +37,7 @@ public final class StateITSystemConfigDTO implements ConfigValueDTO {
 
     @Getter(AccessLevel.NONE)
     @Builder.Default
+    @ToString.Exclude
     private Map<String, Object> additionalSettings = new HashMap<>();
 
     @JsonAnyGetter

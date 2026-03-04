@@ -42,8 +42,10 @@ import org.arghyam.jalsoochak.tenant.dto.response.TenantConfigResponseDTO;
 import org.arghyam.jalsoochak.tenant.dto.response.TenantResponseDTO;
 import org.arghyam.jalsoochak.tenant.enums.RegionTypeEnum;
 import org.arghyam.jalsoochak.tenant.enums.TenantConfigKeyEnum;
+import org.arghyam.jalsoochak.tenant.event.TenantCreatedEvent;
+import org.arghyam.jalsoochak.tenant.event.TenantDeactivatedEvent;
+import org.arghyam.jalsoochak.tenant.event.TenantUpdatedEvent;
 import org.arghyam.jalsoochak.tenant.exception.ResourceNotFoundException;
-import org.arghyam.jalsoochak.tenant.kafka.KafkaProducer;
 import org.arghyam.jalsoochak.tenant.repository.TenantCommonRepository;
 import org.arghyam.jalsoochak.tenant.repository.TenantSchemaRepository;
 import org.arghyam.jalsoochak.tenant.util.SecurityUtils;
@@ -56,9 +58,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.MockedStatic;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.data.redis.core.HashOperations;
-import org.springframework.data.redis.core.SetOperations;
-import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.context.ApplicationEventPublisher;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -79,19 +79,10 @@ class TenantManagementServiceImplTest {
     private TenantSchemaRepository tenantSchemaRepository;
 
     @Mock
-    private KafkaProducer kafkaProducer;
-
-    @Mock
-    private StringRedisTemplate redisTemplate;
-
-    @Mock
     private TenantDefaultsProperties tenantDefaults;
 
     @Mock
-    private HashOperations<String, Object, Object> hashOperations;
-
-    @Mock
-    private SetOperations<String, String> setOperations;
+    private ApplicationEventPublisher eventPublisher;
 
     private ObjectMapper objectMapper;
 
@@ -103,8 +94,6 @@ class TenantManagementServiceImplTest {
     void setUp() {
         objectMapper = new ObjectMapper();
         mockedSecurityUtils = mockStatic(SecurityUtils.class);
-        lenient().when(redisTemplate.opsForHash()).thenReturn(hashOperations);
-        lenient().when(redisTemplate.opsForSet()).thenReturn(setOperations);
         lenient().when(tenantDefaults.getLgdLocationHierarchy()).thenReturn(Collections.emptyList());
         lenient().when(tenantDefaults.getDeptLocationHierarchy()).thenReturn(Collections.emptyList());
         lenient().when(tenantDefaults.getMeterChangeReasons()).thenReturn(Collections.emptyList());
@@ -113,10 +102,9 @@ class TenantManagementServiceImplTest {
         tenantManagementService = new TenantManagementServiceImpl(
             tenantCommonRepository,
             tenantSchemaRepository,
-            kafkaProducer,
             objectMapper,
-            redisTemplate,
-            tenantDefaults
+            tenantDefaults,
+            eventPublisher
         );
     }
 
@@ -151,6 +139,10 @@ class TenantManagementServiceImplTest {
             when(tenantCommonRepository.findUserIdByUuid("user-uuid")).thenReturn(Optional.of(100));
             when(tenantCommonRepository.createTenant(any(CreateTenantRequestDTO.class), anyInt()))
                     .thenReturn(Optional.of(expectedResponse));
+            when(tenantCommonRepository.upsertConfig(eq(1), eq("METER_CHANGE_REASONS"), anyString(), eq(100)))
+                    .thenReturn(Optional.of(ConfigDTO.builder().build()));
+            when(tenantCommonRepository.upsertConfig(eq(1), eq("LOCATION_CHECK_REQUIRED"), anyString(), eq(100)))
+                    .thenReturn(Optional.of(ConfigDTO.builder().build()));
 
             // Act
             TenantResponseDTO result = tenantManagementService.createTenant(request);
@@ -164,7 +156,7 @@ class TenantManagementServiceImplTest {
             verify(tenantCommonRepository).findByStateCode("TT");
             verify(tenantCommonRepository).createTenant(eq(request), eq(100));
             verify(tenantCommonRepository).provisionTenantSchema("tenant_tt");
-            verify(kafkaProducer).sendMessage(anyString());
+            verify(eventPublisher).publishEvent(any(TenantCreatedEvent.class));
         }
 
         @Test
@@ -248,6 +240,10 @@ class TenantManagementServiceImplTest {
             when(tenantDefaults.getLgdLocationHierarchy()).thenReturn(lgdLevels);
             when(tenantDefaults.getDeptLocationHierarchy()).thenReturn(deptLevels);
             when(tenantDefaults.getMeterChangeReasons()).thenReturn(reasons);
+            when(tenantCommonRepository.upsertConfig(eq(1), eq("METER_CHANGE_REASONS"), anyString(), eq(100)))
+                    .thenReturn(Optional.of(ConfigDTO.builder().build()));
+            when(tenantCommonRepository.upsertConfig(eq(1), eq("LOCATION_CHECK_REQUIRED"), anyString(), eq(100)))
+                    .thenReturn(Optional.of(ConfigDTO.builder().build()));
 
             // Act
             tenantManagementService.createTenant(request);
@@ -291,7 +287,7 @@ class TenantManagementServiceImplTest {
             assertNotNull(result);
             assertEquals("ACTIVE", result.getStatus());
             verify(tenantCommonRepository).updateTenant(anyInt(), any(UpdateTenantRequestDTO.class), anyInt());
-            verify(kafkaProducer).sendMessage(anyString());
+            verify(eventPublisher).publishEvent(any(TenantUpdatedEvent.class));
         }
 
         @Test
@@ -368,7 +364,7 @@ class TenantManagementServiceImplTest {
 
             // Assert
             verify(tenantCommonRepository).deactivateTenant(anyInt(), anyInt());
-            verify(kafkaProducer).sendMessage(anyString());
+            verify(eventPublisher).publishEvent(any(TenantDeactivatedEvent.class));
         }
 
         @Test

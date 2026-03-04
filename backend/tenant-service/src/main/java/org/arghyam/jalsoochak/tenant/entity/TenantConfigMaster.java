@@ -25,10 +25,10 @@ public class TenantConfigMaster {
     @JoinColumn(name = "tenant_id", nullable = false)
     private TenantMaster tenant;
 
-    @Column(name = "config_key", columnDefinition = "text")
+    @Column(name = "config_key", columnDefinition = "text", nullable = false)
     private String configKey;
 
-    @Column(name = "config_value", columnDefinition = "text")
+    @Column(name = "config_value", columnDefinition = "text", nullable = false)
     private String configValue;
 
     @Column(name = "created_at", nullable = false)

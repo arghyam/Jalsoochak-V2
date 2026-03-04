@@ -17,7 +17,7 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 public final class TimeSettingsConfigDTO implements ConfigValueDTO {
     @NotBlank(message = "Time value is required")
-    @Pattern(regexp = "([01]?[0-9]|2[0-3]):[0-5][0-9]", message = "Time must be in HH:mm format (e.g., 14:30)")
+    @Pattern(regexp = "([01][0-9]|2[0-3]):[0-5][0-9]", message = "Time must be in HH:mm format (e.g., 14:30)")
     private String timeValue;
     
     private String description;

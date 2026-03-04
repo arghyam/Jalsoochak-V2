@@ -4,6 +4,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -24,6 +25,7 @@ public class CreateTenantRequestDTO {
     private String stateCode;
 
     @NotNull(message = "LGD code is required")
+    @Positive(message = "LGD code must be positive")
     @Schema(description = "Local Government Directory code for the state", example = "29", requiredMode = Schema.RequiredMode.REQUIRED)
     private Integer lgdCode;
 

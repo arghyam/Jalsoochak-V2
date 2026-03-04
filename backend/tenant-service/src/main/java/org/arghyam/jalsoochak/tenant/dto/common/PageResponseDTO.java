@@ -1,12 +1,12 @@
 package org.arghyam.jalsoochak.tenant.dto.common;
 
+import java.util.List;
+
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-
-import java.util.List;
 
 @Data
 @Builder
@@ -34,6 +34,9 @@ public class PageResponseDTO<T> {
      * Helper method to create a PageResponseDTO.
      */
     public static <T> PageResponseDTO<T> of(List<T> content, long totalElements, int page, int size) {
+        if (size <= 0) {
+            throw new IllegalArgumentException("size must be greater than 0");
+        }
         int totalPages = (int) Math.ceil((double) totalElements / size);
         return PageResponseDTO.<T>builder()
                 .content(content)

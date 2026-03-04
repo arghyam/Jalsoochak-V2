@@ -7,6 +7,7 @@ import org.arghyam.jalsoochak.tenant.dto.internal.ReasonItemDTO;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.validation.annotation.Validated;
 
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotEmpty;
 import lombok.Data;
 
@@ -16,11 +17,11 @@ import lombok.Data;
 public class TenantDefaultsProperties {
 
     @NotEmpty
-    private List<LocationLevelConfigDTO> lgdLocationHierarchy;
+    private List<@Valid LocationLevelConfigDTO> lgdLocationHierarchy;
 
     @NotEmpty
-    private List<LocationLevelConfigDTO> deptLocationHierarchy;
+    private List<@Valid LocationLevelConfigDTO> deptLocationHierarchy;
 
     @NotEmpty
-    private List<ReasonItemDTO> meterChangeReasons;
+    private List<@Valid ReasonItemDTO> meterChangeReasons;
 }

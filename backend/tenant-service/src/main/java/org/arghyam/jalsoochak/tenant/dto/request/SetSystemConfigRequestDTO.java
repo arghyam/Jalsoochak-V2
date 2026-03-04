@@ -11,7 +11,7 @@ import org.arghyam.jalsoochak.tenant.enums.SystemConfigKeyEnum;
 import java.util.Map;
 
 /**
- * Request DTO for setting or updating platform-wide platform configurations.
+ * Request DTO for setting or updating system-wide configurations.
  */
 @Data
 @Builder

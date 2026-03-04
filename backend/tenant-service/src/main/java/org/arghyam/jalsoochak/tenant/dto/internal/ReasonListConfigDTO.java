@@ -2,6 +2,7 @@ package org.arghyam.jalsoochak.tenant.dto.internal;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotEmpty;
+import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -19,5 +20,5 @@ import java.util.List;
 @NoArgsConstructor
 public final class ReasonListConfigDTO implements ConfigValueDTO {
     @NotEmpty(message = "At least one reason must be provided")
-    private List<@Valid ReasonItemDTO> reasons;
+    private List<@NotNull @Valid ReasonItemDTO> reasons;
 }

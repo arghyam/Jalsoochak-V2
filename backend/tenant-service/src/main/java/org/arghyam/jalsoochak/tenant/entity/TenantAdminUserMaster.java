@@ -1,5 +1,6 @@
 package org.arghyam.jalsoochak.tenant.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.*;
 import java.time.LocalDateTime;
@@ -33,6 +34,7 @@ public class TenantAdminUserMaster {
     @Column(name = "admin_level", nullable = false)
     private Integer adminLevel;
 
+    @JsonIgnore
     @Column(name = "password", nullable = false, columnDefinition = "text")
     private String password;
 

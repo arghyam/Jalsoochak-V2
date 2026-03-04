@@ -6,14 +6,19 @@ import jakarta.validation.constraints.NotBlank;
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
-import lombok.Data;
+import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import lombok.Setter;
+import lombok.ToString;
 
 import java.util.HashMap;
 import java.util.Map;
 
-@Data
+@Getter
+@Setter
+@ToString(exclude = "apiKey")
+@EqualsAndHashCode(exclude = "apiKey")
 @Builder
 @AllArgsConstructor
 @NoArgsConstructor
