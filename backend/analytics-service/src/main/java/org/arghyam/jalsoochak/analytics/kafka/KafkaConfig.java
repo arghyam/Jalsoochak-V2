@@ -1,4 +1,4 @@
-package org.arghyam.jalsoochak.analytics.kafka;
+package org.arghyam.jalsoochak.scheme.kafka;
 
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.producer.ProducerConfig;

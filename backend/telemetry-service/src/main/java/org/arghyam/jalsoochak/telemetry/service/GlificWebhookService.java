@@ -157,7 +157,6 @@ public class GlificWebhookService {
             if (tenantId == null) {
                 throw new IllegalStateException("Operator tenant could not be resolved");
             }
-
             String name = operatorWithSchema.operator().title() != null && !operatorWithSchema.operator().title().isBlank()
                     ? operatorWithSchema.operator().title()
                     : "there";
@@ -208,7 +207,6 @@ public class GlificWebhookService {
             if (tenantId == null) {
                 throw new IllegalStateException("Operator tenant could not be resolved");
             }
-
             Optional<String> selectedLanguageOpt = Optional.of(resolveOperatorLanguage(operatorWithSchema, tenantId));
             String languageKey = selectedLanguageOpt
                     .map(this::normalizeLanguageKey)
@@ -906,9 +904,6 @@ public class GlificWebhookService {
                     .meterReading(manualReadingValue)
                     .qualityStatus("CONFIRMED")
                     .build();
-
-            String selectedLanguage = resolveOperatorLanguage(operatorWithSchema, tenantId);
-            languageKey = normalizeLanguageKey(selectedLanguage);
 
             String template = tenantConfigRepository.findManualReadingConfirmationTemplate(tenantId, languageKey)
                     .orElse("Manual reading {reading} saved successfully.");
