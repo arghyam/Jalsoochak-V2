@@ -38,6 +38,9 @@ public class GlificAuthService {
 
     @PostConstruct
     public void login() {
+        if (username == null || username.isBlank() || password == null || password.isBlank()) {
+            throw new IllegalStateException("[GlificAuth] glific.username and glific.password must be configured");
+        }
         log.info("[GlificAuth] Logging in to Glific...");
         JsonNode data = webClient.post()
                 .uri(authUrl)
@@ -50,8 +53,9 @@ public class GlificAuthService {
         if (data == null || !data.has("data")) {
             throw new RuntimeException("[GlificAuth] Login failed: null or unexpected response");
         }
-        accessToken = data.path("data").path("access_token").asText();
-        renewalToken = data.path("data").path("renewal_token").asText();
+        JsonNode tokenData = data.path("data");
+        accessToken = requireNonBlankToken(tokenData, "access_token", "login");
+        renewalToken = requireNonBlankToken(tokenData, "renewal_token", "login");
         log.info("[GlificAuth] Login successful, access token acquired");
     }
 
@@ -74,8 +78,17 @@ public class GlificAuthService {
         if (data == null || !data.has("data")) {
             throw new RuntimeException("[GlificAuth] Token refresh failed");
         }
-        accessToken = data.path("data").path("access_token").asText();
-        renewalToken = data.path("data").path("renewal_token").asText();
+        JsonNode tokenData = data.path("data");
+        accessToken = requireNonBlankToken(tokenData, "access_token", "refresh");
+        renewalToken = requireNonBlankToken(tokenData, "renewal_token", "refresh");
         log.info("[GlificAuth] Token refreshed successfully");
+    }
+
+    private String requireNonBlankToken(JsonNode tokenData, String key, String flow) {
+        String token = tokenData.path(key).asText("");
+        if (token.isBlank()) {
+            throw new RuntimeException("[GlificAuth] " + flow + " failed: missing " + key);
+        }
+        return token;
     }
 }

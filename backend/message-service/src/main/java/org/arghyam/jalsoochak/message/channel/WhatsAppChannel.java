@@ -38,7 +38,8 @@ public class WhatsAppChannel implements NotificationChannel {
     public boolean send(NotificationRequest request) {
         try {
             Long contactId = glificWhatsAppService.optIn(request.getRecipient());
-            glificWhatsAppService.sendNudgeHsm(contactId, request.getBody(), "");
+            glificWhatsAppService.sendNudgeHsm(contactId, request.getBody(),
+                    request.getDate() != null ? request.getDate() : "");
             log.info("[WHATSAPP] Nudge HSM sent");
             log.debug("[WHATSAPP] Nudge HSM sent to {}", request.getRecipient());
             return true;

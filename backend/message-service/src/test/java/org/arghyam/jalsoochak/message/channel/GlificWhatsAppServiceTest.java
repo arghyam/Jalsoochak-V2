@@ -17,6 +17,7 @@ import java.util.Map;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.*;
+import org.mockito.InOrder;
 import static org.mockito.Mockito.*;
 
 /**
@@ -135,10 +136,9 @@ class GlificWhatsAppServiceTest {
 
         service.sendEscalationHsm(55L, "https://minio.example.com/r.pdf", "Please review the report.");
 
-        // Step 1: media upload
-        verify(client).execute(contains("createMessageMedia"), anyMap());
-        // Step 2: createAndSendMessage
-        verify(client).execute(contains("createAndSendMessage"), anyMap());
+        InOrder inOrder = inOrder(client);
+        inOrder.verify(client).execute(contains("createMessageMedia"), anyMap());
+        inOrder.verify(client).execute(contains("createAndSendMessage"), anyMap());
     }
 
     @Test
@@ -195,12 +195,67 @@ class GlificWhatsAppServiceTest {
         ArgumentCaptor<Map<String, Object>> captor = varsCaptor();
         verify(client).execute(contains("createAndSendMessage"), captor.capture());
 
-        // Document attachment is sent via mediaId in the input; params is empty
         @SuppressWarnings("unchecked")
         Map<String, Object> input = (Map<String, Object>) captor.getValue().get("input");
         assertThat(input.get("mediaId")).isEqualTo(1);   // Integer.parseInt("1")
         assertThat(input.get("isHsm")).isEqualTo(true);
-        assertThat((List<?>) input.get("params")).isEmpty();
+        // bodyText is passed as the single body parameter
+        assertThat((List<?>) input.get("params")).containsExactly("Localized escalation text");
+    }
+
+    // ──────────────────────── GraphQL error handling ────────────────────────────
+
+    @Test
+    void optIn_throwsException_whenGraphQLErrorsReturned() throws Exception {
+        JsonNode response = mapper.readTree("""
+                {"optinContact":{"contact":null,"errors":[{"key":"phone","message":"invalid"}]}}
+                """);
+        when(client.execute(contains("optinContact"), anyMap())).thenReturn(response);
+
+        assertThatThrownBy(() -> service.optIn("91invalid"))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessageContaining("optinContact");
+    }
+
+    @Test
+    void sendNudgeHsm_throwsException_whenGraphQLErrorsReturned() throws Exception {
+        JsonNode response = mapper.readTree("""
+                {"sendHsmMessage":{"message":null,"errors":[{"key":"template","message":"not found"}]}}
+                """);
+        when(client.execute(contains("sendHsmMessage"), anyMap())).thenReturn(response);
+
+        assertThatThrownBy(() -> service.sendNudgeHsm(1L, "Ramesh", "04 March 2026"))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessageContaining("sendHsmMessage");
+    }
+
+    @Test
+    void uploadMedia_throwsException_whenGraphQLErrorsReturned() throws Exception {
+        JsonNode response = mapper.readTree("""
+                {"createMessageMedia":{"messageMedia":null,"errors":[{"key":"url","message":"unreachable"}]}}
+                """);
+        when(client.execute(contains("createMessageMedia"), anyMap())).thenReturn(response);
+
+        assertThatThrownBy(() -> service.uploadMedia("https://example.com/r.pdf"))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessageContaining("createMessageMedia");
+    }
+
+    @Test
+    void sendEscalationHsm_throwsException_whenCreateAndSendReturnsErrors() throws Exception {
+        JsonNode uploadResponse = mapper.readTree("""
+                {"createMessageMedia":{"messageMedia":{"id":"5"},"errors":[]}}
+                """);
+        JsonNode sendResponse = mapper.readTree("""
+                {"createAndSendMessage":{"message":null,"errors":[{"key":"contact","message":"blocked"}]}}
+                """);
+        when(client.execute(contains("createMessageMedia"), anyMap())).thenReturn(uploadResponse);
+        when(client.execute(contains("createAndSendMessage"), anyMap())).thenReturn(sendResponse);
+
+        assertThatThrownBy(() ->
+                service.sendEscalationHsm(22L, "https://minio.example.com/r.pdf", "body text"))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessageContaining("createAndSendMessage");
     }
 
     // ────────────────────────────── helpers ────────────────────────────────────

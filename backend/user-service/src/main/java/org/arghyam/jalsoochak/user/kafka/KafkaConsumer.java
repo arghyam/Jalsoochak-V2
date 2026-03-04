@@ -1,6 +1,5 @@
 package org.arghyam.jalsoochak.user.kafka;
 
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Component;
 
@@ -10,11 +9,10 @@ import org.springframework.stereotype.Component;
  * are handled exclusively by message-service.
  */
 @Component
-@Slf4j
 public class KafkaConsumer {
 
     @KafkaListener(topics = "common-topic", groupId = "${spring.kafka.consumer.group-id}")
     public void consume(String message) {
-        log.info("[user-service] Received message from common-topic: {}", message);
+        // intentionally silent — NUDGE/ESCALATION events are not processed here
     }
 }

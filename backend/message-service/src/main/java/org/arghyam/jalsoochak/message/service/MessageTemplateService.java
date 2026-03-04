@@ -6,6 +6,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 
 /**
@@ -60,16 +61,22 @@ public class MessageTemplateService {
 
     private String normalizeLanguageKey(String language) {
         if (language == null) return "";
-        String lower = language.trim().toLowerCase();
+        String lower = language.trim().toLowerCase(Locale.ROOT);
         String raw = language.trim();
         if ("हिंदी".equals(raw) || "हिन्दी".equals(raw) || "hindi".equals(lower)) return "hindi";
         if ("english".equals(lower)) return "english";
-        return lower.replaceAll("[^a-z0-9]+", "_").replaceAll("^_+|_+$", "");
+        String normalized = lower
+                .replaceAll("[^\\p{L}\\p{N}]+", "_")
+                .replaceAll("^_+|_+$", "");
+        return normalized.isBlank() ? "english" : normalized;
     }
 
     private Optional<String> findConfigValue(int tenantId, String key) {
         List<String> rows = jdbcTemplate.query(
-                "SELECT config_value FROM common_schema.tenant_config_master_table WHERE tenant_id=? AND config_key=? LIMIT 1",
+                "SELECT config_value " +
+                        "FROM common_schema.tenant_config_master_table " +
+                        "WHERE tenant_id=? AND config_key=? " +
+                        "ORDER BY updated_at DESC, id DESC LIMIT 1",
                 (rs, n) -> rs.getString("config_value"), tenantId, key);
         return rows.stream().findFirst();
     }

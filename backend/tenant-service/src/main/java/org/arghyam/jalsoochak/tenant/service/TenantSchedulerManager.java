@@ -44,8 +44,20 @@ public class TenantSchedulerManager {
     public void loadAndScheduleAll() {
         List<TenantResponseDTO> tenants = tenantCommonRepository.findAll();
         tenants.stream()
-                .filter(t -> "ACTIVE".equalsIgnoreCase(t.getStatus()))
-                .forEach(t -> scheduleForTenant(t.getId() != null ? t.getId() : 0, t.getStateCode()));
+            .filter(t -> "ACTIVE".equalsIgnoreCase(t.getStatus()))
+            .forEach(t -> {
+                Integer tenantId = t.getId();
+                String stateCode = t.getStateCode();
+                if (tenantId == null || stateCode == null || stateCode.isBlank()) {
+                        log.warn("[Scheduler] Skipping tenant with invalid metadata: id={}, stateCode={}", tenantId, stateCode);
+                        return;
+                    }
+                try {
+                        scheduleForTenant(tenantId, stateCode);
+                    } catch (Exception ex) {
+                        log.error("[Scheduler] Failed to schedule tenant={} stateCode={}", tenantId, stateCode, ex);
+                    }
+                });
     }
 
     /**
@@ -57,10 +69,17 @@ public class TenantSchedulerManager {
     }
 
     private void scheduleForTenant(int tenantId, String stateCode) {
-        String schema = "tenant_" + stateCode.toLowerCase();
+        String schema = "tenant_" + stateCode.toLowerCase(java.util.Locale.ROOT);
 
         NudgeScheduleConfig nudgeCfg = tenantConfigService.getNudgeConfig(tenantId);
         EscalationScheduleConfig escalCfg = tenantConfigService.getEscalationConfig(tenantId);
+
+        if (nudgeCfg.getHour() < 0 || nudgeCfg.getHour() > 23 || nudgeCfg.getMinute() < 0 || nudgeCfg.getMinute() > 59) {
+                throw new IllegalArgumentException("Invalid nudge schedule for tenantId=" + tenantId);
+            }
+        if (escalCfg.getHour() < 0 || escalCfg.getHour() > 23 || escalCfg.getMinute() < 0 || escalCfg.getMinute() > 59) {
+                throw new IllegalArgumentException("Invalid escalation schedule for tenantId=" + tenantId);
+            }
 
         String nudgeCron = String.format("0 %d %d * * ?", nudgeCfg.getMinute(), nudgeCfg.getHour());
         String escalCron = String.format("0 %d %d * * ?", escalCfg.getMinute(), escalCfg.getHour());

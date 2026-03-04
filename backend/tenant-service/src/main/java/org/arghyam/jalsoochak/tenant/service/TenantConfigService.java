@@ -93,7 +93,8 @@ public class TenantConfigService {
     private String fetchConfigValue(int tenantId, String key) {
         try {
             String sql = "SELECT config_value FROM common_schema.tenant_config_master_table " +
-                         "WHERE tenant_id = ? AND config_key = ? LIMIT 1";
+                    "WHERE tenant_id = ? AND config_key = ? " +
+                    "ORDER BY updated_at DESC, id DESC LIMIT 1";
             return jdbcTemplate.queryForObject(sql, String.class, tenantId, key);
         } catch (EmptyResultDataAccessException e) {
             log.debug("[TenantConfig] Key '{}' not found for tenant={}", key, tenantId);

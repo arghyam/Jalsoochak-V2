@@ -90,7 +90,7 @@ Flyway migrations run automatically on service startup. Migration files live in 
 
 ### Standard Package Layout (per service)
 
-```
+```text
 src/main/java/com/example/<service>/
 ├── config/        # Spring configuration beans
 ├── controller/    # REST endpoints
@@ -173,7 +173,7 @@ Phone numbers are PII — log them only at `DEBUG` level. Never include raw phon
    do not log them at INFO level even in test helpers.
 
 ### Test structure per service
-```
+```text
 src/test/
 ├── java/com/example/<service>/
 │   ├── repository/    # @SpringBootTest + Testcontainers (JdbcTemplate/SQL queries)

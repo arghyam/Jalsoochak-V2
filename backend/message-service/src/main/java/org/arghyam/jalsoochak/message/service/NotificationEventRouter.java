@@ -81,6 +81,19 @@ public class NotificationEventRouter {
         }
     }
 
+    //TODO: Verify each finding against the current code and only fix it if needed.
+    //
+    //In
+    //`@backend/message-service/src/main/java/org/arghyam/jalsoochak/message/service/NotificationEventRouter.java`
+    //around lines 84 - 98, handleNudge currently ignores tenant/language context and
+    //sends a hardcoded template; extract tenantId, languageId (and schemeId if
+    //needed) from the JsonNode (similar to handleEscalation) and use
+    //messageTemplateService to resolve the tenant/language-specific nudge
+    //template/message (e.g. call a new or existing
+    //messageTemplateService.findNudgeMessage(tenantId, languageId) or reuse the
+    //escalation lookup pattern), then pass the resolved template/message into
+    //whatsAppChannel.sendNudge (or update sendNudge signature to accept the template)
+    //so the nudge is localized per tenant and language.
     private void handleNudge(JsonNode root) {
         String phone = root.path("recipientPhone").asText("");
         String operatorName = root.path("operatorName").asText("Operator");
@@ -93,8 +106,11 @@ public class NotificationEventRouter {
         String todayDate = LocalDate.now()
                 .format(DateTimeFormatter.ofPattern("dd MMMM yyyy"));
         boolean sent = whatsAppChannel.sendNudge(phone, operatorName, todayDate);
-        log.info("[Router/NUDGE] → {}", sent ? "SENT" : "FAILED");
-        log.debug("[Router/NUDGE] phone={} → {}", phone, sent ? "SENT" : "FAILED");
+        if (!sent) {
+                throw new IllegalStateException("[Router/NUDGE] WhatsApp nudge delivery failed");
+            }
+        log.info("[Router/NUDGE] → SENT");
+        log.debug("[Router/NUDGE] phone={} → SENT", phone);
     }
 
     private void handleEscalation(JsonNode root) throws Exception {
@@ -129,8 +145,12 @@ public class NotificationEventRouter {
         String localizedBody = messageTemplateService.findEscalationMessage(tenantId, officerLanguageId);
 
         boolean sent = whatsAppChannel.sendDocument(officerPhone, minioUrl, localizedBody);
-        log.info("[Router/ESCALATION] level={} → {} ({})", level, sent ? "SENT" : "FAILED", minioUrl);
+        if (!sent) {
+            throw new IllegalStateException("[Router/ESCALATION] WhatsApp escalation delivery failed");
+        }
+        String loggableUrl = minioUrl.replaceFirst("\\?.*$", "");
+        log.info("[Router/ESCALATION] level={} → {} ({})", level, sent ? "SENT" : "FAILED", loggableUrl);
         log.debug("[Router/ESCALATION] officer={} level={} → {} ({})", officerPhone, level,
-                sent ? "SENT" : "FAILED", minioUrl);
+                sent ? "SENT" : "FAILED", loggableUrl);
     }
 }

@@ -1,5 +1,6 @@
 package org.arghyam.jalsoochak.message.channel;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -86,8 +87,9 @@ public class GlificWhatsAppService {
      */
     public Long optIn(String phone) {
         log.debug("[Glific] Opting in contact");
-        return client.execute(OPTIN_MUTATION, Map.of("phone", phone))
-                .path("optinContact").path("contact").path("id").asLong();
+        JsonNode response = client.execute(OPTIN_MUTATION, Map.of("phone", phone));
+        checkErrors(response, "optinContact");
+        return response.path("optinContact").path("contact").path("id").asLong();
     }
 
     /**
@@ -95,10 +97,11 @@ public class GlificWhatsAppService {
      * Template variable {{1}} = operator name, {{2}} = today's date.
      */
     public void sendNudgeHsm(Long contactId, String operatorName, String date) {
-        client.execute(NUDGE_HSM_MUTATION, Map.of(
+        JsonNode response = client.execute(NUDGE_HSM_MUTATION, Map.of(
                 "templateId", nudgeTemplateId,
                 "receiverId", contactId,
                 "parameters", List.of(operatorName, date)));
+        checkErrors(response, "sendHsmMessage");
         log.debug("[Glific] Nudge HSM sent to contactId={}", contactId);
     }
 
@@ -110,14 +113,15 @@ public class GlificWhatsAppService {
      */
     public String uploadMedia(String publicUrl) {
         log.debug("[Glific] Uploading media");
-        String mediaId = client.execute(CREATE_MESSAGE_MEDIA_MUTATION, Map.of(
+        JsonNode response = client.execute(CREATE_MESSAGE_MEDIA_MUTATION, Map.of(
                         "input", Map.of(
                                 "url", publicUrl,
                                 "source_url", publicUrl,
                                 "caption", escalationCaption,
                                 "thumbnail", escalationThumbnail,
-                                "isTemplateMedia", true)))
-                .path("createMessageMedia").path("messageMedia").path("id").asText();
+                                "isTemplateMedia", true)));
+        checkErrors(response, "createMessageMedia");
+        String mediaId = response.path("createMessageMedia").path("messageMedia").path("id").asText();
         log.info("[Glific] Media uploaded, mediaId={}", mediaId);
         return mediaId;
     }
@@ -144,18 +148,28 @@ public class GlificWhatsAppService {
         input.put("templateId", Integer.parseInt(escalationTemplateId));
         input.put("receiverId", contactId.intValue());
         input.put("isHsm", true);
-        input.put("params", List.of());
+        input.put("params", List.of(bodyText));
 
         if (mediaId != null && !mediaId.isBlank()) {
             input.put("mediaId", Integer.parseInt(mediaId));
         }
 
-        client.execute(
+        JsonNode response = client.execute(
                 CREATE_AND_SEND_MESSAGE_MUTATION,
                 Map.of("input", input)
         );
+        checkErrors(response, "createAndSendMessage");
 
         log.debug("[Glific] Escalation HSM sent to contactId={}", contactId);
+    }
+
+    private void checkErrors(JsonNode response, String mutationKey) {
+        JsonNode errors = response.path(mutationKey).path("errors");
+        if (errors.isArray() && !errors.isEmpty()) {
+            String msg = errors.toString();
+            log.error("[Glific] GraphQL errors in {}: {}", mutationKey, msg);
+            throw new RuntimeException("Glific GraphQL error in " + mutationKey + ": " + msg);
+        }
     }
 
     private static String maskPhone(String phone) {

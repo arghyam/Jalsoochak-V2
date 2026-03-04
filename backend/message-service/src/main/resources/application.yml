@@ -98,8 +98,8 @@ glific:
 
 minio:
   endpoint:   ${MINIO_ENDPOINT:https://localhost:9000}
-  access-key: ${MINIO_ACCESS_KEY:minioadmin}
-  secret-key: ${MINIO_SECRET_KEY:minioadmin}
+  access-key: ${MINIO_ACCESS_KEY}
+  secret-key: ${MINIO_SECRET_KEY}
   bucket:     ${MINIO_BUCKET:escalation-reports}
   base-url:   ${MINIO_BASE_URL:https://localhost:9000}
 

@@ -5,6 +5,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.web.reactive.function.client.WebClientResponseException;
 
 import java.time.Duration;
 import java.util.Map;
@@ -39,7 +40,9 @@ public class GlificGraphQLClient {
             throw new RuntimeException("Glific API URL is not configured (glific.api-url)");
         }
 
-        JsonNode response = webClient.post()
+        JsonNode response;
+        try {
+            response = webClient.post()
                 .uri(apiUrl)
                 .header("Authorization", glificAuthService.getAccessToken())
                 .header("Content-Type", "application/json")
@@ -47,6 +50,14 @@ public class GlificGraphQLClient {
                 .retrieve()
                 .bodyToMono(JsonNode.class)
                 .block(Duration.ofSeconds(30));
+        } catch (WebClientResponseException ex) {
+            if (!isRetry && (ex.getStatusCode().value() == 401
+                || ex.getStatusCode().value() == 403)) {
+                    glificAuthService.refresh();
+                    return executeWithRetry(query, variables, true);
+                }
+            throw new RuntimeException("Glific GraphQL HTTP error: " + ex.getStatusCode(), ex);
+        }
 
         if (response == null) {
             throw new RuntimeException("Null response from Glific GraphQL");

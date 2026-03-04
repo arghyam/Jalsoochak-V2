@@ -38,6 +38,12 @@ public class EscalationSchedulerService {
         int level2Days = cfg.getLevel2Days();
         String level1UserType = cfg.getLevel1OfficerType();
         String level2UserType = cfg.getLevel2OfficerType();
+        if (level1Days < 0 || level2Days < level1Days) {
+            throw new IllegalArgumentException("Invalid escalation thresholds for tenantId=" + tenantId);
+        }if (level1UserType == null || level1UserType.isBlank()
+                || level2UserType == null || level2UserType.isBlank()) {
+            throw new IllegalArgumentException("Officer types must be configured for tenantId=" + tenantId);
+        }
 
         log.info("[EscalationJob] schema={} – L1: {} days ({}), L2: {} days ({})",
                 schema, level1Days, level1UserType, level2Days, level2UserType);
@@ -70,8 +76,8 @@ public class EscalationSchedulerService {
 
             String officerPhone = (String) officerRow.get("phone_number");
             String officerName = (String) officerRow.get("name");
-            int officerLanguageId = officerRow.get("language_id") != null
-                    ? ((Number) officerRow.get("language_id")).intValue() : 0;
+            Integer officerLanguageId = officerRow.get("language_id") != null
+                    ? ((Number) officerRow.get("language_id")).intValue() : null;
             if (officerPhone == null || officerPhone.isBlank()) {
                 continue;
             }
@@ -129,10 +135,10 @@ public class EscalationSchedulerService {
         final String officerPhone;
         final String officerName;
         final int level;
-        final int officerLanguageId;
+        final Integer officerLanguageId;
         final List<OperatorEscalationDetail> details = new ArrayList<>();
 
-        OfficerGroup(String officerPhone, String officerName, int level, int officerLanguageId) {
+        OfficerGroup(String officerPhone, String officerName, int level, Integer officerLanguageId) {
             this.officerPhone = officerPhone;
             this.officerName = officerName;
             this.level = level;

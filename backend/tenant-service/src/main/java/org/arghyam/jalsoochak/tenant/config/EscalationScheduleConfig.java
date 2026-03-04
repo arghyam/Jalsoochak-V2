@@ -42,6 +42,21 @@ public class EscalationScheduleConfig {
         public Builder level2Days(int level2Days) { this.level2Days = level2Days; return this; }
         public Builder level2OfficerType(String level2OfficerType) { this.level2OfficerType = level2OfficerType; return this; }
 
-        public EscalationScheduleConfig build() { return new EscalationScheduleConfig(this); }
+        public EscalationScheduleConfig build() {
+            if (hour < 0 || hour > 23) {
+                    throw new IllegalArgumentException("hour must be in [0,23]");
+                }
+            if (minute < 0 || minute > 59) {
+                    throw new IllegalArgumentException("minute must be in [0,59]");
+                }
+            if (level1Days < 0 || level2Days < level1Days) {
+                    throw new IllegalArgumentException("Invalid escalation thresholds");
+                }
+            if (level1OfficerType == null || level1OfficerType.isBlank()
+                            || level2OfficerType == null || level2OfficerType.isBlank()) {
+                    throw new IllegalArgumentException("Officer types must be configured");
+                }
+            return new EscalationScheduleConfig(this);
+        }
     }
 }
