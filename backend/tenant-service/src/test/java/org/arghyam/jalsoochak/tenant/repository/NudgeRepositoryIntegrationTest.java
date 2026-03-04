@@ -274,7 +274,7 @@ class NudgeRepositoryIntegrationTest {
     @Test
     void findUsersWithNoUploadToday_rejectsInvalidSchemaName() {
         assertThatThrownBy(() -> nudgeRepository.findUsersWithNoUploadToday("invalid-schema!"))
-                .isInstanceOf(IllegalArgumentException.class)
+                .hasCauseInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("Invalid schema name");
     }
 
@@ -282,7 +282,7 @@ class NudgeRepositoryIntegrationTest {
     void findUsersWithMissedDays_rejectsSqlInjectionAttempt() {
         assertThatThrownBy(() ->
                 nudgeRepository.findUsersWithMissedDays("'; DROP TABLE users; --", 3))
-                .isInstanceOf(IllegalArgumentException.class)
+                .hasCauseInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("Invalid schema name");
     }
 
@@ -290,7 +290,7 @@ class NudgeRepositoryIntegrationTest {
     void findOfficerByUserType_rejectsInvalidSchemaName() {
         assertThatThrownBy(() ->
                 nudgeRepository.findOfficerByUserType("UPPER_CASE", 1, "OPERATOR"))
-                .isInstanceOf(IllegalArgumentException.class);
+                .hasCauseInstanceOf(IllegalArgumentException.class);
     }
 
     // ────────────────────────────── helpers ────────────────────────────────────
