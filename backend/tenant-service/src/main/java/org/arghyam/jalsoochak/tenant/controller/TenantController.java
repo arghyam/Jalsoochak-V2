@@ -12,6 +12,8 @@ import org.arghyam.jalsoochak.tenant.dto.request.UpdateTenantRequestDTO;
 import org.arghyam.jalsoochak.tenant.dto.response.DepartmentResponseDTO;
 import org.arghyam.jalsoochak.tenant.dto.response.TenantConfigResponseDTO;
 import org.arghyam.jalsoochak.tenant.dto.response.TenantResponseDTO;
+import org.arghyam.jalsoochak.tenant.dto.response.LocationResponseDTO;
+import org.arghyam.jalsoochak.tenant.dto.response.LocationHierarchyResponseDTO;
 import org.arghyam.jalsoochak.tenant.service.TenantManagementService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -139,7 +141,7 @@ public class TenantController {
         /**
          * 5. Get all configurations for a tenant
          */
-        @Operation(summary = "Get all configurations for a tenant", description = "Retrieves all active configuration key-value pairs for a specific tenant in a Map format.")
+        @Operation(summary = "Get the configurations for a tenant", description = "Retrieves either all or the selected configuration key-value pairs for a specific tenant in a Map format.")
         @ApiResponses({
                         @ApiResponse(responseCode = "200", description = "Tenant configurations retrieved successfully"),
                         @ApiResponse(responseCode = "404", description = "Tenant not found"),
@@ -184,7 +186,49 @@ public class TenantController {
         }
 
         /**
-         * 7. Get departments for the current tenant
+         * 7. Get tenant location hierarchy by hierarchy type
+         */
+        @Operation(summary = "Get location hierarchy configuration for a tenant", description = "Retrieves the location hierarchy structure (levels) for the specified hierarchy type (LGD or DEPARTMENT). ")
+        @ApiResponses({
+                        @ApiResponse(responseCode = "200", description = "Location hierarchy configuration retrieved successfully", content = @Content(schema = @Schema(implementation = LocationHierarchyResponseDTO.class))),
+                        @ApiResponse(responseCode = "400", description = "Invalid hierarchy type or tenant could not be resolved"),
+                        @ApiResponse(responseCode = "404", description = "Hierarchy configuration not found for the tenant"),
+                        @ApiResponse(responseCode = "500", description = "Internal server error")
+        })
+        @PreAuthorize("permitAll")
+        @GetMapping("/{tenantId}/location-hierarchy/{hierarchyType}")
+        public ResponseEntity<ApiResponseDTO<LocationHierarchyResponseDTO>> getTenantLocationHierarchy(
+                        @PathVariable Integer tenantId,
+                        @Parameter(description = "Hierarchy type: LGD or DEPARTMENT", example = "LGD") @PathVariable String hierarchyType) {
+                log.info("GET /api/v1/tenants/{}/location-hierarchy/{}", tenantId, hierarchyType);
+                LocationHierarchyResponseDTO hierarchy = tenantManagementService.getLocationHierarchy(tenantId, hierarchyType);
+                return ResponseEntity.ok(ApiResponseDTO.of(200, "Location hierarchy retrieved successfully", hierarchy));
+        }
+
+        /**
+         * 8. Get child locations by parent id and hierarchy type
+         */
+        @Operation(summary = "Get child locations by parent ID", description = "Fetches all child locations under the specified parent location in the given hierarchy type. "
+                        + "Pass parentId as 0 to fetch root-level locations (where parent_id IS NULL).")
+        @ApiResponses({
+                        @ApiResponse(responseCode = "200", description = "Child locations retrieved successfully", content = @Content(array = @ArraySchema(schema = @Schema(implementation = LocationResponseDTO.class)))),
+                        @ApiResponse(responseCode = "400", description = "Invalid hierarchy type or tenant could not be resolved"),
+                        @ApiResponse(responseCode = "500", description = "Internal server error")
+        })
+        @PreAuthorize("permitAll")
+        @GetMapping("/{tenantId}/locations/{hierarchyType}/children/{parentId}")
+        public ResponseEntity<ApiResponseDTO<List<LocationResponseDTO>>> getLocationChildren(
+                        @PathVariable Integer tenantId,
+                        @Parameter(description = "Hierarchy type: LGD or DEPARTMENT", example = "LGD") @PathVariable String hierarchyType,
+                        @Parameter(description = "Parent location ID (use 0 for root-level locations)", example = "1") @PathVariable Integer parentId) {
+                log.info("GET /api/v1/tenants/{}/locations/{}/children/{}", tenantId, hierarchyType, parentId);
+                Integer actualParentId = parentId.equals(0) ? null : parentId;
+                List<LocationResponseDTO> children = tenantManagementService.getLocationChildren(tenantId,hierarchyType, actualParentId);
+                return ResponseEntity.ok(ApiResponseDTO.of(200, "Child locations retrieved successfully", children));
+        }
+
+        /**
+         * 9. Get departments for the current tenant
          */
         @Operation(summary = "Get departments for the current tenant", description = "Fetches the department hierarchy from the tenant-specific schema. "
                         + "Requires the X-Tenant-Code header to be set by the API gateway.")
@@ -205,7 +249,7 @@ public class TenantController {
         }
 
         /**
-         * 8. Create a department for the current tenant
+         * 10. Create a department for the current tenant
          */
         @Operation(summary = "Create a department for the current tenant", description = "Inserts a new department into the tenant-specific schema's department_location_master_table. "
                         + "Requires the X-Tenant-Code header to identify the target tenant schema.")

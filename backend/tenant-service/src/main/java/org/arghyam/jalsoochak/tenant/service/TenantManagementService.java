@@ -8,6 +8,8 @@ import org.arghyam.jalsoochak.tenant.dto.request.UpdateTenantRequestDTO;
 import org.arghyam.jalsoochak.tenant.dto.response.DepartmentResponseDTO;
 import org.arghyam.jalsoochak.tenant.dto.response.TenantConfigResponseDTO;
 import org.arghyam.jalsoochak.tenant.dto.response.TenantResponseDTO;
+import org.arghyam.jalsoochak.tenant.dto.response.LocationResponseDTO;
+import org.arghyam.jalsoochak.tenant.dto.response.LocationHierarchyResponseDTO;
 import org.arghyam.jalsoochak.tenant.enums.TenantConfigKeyEnum;
 
 import java.util.List;
@@ -83,5 +85,22 @@ public interface TenantManagementService {
      * @return Tenant configurations response.
      */
     TenantConfigResponseDTO setTenantConfigs(Integer tenantId, SetTenantConfigRequestDTO request);
+
+    /**
+     * Gets the location hierarchy configuration for a tenant.
+     * 
+     * @param hierarchyType Type of hierarchy: LGD or DEPARTMENT
+     * @return Location hierarchy configuration with levels and names.
+     */
+    LocationHierarchyResponseDTO getLocationHierarchy(Integer tenantId, String hierarchyType);
+
+    /**
+     * Gets child locations by parent ID.
+     * 
+     * @param hierarchyType Type of hierarchy: LGD or DEPARTMENT
+     * @param parentId      Parent location ID (null for root-level locations)
+     * @return List of child location records.
+     */
+    List<LocationResponseDTO> getLocationChildren(Integer tenantId, String hierarchyType, Integer parentId);
 
 }

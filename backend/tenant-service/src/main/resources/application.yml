@@ -1,5 +1,5 @@
 server:
-  port: 8082
+  port: 8081
 
 spring:
   config:
@@ -18,6 +18,7 @@ spring:
       minimum-idle: 2
       connection-timeout: 30000
       initialization-fail-timeout: -1
+      connection-init-sql: SET search_path TO common_schema, public
 
   flyway:
     enabled: true
@@ -79,3 +80,54 @@ logging:
     name: ${LOG_FILE_PATH:../logger/logs/backend-services.log}
   pattern:
     level: "service=${spring.application.name} %5p"
+
+tenant:
+  defaults:
+    lgd-location-hierarchy:
+      - level: 1
+        level-name:
+          - title: "State"
+      - level: 2
+        level-name:
+          - title: "District"
+      - level: 3
+        level-name:
+          - title: "Block"
+      - level: 4
+        level-name:
+          - title: "Panchayat"
+      - level: 5
+        level-name:
+          - title: "Village"
+    dept-location-hierarchy:
+      - level: 1
+        level-name:
+          - title: "State"
+      - level: 2
+        level-name:
+          - title: "Zone"
+      - level: 3
+        level-name:
+          - title: "Circle"
+      - level: 4
+        level-name:
+          - title: "Division"
+      - level: 5
+        level-name:
+          - title: "Sub-division"
+    meter-change-reasons:
+      - id: "METER_REPLACED"
+        name: "Meter Replaced"
+        sequence-order: 1
+        is-default: true
+        editable: true
+      - id: "METER_NOT_WORKING"
+        name: "Meter Not Working"
+        sequence-order: 2
+        is-default: true
+        editable: true
+      - id: "METER_DAMAGED"
+        name: "Meter Damaged"
+        sequence-order: 3
+        is-default: true
+        editable: true

@@ -7,6 +7,7 @@ import java.util.Map;
 import java.util.Set;
 
 import org.arghyam.jalsoochak.tenant.config.TenantContext;
+import org.arghyam.jalsoochak.tenant.config.TenantDefaultsProperties;
 import org.arghyam.jalsoochak.tenant.dto.common.PageResponseDTO;
 import org.arghyam.jalsoochak.tenant.dto.request.CreateDepartmentRequestDTO;
 import org.arghyam.jalsoochak.tenant.dto.request.CreateTenantRequestDTO;
@@ -15,12 +16,16 @@ import org.arghyam.jalsoochak.tenant.dto.request.UpdateTenantRequestDTO;
 import org.arghyam.jalsoochak.tenant.dto.response.DepartmentResponseDTO;
 import org.arghyam.jalsoochak.tenant.dto.response.TenantConfigResponseDTO;
 import org.arghyam.jalsoochak.tenant.dto.response.TenantResponseDTO;
+import org.arghyam.jalsoochak.tenant.dto.response.LocationResponseDTO;
+import org.arghyam.jalsoochak.tenant.dto.response.LocationHierarchyResponseDTO;
 import org.arghyam.jalsoochak.tenant.dto.internal.ConfigDTO;
 import org.arghyam.jalsoochak.tenant.dto.internal.ConfigValueDTO;
 import org.arghyam.jalsoochak.tenant.dto.internal.LanguageConfigDTO;
 import org.arghyam.jalsoochak.tenant.dto.internal.LanguageListConfigDTO;
 import org.arghyam.jalsoochak.tenant.dto.internal.LocationConfigDTO;
 import org.arghyam.jalsoochak.tenant.dto.internal.LocationLevelConfigDTO;
+import org.arghyam.jalsoochak.tenant.dto.internal.ReasonListConfigDTO;
+import org.arghyam.jalsoochak.tenant.dto.internal.SimpleConfigValueDTO;
 import org.arghyam.jalsoochak.tenant.enums.RegionTypeEnum;
 import org.arghyam.jalsoochak.tenant.enums.TenantConfigKeyEnum;
 import org.arghyam.jalsoochak.tenant.enums.TenantConfigKeyEnum.ConfigType;
@@ -53,6 +58,7 @@ public class TenantManagementServiceImpl implements TenantManagementService {
     private final KafkaProducer kafkaProducer;
     private final ObjectMapper objectMapper;
     private final StringRedisTemplate redisTemplate;
+    private final TenantDefaultsProperties tenantDefaults;
 
     @Override
     @Transactional
@@ -75,6 +81,7 @@ public class TenantManagementServiceImpl implements TenantManagementService {
         tenantCommonRepository.provisionTenantSchema(schemaName);
         log.info("Tenant schema '{}' provisioned successfully", schemaName);
 
+        setDefaultConfigs(tenant, schemaName, currentUserId);
         cacheTenantInRedis(tenant, schemaName);
         publishTenantEvent(tenant, "TENANT_CREATED");
 
@@ -308,6 +315,96 @@ public class TenantManagementServiceImpl implements TenantManagementService {
             }
             default -> throw new UnsupportedOperationException("No specialized handler for: " + key);
         }
+    }
+
+
+    @Override
+    public LocationHierarchyResponseDTO getLocationHierarchy(Integer tenantId, String hierarchyType) {
+        log.info("Fetching location hierarchy [id={}, hierarchyType={}]", tenantId, hierarchyType);
+        
+        TenantResponseDTO tenant = tenantCommonRepository.findById(tenantId)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Tenant with tenantId " + tenantId + " does not exist"));
+
+        String schemaName = "tenant_" + tenant.getStateCode().toLowerCase();
+
+        try {
+            RegionTypeEnum regionType = RegionTypeEnum.valueOf(hierarchyType.toUpperCase());
+            LocationConfigDTO hierarchyConfig = tenantSchemaRepository.getLocationHierarchy(schemaName, regionType);
+            
+            if (hierarchyConfig == null || hierarchyConfig.getLocationHierarchy() == null) {
+                throw new ResourceNotFoundException(
+                        "Hierarchy configuration not found for type: " + hierarchyType + " in tenant [id=" + tenantId + "]");
+            }
+
+            log.info("Location hierarchy retrieved successfully [id={}, hierarchyType={}]", tenantId, hierarchyType);
+            
+            return LocationHierarchyResponseDTO.builder()
+                    .hierarchyType(hierarchyType)
+                    .levels(hierarchyConfig.getLocationHierarchy())
+                    .build();
+        } catch (IllegalArgumentException e) {
+            log.error("Invalid hierarchy type [id={}, hierarchyType={}]", tenantId, hierarchyType, e);
+            throw new IllegalArgumentException("Invalid hierarchy type: " + hierarchyType + ". Valid values: LGD, DEPARTMENT", e);
+        }
+    }
+
+    @Override
+    public List<LocationResponseDTO> getLocationChildren(Integer tenantId, String hierarchyType, Integer parentId) {
+        log.info("Fetching location children [id={}, hierarchyType={}, parentId={}]", tenantId, hierarchyType, parentId);
+        
+        TenantResponseDTO tenant = tenantCommonRepository.findById(tenantId)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Tenant with tenantId " + tenantId + " does not exist"));
+
+        String schemaName = "tenant_" + tenant.getStateCode().toLowerCase();
+
+        try {
+            RegionTypeEnum regionType = RegionTypeEnum.valueOf(hierarchyType.toUpperCase());
+            
+            List<LocationResponseDTO> children;
+            if (RegionTypeEnum.LGD.equals(regionType)) {
+                children = tenantSchemaRepository.findLgdLocationsByParentId(schemaName, parentId);
+            } else if (RegionTypeEnum.DEPARTMENT.equals(regionType)) {
+                children = tenantSchemaRepository.findDepartmentLocationsByParentId(schemaName, parentId);
+            } else {
+                throw new IllegalArgumentException("Unknown hierarchy type: " + hierarchyType);
+            }
+
+            log.info("Location children retrieved successfully [id={}, hierarchyType={}, count={}]", 
+                    tenantId, hierarchyType, children.size());
+            
+            return children;
+        } catch (IllegalArgumentException e) {
+            log.error("Invalid hierarchy type [id={}, hierarchyType={}]", tenantId, hierarchyType, e);
+            throw new IllegalArgumentException("Invalid hierarchy type: " + hierarchyType + ". Valid values: LGD, DEPARTMENT", e);
+        }
+    }
+
+
+    private void setDefaultConfigs(TenantResponseDTO tenant, String schemaName, Integer currentUserId) {
+        tenantSchemaRepository.setLocationHierarchy(
+                schemaName, RegionTypeEnum.LGD, tenantDefaults.getLgdLocationHierarchy(), currentUserId);
+
+        tenantSchemaRepository.setLocationHierarchy(
+                schemaName, RegionTypeEnum.DEPARTMENT, tenantDefaults.getDeptLocationHierarchy(), currentUserId);
+
+        try {
+            ReasonListConfigDTO reasons = ReasonListConfigDTO.builder()
+                    .reasons(tenantDefaults.getMeterChangeReasons())
+                    .build();
+            tenantCommonRepository.upsertConfig(tenant.getId(),
+                    TenantConfigKeyEnum.METER_CHANGE_REASONS.name(),
+                    objectMapper.writeValueAsString(reasons), currentUserId);
+
+            tenantCommonRepository.upsertConfig(tenant.getId(),
+                    TenantConfigKeyEnum.LOCATION_CHECK_REQUIRED.name(),
+                    objectMapper.writeValueAsString(new SimpleConfigValueDTO("NO")), currentUserId);
+        } catch (JsonProcessingException e) {
+            throw new InvalidConfigValueException("Failed to serialize default tenant configs", e);
+        }
+
+        log.info("Default configs seeded for tenant [id={}]", tenant.getId());
     }
 
     private void publishTenantEvent(TenantResponseDTO tenant, String eventType) {
