@@ -79,12 +79,12 @@ class WhatsAppChannelTest {
         when(glificWhatsAppService.optIn("919000000000")).thenReturn(77L);
 
         boolean result = whatsAppChannel.sendDocument(
-                "919000000000", "https://minio.example.com/report.pdf", "Escalation body text");
+                "919000000000", "https://minio.example.com/report.pdf");
 
         assertThat(result).isTrue();
         verify(glificWhatsAppService).optIn("919000000000");
         verify(glificWhatsAppService).sendEscalationHsm(
-                77L, "https://minio.example.com/report.pdf", "Escalation body text");
+                77L, "https://minio.example.com/report.pdf");
     }
 
     @Test
@@ -93,33 +93,32 @@ class WhatsAppChannelTest {
                 .thenThrow(new RuntimeException("Network error"));
 
         boolean result = whatsAppChannel.sendDocument(
-                "919000000000", "https://minio.example.com/r.pdf", "body");
+                "919000000000", "https://minio.example.com/r.pdf");
 
         assertThat(result).isFalse();
-        verify(glificWhatsAppService, never()).sendEscalationHsm(anyLong(), anyString(), anyString());
+        verify(glificWhatsAppService, never()).sendEscalationHsm(anyLong(), anyString());
     }
 
     @Test
     void sendDocument_returnsFalse_whenSendEscalationHsmThrows() {
         when(glificWhatsAppService.optIn(anyString())).thenReturn(88L);
         doThrow(new RuntimeException("HSM delivery failed"))
-                .when(glificWhatsAppService).sendEscalationHsm(anyLong(), anyString(), anyString());
+                .when(glificWhatsAppService).sendEscalationHsm(anyLong(), anyString());
 
         boolean result = whatsAppChannel.sendDocument(
-                "919000000001", "https://minio.example.com/r2.pdf", "body text");
+                "919000000001", "https://minio.example.com/r2.pdf");
 
         assertThat(result).isFalse();
     }
 
     @Test
-    void sendDocument_passesMinioUrlAndBodyText_toEscalationHsm() {
+    void sendDocument_passesMinioUrl_toEscalationHsm() {
         when(glificWhatsAppService.optIn("912222222222")).thenReturn(33L);
         String minioUrl = "https://minio.example.com/escalation_L2_report.pdf";
-        String body = "Please review the attached report.";
 
-        whatsAppChannel.sendDocument("912222222222", minioUrl, body);
+        whatsAppChannel.sendDocument("912222222222", minioUrl);
 
-        verify(glificWhatsAppService).sendEscalationHsm(eq(33L), eq(minioUrl), eq(body));
+        verify(glificWhatsAppService).sendEscalationHsm(eq(33L), eq(minioUrl));
     }
 
     // ─────────────────────────── channelType ───────────────────────────────────

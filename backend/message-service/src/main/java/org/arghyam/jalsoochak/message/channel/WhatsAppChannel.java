@@ -75,13 +75,12 @@ public class WhatsAppChannel implements NotificationChannel {
      *
      * @param toPhone     recipient WhatsApp phone number (E.164 format)
      * @param documentUrl publicly reachable MinIO URL of the escalation PDF
-     * @param bodyText    localized body text for the HSM template {@code {{2}}}
      * @return {@code true} if the message was accepted by Glific
      */
-    public boolean sendDocument(String toPhone, String documentUrl, String bodyText) {
+    public boolean sendDocument(String toPhone, String documentUrl) {
         try {
             Long contactId = glificWhatsAppService.optIn(toPhone);
-            glificWhatsAppService.sendEscalationHsm(contactId, documentUrl, bodyText);
+            glificWhatsAppService.sendEscalationHsm(contactId, documentUrl);
             log.info("[WHATSAPP] Escalation HSM sent");
             log.debug("[WHATSAPP] Escalation HSM sent to {}", toPhone);
             return true;

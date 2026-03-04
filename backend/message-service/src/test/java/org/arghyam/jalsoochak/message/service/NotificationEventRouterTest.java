@@ -106,8 +106,7 @@ class NotificationEventRouterTest {
     void route_generatesAndSendsEscalation_forValidEscalationEvent() throws Exception {
         when(escalationPdfService.generate(anyList(), anyInt(), anyString())).thenReturn("report.pdf");
         when(minioStorageService.upload(any(Path.class))).thenReturn("https://minio.example.com/report.pdf");
-        when(messageTemplateService.findEscalationMessage(anyInt(), anyInt())).thenReturn("Escalation body text");
-        when(whatsAppChannel.sendDocument(anyString(), anyString(), anyString())).thenReturn(true);
+        when(whatsAppChannel.sendDocument(anyString(), anyString())).thenReturn(true);
 
         router.route("""
                 {"eventType":"ESCALATION","officerPhone":"919876500000","officerName":"DO Singh",
@@ -119,9 +118,8 @@ class NotificationEventRouterTest {
 
         verify(escalationPdfService).generate(anyList(), eq(2), eq("DO Singh"));
         verify(minioStorageService).upload(any(Path.class));
-        verify(messageTemplateService).findEscalationMessage(eq(1), eq(1));
         verify(whatsAppChannel).sendDocument(eq("919876500000"),
-                eq("https://minio.example.com/report.pdf"), eq("Escalation body text"));
+                eq("https://minio.example.com/report.pdf"));
     }
 
     @Test
@@ -150,8 +148,7 @@ class NotificationEventRouterTest {
     void route_isCaseInsensitive_forEscalationEventType() throws Exception {
         when(escalationPdfService.generate(anyList(), anyInt(), anyString())).thenReturn("r.pdf");
         when(minioStorageService.upload(any(Path.class))).thenReturn("https://minio.example.com/r.pdf");
-        when(messageTemplateService.findEscalationMessage(anyInt(), anyInt())).thenReturn("body");
-        when(whatsAppChannel.sendDocument(anyString(), anyString(), anyString())).thenReturn(true);
+        when(whatsAppChannel.sendDocument(anyString(), anyString())).thenReturn(true);
 
         router.route("""
                 {"eventType":"escalation","officerPhone":"919876500002","officerName":"DO",
@@ -160,7 +157,7 @@ class NotificationEventRouterTest {
                                "soName":"SO","consecutiveDaysMissed":4,"lastRecordedBfmDate":"2024-01-01"}]}
                 """);
 
-        verify(whatsAppChannel).sendDocument(eq("919876500002"), anyString(), anyString());
+        verify(whatsAppChannel).sendDocument(eq("919876500002"), anyString());
     }
 
     // ───────────────────────────── error handling ──────────────────────────────

@@ -134,7 +134,7 @@ class GlificWhatsAppServiceTest {
         when(client.execute(contains("createMessageMedia"), anyMap())).thenReturn(uploadResponse);
         when(client.execute(contains("createAndSendMessage"), anyMap())).thenReturn(sendResponse);
 
-        service.sendEscalationHsm(55L, "https://minio.example.com/r.pdf", "Please review the report.");
+        service.sendEscalationHsm(55L, "https://minio.example.com/r.pdf");
 
         InOrder inOrder = inOrder(client);
         inOrder.verify(client).execute(contains("createMessageMedia"), anyMap());
@@ -153,7 +153,7 @@ class GlificWhatsAppServiceTest {
         when(client.execute(contains("createMessageMedia"), anyMap())).thenReturn(uploadResponse);
         when(client.execute(contains("createAndSendMessage"), anyMap())).thenReturn(sendResponse);
 
-        service.sendEscalationHsm(77L, "https://minio.example.com/report.pdf", "body text");
+        service.sendEscalationHsm(77L, "https://minio.example.com/report.pdf");
 
         ArgumentCaptor<Map<String, Object>> sendVarsCaptor = varsCaptor();
         verify(client).execute(contains("createAndSendMessage"), sendVarsCaptor.capture());
@@ -172,7 +172,7 @@ class GlificWhatsAppServiceTest {
                 .thenThrow(new RuntimeException("MinIO URL unreachable"));
 
         assertThatThrownBy(() ->
-                service.sendEscalationHsm(88L, "https://minio.example.com/r.pdf", "body"))
+                service.sendEscalationHsm(88L, "https://minio.example.com/r.pdf"))
                 .isInstanceOf(RuntimeException.class)
                 .hasMessageContaining("MinIO URL unreachable");
 
@@ -190,7 +190,7 @@ class GlificWhatsAppServiceTest {
         when(client.execute(contains("createMessageMedia"), anyMap())).thenReturn(uploadResponse);
         when(client.execute(contains("createAndSendMessage"), anyMap())).thenReturn(sendResponse);
 
-        service.sendEscalationHsm(11L, "https://minio.example.com/r.pdf", "Localized escalation text");
+        service.sendEscalationHsm(11L, "https://minio.example.com/r.pdf");
 
         ArgumentCaptor<Map<String, Object>> captor = varsCaptor();
         verify(client).execute(contains("createAndSendMessage"), captor.capture());
@@ -199,8 +199,7 @@ class GlificWhatsAppServiceTest {
         Map<String, Object> input = (Map<String, Object>) captor.getValue().get("input");
         assertThat(input.get("mediaId")).isEqualTo(1);   // Integer.parseInt("1")
         assertThat(input.get("isHsm")).isEqualTo(true);
-        // bodyText is passed as the single body parameter
-        assertThat((List<?>) input.get("params")).containsExactly("Localized escalation text");
+        assertThat((List<?>) input.get("params")).isEmpty();
     }
 
     // ──────────────────────── GraphQL error handling ────────────────────────────
@@ -253,7 +252,7 @@ class GlificWhatsAppServiceTest {
         when(client.execute(contains("createAndSendMessage"), anyMap())).thenReturn(sendResponse);
 
         assertThatThrownBy(() ->
-                service.sendEscalationHsm(22L, "https://minio.example.com/r.pdf", "body text"))
+                service.sendEscalationHsm(22L, "https://minio.example.com/r.pdf"))
                 .isInstanceOf(RuntimeException.class)
                 .hasMessageContaining("createAndSendMessage");
     }

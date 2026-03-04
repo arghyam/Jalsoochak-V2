@@ -142,9 +142,7 @@ public class NotificationEventRouter {
         java.nio.file.Path localPath = Paths.get(reportDir, filename);
         String minioUrl = minioStorageService.upload(localPath);
 
-        String localizedBody = messageTemplateService.findEscalationMessage(tenantId, officerLanguageId);
-
-        boolean sent = whatsAppChannel.sendDocument(officerPhone, minioUrl, localizedBody);
+        boolean sent = whatsAppChannel.sendDocument(officerPhone, minioUrl);
         if (!sent) {
             throw new IllegalStateException("[Router/ESCALATION] WhatsApp escalation delivery failed");
         }

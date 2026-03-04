@@ -138,9 +138,8 @@ public class GlificWhatsAppService {
      *
      * @param contactId Glific contact ID of the officer
      * @param minioUrl  publicly reachable URL of the escalation PDF
-     * @param bodyText  localized body text for the HSM template body parameter
      */
-    public void sendEscalationHsm(Long contactId, String minioUrl, String bodyText) {
+    public void sendEscalationHsm(Long contactId, String minioUrl) {
 
         String mediaId = uploadMedia(minioUrl);
 
@@ -148,7 +147,7 @@ public class GlificWhatsAppService {
         input.put("templateId", Integer.parseInt(escalationTemplateId));
         input.put("receiverId", contactId.intValue());
         input.put("isHsm", true);
-        input.put("params", List.of(bodyText));
+        input.put("params", List.of());
 
         if (mediaId != null && !mediaId.isBlank()) {
             input.put("mediaId", Integer.parseInt(mediaId));
