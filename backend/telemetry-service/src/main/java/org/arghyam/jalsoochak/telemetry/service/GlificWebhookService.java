@@ -14,7 +14,9 @@ import org.arghyam.jalsoochak.telemetry.dto.requests.SelectedChannelRequest;
 import org.arghyam.jalsoochak.telemetry.dto.requests.SelectedItemRequest;
 import org.arghyam.jalsoochak.telemetry.dto.requests.SelectedLanguageRequest;
 import org.arghyam.jalsoochak.telemetry.repository.TenantConfigRepository;
+import org.arghyam.jalsoochak.telemetry.repository.TelemetryConfirmedReadingSnapshot;
 import org.arghyam.jalsoochak.telemetry.repository.TelemetryOperatorWithSchema;
+import org.arghyam.jalsoochak.telemetry.repository.TelemetryPendingMeterChangeRecord;
 import org.arghyam.jalsoochak.telemetry.repository.TelemetryTenantRepository;
 import org.arghyam.jalsoochak.telemetry.repository.UserLanguagePreferenceRepository;
 import org.arghyam.jalsoochak.telemetry.dto.response.SelectionResponse;
@@ -31,6 +33,7 @@ import org.springframework.web.client.RestTemplate;
 
 import java.io.IOException;
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Locale;
@@ -105,6 +108,9 @@ public class GlificWebhookService {
             log.debug("Image uploaded for contactId {} with objectKey {}", contactId, objectKey);
 
             TelemetryOperatorWithSchema operatorWithSchema = resolveOperatorWithSchema(contactId);
+            String languageKey = normalizeLanguageKey(
+                    resolveOperatorLanguage(operatorWithSchema, operatorWithSchema.operator().tenantId())
+            );
 
             Long schemeId = telemetryTenantRepository
                     .findFirstSchemeForUser(operatorWithSchema.schemaName(), operatorWithSchema.operator().id())
@@ -118,17 +124,21 @@ public class GlificWebhookService {
                     .readingTime(null)
                     .build();
 
-            return bfmReadingService.createReading(
+            CreateReadingResponse response = bfmReadingService.createReading(
                     createReadingRequest,
                     operatorWithSchema.schemaName(),
                     operatorWithSchema.operator(),
                     contactId
             );
+            response.setMessage(localizeMessage(response.getMessage(), languageKey));
+            return response;
         } catch (Exception e) {
             log.error("Unexpected error processing image for contactId {}: {}", glificWebhookRequest.getContactId(), e.getMessage(), e);
+            String languageKey = resolveLanguageKeyForContact(glificWebhookRequest.getContactId());
+            String descriptiveMessage = resolveUserFacingErrorMessage(e, "Image could not be processed.", languageKey);
             return CreateReadingResponse.builder()
                     .success(false)
-                    .message("Something went wrong. Please try again.")
+                    .message(descriptiveMessage)
                     .qualityStatus("REJECTED")
                     .correlationId(glificWebhookRequest.getContactId())
                     .build();
@@ -147,7 +157,6 @@ public class GlificWebhookService {
             if (tenantId == null) {
                 throw new IllegalStateException("Operator tenant could not be resolved");
             }
-
             String name = operatorWithSchema.operator().title() != null && !operatorWithSchema.operator().title().isBlank()
                     ? operatorWithSchema.operator().title()
                     : "there";
@@ -198,7 +207,6 @@ public class GlificWebhookService {
             if (tenantId == null) {
                 throw new IllegalStateException("Operator tenant could not be resolved");
             }
-
             Optional<String> selectedLanguageOpt = Optional.of(resolveOperatorLanguage(operatorWithSchema, tenantId));
             String languageKey = selectedLanguageOpt
                     .map(this::normalizeLanguageKey)
@@ -245,6 +253,7 @@ public class GlificWebhookService {
             if (tenantId == null) {
                 throw new IllegalStateException("Operator tenant could not be resolved");
             }
+            String languageKey = normalizeLanguageKey(resolveOperatorLanguage(operatorWithSchema, tenantId));
 
             String prompt = tenantConfigRepository.findLanguageSelectionPrompt(tenantId)
                     .orElseThrow(() -> new IllegalStateException("language_selection_prompt is not configured"));
@@ -320,9 +329,10 @@ public class GlificWebhookService {
                     .build();
         } catch (Exception e) {
             log.error("Error saving selected language for contactId {}: {}", request.getContactId(), e.getMessage(), e);
+            String languageKey = resolveLanguageKeyForContact(request.getContactId());
             return IntroResponse.builder()
                     .success(false)
-                    .message("Language selection could not be saved.")
+                    .message(resolveUserFacingErrorMessage(e, "Language selection could not be saved.", languageKey))
                     .build();
         }
     }
@@ -430,9 +440,10 @@ public class GlificWebhookService {
                     .build();
         } catch (Exception e) {
             log.error("Error saving selected channel for contactId {}: {}", request.getContactId(), e.getMessage(), e);
+            String languageKey = resolveLanguageKeyForContact(request.getContactId());
             return IntroResponse.builder()
                     .success(false)
-                    .message("Channel selection could not be saved.")
+                    .message(resolveUserFacingErrorMessage(e, "Channel selection could not be saved.", languageKey))
                     .build();
         }
     }
@@ -529,10 +540,11 @@ public class GlificWebhookService {
                     .build();
         } catch (Exception e) {
             log.error("Error processing selected item for contactId {}: {}", request.getContactId(), e.getMessage(), e);
+            String languageKey = resolveLanguageKeyForContact(request.getContactId());
             return SelectionResponse.builder()
                     .success(false)
                     .selected(null)
-                    .message("Item selection could not be saved.")
+                    .message(resolveUserFacingErrorMessage(e, "Item selection could not be saved.", languageKey))
                     .build();
         }
     }
@@ -696,7 +708,6 @@ public class GlificWebhookService {
             if (tenantId == null) {
                 throw new IllegalStateException("Operator tenant could not be resolved");
             }
-
             Long schemeId = telemetryTenantRepository
                     .findFirstSchemeForUser(operatorWithSchema.schemaName(), operatorWithSchema.operator().id())
                     .orElseThrow(() -> new IllegalStateException("Operator is not mapped to any scheme"));
@@ -762,46 +773,137 @@ public class GlificWebhookService {
             if (tenantId == null) {
                 throw new IllegalStateException("Operator tenant could not be resolved");
             }
+            String languageKey = normalizeLanguageKey(resolveOperatorLanguage(operatorWithSchema, tenantId));
 
             Long schemeId = telemetryTenantRepository
                     .findFirstSchemeForUser(operatorWithSchema.schemaName(), operatorWithSchema.operator().id())
                     .orElseThrow(() -> new IllegalStateException("Operator is not mapped to any scheme"));
 
-            org.arghyam.jalsoochak.telemetry.repository.TelemetryReadingRecord pending;
+            Optional<TelemetryPendingMeterChangeRecord> pendingOpt = Optional.empty();
+            String correlationId = (request.getCorrelationId() != null && !request.getCorrelationId().isBlank())
+                    ? request.getCorrelationId().trim()
+                    : "manual-" + UUID.randomUUID();
+
             if (request.getCorrelationId() != null && !request.getCorrelationId().isBlank()) {
-                pending = telemetryTenantRepository
-                        .findPendingMeterChangeRecordByCorrelation(
-                                operatorWithSchema.schemaName(),
-                                schemeId,
-                                operatorWithSchema.operator().id(),
-                                request.getCorrelationId().trim()
-                        )
-                        .orElseThrow(() -> new IllegalStateException("Invalid or expired correlationId"));
-            } else {
-                pending = telemetryTenantRepository
-                        .findLatestPendingMeterChangeRecord(
-                                operatorWithSchema.schemaName(),
-                                schemeId,
-                                operatorWithSchema.operator().id()
-                        )
-                        .orElseThrow(() -> new IllegalStateException("No pending meter-change session found"));
+                pendingOpt = telemetryTenantRepository.findPendingMeterChangeRecordByCorrelation(
+                        operatorWithSchema.schemaName(),
+                        schemeId,
+                        operatorWithSchema.operator().id(),
+                        correlationId
+                );
             }
 
-            telemetryTenantRepository.updatePendingMeterChangeReading(
+            Optional<TelemetryConfirmedReadingSnapshot> previousSnapshotOpt = telemetryTenantRepository
+                    .findLatestConfirmedReadingSnapshot(operatorWithSchema.schemaName(), schemeId, null);
+
+            if (previousSnapshotOpt.isPresent()
+                    && manualReadingValue.compareTo(previousSnapshotOpt.get().confirmedReading()) < 0) {
+                TelemetryConfirmedReadingSnapshot previousSnapshot = previousSnapshotOpt.get();
+                telemetryTenantRepository.createAnomalyRecord(
+                        operatorWithSchema.schemaName(),
+                        AnomalyConstants.TYPE_READING_LESS_THAN_PREVIOUS,
+                        operatorWithSchema.operator().id(),
+                        schemeId,
+                        pendingOpt.map(TelemetryPendingMeterChangeRecord::extractedReading).orElse(null),
+                        null,
+                        manualReadingValue,
+                        0,
+                        previousSnapshot.confirmedReading(),
+                        previousSnapshot.createdAt(),
+                        0,
+                        "Manual reading is less than previous confirmed reading.",
+                        AnomalyConstants.STATUS_OPEN
+                );
+                return CreateReadingResponse.builder()
+                        .success(false)
+                        .message(localizeMessage("Manual reading cannot be less than previous reading.", languageKey))
+                        .qualityStatus("REJECTED")
+                        .correlationId(correlationId)
+                        .meterReading(manualReadingValue)
+                        .lastConfirmedReading(previousSnapshot.confirmedReading())
+                        .build();
+            }
+
+            if (pendingOpt.isPresent()) {
+                telemetryTenantRepository.updatePendingMeterChangeReading(
+                        operatorWithSchema.schemaName(),
+                        pendingOpt.get().id(),
+                        manualReadingValue,
+                        operatorWithSchema.operator().id()
+                );
+                correlationId = pendingOpt.get().correlationId();
+            } else {
+                telemetryTenantRepository.createFlowReading(
+                        operatorWithSchema.schemaName(),
+                        schemeId,
+                        operatorWithSchema.operator().id(),
+                        LocalDateTime.now(),
+                        manualReadingValue,
+                        manualReadingValue,
+                        correlationId,
+                        "",
+                        request.getMeterChangeReason()
+                );
+            }
+
+            int unreadableRetryCountToday = telemetryTenantRepository.countAnomaliesByTypeForToday(
                     operatorWithSchema.schemaName(),
-                    pending.id(),
-                    manualReadingValue,
-                    operatorWithSchema.operator().id()
+                    operatorWithSchema.operator().id(),
+                    schemeId,
+                    AnomalyConstants.TYPE_UNREADABLE_IMAGE
             );
+
+            telemetryTenantRepository.createAnomalyRecord(
+                    operatorWithSchema.schemaName(),
+                    AnomalyConstants.TYPE_MANUAL_OVERRIDE,
+                    operatorWithSchema.operator().id(),
+                    schemeId,
+                    pendingOpt.map(TelemetryPendingMeterChangeRecord::extractedReading).orElse(null),
+                    null,
+                    manualReadingValue,
+                    unreadableRetryCountToday,
+                    previousSnapshotOpt.map(TelemetryConfirmedReadingSnapshot::confirmedReading).orElse(null),
+                    previousSnapshotOpt.map(TelemetryConfirmedReadingSnapshot::createdAt).orElse(null),
+                    0,
+                    "Manual reading submitted as override.",
+                    AnomalyConstants.STATUS_OPEN
+            );
+
+            int consecutiveOverrideDays = calculateConsecutiveDays(
+                    telemetryTenantRepository.findAnomalyDatesByType(
+                            operatorWithSchema.schemaName(),
+                            operatorWithSchema.operator().id(),
+                            schemeId,
+                            AnomalyConstants.TYPE_MANUAL_OVERRIDE,
+                            10
+                    ),
+                    LocalDate.now()
+            );
+
+            if (consecutiveOverrideDays >= 5) {
+                telemetryTenantRepository.createAnomalyRecord(
+                        operatorWithSchema.schemaName(),
+                        AnomalyConstants.TYPE_CONSECUTIVE_OVERRIDE_5_DAYS,
+                        operatorWithSchema.operator().id(),
+                        schemeId,
+                        pendingOpt.map(TelemetryPendingMeterChangeRecord::extractedReading).orElse(null),
+                        null,
+                        manualReadingValue,
+                        0,
+                        previousSnapshotOpt.map(TelemetryConfirmedReadingSnapshot::confirmedReading).orElse(null),
+                        previousSnapshotOpt.map(TelemetryConfirmedReadingSnapshot::createdAt).orElse(null),
+                        consecutiveOverrideDays,
+                        "Manual overrides recorded for five or more consecutive days.",
+                        AnomalyConstants.STATUS_OPEN
+                );
+            }
+
             CreateReadingResponse response = CreateReadingResponse.builder()
                     .success(true)
-                    .correlationId(pending.correlationId())
+                    .correlationId(correlationId)
                     .meterReading(manualReadingValue)
                     .qualityStatus("CONFIRMED")
                     .build();
-
-            String selectedLanguage = resolveOperatorLanguage(operatorWithSchema, tenantId);
-            String languageKey = normalizeLanguageKey(selectedLanguage);
 
             String template = tenantConfigRepository.findManualReadingConfirmationTemplate(tenantId, languageKey)
                     .orElse("Manual reading {reading} saved successfully.");
@@ -813,9 +915,11 @@ public class GlificWebhookService {
             return response;
         } catch (Exception e) {
             log.error("Error processing manual reading for contactId {}: {}", request.getContactId(), e.getMessage(), e);
+            String languageKey = resolveLanguageKeyForContact(request.getContactId());
+            String descriptiveMessage = resolveUserFacingErrorMessage(e, "Manual reading could not be saved.", languageKey);
             return CreateReadingResponse.builder()
                     .success(false)
-                    .message("Manual reading could not be saved.")
+                    .message(descriptiveMessage)
                     .qualityStatus("REJECTED")
                     .correlationId(request.getContactId())
                     .build();
@@ -876,6 +980,184 @@ public class GlificWebhookService {
             return "zero";
         }
         return toWordsInternal(number).trim();
+    }
+
+    private int calculateConsecutiveDays(List<LocalDate> dates, LocalDate startDate) {
+        if (dates == null || dates.isEmpty() || startDate == null) {
+            return 0;
+        }
+        int count = 0;
+        LocalDate cursor = startDate;
+        for (LocalDate date : dates) {
+            if (date == null) {
+                continue;
+            }
+            if (date.isEqual(cursor)) {
+                count++;
+                cursor = cursor.minusDays(1);
+            } else if (date.isBefore(cursor)) {
+                break;
+            }
+        }
+        return count;
+    }
+
+    private String resolveUserFacingErrorMessage(Exception e, String fallback, String languageKey) {
+        if (e == null) {
+            return localizeMessage(fallback, languageKey);
+        }
+        String message = e.getMessage();
+        if (message == null || message.isBlank()) {
+            return localizeMessage(fallback, languageKey);
+        }
+
+        String normalized = message.trim().toLowerCase(Locale.ROOT);
+        if (normalized.contains("duplicate image")) {
+            return localizeMessage("Duplicate image submission detected. Please submit a new image.", languageKey);
+        }
+        if (normalized.contains("less than previous")) {
+            return localizeMessage("Reading cannot be less than previous confirmed reading.", languageKey);
+        }
+        if (normalized.contains("manualreading is required")) {
+            return localizeMessage("manualReading is required.", languageKey);
+        }
+        if (normalized.contains("manualreading must be numeric")) {
+            return localizeMessage("manualReading must be a numeric value.", languageKey);
+        }
+        if (normalized.contains("manualreading must be greater than zero")) {
+            return localizeMessage("manualReading must be greater than zero.", languageKey);
+        }
+        if (normalized.contains("language selection is required")) {
+            return localizeMessage("Language selection is required. Please choose one of the listed options.", languageKey);
+        }
+        if (normalized.contains("invalid language selection")) {
+            return localizeMessage("Invalid language selection. Please choose a valid number or language from the list.", languageKey);
+        }
+        if (normalized.contains("no language options configured")) {
+            return localizeMessage("Language options are not configured for this tenant.", languageKey);
+        }
+        if (normalized.contains("channel selection is required")) {
+            return localizeMessage("Channel selection is required. Please choose one of the listed options.", languageKey);
+        }
+        if (normalized.contains("invalid channel selection")) {
+            return localizeMessage("Invalid channel selection. Please choose a valid number or channel from the list.", languageKey);
+        }
+        if (normalized.contains("no channel options configured")) {
+            return localizeMessage("Channel options are not configured for this tenant.", languageKey);
+        }
+        if (normalized.contains("item selection is required")) {
+            return localizeMessage("Item selection is required. Please choose one of the listed options.", languageKey);
+        }
+        if (normalized.contains("invalid item selection")) {
+            return localizeMessage("Invalid item selection. Please choose a valid option from the list.", languageKey);
+        }
+        if (normalized.contains("no item options configured")) {
+            return localizeMessage("Item options are not configured for this tenant.", languageKey);
+        }
+        if (normalized.contains("operator is not mapped to any scheme")) {
+            return localizeMessage("No scheme is mapped to this operator.", languageKey);
+        }
+        if (normalized.contains("operator could not be resolved")) {
+            return localizeMessage("Operator could not be resolved for this contact.", languageKey);
+        }
+        if (normalized.contains("invalid media")) {
+            return localizeMessage("Invalid media. Please submit a clear meter image.", languageKey);
+        }
+        return localizeMessage(message.trim(), languageKey);
+    }
+
+    private String resolveLanguageKeyForContact(String contactId) {
+        try {
+            if (contactId == null || contactId.isBlank()) {
+                return "english";
+            }
+            TelemetryOperatorWithSchema operatorWithSchema = resolveOperatorWithSchema(contactId);
+            Integer tenantId = operatorWithSchema.operator().tenantId();
+            if (tenantId == null) {
+                return "english";
+            }
+            return normalizeLanguageKey(resolveOperatorLanguage(operatorWithSchema, tenantId));
+        } catch (Exception ignored) {
+            return "english";
+        }
+    }
+
+    private String localizeMessage(String message, String languageKey) {
+        if (message == null || message.isBlank()) {
+            return message;
+        }
+        if (!"hindi".equals(languageKey)) {
+            return message;
+        }
+
+        String normalized = message.trim().toLowerCase(Locale.ROOT);
+        if (normalized.contains("duplicate image submission detected")) {
+            return "डुप्लिकेट इमेज मिली है। कृपया नई इमेज सबमिट करें।";
+        }
+        if (normalized.contains("reading cannot be less than previous")) {
+            return "रीडिंग पिछली पुष्टि की गई रीडिंग से कम नहीं हो सकती।";
+        }
+        if (normalized.contains("manual reading cannot be less than previous")) {
+            return "मैनुअल रीडिंग पिछली पुष्टि की गई रीडिंग से कम नहीं हो सकती।";
+        }
+        if (normalized.contains("manualreading is required")) {
+            return "manualReading अनिवार्य है।";
+        }
+        if (normalized.contains("manualreading must be a numeric value")) {
+            return "manualReading केवल संख्या होना चाहिए।";
+        }
+        if (normalized.contains("manualreading must be greater than zero")) {
+            return "manualReading शून्य से बड़ा होना चाहिए।";
+        }
+        if (normalized.contains("language selection is required")) {
+            return "भाषा चयन आवश्यक है। कृपया सूची में से एक विकल्प चुनें।";
+        }
+        if (normalized.contains("invalid language selection")) {
+            return "अमान्य भाषा चयन। कृपया सूची से सही संख्या या भाषा चुनें।";
+        }
+        if (normalized.contains("language options are not configured")) {
+            return "इस टेनेंट के लिए भाषा विकल्प कॉन्फ़िगर नहीं हैं।";
+        }
+        if (normalized.contains("channel selection is required")) {
+            return "चैनल चयन आवश्यक है। कृपया सूची में से एक विकल्प चुनें।";
+        }
+        if (normalized.contains("invalid channel selection")) {
+            return "अमान्य चैनल चयन। कृपया सूची से सही संख्या या चैनल चुनें।";
+        }
+        if (normalized.contains("channel options are not configured")) {
+            return "इस टेनेंट के लिए चैनल विकल्प कॉन्फ़िगर नहीं हैं।";
+        }
+        if (normalized.contains("item selection is required")) {
+            return "विकल्प चयन आवश्यक है। कृपया सूची में से एक विकल्प चुनें।";
+        }
+        if (normalized.contains("invalid item selection")) {
+            return "अमान्य विकल्प चयन। कृपया सूची से सही विकल्प चुनें।";
+        }
+        if (normalized.contains("item options are not configured")) {
+            return "इस टेनेंट के लिए विकल्प कॉन्फ़िगर नहीं हैं।";
+        }
+        if (normalized.contains("no scheme is mapped to this operator")) {
+            return "इस ऑपरेटर के लिए कोई स्कीम मैप नहीं है।";
+        }
+        if (normalized.contains("operator could not be resolved")) {
+            return "इस संपर्क के लिए ऑपरेटर नहीं मिला।";
+        }
+        if (normalized.contains("invalid media")) {
+            return "मीडिया अमान्य है। कृपया स्पष्ट मीटर इमेज भेजें।";
+        }
+        if (normalized.contains("image could not be processed")) {
+            return "इमेज प्रोसेस नहीं हो सकी। कृपया दोबारा प्रयास करें।";
+        }
+        if (normalized.contains("manual reading could not be saved")) {
+            return "मैनुअल रीडिंग सेव नहीं हो सकी। कृपया दोबारा प्रयास करें।";
+        }
+        if (normalized.contains("could not read meter value from image")) {
+            return "इमेज से मीटर रीडिंग नहीं पढ़ी जा सकी। कृपया स्पष्ट फोटो भेजें।";
+        }
+        if (normalized.contains("ocr failed")) {
+            return "मीटर रीडिंग पढ़ने में त्रुटि हुई। कृपया स्पष्ट फोटो भेजें।";
+        }
+        return message;
     }
 
     private String toWordsInternal(int number) {
