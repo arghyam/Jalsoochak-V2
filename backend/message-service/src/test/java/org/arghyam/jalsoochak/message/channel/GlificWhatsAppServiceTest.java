@@ -44,7 +44,9 @@ class GlificWhatsAppServiceTest {
     @BeforeEach
     void setUp() {
         ReflectionTestUtils.setField(service, "nudgeTemplateId", "nudge-tmpl-1");
-        ReflectionTestUtils.setField(service, "escalationTemplateId", "esc-tmpl-2");
+        ReflectionTestUtils.setField(service, "escalationTemplateId", "2");   // must be numeric for Integer.parseInt
+        ReflectionTestUtils.setField(service, "escalationCaption", "Escalations");
+        ReflectionTestUtils.setField(service, "escalationThumbnail", "");
     }
 
     // ──────────────────────────── optIn ────────────────────────────────────────
@@ -104,7 +106,7 @@ class GlificWhatsAppServiceTest {
         Map<String, Object> input = (Map<String, Object>) varsCaptor.getValue().get("input");
         assertThat(input.get("url")).isEqualTo("https://example.com/r.pdf");
         assertThat(input.get("source_url")).isEqualTo("https://example.com/r.pdf");
-        assertThat(input.get("isTemplateMedia")).isEqualTo(false);
+        assertThat(input.get("isTemplateMedia")).isEqualTo(true);
     }
 
     @Test
@@ -142,7 +144,7 @@ class GlificWhatsAppServiceTest {
     @Test
     void sendEscalationHsm_passesMediaIdFromUpload_toCreateAndSendMessage() throws Exception {
         JsonNode uploadResponse = mapper.readTree("""
-                {"createMessageMedia":{"messageMedia":{"id":"MEDIA-123","url":"https://minio.example.com/r.pdf"}}}
+                {"createMessageMedia":{"messageMedia":{"id":"123","url":"https://minio.example.com/r.pdf"}}}
                 """);
         JsonNode sendResponse = mapper.readTree("""
                 {"createAndSendMessage":{"message":{"id":3,"body":"ok","isHsm":true},"errors":[]}}
@@ -156,11 +158,12 @@ class GlificWhatsAppServiceTest {
         ArgumentCaptor<Map<String, Object>> sendVarsCaptor = varsCaptor();
         verify(client).execute(contains("createAndSendMessage"), sendVarsCaptor.capture());
 
-        Map<String, Object> sendVars = sendVarsCaptor.getValue();
-        assertThat(sendVars.get("mediaId")).isEqualTo("MEDIA-123");
-        assertThat(sendVars.get("templateId")).isEqualTo("esc-tmpl-2");
-        assertThat(sendVars.get("receiverId")).isEqualTo(77L);
-        assertThat(sendVars.get("parameters")).isEqualTo(List.of("body text"));
+        // Implementation wraps all fields in an "input" map for the GraphQL mutation
+        @SuppressWarnings("unchecked")
+        Map<String, Object> input = (Map<String, Object>) sendVarsCaptor.getValue().get("input");
+        assertThat(input.get("mediaId")).isEqualTo(123);    // Integer.parseInt("123")
+        assertThat(input.get("templateId")).isEqualTo(2);   // Integer.parseInt("2")
+        assertThat(input.get("receiverId")).isEqualTo(77);  // contactId.intValue()
     }
 
     @Test
@@ -177,9 +180,9 @@ class GlificWhatsAppServiceTest {
     }
 
     @Test
-    void sendEscalationHsm_usesBodyText_asOnlyParameter_inCreateAndSendMessage() throws Exception {
+    void sendEscalationHsm_sendsDocumentAttachment_viaMutation() throws Exception {
         JsonNode uploadResponse = mapper.readTree("""
-                {"createMessageMedia":{"messageMedia":{"id":"M-1"}}}
+                {"createMessageMedia":{"messageMedia":{"id":"1"}}}
                 """);
         JsonNode sendResponse = mapper.readTree("""
                 {"createAndSendMessage":{"message":{"id":4,"body":"ok","isHsm":true},"errors":[]}}
@@ -192,10 +195,12 @@ class GlificWhatsAppServiceTest {
         ArgumentCaptor<Map<String, Object>> captor = varsCaptor();
         verify(client).execute(contains("createAndSendMessage"), captor.capture());
 
-        // Body text is the sole parameter; the document attachment is via mediaId, not parameters
+        // Document attachment is sent via mediaId in the input; params is empty
         @SuppressWarnings("unchecked")
-        List<String> params = (List<String>) captor.getValue().get("parameters");
-        assertThat(params).containsExactly("Localized escalation text");
+        Map<String, Object> input = (Map<String, Object>) captor.getValue().get("input");
+        assertThat(input.get("mediaId")).isEqualTo(1);   // Integer.parseInt("1")
+        assertThat(input.get("isHsm")).isEqualTo(true);
+        assertThat((List<?>) input.get("params")).isEmpty();
     }
 
     // ────────────────────────────── helpers ────────────────────────────────────

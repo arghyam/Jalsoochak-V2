@@ -5,6 +5,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -50,8 +51,8 @@ public class GlificWhatsAppService {
             }""";
 
     private static final String CREATE_AND_SEND_MESSAGE_MUTATION = """
-    mutation createAndSendMessage($templateId: ID!, $receiverId: ID!, $mediaId: ID!, $parameters: [String]) {
-      createAndSendMessage(templateId: $templateId, receiverId: $receiverId, mediaId: $mediaId, parameters: $parameters) {
+    mutation createAndSendMessage($input: MessageInput!) {
+      createAndSendMessage(input: $input) {
         message {
           id
           body
@@ -72,6 +73,12 @@ public class GlificWhatsAppService {
 
     @Value("${glific.template.escalation-id:}")
     private String escalationTemplateId;
+
+    @Value("${glific.media.escalation-caption:Escalations}")
+    private String escalationCaption;
+
+    @Value("${glific.media.escalation-thumbnail:}")
+    private String escalationThumbnail;
 
     /**
      * Opts in the contact by phone number and returns the Glific contact ID.
@@ -107,7 +114,9 @@ public class GlificWhatsAppService {
                         "input", Map.of(
                                 "url", publicUrl,
                                 "source_url", publicUrl,
-                                "isTemplateMedia", false)))
+                                "caption", escalationCaption,
+                                "thumbnail", escalationThumbnail,
+                                "isTemplateMedia", true)))
                 .path("createMessageMedia").path("messageMedia").path("id").asText();
         log.info("[Glific] Media uploaded, mediaId={}", mediaId);
         return mediaId;
@@ -131,11 +140,20 @@ public class GlificWhatsAppService {
 
         String mediaId = uploadMedia(minioUrl);
 
-        client.execute(CREATE_AND_SEND_MESSAGE_MUTATION, Map.of(
-                "templateId", escalationTemplateId,
-                "receiverId", contactId,
-                "mediaId", mediaId,
-                "parameters", List.of(bodyText)));
+        Map<String, Object> input = new HashMap<>();
+        input.put("templateId", Integer.parseInt(escalationTemplateId));
+        input.put("receiverId", contactId.intValue());
+        input.put("isHsm", true);
+        input.put("params", List.of());
+
+        if (mediaId != null && !mediaId.isBlank()) {
+            input.put("mediaId", Integer.parseInt(mediaId));
+        }
+
+        client.execute(
+                CREATE_AND_SEND_MESSAGE_MUTATION,
+                Map.of("input", input)
+        );
 
         log.debug("[Glific] Escalation HSM sent to contactId={}", contactId);
     }
