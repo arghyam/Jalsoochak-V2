@@ -5,6 +5,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.math.BigDecimal;
 import java.util.List;
 
 @Data
@@ -15,9 +16,9 @@ public class TenantDetailsResponse {
 
     private Integer tenantId;
     private String stateCode;
-    private String schemaName;
-    private Integer parentLgdId;
     private Integer childBoundaryCount;
     private String boundaryGeoJson;
+    private BigDecimal averageSchemeRegularity;
+    private BigDecimal readingSubmissionRate;
     private List<ChildRegionDetails> childRegions;
 }

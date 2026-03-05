@@ -12,7 +12,9 @@ import lombok.NoArgsConstructor;
 public class ChildRegionDetails {
 
     private Integer lgdId;
+    private Integer departmentId;
     private Integer parentLgdId;
+    private Integer parentDepartmentId;
     private Integer lgdLevel;
     private Integer schemeCount;
     private String title;
