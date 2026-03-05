@@ -14,5 +14,4 @@ public class SampleDTO {
     private Long id;
     private String schemeName;
     private String schemeCode;
-    private Integer channel;
 }
