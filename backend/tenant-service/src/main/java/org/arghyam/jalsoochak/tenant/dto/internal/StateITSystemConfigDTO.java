@@ -63,6 +63,9 @@ public final class StateITSystemConfigDTO implements ConfigValueDTO {
 
     @JsonAnySetter
     public void addAdditionalSetting(String key, Object value) {
+        if (key == null || key.trim().isEmpty()) {
+            throw new IllegalArgumentException("Additional setting key must not be null or blank");
+        }
         if (KNOWN_PROPERTIES.contains(key)) {
             throw new IllegalArgumentException(
                     "'" + key + "' is a declared field and cannot be set via additionalSettings");

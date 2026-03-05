@@ -86,7 +86,12 @@ public class TenantEventListener {
     }
 
     private void cacheTenantInRedis(TenantResponseDTO tenant, String schemaName) {
-        String tenantStateCode = tenant.getStateCode().toUpperCase();
+        String stateCode = tenant.getStateCode();
+        if (stateCode == null || stateCode.isBlank()) {
+            log.error("Cannot cache tenant in Redis: stateCode is null or blank [id={}]", tenant.getId());
+            return;
+        }
+        String tenantStateCode = stateCode.toUpperCase();
         String tenantKey = REDIS_TENANT_KEY_PREFIX + tenantStateCode + REDIS_PROFILE_SUFFIX;
 
         Map<String, String> tenantPayload = new HashMap<>();
@@ -102,19 +107,22 @@ public class TenantEventListener {
     }
 
     private void refreshTenantInRedis(TenantResponseDTO tenant) {
-        String tenantStateCode = tenant.getStateCode().toUpperCase();
-        String tenantKey = REDIS_TENANT_KEY_PREFIX + tenantStateCode + REDIS_PROFILE_SUFFIX;
-
-        Object existingSchemaName = redisTemplate.opsForHash().get(tenantKey, "schemaName");
-        String schemaName = existingSchemaName != null
-            ? existingSchemaName.toString()
-            : "tenant_" + tenantStateCode.toLowerCase();
+        String stateCode = tenant.getStateCode();
+        if (stateCode == null || stateCode.isBlank()) {
+            log.error("Cannot refresh tenant in Redis: stateCode is null or blank [id={}]", tenant.getId());
+            return;
+        }
+        String schemaName = "tenant_" + stateCode.trim().toLowerCase();
         cacheTenantInRedis(tenant, schemaName);
-        
     }
 
     private void evictTenantFromRedis(TenantResponseDTO tenant) {
-        String tenantStateCode = tenant.getStateCode().toUpperCase();
+        String stateCode = tenant.getStateCode();
+        if (stateCode == null || stateCode.isBlank()) {
+            log.error("Cannot evict tenant from Redis: stateCode is null or blank [id={}]", tenant.getId());
+            return;
+        }
+        String tenantStateCode = stateCode.toUpperCase();
         String tenantKey = REDIS_TENANT_KEY_PREFIX + tenantStateCode + REDIS_PROFILE_SUFFIX;
 
         redisTemplate.delete(tenantKey);

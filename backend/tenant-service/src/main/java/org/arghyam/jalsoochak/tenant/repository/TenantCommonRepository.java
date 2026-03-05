@@ -141,6 +141,12 @@ public class TenantCommonRepository {
      * Lists all tenants in the common_schema.tenant_master_table with pagination.
      */
     public List<TenantResponseDTO> findAll(int limit, long offset) {
+        if (limit <= 0) {
+            throw new IllegalArgumentException("limit must be greater than 0");
+        }
+        if (offset < 0) {
+            throw new IllegalArgumentException("offset must be non-negative");
+        }
         return jdbcTemplate.query(
                 "SELECT * FROM common_schema.tenant_master_table ORDER BY id LIMIT ? OFFSET ?",
                 TENANT_ROW_MAPPER, limit, offset);
