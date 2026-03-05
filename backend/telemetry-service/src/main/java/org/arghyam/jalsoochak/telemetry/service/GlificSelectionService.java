@@ -61,7 +61,10 @@ public class GlificSelectionService {
                 throw new IllegalStateException("Operator tenant could not be resolved");
             }
 
-            String prompt = tenantConfigRepository.findLanguageSelectionPrompt(tenantId)
+            String languageKey = localizationService.normalizeLanguageKey(
+                    operatorContextService.resolveOperatorLanguage(operatorWithSchema, tenantId)
+            );
+            String prompt = tenantConfigRepository.findLanguageSelectionPrompt(tenantId, languageKey)
                     .orElseThrow(() -> new IllegalStateException("language_selection_prompt is not configured"));
 
             List<String> languageOptions = tenantConfigRepository.findLanguageOptions(tenantId);
@@ -127,10 +130,15 @@ public class GlificSelectionService {
                     .findConfigValue(tenantId, languageSpecificKey)
                     .or(() -> tenantConfigRepository.findConfigValue(tenantId, "language_selection_confirmation_template"))
                     .orElse("Language selected: {language}");
+            String selectedLanguageKey = localizationService.normalizeLanguageKey(selectedLanguage);
+            String localizedConfirmation = localizationService.localizeMessage(
+                    confirmationTemplate.replace("{language}", selectedLanguage),
+                    selectedLanguageKey
+            );
 
             return IntroResponse.builder()
                     .success(true)
-                    .message(confirmationTemplate.replace("{language}", selectedLanguage))
+                    .message(localizedConfirmation)
                     .build();
         } catch (Exception e) {
             log.error("Error saving selected language for contactId {}: {}", request.getContactId(), e.getMessage(), e);

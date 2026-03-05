@@ -149,6 +149,9 @@ public class GlificLocalizationService {
         if (normalized.contains("language options are not configured")) {
             return "इस टेनेंट के लिए भाषा विकल्प कॉन्फ़िगर नहीं हैं।";
         }
+        if (normalized.contains("language selected:")) {
+            return message.replaceFirst("(?i)language selected:", "भाषा चुनी गई:");
+        }
         if (normalized.contains("channel selection is required")) {
             return "चैनल चयन आवश्यक है। कृपया सूची में से एक विकल्प चुनें।";
         }
