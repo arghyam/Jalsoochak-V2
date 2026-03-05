@@ -31,3 +31,6 @@ logs/
 
 # Maven wrapper
 !.mvn/wrapper/maven-wrapper.jar
+
+#manual data seeding
+backend/analytics-service/src/main/resources/db/migration/manual_seed_analytics_sample_data.sql

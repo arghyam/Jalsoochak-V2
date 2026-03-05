@@ -15,6 +15,7 @@ import java.time.LocalDate;
 public class ReadingSubmissionRateResponse {
 
     private Integer lgdId;
+    private Integer parentDepartmentId;
     private LocalDate startDate;
     private LocalDate endDate;
     private Integer daysInRange;
