@@ -36,6 +36,15 @@ public class TenantConfigRepository {
         return rows.stream().findFirst();
     }
 
+    public Optional<String> findLanguageSelectionPrompt(Integer tenantId, String languageKey) {
+        if (languageKey == null || languageKey.isBlank()) {
+            return findLanguageSelectionPrompt(tenantId);
+        }
+        String langSpecificKey = "language_selection_prompt_" + languageKey;
+        return findConfigValue(tenantId, langSpecificKey)
+                .or(() -> findLanguageSelectionPrompt(tenantId));
+    }
+
     public List<String> findLanguageOptions(Integer tenantId) {
         String sql = """
                 SELECT config_value
