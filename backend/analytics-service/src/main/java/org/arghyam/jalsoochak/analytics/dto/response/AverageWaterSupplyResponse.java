@@ -16,8 +16,7 @@ import java.util.List;
 public class AverageWaterSupplyResponse {
 
     private Integer tenantId;
-    private Integer lgdId;
-    private Integer parentDepartmentId;
+    private String stateCode;
     private LocalDate startDate;
     private LocalDate endDate;
     private Integer daysInRange;
@@ -44,8 +43,6 @@ public class AverageWaterSupplyResponse {
     @NoArgsConstructor
     @AllArgsConstructor
     public static class ChildRegionWaterSupply {
-        private Integer tenantId;
-        private String stateCode;
         private Integer lgdId;
         private Integer departmentId;
         private String title;

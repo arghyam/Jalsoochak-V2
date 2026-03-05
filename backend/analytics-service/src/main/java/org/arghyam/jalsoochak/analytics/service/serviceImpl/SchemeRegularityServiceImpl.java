@@ -3,6 +3,8 @@ package org.arghyam.jalsoochak.analytics.service.serviceImpl;
 import org.arghyam.jalsoochak.analytics.dto.response.AverageSchemeRegularityResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.AverageWaterSupplyResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.ReadingSubmissionRateResponse;
+import org.arghyam.jalsoochak.analytics.entity.DimTenant;
+import org.arghyam.jalsoochak.analytics.repository.DimTenantRepository;
 import org.arghyam.jalsoochak.analytics.repository.SchemeRegularityRepository;
 import org.arghyam.jalsoochak.analytics.service.SchemeRegularityService;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -34,6 +36,7 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
     private static final String DEBUG_LOG_PATH = "/home/beehyv/Desktop/Codes/jalSoochak/JalSoochak_New/.cursor/debug.log";
 
     private final SchemeRegularityRepository schemeRegularityRepository;
+    private final DimTenantRepository dimTenantRepository;
     private final StringRedisTemplate redisTemplate;
     private final ObjectMapper objectMapper;
 
@@ -253,7 +256,8 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
 
         String cacheKey = ":water_supply:tenant:" + tenantId
                 + ":start:" + startDate
-                + ":end:" + endDate;
+                + ":end:" + endDate
+                + ":v2";
         AverageWaterSupplyResponse cached = readFromCache(cacheKey, AverageWaterSupplyResponse.class);
         if (cached != null) {
             return cached;
@@ -276,6 +280,7 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
 
         AverageWaterSupplyResponse response = AverageWaterSupplyResponse.builder()
                 .tenantId(tenantId)
+                .stateCode(getTenantStateCode(tenantId))
                 .startDate(startDate)
                 .endDate(endDate)
                 .daysInRange(daysInRange)
@@ -295,7 +300,8 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
 
         String cacheKey = ":water_supply:nation"
                 + ":start:" + startDate
-                + ":end:" + endDate;
+                + ":end:" + endDate
+                + ":v2";
         AverageWaterSupplyResponse cached = readFromCache(cacheKey, AverageWaterSupplyResponse.class);
         if (cached != null) {
             return cached;
@@ -307,8 +313,6 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
 
         List<AverageWaterSupplyResponse.ChildRegionWaterSupply> childRegions = metrics.stream()
                 .map(m -> AverageWaterSupplyResponse.ChildRegionWaterSupply.builder()
-                        .tenantId(m.tenantId())
-                        .stateCode(m.stateCode())
                         .lgdId(null)
                         .departmentId(null)
                         .title(m.title())
@@ -321,6 +325,7 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
 
         AverageWaterSupplyResponse response = AverageWaterSupplyResponse.builder()
                 .tenantId(null)
+                .stateCode(null)
                 .startDate(startDate)
                 .endDate(endDate)
                 .daysInRange(daysInRange)
@@ -339,24 +344,52 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
         validateTenantInput(tenantId);
         validateLgdInput(lgdId);
         validateDateRange(startDate, endDate);
+        // #region agent log
+        appendDebugLog(
+                "H1",
+                "SchemeRegularityServiceImpl:getAverageWaterSupplyPerSchemeByLgd:entry",
+                "Entered average-per-region LGD branch",
+                Map.of(
+                        "tenantId", tenantId,
+                        "lgdId", lgdId,
+                        "startDate", String.valueOf(startDate),
+                        "endDate", String.valueOf(endDate)));
+        // #endregion
 
         String cacheKey = ":water_supply:tenant:" + tenantId
                 + ":lgd:" + lgdId
                 + ":start:" + startDate
-                + ":end:" + endDate;
+                + ":end:" + endDate
+                + ":v2";
         AverageWaterSupplyResponse cached = readFromCache(cacheKey, AverageWaterSupplyResponse.class);
         if (cached != null) {
             return cached;
         }
 
         int daysInRange = (int) ChronoUnit.DAYS.between(startDate, endDate) + 1;
-        List<SchemeRegularityRepository.ChildRegionWaterSupplyMetrics> metrics =
-                schemeRegularityRepository.getAverageWaterSupplyPerSchemeByLgd(tenantId, lgdId, startDate, endDate);
+        List<SchemeRegularityRepository.ChildRegionWaterSupplyMetrics> metrics;
+        try {
+            metrics = schemeRegularityRepository.getAverageWaterSupplyPerSchemeByLgd(tenantId, lgdId, startDate, endDate);
+        } catch (Exception ex) {
+            // #region agent log
+            appendDebugLog(
+                    "H2",
+                    "SchemeRegularityServiceImpl:getAverageWaterSupplyPerSchemeByLgd:repo_exception",
+                    "LGD branch repository call failed",
+                    Map.of("errorType", ex.getClass().getName(), "errorMessage", String.valueOf(ex.getMessage())));
+            // #endregion
+            throw ex;
+        }
+        // #region agent log
+        appendDebugLog(
+                "H3",
+                "SchemeRegularityServiceImpl:getAverageWaterSupplyPerSchemeByLgd:repo_success",
+                "LGD branch repository call succeeded",
+                Map.of("daysInRange", daysInRange, "metricRows", metrics.size()));
+        // #endregion
 
         List<AverageWaterSupplyResponse.ChildRegionWaterSupply> childRegions = metrics.stream()
                 .map(m -> AverageWaterSupplyResponse.ChildRegionWaterSupply.builder()
-                        .tenantId(m.tenantId())
-                        .stateCode(m.stateCode())
                         .lgdId(m.lgdId())
                         .departmentId(null)
                         .title(m.title())
@@ -369,7 +402,7 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
 
         AverageWaterSupplyResponse response = AverageWaterSupplyResponse.builder()
                 .tenantId(tenantId)
-                .lgdId(lgdId)
+                .stateCode(getTenantStateCode(tenantId))
                 .startDate(startDate)
                 .endDate(endDate)
                 .daysInRange(daysInRange)
@@ -388,24 +421,52 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
         validateTenantInput(tenantId);
         validateDepartmentInput(parentDepartmentId);
         validateDateRange(startDate, endDate);
+        // #region agent log
+        appendDebugLog(
+                "H4",
+                "SchemeRegularityServiceImpl:getAverageWaterSupplyPerSchemeByDepartment:entry",
+                "Entered average-per-region department branch",
+                Map.of(
+                        "tenantId", tenantId,
+                        "parentDepartmentId", parentDepartmentId,
+                        "startDate", String.valueOf(startDate),
+                        "endDate", String.valueOf(endDate)));
+        // #endregion
 
         String cacheKey = ":water_supply:tenant:" + tenantId
                 + ":department:" + parentDepartmentId
                 + ":start:" + startDate
-                + ":end:" + endDate;
+                + ":end:" + endDate
+                + ":v2";
         AverageWaterSupplyResponse cached = readFromCache(cacheKey, AverageWaterSupplyResponse.class);
         if (cached != null) {
             return cached;
         }
 
         int daysInRange = (int) ChronoUnit.DAYS.between(startDate, endDate) + 1;
-        List<SchemeRegularityRepository.ChildRegionWaterSupplyMetrics> metrics =
-                schemeRegularityRepository.getAverageWaterSupplyPerSchemeByDepartment(tenantId, parentDepartmentId, startDate, endDate);
+        List<SchemeRegularityRepository.ChildRegionWaterSupplyMetrics> metrics;
+        try {
+            metrics = schemeRegularityRepository.getAverageWaterSupplyPerSchemeByDepartment(tenantId, parentDepartmentId, startDate, endDate);
+        } catch (Exception ex) {
+            // #region agent log
+            appendDebugLog(
+                    "H5",
+                    "SchemeRegularityServiceImpl:getAverageWaterSupplyPerSchemeByDepartment:repo_exception",
+                    "Department branch repository call failed",
+                    Map.of("errorType", ex.getClass().getName(), "errorMessage", String.valueOf(ex.getMessage())));
+            // #endregion
+            throw ex;
+        }
+        // #region agent log
+        appendDebugLog(
+                "H5",
+                "SchemeRegularityServiceImpl:getAverageWaterSupplyPerSchemeByDepartment:repo_success",
+                "Department branch repository call succeeded",
+                Map.of("daysInRange", daysInRange, "metricRows", metrics.size()));
+        // #endregion
 
         List<AverageWaterSupplyResponse.ChildRegionWaterSupply> childRegions = metrics.stream()
                 .map(m -> AverageWaterSupplyResponse.ChildRegionWaterSupply.builder()
-                        .tenantId(m.tenantId())
-                        .stateCode(m.stateCode())
                         .lgdId(null)
                         .departmentId(m.departmentId())
                         .title(m.title())
@@ -418,7 +479,7 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
 
         AverageWaterSupplyResponse response = AverageWaterSupplyResponse.builder()
                 .tenantId(tenantId)
-                .parentDepartmentId(parentDepartmentId)
+                .stateCode(getTenantStateCode(tenantId))
                 .startDate(startDate)
                 .endDate(endDate)
                 .daysInRange(daysInRange)
@@ -456,6 +517,12 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
         if (endDate.isBefore(startDate)) {
             throw new IllegalArgumentException("end_date must be on or after start_date");
         }
+    }
+
+    private String getTenantStateCode(Integer tenantId) {
+        DimTenant tenant = dimTenantRepository.findById(tenantId)
+                .orElseThrow(() -> new IllegalArgumentException("Tenant not found for tenant_id: " + tenantId));
+        return tenant.getStateCode();
     }
 
     private <T> T readFromCache(String cacheKey, Class<T> responseClass) {
