@@ -2,6 +2,7 @@ package org.arghyam.jalsoochak.tenant.kafka;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.kafka.annotation.KafkaListener;
+import org.springframework.kafka.support.Acknowledgment;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -9,7 +10,8 @@ import org.springframework.stereotype.Component;
 public class KafkaConsumer {
 
     @KafkaListener(topics = "common-topic", groupId = "${spring.kafka.consumer.group-id}")
-    public void consume(String message) {
+    public void consume(String message, Acknowledgment ack) {
         log.info("[tenant-service] Received message from common-topic: {}", message);
+        ack.acknowledge();
     }
 }
