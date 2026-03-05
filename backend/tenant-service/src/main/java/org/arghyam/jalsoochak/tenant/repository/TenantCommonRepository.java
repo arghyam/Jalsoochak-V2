@@ -5,17 +5,15 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
+import org.arghyam.jalsoochak.tenant.dto.internal.ConfigDTO;
 import org.arghyam.jalsoochak.tenant.dto.request.CreateTenantRequestDTO;
 import org.arghyam.jalsoochak.tenant.dto.request.UpdateTenantRequestDTO;
 import org.arghyam.jalsoochak.tenant.dto.response.TenantResponseDTO;
-import org.arghyam.jalsoochak.tenant.dto.internal.ConfigDTO;
 import org.arghyam.jalsoochak.tenant.enums.TenantStatusEnum;
-
 import org.springframework.jdbc.core.ConnectionCallback;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Repository;
-import org.springframework.transaction.annotation.Transactional;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -235,34 +233,26 @@ public class TenantCommonRepository {
     }
 
     /**
-     * Upserts configuration. If it exists, updates it; otherwise, creates it.
+     * Upserts configuration atomically using INSERT ... ON CONFLICT DO UPDATE.
+     * Relies on the partial unique index uq_tenant_config_key on (tenant_id, config_key)
+     * WHERE deleted_at IS NULL defined in V14 migration.
      */
-    @Transactional
     public Optional<ConfigDTO> upsertConfig(Integer tenantId, String keyName,
             String value, Integer currentUserId) {
-        // Check if exists
-        Optional<ConfigDTO> existing = findConfigByTenantAndKey(tenantId, keyName);
-
-        if (existing.isPresent()) {
-            String sql = """
-                    UPDATE common_schema.tenant_config_master_table
-                    SET config_value = ?, updated_at = NOW(), updated_by = ?
-                    WHERE id = ? RETURNING *
-                    """;
-            List<ConfigDTO> results = jdbcTemplate.query(sql, CONFIG_ROW_MAPPER, value, currentUserId,
-                    existing.get().getId());
-            return results.stream().findFirst();
-        } else {
-            String sql = """
-                    INSERT INTO common_schema.tenant_config_master_table
-                        (tenant_id, config_key, config_value, created_by, updated_by)
-                    VALUES (?, ?, ?, ?, ?)
-                    RETURNING *
-                    """;
-            List<ConfigDTO> results = jdbcTemplate.query(sql, CONFIG_ROW_MAPPER,
-                    tenantId, keyName, value, currentUserId, currentUserId);
-            return results.stream().findFirst();
-        }
+        String sql = """
+                INSERT INTO common_schema.tenant_config_master_table
+                    (tenant_id, config_key, config_value, created_by, updated_by)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT (tenant_id, config_key) WHERE deleted_at IS NULL
+                DO UPDATE SET
+                    config_value = EXCLUDED.config_value,
+                    updated_at   = NOW(),
+                    updated_by   = ?
+                RETURNING *
+                """;
+        List<ConfigDTO> results = jdbcTemplate.query(sql, CONFIG_ROW_MAPPER,
+                tenantId, keyName, value, currentUserId, currentUserId, currentUserId);
+        return results.stream().findFirst();
     }
 
     /**

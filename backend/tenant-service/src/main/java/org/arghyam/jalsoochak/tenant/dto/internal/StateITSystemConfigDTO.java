@@ -13,6 +13,7 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 import lombok.ToString;
 
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
@@ -45,7 +46,7 @@ public final class StateITSystemConfigDTO implements ConfigValueDTO {
 
     @JsonAnyGetter
     public Map<String, Object> getAdditionalSettings() {
-        return additionalSettings;
+        return additionalSettings != null ? Collections.unmodifiableMap(additionalSettings) : Collections.emptyMap();
     }
 
     private static final Set<String> KNOWN_PROPERTIES = Set.of(
@@ -56,6 +57,9 @@ public final class StateITSystemConfigDTO implements ConfigValueDTO {
         if (KNOWN_PROPERTIES.contains(key)) {
             throw new IllegalArgumentException(
                     "'" + key + "' is a declared field and cannot be set via additionalSettings");
+        }
+        if (additionalSettings == null) {
+            additionalSettings = new HashMap<>();
         }
         additionalSettings.put(key, value);
     }

@@ -2,7 +2,7 @@ package org.arghyam.jalsoochak.tenant.service;
 
 import org.arghyam.jalsoochak.tenant.config.EscalationScheduleConfig;
 import org.arghyam.jalsoochak.tenant.config.NudgeScheduleConfig;
-import org.arghyam.jalsoochak.tenant.dto.TenantResponseDTO;
+import org.arghyam.jalsoochak.tenant.dto.response.TenantResponseDTO;
 import org.arghyam.jalsoochak.tenant.repository.TenantCommonRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;

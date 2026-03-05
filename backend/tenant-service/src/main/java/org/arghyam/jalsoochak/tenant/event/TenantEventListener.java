@@ -19,6 +19,9 @@ import lombok.extern.slf4j.Slf4j;
 public class TenantEventListener {
 
     private static final String TENANT_TOPIC = "tenant-service-topic";
+    private static final String REDIS_TENANT_KEY_PREFIX = "tenant-service:tenants:";
+    private static final String REDIS_PROFILE_SUFFIX = ":profile";
+    private static final String REDIS_TENANT_INDEX_KEY = "tenant-service:tenants:index";
 
     private final KafkaProducer kafkaProducer;
     private final StringRedisTemplate redisTemplate;
@@ -84,7 +87,7 @@ public class TenantEventListener {
 
     private void cacheTenantInRedis(TenantResponseDTO tenant, String schemaName) {
         String tenantStateCode = tenant.getStateCode().toUpperCase();
-        String tenantKey = "tenant-service:tenants:" + tenantStateCode + ":profile";
+        String tenantKey = REDIS_TENANT_KEY_PREFIX + tenantStateCode + REDIS_PROFILE_SUFFIX;
 
         Map<String, String> tenantPayload = new HashMap<>();
         tenantPayload.put("id", String.valueOf(tenant.getId()));
@@ -94,13 +97,13 @@ public class TenantEventListener {
         tenantPayload.put("schemaName", schemaName);
 
         redisTemplate.opsForHash().putAll(tenantKey, tenantPayload);
-        redisTemplate.opsForSet().add("tenant-service:tenants:index", tenantStateCode);
+        redisTemplate.opsForSet().add(REDIS_TENANT_INDEX_KEY, tenantStateCode);
         log.info("Tenant cached in Redis under key: {}", tenantKey);
     }
 
     private void refreshTenantInRedis(TenantResponseDTO tenant) {
         String tenantStateCode = tenant.getStateCode().toUpperCase();
-        String tenantKey = "tenant-service:tenants:" + tenantStateCode + ":profile";
+        String tenantKey = REDIS_TENANT_KEY_PREFIX + tenantStateCode + REDIS_PROFILE_SUFFIX;
 
         Boolean keyExists = redisTemplate.hasKey(tenantKey);
         if (Boolean.TRUE.equals(keyExists)) {
@@ -117,10 +120,10 @@ public class TenantEventListener {
 
     private void evictTenantFromRedis(TenantResponseDTO tenant) {
         String tenantStateCode = tenant.getStateCode().toUpperCase();
-        String tenantKey = "tenant-service:tenants:" + tenantStateCode + ":profile";
+        String tenantKey = REDIS_TENANT_KEY_PREFIX + tenantStateCode + REDIS_PROFILE_SUFFIX;
 
         redisTemplate.delete(tenantKey);
-        redisTemplate.opsForSet().remove("tenant-service:tenants:index", tenantStateCode);
+        redisTemplate.opsForSet().remove(REDIS_TENANT_INDEX_KEY, tenantStateCode);
         log.info("Tenant evicted from Redis cache under key: {}", tenantKey);
     }
 }

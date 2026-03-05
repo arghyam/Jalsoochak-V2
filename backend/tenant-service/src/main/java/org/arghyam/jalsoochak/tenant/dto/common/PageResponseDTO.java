@@ -44,11 +44,12 @@ public class PageResponseDTO<T> {
             throw new IllegalArgumentException("totalElements must be non-negative");
         }
         int totalPages = (int) Math.ceil((double) totalElements / size);
+        int clampedPage = totalPages == 0 ? 0 : Math.min(page, totalPages - 1);
         return PageResponseDTO.<T>builder()
                 .content(content)
                 .totalElements(totalElements)
                 .totalPages(totalPages)
-                .number(page)
+                .number(clampedPage)
                 .size(size)
                 .build();
     }
