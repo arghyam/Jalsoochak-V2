@@ -3,13 +3,10 @@ package org.arghyam.jalsoochak.telemetry.controller;
 import org.arghyam.jalsoochak.telemetry.dto.requests.IntroRequest;
 import org.arghyam.jalsoochak.telemetry.dto.requests.SelectedChannelRequest;
 import org.arghyam.jalsoochak.telemetry.dto.response.IntroResponse;
-import org.arghyam.jalsoochak.telemetry.service.BfmReadingService;
 import org.arghyam.jalsoochak.telemetry.service.GlificWebhookService;
-import org.arghyam.jalsoochak.telemetry.service.MinioService;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.client.RestTemplate;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -64,18 +61,7 @@ class GlificWebhookControllerUnitTest {
         private final boolean throwSelectedChannel;
 
         private StubGlificWebhookService(boolean throwLanguageSelection, boolean throwSelectedChannel) {
-            super(
-                    (MinioService) null,
-                    (RestTemplate) null,
-                    (BfmReadingService) null,
-                    null,
-                    null,
-                    null,
-                    "https://api.glific.org/v1/media",
-                    1,
-                    0,
-                    ""
-            );
+            super(null, null, null, null);
             this.throwLanguageSelection = throwLanguageSelection;
             this.throwSelectedChannel = throwSelectedChannel;
         }
