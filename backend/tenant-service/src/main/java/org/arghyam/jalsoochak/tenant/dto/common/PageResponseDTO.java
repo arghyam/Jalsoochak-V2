@@ -37,6 +37,12 @@ public class PageResponseDTO<T> {
         if (size <= 0) {
             throw new IllegalArgumentException("size must be greater than 0");
         }
+        if (page < 0) {
+            throw new IllegalArgumentException("page must be non-negative");
+        }
+        if (totalElements < 0) {
+            throw new IllegalArgumentException("totalElements must be non-negative");
+        }
         int totalPages = (int) Math.ceil((double) totalElements / size);
         return PageResponseDTO.<T>builder()
                 .content(content)

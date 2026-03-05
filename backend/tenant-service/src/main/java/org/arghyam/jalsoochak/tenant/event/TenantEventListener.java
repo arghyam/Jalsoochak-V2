@@ -26,20 +26,46 @@ public class TenantEventListener {
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void handleTenantCreated(TenantCreatedEvent event) {
         log.info("Handling TenantCreatedEvent after commit [id={}]", event.getTenant().getId());
-        cacheTenantInRedis(event.getTenant(), event.getSchemaName());
-        publishTenantEvent(event.getTenant(), "TENANT_CREATED");
+        try {
+            cacheTenantInRedis(event.getTenant(), event.getSchemaName());
+        } catch (Exception e) {
+            log.error("Failed to cache tenant in Redis after create [id={}]", event.getTenant().getId(), e);
+        }
+        try {
+            publishTenantEvent(event.getTenant(), "TENANT_CREATED");
+        } catch (Exception e) {
+            log.error("Failed to publish TENANT_CREATED event [id={}]", event.getTenant().getId(), e);
+        }
     }
 
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void handleTenantUpdated(TenantUpdatedEvent event) {
         log.info("Handling TenantUpdatedEvent after commit [id={}]", event.getTenant().getId());
-        publishTenantEvent(event.getTenant(), "TENANT_UPDATED");
+        try {
+            refreshTenantInRedis(event.getTenant());
+        } catch (Exception e) {
+            log.error("Failed to refresh tenant in Redis after update [id={}]", event.getTenant().getId(), e);
+        }
+        try {
+            publishTenantEvent(event.getTenant(), "TENANT_UPDATED");
+        } catch (Exception e) {
+            log.error("Failed to publish TENANT_UPDATED event [id={}]", event.getTenant().getId(), e);
+        }
     }
 
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void handleTenantDeactivated(TenantDeactivatedEvent event) {
         log.info("Handling TenantDeactivatedEvent after commit [id={}]", event.getTenant().getId());
-        publishTenantEvent(event.getTenant(), "TENANT_DEACTIVATED");
+        try {
+            evictTenantFromRedis(event.getTenant());
+        } catch (Exception e) {
+            log.error("Failed to evict tenant from Redis after deactivate [id={}]", event.getTenant().getId(), e);
+        }
+        try {
+            publishTenantEvent(event.getTenant(), "TENANT_DEACTIVATED");
+        } catch (Exception e) {
+            log.error("Failed to publish TENANT_DEACTIVATED event [id={}]", event.getTenant().getId(), e);
+        }
     }
 
     private void publishTenantEvent(TenantResponseDTO tenant, String eventType) {
@@ -51,7 +77,7 @@ public class TenantEventListener {
                 "title", tenant.getName(),
                 "countryCode", "IN",
                 "status", statusInt);
-        
+
         kafkaProducer.publishJson(TENANT_TOPIC, event);
         log.info("Published {} event for tenant [id={}]", eventType, tenant.getId());
     }
@@ -70,5 +96,26 @@ public class TenantEventListener {
         redisTemplate.opsForHash().putAll(tenantKey, tenantPayload);
         redisTemplate.opsForSet().add("tenant-service:tenants:index", tenantStateCode);
         log.info("Tenant cached in Redis under key: {}", tenantKey);
+    }
+
+    private void refreshTenantInRedis(TenantResponseDTO tenant) {
+        String tenantStateCode = tenant.getStateCode().toUpperCase();
+        String tenantKey = "tenant-service:tenants:" + tenantStateCode + ":profile";
+
+        Map<String, String> updates = new HashMap<>();
+        updates.put("name", tenant.getName());
+        updates.put("status", tenant.getStatus());
+
+        redisTemplate.opsForHash().putAll(tenantKey, updates);
+        log.info("Tenant cache refreshed in Redis under key: {}", tenantKey);
+    }
+
+    private void evictTenantFromRedis(TenantResponseDTO tenant) {
+        String tenantStateCode = tenant.getStateCode().toUpperCase();
+        String tenantKey = "tenant-service:tenants:" + tenantStateCode + ":profile";
+
+        redisTemplate.delete(tenantKey);
+        redisTemplate.opsForSet().remove("tenant-service:tenants:index", tenantStateCode);
+        log.info("Tenant evicted from Redis cache under key: {}", tenantKey);
     }
 }

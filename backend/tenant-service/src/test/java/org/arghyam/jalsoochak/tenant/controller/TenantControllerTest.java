@@ -533,7 +533,7 @@ class TenantControllerTest {
         }
 
         @Test
-        void getLocationHierarchy_InternalServerError() throws Exception {
+        void getLocationHierarchy_ResourceNotFound() throws Exception {
             Integer tenantId = 1;
             String hierarchyType = "LGD";
 

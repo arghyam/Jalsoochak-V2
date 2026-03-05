@@ -321,7 +321,7 @@ class TenantManagementServiceImplTest {
         }
 
         @Test
-        @DisplayName("Should throw RuntimeException when update returns empty optional")
+        @DisplayName("Should throw ResourceNotFoundException when update returns empty optional")
         void testUpdateTenant_UpdateReturnsEmpty() {
             // Arrange
             Integer tenantId = 1;

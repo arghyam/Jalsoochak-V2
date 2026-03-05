@@ -14,6 +14,7 @@ import lombok.ToString;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Set;
 
 @Data
 @Builder
@@ -45,8 +46,15 @@ public final class StateITSystemConfigDTO implements ConfigValueDTO {
         return additionalSettings;
     }
 
+    private static final Set<String> KNOWN_PROPERTIES = Set.of(
+            "apiEndpoint", "username", "password", "organizationCode");
+
     @JsonAnySetter
     public void addAdditionalSetting(String key, Object value) {
+        if (KNOWN_PROPERTIES.contains(key)) {
+            throw new IllegalArgumentException(
+                    "'" + key + "' is a declared field and cannot be set via additionalSettings");
+        }
         additionalSettings.put(key, value);
     }
 }

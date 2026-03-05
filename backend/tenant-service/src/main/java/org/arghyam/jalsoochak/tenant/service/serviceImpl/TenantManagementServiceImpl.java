@@ -72,8 +72,7 @@ public class TenantManagementServiceImpl implements TenantManagementService {
                     "Tenant with state code '" + request.getStateCode() + "' already exists");
         });
 
-        String uuid = SecurityUtils.getCurrentUserUuid();
-        Integer currentUserId = tenantCommonRepository.findUserIdByUuid(uuid).orElse(null);
+        Integer currentUserId = resolveCurrentUserId();
 
         TenantResponseDTO tenant = tenantCommonRepository.createTenant(request, currentUserId)
                 .orElseThrow(() -> new RuntimeException("Tenant creation failed – no record returned"));
@@ -103,8 +102,7 @@ public class TenantManagementServiceImpl implements TenantManagementService {
                     "Cannot deactivate tenant via this endpoint. Use the deactivateTenant endpoint instead.");
         }
 
-        String uuid = SecurityUtils.getCurrentUserUuid();
-        Integer currentUserId = tenantCommonRepository.findUserIdByUuid(uuid).orElse(null);
+        Integer currentUserId = resolveCurrentUserId();
 
         TenantResponseDTO updated = tenantCommonRepository.updateTenant(tenantId, request, currentUserId)
                 .orElseThrow(() -> new ResourceNotFoundException(
@@ -123,8 +121,7 @@ public class TenantManagementServiceImpl implements TenantManagementService {
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "Tenant with tenantId " + tenantId + " does not exist"));
 
-        String uuid = SecurityUtils.getCurrentUserUuid();
-        Integer currentUserId = tenantCommonRepository.findUserIdByUuid(uuid).orElse(null);
+        Integer currentUserId = resolveCurrentUserId();
 
         tenantCommonRepository.deactivateTenant(tenantId, currentUserId);
         log.info("Tenant [id={}] deactivated successfully", tenantId);
@@ -153,15 +150,14 @@ public class TenantManagementServiceImpl implements TenantManagementService {
                     "Tenant could not be resolved. Ensure the X-Tenant-Code header is set.");
         }
         log.info("Creating department in schema: {}", schemaName);
-        String currentUuid = SecurityUtils.getCurrentUserUuid();
-        Integer currentUserId = tenantCommonRepository.findUserIdByUuid(currentUuid).orElse(null);
+        Integer currentUserId = resolveCurrentUserId();
         return tenantSchemaRepository.createDepartment(schemaName, request, currentUserId)
                 .orElseThrow(() -> new RuntimeException("Department creation failed – no record returned"));
     }
 
     @Override
     public PageResponseDTO<TenantResponseDTO> getAllTenants(int page, int size) {
-        int offset = page * size;
+        long offset = (long) page * size;
         List<TenantResponseDTO> tenants = tenantCommonRepository.findAll(size, offset);
         long totalElements = tenantCommonRepository.countAllTenants();
         return PageResponseDTO.of(tenants, totalElements, page, size);
@@ -238,8 +234,7 @@ public class TenantManagementServiceImpl implements TenantManagementService {
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "Tenant with tenantId " + tenantId + " does not exist"));
 
-        String currentUuid = SecurityUtils.getCurrentUserUuid();
-        Integer currentUserId = tenantCommonRepository.findUserIdByUuid(currentUuid).orElse(null);
+        Integer currentUserId = resolveCurrentUserId();
 
         Map<TenantConfigKeyEnum, ConfigValueDTO> results = new HashMap<>();
 
@@ -382,6 +377,14 @@ public class TenantManagementServiceImpl implements TenantManagementService {
         }
     }
 
+
+    private Integer resolveCurrentUserId() {
+        String uuid = SecurityUtils.getCurrentUserUuid();
+        // TODO: uncomment below to enforce non-null actor once ResourceNotFoundException is wired for auth context
+        // return tenantCommonRepository.findUserIdByUuid(uuid)
+        //         .orElseThrow(() -> new ResourceNotFoundException("Current user not found for uuid: " + uuid));
+        return tenantCommonRepository.findUserIdByUuid(uuid).orElse(null);
+    }
 
     private void setDefaultConfigs(TenantResponseDTO tenant, String schemaName, Integer currentUserId) {
         tenantSchemaRepository.setLocationHierarchy(

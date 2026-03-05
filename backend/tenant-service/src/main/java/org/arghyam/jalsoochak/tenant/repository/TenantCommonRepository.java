@@ -142,7 +142,7 @@ public class TenantCommonRepository {
     /**
      * Lists all tenants in the common_schema.tenant_master_table with pagination.
      */
-    public List<TenantResponseDTO> findAll(int limit, int offset) {
+    public List<TenantResponseDTO> findAll(int limit, long offset) {
         return jdbcTemplate.query(
                 "SELECT * FROM common_schema.tenant_master_table ORDER BY id LIMIT ? OFFSET ?",
                 TENANT_ROW_MAPPER, limit, offset);
