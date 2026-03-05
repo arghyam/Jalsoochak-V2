@@ -17,11 +17,15 @@ spring:
       maximum-pool-size: 10
       minimum-idle: 2
       connection-timeout: 30000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+      leak-detection-threshold: 30000
       initialization-fail-timeout: -1
       connection-init-sql: SET search_path TO common_schema, public
 
   flyway:
     enabled: true
+    baseline-version: 0
     locations: classpath:db/migration
     baseline-on-migrate: true
     default-schema: common_schema
@@ -54,6 +58,13 @@ spring:
     consumer:
       group-id: tenant-service-group
       auto-offset-reset: earliest
+      enable-auto-commit: false
+      max-poll-records: 50
+      properties:
+        session.timeout.ms: 30000
+        heartbeat.interval.ms: 10000
+        max.poll.interval.ms: 600000
+        fetch.max.wait.ms: 500
 
 eureka:
   client:
@@ -75,6 +86,26 @@ management:
       exposure:
         include: "*"
 
+# ────────────────────────────────────────────────────────────── # Nudge & Escalation Scheduler Configuration # ──────────────────────────────────────────────────────────────
+# Fallback defaults used when a tenant has no row in tenant_config_master_table
+nudge:
+  schedule:
+    hour: 18
+    minute: 00
+escalation:
+  schedule:
+    hour: 18
+    minute: 00
+  level1:
+    threshold:
+      days: 3 # Days of missed uploads before level-1 officer is notified
+    officer:
+      user_type: SECTION_OFFICER
+  level2:
+    threshold:
+      days: 7 # Days before level-2 officer is notified
+    officer:
+      user_type: DISTRICT_OFFICER
 logging:
   file:
     name: ${LOG_FILE_PATH:../logger/logs/backend-services.log}
