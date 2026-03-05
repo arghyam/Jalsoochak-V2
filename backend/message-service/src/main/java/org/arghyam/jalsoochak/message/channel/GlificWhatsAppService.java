@@ -1,6 +1,8 @@
 package org.arghyam.jalsoochak.message.channel;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -52,6 +54,14 @@ public class GlificWhatsAppService {
               }
             }""";
 
+    private static final String START_CONTACT_FLOW_MUTATION = """
+            mutation startContactFlow($flowId: ID!, $contactId: ID!, $defaultResults: Json!) {
+              startContactFlow(flowId: $flowId, contactId: $contactId, defaultResults: $defaultResults) {
+                success
+                errors { key message }
+              }
+            }""";
+
     private static final String CREATE_AND_SEND_MESSAGE_MUTATION = """
     mutation createAndSendMessage($input: MessageInput!) {
       createAndSendMessage(input: $input) {
@@ -69,12 +79,16 @@ public class GlificWhatsAppService {
     """;
 
     private final GlificGraphQLClient client;
+    private final ObjectMapper objectMapper;
 
     @Value("${glific.template.nudge-id:}")
     private String nudgeTemplateId;
 
     @Value("${glific.template.escalation-id:}")
     private String escalationTemplateId;
+
+    @Value("${glific.flow.nudge-id:}")
+    private String nudgeFlowId;
 
     @PostConstruct
     void validateTemplates() {
@@ -169,6 +183,51 @@ public class GlificWhatsAppService {
         checkErrors(response, "createAndSendMessage");
 
         log.debug("[Glific] Escalation HSM sent to contactId={}", contactId);
+    }
+
+    /**
+     * Initiates a Glific flow for the nudge contact, passing operator name and date as
+     * flow variables so the flow can populate the HSM template and handle button responses.
+     *
+     * <p>Requires {@code glific.flow.nudge-id} to be configured.
+     * Falls back gracefully — if the flow ID is not set, throws {@link IllegalStateException}
+     * so the caller can fall back to {@link #sendNudgeHsm}.</p>
+     *
+     * @param contactId    Glific contact ID (from {@link #optIn})
+     * @param operatorName operator name passed as flow variable {@code operator_name}
+     * @param date         today's date passed as flow variable {@code date}
+     */
+    public void startNudgeFlow(Long contactId, String operatorName, String date) {
+        if (nudgeFlowId == null || nudgeFlowId.isBlank()) {
+            throw new IllegalStateException("glific.flow.nudge-id is not configured");
+        }
+
+        String defaultResults;
+        try {
+            defaultResults = objectMapper.writeValueAsString(
+                    Map.of("operator_name", operatorName, "date", date));
+        } catch (JsonProcessingException e) {
+            throw new RuntimeException("Failed to serialize flow defaultResults", e);
+        }
+
+        JsonNode response = client.execute(START_CONTACT_FLOW_MUTATION, Map.of(
+                "flowId", nudgeFlowId,
+                "contactId", contactId,
+                "defaultResults", defaultResults));
+
+        JsonNode flowNode = response.path("startContactFlow");
+        if (flowNode.isMissingNode() || flowNode.isNull()) {
+            throw new RuntimeException("Glific GraphQL response missing key: startContactFlow");
+        }
+        JsonNode errors = flowNode.path("errors");
+        if (errors.isArray() && !errors.isEmpty()) {
+            throw new RuntimeException("Glific startContactFlow error: " + errors);
+        }
+        boolean success = flowNode.path("success").asBoolean(false);
+        if (!success) {
+            throw new RuntimeException("Glific startContactFlow returned success=false for contactId=" + contactId);
+        }
+        log.debug("[Glific] Nudge flow started for contactId={}", contactId);
     }
 
     private void checkErrors(JsonNode response, String mutationKey) {
