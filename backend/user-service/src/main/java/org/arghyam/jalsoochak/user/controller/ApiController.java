@@ -24,7 +24,6 @@ public class ApiController {
     private final BusinessService businessService;
     private final KafkaProducer kafkaProducer;
 
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'TENANT_ADMIN')")
     @GetMapping("/users")
     public ResponseEntity<List<SampleDTO>> getAllUsers() {
         log.info("GET /api/users called");
@@ -32,7 +31,6 @@ public class ApiController {
     }
 
 
-    @PreAuthorize("hasRole('SUPER_ADMIN')")
     @PostMapping("/publish")
     public ResponseEntity<String> publishMessage(@RequestBody String message) {
         log.info("POST /api/publish called with message: {}", message);

@@ -18,7 +18,6 @@ import org.arghyam.jalsoochak.tenant.enums.TenantConfigKeyEnum;
 import org.arghyam.jalsoochak.tenant.service.TenantManagementService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -66,7 +65,6 @@ public class TenantController {
         })
         // TODO: Change this to permission / role based authorization for SUPER_ADMIN
         // @PreAuthorize("hasAuthority('tenant.create')")
-        @PreAuthorize("permitAll")
         @PostMapping
         public ResponseEntity<ApiResponseDTO<TenantResponseDTO>> createTenant(
                         @Valid @RequestBody CreateTenantRequestDTO request) {
@@ -87,7 +85,6 @@ public class TenantController {
         // TODO: Change this to permission / role based authorization for SUPER_ADMIN &
         // TENANT_ADMIN
         // @PreAuthorize("hasAuthority('tenant.read')")
-        @PreAuthorize("permitAll")
         @GetMapping
         public ResponseEntity<ApiResponseDTO<PageResponseDTO<TenantResponseDTO>>> getAllTenants(
                         @Parameter(description = "Page number (0-indexed)", example = "0") @RequestParam(defaultValue = "0") @Min(0) int page,
@@ -109,7 +106,6 @@ public class TenantController {
         })
         // TODO: Change this to permission / role based authorization for SUPER_ADMIN
         // @PreAuthorize("hasAuthority('tenant.update')")
-        @PreAuthorize("permitAll")
         @PutMapping("/{tenantId}")
         public ResponseEntity<ApiResponseDTO<TenantResponseDTO>> updateTenant(
                         @PathVariable Integer tenantId,
@@ -131,7 +127,6 @@ public class TenantController {
         })
         // TODO: Change this to permission / role based authorization for SUPER_ADMIN
         // @PreAuthorize("hasAuthority('tenant.delete')")
-        @PreAuthorize("permitAll")
         @PutMapping("/{tenantId}/deactivate")
         public ResponseEntity<ApiResponseDTO<Void>> deactivateTenant(@PathVariable Integer tenantId) {
                 log.info("PUT /api/v1/tenants/{}/deactivate", tenantId);
@@ -150,15 +145,10 @@ public class TenantController {
         })
         // TODO: Change this to permission based authorization
         // @PreAuthorize("hasAuthority('tenant.config.read')")
-        @PreAuthorize("permitAll")
         @GetMapping("/{tenantId}/config")
         public ResponseEntity<ApiResponseDTO<TenantConfigResponseDTO>> getTenantConfigs(
                         @PathVariable Integer tenantId,
-                        @Parameter(
-                                description = "Optional set of configuration keys to retrieve. If not provided, all configurations are returned.",
-                                example = "KEY1, KEY2"
-                        )
-                        @RequestParam(required = false) Set<TenantConfigKeyEnum> keys) {
+                        @Parameter(description = "Optional set of configuration keys to retrieve. If not provided, all configurations are returned.", example = "KEY1, KEY2") @RequestParam(required = false) Set<TenantConfigKeyEnum> keys) {
                 log.info("GET /api/v1/tenants/{}/config with keys: {}", tenantId, keys);
                 return ResponseEntity.ok(ApiResponseDTO.of(200, "Tenant configurations retrieved successfully",
                                 tenantManagementService.getTenantConfigs(tenantId, keys)));
@@ -176,7 +166,6 @@ public class TenantController {
         // TODO: Change this to permission based authorization
         // @PreAuthorize("hasAuthority('tenant.config.update') or
         // hasAuthority('tenant.config.create')")
-        @PreAuthorize("permitAll")
         @PutMapping("/{tenantId}/config")
         public ResponseEntity<ApiResponseDTO<TenantConfigResponseDTO>> setTenantConfigs(
                         @PathVariable Integer tenantId,
@@ -196,14 +185,15 @@ public class TenantController {
                         @ApiResponse(responseCode = "404", description = "Hierarchy configuration not found for the tenant"),
                         @ApiResponse(responseCode = "500", description = "Internal server error")
         })
-        @PreAuthorize("permitAll")
         @GetMapping("/{tenantId}/location-hierarchy/{hierarchyType}")
         public ResponseEntity<ApiResponseDTO<LocationHierarchyResponseDTO>> getTenantLocationHierarchy(
                         @PathVariable Integer tenantId,
                         @Parameter(description = "Hierarchy type: LGD or DEPARTMENT", example = "LGD") @PathVariable String hierarchyType) {
                 log.info("GET /api/v1/tenants/{}/location-hierarchy/{}", tenantId, hierarchyType);
-                LocationHierarchyResponseDTO hierarchy = tenantManagementService.getLocationHierarchy(tenantId, hierarchyType);
-                return ResponseEntity.ok(ApiResponseDTO.of(200, "Location hierarchy retrieved successfully", hierarchy));
+                LocationHierarchyResponseDTO hierarchy = tenantManagementService.getLocationHierarchy(tenantId,
+                                hierarchyType);
+                return ResponseEntity
+                                .ok(ApiResponseDTO.of(200, "Location hierarchy retrieved successfully", hierarchy));
         }
 
         /**
@@ -216,7 +206,6 @@ public class TenantController {
                         @ApiResponse(responseCode = "400", description = "Invalid hierarchy type or tenant could not be resolved"),
                         @ApiResponse(responseCode = "500", description = "Internal server error")
         })
-        @PreAuthorize("permitAll")
         @GetMapping("/{tenantId}/locations/{hierarchyType}/children/{parentId}")
         public ResponseEntity<ApiResponseDTO<List<LocationResponseDTO>>> getLocationChildren(
                         @PathVariable Integer tenantId,
@@ -224,7 +213,8 @@ public class TenantController {
                         @Parameter(description = "Parent location ID (use 0 for root-level locations)", example = "1") @PathVariable Integer parentId) {
                 log.info("GET /api/v1/tenants/{}/locations/{}/children/{}", tenantId, hierarchyType, parentId);
                 Integer actualParentId = parentId.equals(0) ? null : parentId;
-                List<LocationResponseDTO> children = tenantManagementService.getLocationChildren(tenantId,hierarchyType, actualParentId);
+                List<LocationResponseDTO> children = tenantManagementService.getLocationChildren(tenantId,
+                                hierarchyType, actualParentId);
                 return ResponseEntity.ok(ApiResponseDTO.of(200, "Child locations retrieved successfully", children));
         }
 
@@ -241,7 +231,6 @@ public class TenantController {
         // TODO: Change this to permission / role based authorization for SUPER_ADMIN &
         // TENANT_ADMIN
         // @PreAuthorize("hasAuthority('tenant.department.read')")
-        @PreAuthorize("permitAll")
         @GetMapping("/departments")
         public ResponseEntity<ApiResponseDTO<List<DepartmentResponseDTO>>> getTenantDepartments() {
                 log.info("GET /api/v1/tenants/departments");
@@ -262,7 +251,6 @@ public class TenantController {
         // TODO: Change this to permission / role based authorization for SUPER_ADMIN &
         // TENANT_ADMIN
         // @PreAuthorize("hasAuthority('tenant.department.create')")
-        @PreAuthorize("permitAll")
         @PostMapping("/departments")
         public ResponseEntity<ApiResponseDTO<DepartmentResponseDTO>> createDepartment(
                         @Valid @RequestBody CreateDepartmentRequestDTO request) {
