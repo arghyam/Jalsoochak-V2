@@ -102,12 +102,17 @@ public class TenantEventListener {
         String tenantStateCode = tenant.getStateCode().toUpperCase();
         String tenantKey = "tenant-service:tenants:" + tenantStateCode + ":profile";
 
-        Map<String, String> updates = new HashMap<>();
-        updates.put("name", tenant.getName());
-        updates.put("status", tenant.getStatus());
-
-        redisTemplate.opsForHash().putAll(tenantKey, updates);
-        log.info("Tenant cache refreshed in Redis under key: {}", tenantKey);
+        Boolean keyExists = redisTemplate.hasKey(tenantKey);
+        if (Boolean.TRUE.equals(keyExists)) {
+            Map<String, String> updates = new HashMap<>();
+            updates.put("name", tenant.getName());
+            updates.put("status", tenant.getStatus());
+            redisTemplate.opsForHash().putAll(tenantKey, updates);
+            log.info("Tenant cache refreshed in Redis under key: {}", tenantKey);
+        } else {
+            String schemaName = "tenant_" + tenant.getStateCode().toLowerCase();
+            cacheTenantInRedis(tenant, schemaName);
+        }
     }
 
     private void evictTenantFromRedis(TenantResponseDTO tenant) {

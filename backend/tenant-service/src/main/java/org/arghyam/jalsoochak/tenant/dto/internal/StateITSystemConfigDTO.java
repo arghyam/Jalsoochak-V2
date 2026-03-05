@@ -10,6 +10,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import lombok.Setter;
 import lombok.ToString;
 
 import java.util.HashMap;
@@ -37,6 +38,7 @@ public final class StateITSystemConfigDTO implements ConfigValueDTO {
     private String organizationCode;
 
     @Getter(AccessLevel.NONE)
+    @Setter(AccessLevel.NONE)
     @Builder.Default
     @ToString.Exclude
     private Map<String, Object> additionalSettings = new HashMap<>();

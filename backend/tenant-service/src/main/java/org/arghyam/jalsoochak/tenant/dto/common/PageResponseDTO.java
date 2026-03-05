@@ -24,7 +24,7 @@ public class PageResponseDTO<T> {
     @Schema(description = "Total number of pages", example = "10")
     private int totalPages;
 
-    @Schema(description = "Number of elements in the current page", example = "10")
+    @Schema(description = "Requested page size", example = "10")
     private int size;
 
     @Schema(description = "Current page number (0-indexed)", example = "0")
