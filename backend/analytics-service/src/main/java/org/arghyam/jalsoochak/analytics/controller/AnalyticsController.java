@@ -223,10 +223,10 @@ public class AnalyticsController {
     }
 
 
-    // This endpoint is used to get the average water supply per scheme in liters/household; 
+    // This endpoint is used to get the average water supply per region in liters/household; 
     // tenant_id optional for nation-level state aggregates
-    @GetMapping("/water-supply/average-per-scheme")
-    @Operation(summary = "Get average water supply per scheme in liters/household; tenant_id optional for nation-level state aggregates")
+    @GetMapping("/water-supply/average-per-region")
+    @Operation(summary = "Get average water supply per regionin liters/household; tenant_id optional for nation-level state aggregates")
     public ResponseEntity<AverageWaterSupplyResponse> getAverageWaterSupplyPerScheme(
             @RequestParam(name = "tenant_id", required = false) Integer tenantId,
             @RequestParam(name = "parent_lgd_id", required = false) Integer parentLgdId,

@@ -340,6 +340,7 @@ public class SchemeRegularityRepository {
                 childLevel,
                 lgdId,
                 tenantId,
+                lgdId,
                 tenantId,
                 startDate,
                 endDate);
@@ -426,6 +427,7 @@ public class SchemeRegularityRepository {
                 childLevel,
                 parentDepartmentId,
                 tenantId,
+                parentDepartmentId,
                 tenantId,
                 startDate,
                 endDate);
