@@ -173,7 +173,13 @@ public class TenantCommonRepository {
         StringBuilder sql = new StringBuilder("UPDATE common_schema.tenant_master_table SET updated_at = NOW()");
 
         if (request.getStatus() != null && !request.getStatus().isBlank()) {
-            TenantStatusEnum statusEnum = TenantStatusEnum.valueOf(request.getStatus().toUpperCase());
+            TenantStatusEnum statusEnum;
+            try {
+                statusEnum = TenantStatusEnum.valueOf(request.getStatus().toUpperCase());
+            } catch (IllegalArgumentException e) {
+                throw new IllegalArgumentException(
+                        "Invalid tenant status '" + request.getStatus() + "'. Valid values: ACTIVE, INACTIVE, ARCHIVED", e);
+            }
             sql.append(", status = ?");
             params.add(statusEnum.getCode());
         }

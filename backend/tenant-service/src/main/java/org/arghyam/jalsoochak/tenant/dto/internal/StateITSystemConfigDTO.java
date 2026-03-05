@@ -20,7 +20,7 @@ import java.util.Set;
 
 @Data
 @Builder
-@AllArgsConstructor
+@AllArgsConstructor(access = AccessLevel.PRIVATE)
 @NoArgsConstructor
 public final class StateITSystemConfigDTO implements ConfigValueDTO {
 
@@ -46,7 +46,16 @@ public final class StateITSystemConfigDTO implements ConfigValueDTO {
 
     @JsonAnyGetter
     public Map<String, Object> getAdditionalSettings() {
-        return additionalSettings != null ? Collections.unmodifiableMap(additionalSettings) : Collections.emptyMap();
+        if (additionalSettings == null) {
+            return Collections.emptyMap();
+        }
+        Map<String, Object> filtered = new HashMap<>();
+        additionalSettings.forEach((k, v) -> {
+            if (!KNOWN_PROPERTIES.contains(k)) {
+                filtered.put(k, v);
+            }
+       });
+       return Collections.unmodifiableMap(filtered);
     }
 
     private static final Set<String> KNOWN_PROPERTIES = Set.of(
