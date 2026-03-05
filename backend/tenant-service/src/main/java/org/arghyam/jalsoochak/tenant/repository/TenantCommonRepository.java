@@ -2,8 +2,10 @@ package org.arghyam.jalsoochak.tenant.repository;
 
 import java.sql.PreparedStatement;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 import org.arghyam.jalsoochak.tenant.dto.internal.ConfigDTO;
 import org.arghyam.jalsoochak.tenant.dto.request.CreateTenantRequestDTO;
@@ -123,7 +125,7 @@ public class TenantCommonRepository {
      * Finds a tenant by its state code.
      */
     public Optional<TenantResponseDTO> findByStateCode(String stateCode) {
-        String sql = "SELECT * FROM common_schema.tenant_master_table WHERE state_code = ?";
+        String sql = "SELECT * FROM common_schema.tenant_master_table WHERE state_code = ? AND deleted_at IS NULL";
         List<TenantResponseDTO> results = jdbcTemplate.query(sql, TENANT_ROW_MAPPER, stateCode);
         return results.isEmpty() ? Optional.empty() : Optional.of(results.get(0));
     }
@@ -183,8 +185,11 @@ public class TenantCommonRepository {
             try {
                 statusEnum = TenantStatusEnum.valueOf(request.getStatus().toUpperCase());
             } catch (IllegalArgumentException e) {
+                String validValues = Arrays.stream(TenantStatusEnum.values())
+                        .map(Enum::name)
+                        .collect(Collectors.joining(", "));
                 throw new IllegalArgumentException(
-                        "Invalid tenant status '" + request.getStatus() + "'. Valid values: ACTIVE, INACTIVE, ARCHIVED", e);
+                        "Invalid tenant status '" + request.getStatus() + "'. Valid values: " + validValues, e);
             }
             sql.append(", status = ?");
             params.add(statusEnum.getCode());
@@ -220,7 +225,7 @@ public class TenantCommonRepository {
      * Finds a tenant admin user by its UUID.
      */
     public Optional<Integer> findUserIdByUuid(String uuid) {
-        if (uuid == null)
+        if (uuid == null || uuid.trim().isEmpty())
             return Optional.empty();
         String sql = "SELECT id FROM common_schema.tenant_admin_user_master_table WHERE uuid = ?";
         List<Integer> ids = jdbcTemplate.queryForList(sql, Integer.class, uuid);

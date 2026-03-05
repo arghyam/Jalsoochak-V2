@@ -54,8 +54,8 @@ public final class StateITSystemConfigDTO implements ConfigValueDTO {
             if (!KNOWN_PROPERTIES.contains(k)) {
                 filtered.put(k, v);
             }
-       });
-       return Collections.unmodifiableMap(filtered);
+        });
+        return Collections.unmodifiableMap(filtered);
     }
 
     private static final Set<String> KNOWN_PROPERTIES = Set.of(

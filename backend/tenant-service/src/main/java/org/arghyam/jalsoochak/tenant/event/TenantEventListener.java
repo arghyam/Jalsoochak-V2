@@ -72,12 +72,22 @@ public class TenantEventListener {
     }
 
     private void publishTenantEvent(TenantResponseDTO tenant, String eventType) {
+        String stateCode = tenant.getStateCode();
+        if (stateCode == null || stateCode.isBlank()) {
+            log.error("Cannot publish {} event: stateCode is null or blank [id={}]", eventType, tenant.getId());
+            return;
+        }
+        String title = tenant.getName();
+        if (title == null || title.isBlank()) {
+            log.error("Cannot publish {} event: name is null or blank [id={}]", eventType, tenant.getId());
+            return;
+        }
         int statusInt = "ACTIVE".equalsIgnoreCase(tenant.getStatus()) ? 1 : 0;
         Map<String, Object> event = Map.of(
                 "eventType", eventType,
                 "tenantId", tenant.getId(),
-                "stateCode", tenant.getStateCode(),
-                "title", tenant.getName(),
+                "stateCode", stateCode,
+                "title", title,
                 "countryCode", "IN",
                 "status", statusInt);
 
