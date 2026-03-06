@@ -122,9 +122,11 @@ public class BfmReadingService {
             }
         }
 
-        boolean isValid = finalReading != null
-                && finalReading.compareTo(BigDecimal.ZERO) > 0
-                && (confidenceLevel == null || confidenceLevel.compareTo(BigDecimal.valueOf(0.7)) >= 0);
+        boolean hasPositiveReading = finalReading != null
+                && finalReading.compareTo(BigDecimal.ZERO) > 0;
+        boolean hasAcceptableConfidence = confidenceLevel == null
+                || confidenceLevel.compareTo(BigDecimal.valueOf(0.7)) >= 0;
+        boolean isValid = hasPositiveReading && hasAcceptableConfidence;
 
         String correlationId = Optional.ofNullable(ocrResult)
                 .map(FlowVisionResult::getCorrelationId)
@@ -223,7 +225,7 @@ public class BfmReadingService {
             } else {
                 finalMessage = "Reading captured successfully";
             }
-        } else if (finalReading == null || finalReading.compareTo(BigDecimal.ZERO) <= 0) {
+        } else if (!hasPositiveReading) {
             finalMessage = "Invalid reading value";
         } else if (ocrResult != null && readingText != null) {
             finalMessage = "Low OCR confidence. Extracted reading: " + readingText + ". Please confirm reading.";
@@ -232,7 +234,7 @@ public class BfmReadingService {
         }
 
         return CreateReadingResponse.builder()
-                .success(isValid)
+                .success(hasPositiveReading)
                 .message(messageOverride(contactId, finalMessage))
                 .correlationId(correlationId)
                 .meterReading(finalReading)
