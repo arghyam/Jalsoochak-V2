@@ -16,8 +16,6 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import io.swagger.v3.oas.annotations.Operation;
-import io.swagger.v3.oas.annotations.media.Content;
-import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -39,7 +37,7 @@ public class SystemController {
      */
     @Operation(summary = "Get system configurations", description = "Retrieves global platform settings. Super Admin only.")
     @ApiResponses(value = {
-            @ApiResponse(responseCode = "200", description = "System configurations retrieved successfully", content = @Content(schema = @Schema(implementation = SystemConfigResponseDTO.class))),
+            @ApiResponse(responseCode = "200", description = "System configurations retrieved successfully"),
             @ApiResponse(responseCode = "403", description = "Forbidden to access this resource"),
             @ApiResponse(responseCode = "500", description = "Internal Server Error")
     })
@@ -58,7 +56,7 @@ public class SystemController {
      */
     @Operation(summary = "Set system configurations", description = "Updates global system settings. Super Admin only.")
     @ApiResponses(value = {
-            @ApiResponse(responseCode = "200", description = "System configurations set successfully", content = @Content(schema = @Schema(implementation = SystemConfigResponseDTO.class))),
+            @ApiResponse(responseCode = "200", description = "System configurations set successfully"),
             @ApiResponse(responseCode = "403", description = "Forbidden to access this resource"),
             @ApiResponse(responseCode = "500", description = "Internal Server Error")
     })

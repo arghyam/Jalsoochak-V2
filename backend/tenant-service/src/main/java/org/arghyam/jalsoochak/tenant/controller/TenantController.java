@@ -29,9 +29,6 @@ import org.springframework.web.bind.annotation.RestController;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
-import io.swagger.v3.oas.annotations.media.ArraySchema;
-import io.swagger.v3.oas.annotations.media.Content;
-import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -58,7 +55,7 @@ public class TenantController {
         @Operation(summary = "Create a new tenant", description = "Registers a new tenant in the common schema and provisions a dedicated "
                         + "database schema (tenant_<stateCode>) with all required tables and indexes.")
         @ApiResponses({
-                        @ApiResponse(responseCode = "201", description = "Tenant created and schema provisioned successfully", content = @Content(schema = @Schema(implementation = TenantResponseDTO.class))),
+                        @ApiResponse(responseCode = "201", description = "Tenant created and schema provisioned successfully"),
                         @ApiResponse(responseCode = "400", description = "Invalid request — missing or malformed fields"),
                         @ApiResponse(responseCode = "409", description = "Tenant with the given state code already exists"),
                         @ApiResponse(responseCode = "500", description = "Internal server error during tenant creation")
@@ -79,7 +76,7 @@ public class TenantController {
          */
         @Operation(summary = "List all tenants with pagination", description = "Returns a paginated list of tenants registered in the common schema, ordered by ID.")
         @ApiResponses({
-                        @ApiResponse(responseCode = "200", description = "Paginated list of tenants", content = @Content(schema = @Schema(implementation = PageResponseDTO.class))),
+                        @ApiResponse(responseCode = "200", description = "Paginated list of tenants"),
                         @ApiResponse(responseCode = "500", description = "Internal server error")
         })
         // TODO: Change this to permission / role based authorization for SUPER_ADMIN &
@@ -99,7 +96,7 @@ public class TenantController {
          */
         @Operation(summary = "Update tenant", description = "Updates the status of an existing tenant identified by tenantId.")
         @ApiResponses({
-                        @ApiResponse(responseCode = "200", description = "Tenant updated successfully", content = @Content(schema = @Schema(implementation = TenantResponseDTO.class))),
+                        @ApiResponse(responseCode = "200", description = "Tenant updated successfully"),
                         @ApiResponse(responseCode = "400", description = "Tenant updation failed"),
                         @ApiResponse(responseCode = "404", description = "Tenant with given tenantId does not exist"),
                         @ApiResponse(responseCode = "500", description = "Internal server error")
@@ -180,7 +177,7 @@ public class TenantController {
          */
         @Operation(summary = "Get location hierarchy configuration for a tenant", description = "Retrieves the location hierarchy structure (levels) for the specified hierarchy type (LGD or DEPARTMENT). ")
         @ApiResponses({
-                        @ApiResponse(responseCode = "200", description = "Location hierarchy configuration retrieved successfully", content = @Content(schema = @Schema(implementation = LocationHierarchyResponseDTO.class))),
+                        @ApiResponse(responseCode = "200", description = "Location hierarchy configuration retrieved successfully"),
                         @ApiResponse(responseCode = "400", description = "Invalid hierarchy type or tenant could not be resolved"),
                         @ApiResponse(responseCode = "404", description = "Hierarchy configuration not found for the tenant"),
                         @ApiResponse(responseCode = "500", description = "Internal server error")
@@ -202,7 +199,7 @@ public class TenantController {
         @Operation(summary = "Get child locations by parent ID", description = "Fetches all child locations under the specified parent location in the given hierarchy type. "
                         + "Pass parentId as 0 to fetch root-level locations (where parent_id IS NULL).")
         @ApiResponses({
-                        @ApiResponse(responseCode = "200", description = "Child locations retrieved successfully", content = @Content(array = @ArraySchema(schema = @Schema(implementation = LocationResponseDTO.class)))),
+                        @ApiResponse(responseCode = "200", description = "Child locations retrieved successfully"),
                         @ApiResponse(responseCode = "400", description = "Invalid hierarchy type or tenant could not be resolved"),
                         @ApiResponse(responseCode = "500", description = "Internal server error")
         })
@@ -224,7 +221,7 @@ public class TenantController {
         @Operation(summary = "Get departments for the current tenant", description = "Fetches the department hierarchy from the tenant-specific schema. "
                         + "Requires the X-Tenant-Code header to be set by the API gateway.")
         @ApiResponses({
-                        @ApiResponse(responseCode = "200", description = "List of departments for the resolved tenant", content = @Content(array = @ArraySchema(schema = @Schema(implementation = DepartmentResponseDTO.class)))),
+                        @ApiResponse(responseCode = "200", description = "List of departments for the resolved tenant"),
                         @ApiResponse(responseCode = "400", description = "Tenant could not be resolved — missing X-Tenant-Code header"),
                         @ApiResponse(responseCode = "500", description = "Internal server error")
         })
@@ -244,7 +241,7 @@ public class TenantController {
         @Operation(summary = "Create a department for the current tenant", description = "Inserts a new department into the tenant-specific schema's department_location_master_table. "
                         + "Requires the X-Tenant-Code header to identify the target tenant schema.")
         @ApiResponses({
-                        @ApiResponse(responseCode = "201", description = "Department created successfully", content = @Content(schema = @Schema(implementation = DepartmentResponseDTO.class))),
+                        @ApiResponse(responseCode = "201", description = "Department created successfully"),
                         @ApiResponse(responseCode = "400", description = "Invalid request or tenant could not be resolved"),
                         @ApiResponse(responseCode = "500", description = "Internal server error")
         })
