@@ -1,18 +1,25 @@
 package org.arghyam.jalsoochak.tenant.repository;
 
-import org.arghyam.jalsoochak.tenant.dto.CreateTenantRequestDTO;
-import org.arghyam.jalsoochak.tenant.dto.TenantResponseDTO;
-import org.arghyam.jalsoochak.tenant.enums.TenantStatus;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
+import java.sql.PreparedStatement;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Optional;
+import java.util.stream.Collectors;
+
+import org.arghyam.jalsoochak.tenant.dto.internal.ConfigDTO;
+import org.arghyam.jalsoochak.tenant.dto.request.CreateTenantRequestDTO;
+import org.arghyam.jalsoochak.tenant.dto.request.UpdateTenantRequestDTO;
+import org.arghyam.jalsoochak.tenant.dto.response.TenantResponseDTO;
+import org.arghyam.jalsoochak.tenant.enums.TenantStatusEnum;
 import org.springframework.jdbc.core.ConnectionCallback;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Repository;
 
-import java.sql.PreparedStatement;
-import java.util.List;
-import java.util.Optional;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+
 
 /**
  * Repository for operations on {@code common_schema} tables.
@@ -26,41 +33,67 @@ public class TenantCommonRepository {
 
     private final JdbcTemplate jdbcTemplate;
 
-    private static final RowMapper<TenantResponseDTO> TENANT_ROW_MAPPER = (rs, rowNum) ->
-            TenantResponseDTO.builder()
-                    .id(rs.getInt("id"))
-                    .uuid(rs.getString("uuid"))
-                    .stateCode(rs.getString("state_code"))
-                    .lgdCode(rs.getInt("lgd_code"))
-                    .name(rs.getString("title"))
-                    .status(TenantStatus.fromCode(rs.getInt("status")).name())
-                    .createdAt(rs.getTimestamp("created_at") != null
-                            ? rs.getTimestamp("created_at").toLocalDateTime() : null)
-                    .createdBy((Integer) rs.getObject("created_by"))
-                    .onboardedAt(rs.getTimestamp("onboarded_at") != null
-                            ? rs.getTimestamp("onboarded_at").toLocalDateTime() : null)
-                    .updatedAt(rs.getTimestamp("updated_at") != null
-                            ? rs.getTimestamp("updated_at").toLocalDateTime() : null)
-                    .updatedBy((Integer) rs.getObject("updated_by"))
-                    .build();
+    /**
+     * Row mapper for {@code common_schema.tenant_master_table}.
+     */
+    private static final RowMapper<TenantResponseDTO> TENANT_ROW_MAPPER = (rs, rowNum) -> TenantResponseDTO.builder()
+            .id(rs.getInt("id"))
+            .uuid(rs.getString("uuid"))
+            .stateCode(rs.getString("state_code"))
+            .lgdCode(rs.getInt("lgd_code"))
+            .name(rs.getString("title"))
+            .status(TenantStatusEnum.fromCode(rs.getInt("status")).name())
+            .createdAt(rs.getTimestamp("created_at") != null
+                    ? rs.getTimestamp("created_at").toLocalDateTime()
+                    : null)
+            .createdBy((Integer) rs.getObject("created_by"))
+            .onboardedAt(rs.getTimestamp("onboarded_at") != null
+                    ? rs.getTimestamp("onboarded_at").toLocalDateTime()
+                    : null)
+            .updatedAt(rs.getTimestamp("updated_at") != null
+                    ? rs.getTimestamp("updated_at").toLocalDateTime()
+                    : null)
+            .updatedBy((Integer) rs.getObject("updated_by"))
+            .build();
+
+    /**
+     * Row mapper for {@code common_schema.tenant_config_master_table}.
+     */
+    private static final RowMapper<ConfigDTO> CONFIG_ROW_MAPPER = (rs, rowNum) -> ConfigDTO
+            .builder()
+            .id(rs.getInt("id"))
+            .uuid(rs.getString("uuid"))
+            .tenantId(rs.getInt("tenant_id"))
+            .configKey(rs.getString("config_key"))
+            .configValue(rs.getString("config_value"))
+            .createdAt(rs.getTimestamp("created_at") != null
+                    ? rs.getTimestamp("created_at").toLocalDateTime()
+                    : null)
+            .createdBy((Integer) rs.getObject("created_by"))
+            .updatedAt(rs.getTimestamp("updated_at") != null
+                    ? rs.getTimestamp("updated_at").toLocalDateTime()
+                    : null)
+            .updatedBy((Integer) rs.getObject("updated_by"))
+            .build();
 
     /**
      * Inserts a new tenant into {@code common_schema.tenant_master_table}.
      */
-    public TenantResponseDTO createTenant(CreateTenantRequestDTO request) {
+    public Optional<TenantResponseDTO> createTenant(CreateTenantRequestDTO request, Integer currentUserId) {
         String sql = """
                 INSERT INTO common_schema.tenant_master_table
-                    (state_code, lgd_code, title, created_by, status)
-                VALUES (?, ?, ?, ?, ?)
+                    (state_code, lgd_code, title, created_by, status, created_at)
+                VALUES (?, ?, ?, ?, ?, NOW())
                 RETURNING *
                 """;
 
-        return jdbcTemplate.queryForObject(sql, TENANT_ROW_MAPPER,
+        List<TenantResponseDTO> results = jdbcTemplate.query(sql, TENANT_ROW_MAPPER,
                 request.getStateCode(),
                 request.getLgdCode(),
                 request.getName(),
-                request.getCreatedBy(),
-                TenantStatus.ACTIVE.getCode());
+                currentUserId,
+                TenantStatusEnum.ACTIVE.getCode());
+        return results.stream().findFirst();
     }
 
     /**
@@ -88,18 +121,160 @@ public class TenantCommonRepository {
         jdbcTemplate.execute(alterPasswordNullabilitySql);
     }
 
+    /**
+     * Finds a tenant by its state code.
+     */
     public Optional<TenantResponseDTO> findByStateCode(String stateCode) {
-        String sql = "SELECT * FROM common_schema.tenant_master_table WHERE state_code = ?";
+        String sql = "SELECT * FROM common_schema.tenant_master_table WHERE state_code = ? AND deleted_at IS NULL";
         List<TenantResponseDTO> results = jdbcTemplate.query(sql, TENANT_ROW_MAPPER, stateCode);
         return results.isEmpty() ? Optional.empty() : Optional.of(results.get(0));
     }
 
+    /**
+     * Lists all tenants in the common_schema.tenant_master_table (no pagination).
+     */
     public List<TenantResponseDTO> findAll() {
         return jdbcTemplate.query(
                 "SELECT * FROM common_schema.tenant_master_table ORDER BY id",
                 TENANT_ROW_MAPPER);
     }
 
+    /**
+     * Lists all tenants in the common_schema.tenant_master_table with pagination.
+     */
+    public List<TenantResponseDTO> findAll(int limit, long offset) {
+        if (limit <= 0) {
+            throw new IllegalArgumentException("limit must be greater than 0");
+        }
+        if (offset < 0) {
+            throw new IllegalArgumentException("offset must be non-negative");
+        }
+        return jdbcTemplate.query(
+                "SELECT * FROM common_schema.tenant_master_table ORDER BY id LIMIT ? OFFSET ?",
+                TENANT_ROW_MAPPER, limit, offset);
+    }
+
+    /**
+     * Counts the total number of tenants in common_schema.tenant_master_table.
+     */
+    public long countAllTenants() {
+        return jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM common_schema.tenant_master_table",
+                Long.class);
+    }
+
+    /**
+     * Finds a tenant by its ID.
+     */
+    public Optional<TenantResponseDTO> findById(Integer tenantId) {
+        String sql = "SELECT * FROM common_schema.tenant_master_table WHERE id = ?";
+        List<TenantResponseDTO> results = jdbcTemplate.query(sql, TENANT_ROW_MAPPER, tenantId);
+        return results.isEmpty() ? Optional.empty() : Optional.of(results.get(0));
+    }
+
+    /**
+     * Updates tenant status. Only non-null fields are applied.
+     */
+    public Optional<TenantResponseDTO> updateTenant(Integer tenantId, UpdateTenantRequestDTO request,
+            Integer currentUserId) {
+        List<Object> params = new ArrayList<>();
+        StringBuilder sql = new StringBuilder("UPDATE common_schema.tenant_master_table SET updated_at = NOW()");
+
+        if (request.getStatus() != null && !request.getStatus().isBlank()) {
+            TenantStatusEnum statusEnum;
+            try {
+                statusEnum = TenantStatusEnum.valueOf(request.getStatus().toUpperCase());
+            } catch (IllegalArgumentException e) {
+                String validValues = Arrays.stream(TenantStatusEnum.values())
+                        .map(Enum::name)
+                        .collect(Collectors.joining(", "));
+                throw new IllegalArgumentException(
+                        "Invalid tenant status '" + request.getStatus() + "'. Valid values: " + validValues, e);
+            }
+            sql.append(", status = ?");
+            params.add(statusEnum.getCode());
+        }
+
+        sql.append(", updated_by = ?");
+        params.add(currentUserId);
+
+        sql.append(" WHERE id = ? RETURNING *");
+        params.add(tenantId);
+
+        List<TenantResponseDTO> results = jdbcTemplate.query(sql.toString(), TENANT_ROW_MAPPER, params.toArray());
+        return results.stream().findFirst();
+    }
+
+    /**
+     * Soft-deletes a tenant by setting status to INACTIVE and recording deleted_at.
+     */
+    public void deactivateTenant(Integer tenantId, Integer currentUserId) {
+        String sql = """
+                UPDATE common_schema.tenant_master_table
+                SET status = ?, deleted_at = NOW(), updated_at = NOW(), deleted_by = ?, updated_by = ?
+                WHERE id = ?
+                """;
+        int rows = jdbcTemplate.update(sql, TenantStatusEnum.INACTIVE.getCode(), currentUserId, currentUserId,
+                tenantId);
+        if (rows == 0) {
+            throw new IllegalArgumentException("Tenant with tenantId " + tenantId + " does not exist");
+        }
+    }
+
+    /**
+     * Finds a tenant admin user by its UUID.
+     */
+    public Optional<Integer> findUserIdByUuid(String uuid) {
+        if (uuid == null || uuid.trim().isEmpty())
+            return Optional.empty();
+        String sql = "SELECT id FROM common_schema.tenant_admin_user_master_table WHERE uuid = ?";
+        List<Integer> ids = jdbcTemplate.queryForList(sql, Integer.class, uuid);
+        return ids.isEmpty() ? Optional.empty() : Optional.of(ids.get(0));
+    }
+
+    /**
+     * Finds all configurations for a given tenant.
+     */
+    public List<ConfigDTO> findConfigsByTenantId(Integer tenantId) {
+        String sql = "SELECT * FROM common_schema.tenant_config_master_table WHERE tenant_id = ? AND deleted_at IS NULL";
+        return jdbcTemplate.query(sql, CONFIG_ROW_MAPPER, tenantId);
+    }
+
+    /**
+     * Finds a specific configuration for a tenant by key name.
+     */
+    public Optional<ConfigDTO> findConfigByTenantAndKey(Integer tenantId, String keyName) {
+        String sql = "SELECT * FROM common_schema.tenant_config_master_table WHERE tenant_id = ? AND config_key = ? AND deleted_at IS NULL";
+        List<ConfigDTO> results = jdbcTemplate.query(sql, CONFIG_ROW_MAPPER, tenantId, keyName);
+        return results.stream().findFirst();
+    }
+
+    /**
+     * Upserts configuration atomically using INSERT ... ON CONFLICT DO UPDATE.
+     * Relies on the partial unique index uq_tenant_config_key on (tenant_id, config_key)
+     * WHERE deleted_at IS NULL defined in V14 migration.
+     */
+    public Optional<ConfigDTO> upsertConfig(Integer tenantId, String keyName,
+            String value, Integer currentUserId) {
+        String sql = """
+                INSERT INTO common_schema.tenant_config_master_table
+                    (tenant_id, config_key, config_value, created_by, updated_by)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT (tenant_id, config_key) WHERE deleted_at IS NULL
+                DO UPDATE SET
+                    config_value = EXCLUDED.config_value,
+                    updated_at   = NOW(),
+                    updated_by   = ?
+                RETURNING *
+                """;
+        List<ConfigDTO> results = jdbcTemplate.query(sql, CONFIG_ROW_MAPPER,
+                tenantId, keyName, value, currentUserId, currentUserId, currentUserId);
+        return results.stream().findFirst();
+    }
+
+    /**
+     * Validates a schema name.
+     */
     private void validateSchemaName(String schemaName) {
         if (schemaName == null || !schemaName.matches("^[a-z_][a-z0-9_]*$")) {
             throw new IllegalArgumentException("Invalid schema name: " + schemaName);

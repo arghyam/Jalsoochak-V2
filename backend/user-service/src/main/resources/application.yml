@@ -53,6 +53,7 @@ spring:
         dialect: org.hibernate.dialect.PostgreSQLDialect
         default_schema: common_schema
 
+
   kafka:
     bootstrap-servers: localhost:9092
     consumer:

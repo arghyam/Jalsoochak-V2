@@ -1,4 +1,4 @@
-package org.arghyam.jalsoochak.tenant.dto;
+package org.arghyam.jalsoochak.tenant.dto.request;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotBlank;
@@ -21,19 +21,15 @@ public class CreateDepartmentRequestDTO {
     @Schema(description = "Status: 1 = ACTIVE, 0 = INACTIVE", example = "1", requiredMode = Schema.RequiredMode.REQUIRED)
     private Integer status;
 
-    @Schema(description = "ID of the admin user creating this department", example = "1")
-    private Integer createdBy;
-
     public CreateDepartmentRequestDTO() {
     }
 
     public CreateDepartmentRequestDTO(String title, Integer departmentLocationConfigId,
-                                       Integer parentId, Integer status, Integer createdBy) {
+                                       Integer parentId, Integer status) {
         this.title = title;
         this.departmentLocationConfigId = departmentLocationConfigId;
         this.parentId = parentId;
         this.status = status;
-        this.createdBy = createdBy;
     }
 
     public String getTitle() { return title; }
@@ -48,6 +44,4 @@ public class CreateDepartmentRequestDTO {
     public Integer getStatus() { return status; }
     public void setStatus(Integer status) { this.status = status; }
 
-    public Integer getCreatedBy() { return createdBy; }
-    public void setCreatedBy(Integer createdBy) { this.createdBy = createdBy; }
 }

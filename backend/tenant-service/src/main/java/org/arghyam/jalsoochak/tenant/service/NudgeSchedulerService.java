@@ -1,6 +1,6 @@
 package org.arghyam.jalsoochak.tenant.service;
 
-import org.arghyam.jalsoochak.tenant.dto.TenantResponseDTO;
+import org.arghyam.jalsoochak.tenant.dto.response.TenantResponseDTO;
 import org.arghyam.jalsoochak.tenant.event.NudgeEvent;
 import org.arghyam.jalsoochak.tenant.kafka.KafkaProducer;
 import org.arghyam.jalsoochak.tenant.repository.NudgeRepository;
