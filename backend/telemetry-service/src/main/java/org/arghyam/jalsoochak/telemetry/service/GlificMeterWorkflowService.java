@@ -11,6 +11,7 @@ import org.arghyam.jalsoochak.telemetry.repository.TenantConfigRepository;
 import org.arghyam.jalsoochak.telemetry.repository.TelemetryConfirmedReadingSnapshot;
 import org.arghyam.jalsoochak.telemetry.repository.TelemetryOperatorWithSchema;
 import org.arghyam.jalsoochak.telemetry.repository.TelemetryPendingMeterChangeRecord;
+import org.arghyam.jalsoochak.telemetry.repository.TelemetryReadingRecord;
 import org.arghyam.jalsoochak.telemetry.repository.TelemetryTenantRepository;
 import org.springframework.stereotype.Service;
 
@@ -319,17 +320,36 @@ public class GlificMeterWorkflowService {
                 );
                 correlationId = pendingOpt.get().correlationId();
             } else {
-                telemetryTenantRepository.createFlowReading(
-                        operatorWithSchema.schemaName(),
-                        schemeId,
-                        operatorWithSchema.operator().id(),
-                        LocalDateTime.now(),
-                        manualReadingValue,
-                        manualReadingValue,
-                        correlationId,
-                        "",
-                        request.getMeterChangeReason()
-                );
+                Optional<TelemetryReadingRecord> todaysReadingOpt =
+                        telemetryTenantRepository.findLatestCompletedReadingForToday(
+                                operatorWithSchema.schemaName(),
+                                schemeId,
+                                operatorWithSchema.operator().id()
+                        );
+                if (todaysReadingOpt.isPresent()) {
+                    telemetryTenantRepository.updateConfirmedReading(
+                            operatorWithSchema.schemaName(),
+                            todaysReadingOpt.get().id(),
+                            manualReadingValue,
+                            operatorWithSchema.operator().id()
+                    );
+                    if (todaysReadingOpt.get().correlationId() != null
+                            && !todaysReadingOpt.get().correlationId().isBlank()) {
+                        correlationId = todaysReadingOpt.get().correlationId();
+                    }
+                } else {
+                    telemetryTenantRepository.createFlowReading(
+                            operatorWithSchema.schemaName(),
+                            schemeId,
+                            operatorWithSchema.operator().id(),
+                            LocalDateTime.now(),
+                            manualReadingValue,
+                            manualReadingValue,
+                            correlationId,
+                            "",
+                            request.getMeterChangeReason()
+                    );
+                }
             }
 
             int unreadableRetryCountToday = telemetryTenantRepository.countAnomaliesByTypeForToday(
