@@ -9,6 +9,7 @@ import org.arghyam.jalsoochak.telemetry.dto.requests.MeterChangeRequest;
 import org.arghyam.jalsoochak.telemetry.dto.requests.SelectedChannelRequest;
 import org.arghyam.jalsoochak.telemetry.dto.requests.SelectedItemRequest;
 import org.arghyam.jalsoochak.telemetry.dto.requests.SelectedLanguageRequest;
+import org.arghyam.jalsoochak.telemetry.dto.requests.UpdatedPreviousReadingRequest;
 import org.arghyam.jalsoochak.telemetry.dto.response.ClosingResponse;
 import org.arghyam.jalsoochak.telemetry.dto.response.CreateReadingResponse;
 import org.arghyam.jalsoochak.telemetry.dto.response.IntroResponse;
@@ -89,7 +90,19 @@ public class GlificWebhookService {
         return meterWorkflowService.issueReportSubmitMessage(request);
     }
 
+    public IntroResponse othersPromptMessage(IntroRequest request) {
+        return meterWorkflowService.othersPromptMessage(request);
+    }
+
+    public IntroResponse othersSubmittedMessage(IssueReportRequest request) {
+        return meterWorkflowService.othersSubmittedMessage(request);
+    }
+
     public CreateReadingResponse manualReadingMessage(ManualReadingRequest request) {
         return meterWorkflowService.manualReadingMessage(request);
+    }
+
+    public CreateReadingResponse updatePreviousReadingMessage(UpdatedPreviousReadingRequest request) {
+        return meterWorkflowService.updatePreviousReadingMessage(request);
     }
 }
