@@ -276,7 +276,7 @@ public class TelemetryTenantRepository {
                                         String issueReason) {
         validateSchemaName(schemaName);
         LocalDate readingDate = LocalDate.from(readingAt);
-        Optional<Long> existingId = findLatestIssueReportRecordForDate(schemaName, schemeId, operatorId, readingDate);
+        Optional<Long> existingId = findLatestFlowReadingRecordForDate(schemaName, schemeId, operatorId, readingDate);
         if (existingId.isPresent()) {
             String updateSql = String.format("""
                     UPDATE %s.flow_reading_table
@@ -289,7 +289,6 @@ public class TelemetryTenantRepository {
                     WHERE id = ?
                     """, schemaName);
             jdbcTemplate.update(updateSql, readingAt, readingDate, correlationId, issueReason, operatorId, existingId.get());
-            cleanupOtherIssueReportRecordsForDate(schemaName, schemeId, operatorId, readingDate, existingId.get(), operatorId);
             return existingId.get();
         }
 
@@ -312,12 +311,10 @@ public class TelemetryTenantRepository {
                 operatorId,
                 operatorId
         );
-        Long id = createdId != null ? createdId.longValue() : null;
-        cleanupOtherIssueReportRecordsForDate(schemaName, schemeId, operatorId, readingDate, id, operatorId);
-        return id;
+        return createdId != null ? createdId.longValue() : null;
     }
 
-    private Optional<Long> findLatestIssueReportRecordForDate(String schemaName,
+    private Optional<Long> findLatestFlowReadingRecordForDate(String schemaName,
                                                               Long schemeId,
                                                               Long operatorId,
                                                               LocalDate readingDate) {
@@ -328,43 +325,12 @@ public class TelemetryTenantRepository {
                 WHERE scheme_id = ?
                   AND created_by = ?
                   AND reading_date = ?
-                  AND extracted_reading = 0
-                  AND confirmed_reading = 0
-                  AND issue_report_reason IS NOT NULL
                   AND deleted_at IS NULL
                 ORDER BY id DESC
                 LIMIT 1
                 """, schemaName);
         List<Long> rows = jdbcTemplate.query(sql, (rs, n) -> toLong(rs.getObject("id")), schemeId, operatorId, readingDate);
         return rows.stream().findFirst();
-    }
-
-    private void cleanupOtherIssueReportRecordsForDate(String schemaName,
-                                                       Long schemeId,
-                                                       Long operatorId,
-                                                       LocalDate readingDate,
-                                                       Long keepId,
-                                                       Long updatedBy) {
-        if (keepId == null) {
-            return;
-        }
-        validateSchemaName(schemaName);
-        String sql = String.format("""
-                UPDATE %s.flow_reading_table
-                SET deleted_at = NOW(),
-                    deleted_by = ?,
-                    updated_by = ?,
-                    updated_at = NOW()
-                WHERE scheme_id = ?
-                  AND created_by = ?
-                  AND reading_date = ?
-                  AND extracted_reading = 0
-                  AND confirmed_reading = 0
-                  AND issue_report_reason IS NOT NULL
-                  AND deleted_at IS NULL
-                  AND id <> ?
-                """, schemaName);
-        jdbcTemplate.update(sql, updatedBy, updatedBy, schemeId, operatorId, readingDate, keepId);
     }
 
     public Optional<TelemetryPendingMeterChangeRecord> findLatestPendingMeterChangeRecord(String schemaName, Long schemeId, Long operatorId) {
