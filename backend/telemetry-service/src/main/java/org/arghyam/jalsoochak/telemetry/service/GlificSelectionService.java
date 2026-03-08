@@ -429,6 +429,24 @@ public class GlificSelectionService {
     }
 
     private String toItemCode(String selectedItemLabel, List<String> itemOptions) {
+        String normalized = selectedItemLabel == null
+                ? ""
+                : selectedItemLabel.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9\\s]+", " ").trim();
+
+        if (normalized.contains("submit") || normalized.contains("reading")) {
+            return "readingSubmission";
+        }
+        if (normalized.contains("report") || normalized.contains("issue")) {
+            return "reportIssue";
+        }
+        if (normalized.contains("language")) {
+            return "languageChange";
+        }
+        if (normalized.contains("channel")) {
+            return "channelChange";
+        }
+
+        // Backward-compatible fallback for legacy indexed tenant configs.
         int index = -1;
         for (int i = 0; i < itemOptions.size(); i++) {
             if (itemOptions.get(i).equalsIgnoreCase(selectedItemLabel)) {
