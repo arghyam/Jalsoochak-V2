@@ -275,7 +275,25 @@ public class TelemetryTenantRepository {
                                         String correlationId,
                                         String issueReason) {
         validateSchemaName(schemaName);
-        String sql = String.format("""
+        LocalDate readingDate = LocalDate.from(readingAt);
+        Optional<Long> existingId = findLatestIssueReportRecordForDate(schemaName, schemeId, operatorId, readingDate);
+        if (existingId.isPresent()) {
+            String updateSql = String.format("""
+                    UPDATE %s.flow_reading_table
+                    SET reading_at = ?,
+                        reading_date = ?,
+                        correlation_id = ?,
+                        issue_report_reason = ?,
+                        updated_by = ?,
+                        updated_at = NOW()
+                    WHERE id = ?
+                    """, schemaName);
+            jdbcTemplate.update(updateSql, readingAt, readingDate, correlationId, issueReason, operatorId, existingId.get());
+            cleanupOtherIssueReportRecordsForDate(schemaName, schemeId, operatorId, readingDate, existingId.get(), operatorId);
+            return existingId.get();
+        }
+
+        String insertSql = String.format("""
                 INSERT INTO %s.flow_reading_table
                     (scheme_id, reading_at, reading_date, extracted_reading, confirmed_reading,
                      correlation_id, quantity, channel, meter_change_reason, issue_report_reason, image_url, created_by, created_at, updated_by, updated_at)
@@ -283,18 +301,70 @@ public class TelemetryTenantRepository {
                 RETURNING id
                 """, schemaName);
 
-        Number id = jdbcTemplate.queryForObject(
-                sql,
+        Number createdId = jdbcTemplate.queryForObject(
+                insertSql,
                 Number.class,
                 schemeId,
                 readingAt,
-                LocalDate.from(readingAt),
+                readingDate,
                 correlationId,
                 issueReason,
                 operatorId,
                 operatorId
         );
-        return id != null ? id.longValue() : null;
+        Long id = createdId != null ? createdId.longValue() : null;
+        cleanupOtherIssueReportRecordsForDate(schemaName, schemeId, operatorId, readingDate, id, operatorId);
+        return id;
+    }
+
+    private Optional<Long> findLatestIssueReportRecordForDate(String schemaName,
+                                                              Long schemeId,
+                                                              Long operatorId,
+                                                              LocalDate readingDate) {
+        validateSchemaName(schemaName);
+        String sql = String.format("""
+                SELECT id
+                FROM %s.flow_reading_table
+                WHERE scheme_id = ?
+                  AND created_by = ?
+                  AND reading_date = ?
+                  AND extracted_reading = 0
+                  AND confirmed_reading = 0
+                  AND issue_report_reason IS NOT NULL
+                  AND deleted_at IS NULL
+                ORDER BY id DESC
+                LIMIT 1
+                """, schemaName);
+        List<Long> rows = jdbcTemplate.query(sql, (rs, n) -> toLong(rs.getObject("id")), schemeId, operatorId, readingDate);
+        return rows.stream().findFirst();
+    }
+
+    private void cleanupOtherIssueReportRecordsForDate(String schemaName,
+                                                       Long schemeId,
+                                                       Long operatorId,
+                                                       LocalDate readingDate,
+                                                       Long keepId,
+                                                       Long updatedBy) {
+        if (keepId == null) {
+            return;
+        }
+        validateSchemaName(schemaName);
+        String sql = String.format("""
+                UPDATE %s.flow_reading_table
+                SET deleted_at = NOW(),
+                    deleted_by = ?,
+                    updated_by = ?,
+                    updated_at = NOW()
+                WHERE scheme_id = ?
+                  AND created_by = ?
+                  AND reading_date = ?
+                  AND extracted_reading = 0
+                  AND confirmed_reading = 0
+                  AND issue_report_reason IS NOT NULL
+                  AND deleted_at IS NULL
+                  AND id <> ?
+                """, schemaName);
+        jdbcTemplate.update(sql, updatedBy, updatedBy, schemeId, operatorId, readingDate, keepId);
     }
 
     public Optional<TelemetryPendingMeterChangeRecord> findLatestPendingMeterChangeRecord(String schemaName, Long schemeId, Long operatorId) {
