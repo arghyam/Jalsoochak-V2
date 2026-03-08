@@ -565,6 +565,44 @@ public class TelemetryTenantRepository {
         return rows.stream().findFirst();
     }
 
+    public Optional<TelemetryReadingRecord> findLatestCompletedReadingForPreviousDay(String schemaName,
+                                                                                      Long schemeId,
+                                                                                      Long operatorId) {
+        validateSchemaName(schemaName);
+        String sql = String.format("""
+                SELECT id, correlation_id, created_by
+                FROM %s.flow_reading_table
+                WHERE scheme_id = ?
+                  AND created_by = ?
+                  AND reading_date = (CURRENT_DATE - INTERVAL '1 day')::date
+                  AND extracted_reading > 0
+                  AND confirmed_reading > 0
+                  AND deleted_at IS NULL
+                ORDER BY reading_at DESC, id DESC
+                LIMIT 1
+                """, schemaName);
+        List<TelemetryReadingRecord> rows = jdbcTemplate.query(sql, (rs, n) ->
+                new TelemetryReadingRecord(
+                        toLong(rs.getObject("id")),
+                        rs.getString("correlation_id"),
+                        toLong(rs.getObject("created_by"))
+                ), schemeId, operatorId);
+        return rows.stream().findFirst();
+    }
+
+    public void updateReadingValues(String schemaName, Long readingId, BigDecimal readingValue, Long updatedBy) {
+        validateSchemaName(schemaName);
+        String sql = String.format("""
+                UPDATE %s.flow_reading_table
+                SET extracted_reading = ?,
+                    confirmed_reading = ?,
+                    updated_by = ?,
+                    updated_at = NOW()
+                WHERE id = ?
+                """, schemaName);
+        jdbcTemplate.update(sql, readingValue, readingValue, updatedBy, readingId);
+    }
+
     public void updateConfirmedReading(String schemaName, Long readingId, BigDecimal confirmedReading, Long updatedBy) {
         validateSchemaName(schemaName);
         String sql = String.format("""
