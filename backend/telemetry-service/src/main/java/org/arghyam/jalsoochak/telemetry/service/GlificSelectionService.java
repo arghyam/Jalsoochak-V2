@@ -36,17 +36,20 @@ public class GlificSelectionService {
     private final TenantConfigRepository tenantConfigRepository;
     private final TelemetryTenantRepository telemetryTenantRepository;
     private final UserLanguagePreferenceRepository userLanguagePreferenceRepository;
+    private final GlificContactSyncService glificContactSyncService;
 
     public GlificSelectionService(GlificOperatorContextService operatorContextService,
                                   GlificLocalizationService localizationService,
                                   TenantConfigRepository tenantConfigRepository,
                                   TelemetryTenantRepository telemetryTenantRepository,
-                                  UserLanguagePreferenceRepository userLanguagePreferenceRepository) {
+                                  UserLanguagePreferenceRepository userLanguagePreferenceRepository,
+                                  GlificContactSyncService glificContactSyncService) {
         this.operatorContextService = operatorContextService;
         this.localizationService = localizationService;
         this.tenantConfigRepository = tenantConfigRepository;
         this.telemetryTenantRepository = telemetryTenantRepository;
         this.userLanguagePreferenceRepository = userLanguagePreferenceRepository;
+        this.glificContactSyncService = glificContactSyncService;
     }
 
     public IntroResponse languageSelectionMessage(IntroRequest request) {
@@ -124,6 +127,7 @@ public class GlificSelectionService {
                     selectedLanguageId
             );
             userLanguagePreferenceRepository.upsert(tenantId, request.getContactId(), selectedLanguage);
+            glificContactSyncService.syncContactLanguageAsync(request.getContactId(), selectedLanguage);
 
             String languageSpecificKey = "language_selection_confirmation_template_" + localizationService.normalizeLanguageKey(selectedLanguage);
             String confirmationTemplate = tenantConfigRepository
