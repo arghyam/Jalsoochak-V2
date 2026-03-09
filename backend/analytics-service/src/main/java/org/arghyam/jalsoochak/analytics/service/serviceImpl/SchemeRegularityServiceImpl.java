@@ -132,13 +132,14 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
                 + ":lgd:" + parentLgdId
                 + ":start:" + startDate
                 + ":end:" + endDate
-                + ":v2";
+                + ":v3";
         ReadingSubmissionRateResponse cached = readFromCache(cacheKey, ReadingSubmissionRateResponse.class);
         if (cached != null) {
             return cached;
         }
 
         int daysInRange = (int) ChronoUnit.DAYS.between(startDate, endDate) + 1;
+        Integer parentLgdLevel = schemeRegularityRepository.getLgdLevel(parentLgdId);
         SchemeRegularityRepository.SchemeRegularityMetrics metrics;
         try {
             metrics = schemeRegularityRepository.getReadingSubmissionRateMetricsByLgd(parentLgdId, startDate, endDate);
@@ -170,7 +171,7 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
         ReadingSubmissionRateResponse response = ReadingSubmissionRateResponse.builder()
                 .parentLgdId(parentLgdId)
                 .parentDepartmentId(null)
-                .parentLgdLevel(null)
+                .parentLgdLevel(parentLgdLevel)
                 .parentDepartmentLevel(null)
                 .scope(RegularityScope.CURRENT.name().toLowerCase())
                 .startDate(startDate)
@@ -386,13 +387,14 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
                 + ":department:" + parentDepartmentId
                 + ":start:" + startDate
                 + ":end:" + endDate
-                + ":v2";
+                + ":v3";
         ReadingSubmissionRateResponse cached = readFromCache(cacheKey, ReadingSubmissionRateResponse.class);
         if (cached != null) {
             return cached;
         }
 
         int daysInRange = (int) ChronoUnit.DAYS.between(startDate, endDate) + 1;
+        Integer parentDepartmentLevel = schemeRegularityRepository.getDepartmentLevel(parentDepartmentId);
         SchemeRegularityRepository.SchemeRegularityMetrics metrics =
                 schemeRegularityRepository.getReadingSubmissionRateMetricsByDepartment(parentDepartmentId, startDate, endDate);
 
@@ -407,7 +409,7 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
                 .parentLgdId(null)
                 .parentDepartmentId(parentDepartmentId)
                 .parentLgdLevel(null)
-                .parentDepartmentLevel(null)
+                .parentDepartmentLevel(parentDepartmentLevel)
                 .scope(RegularityScope.CURRENT.name().toLowerCase())
                 .startDate(startDate)
                 .endDate(endDate)
@@ -433,7 +435,7 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
                 + ":scope:child"
                 + ":start:" + startDate
                 + ":end:" + endDate
-                + ":v2";
+                + ":v3";
         ReadingSubmissionRateResponse cached = readFromCache(cacheKey, ReadingSubmissionRateResponse.class);
         if (cached != null) {
             return cached;
@@ -506,7 +508,7 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
                 + ":scope:child"
                 + ":start:" + startDate
                 + ":end:" + endDate
-                + ":v2";
+                + ":v3";
         ReadingSubmissionRateResponse cached = readFromCache(cacheKey, ReadingSubmissionRateResponse.class);
         if (cached != null) {
             return cached;
