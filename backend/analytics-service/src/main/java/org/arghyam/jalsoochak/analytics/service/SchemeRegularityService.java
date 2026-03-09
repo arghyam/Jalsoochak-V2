@@ -2,17 +2,26 @@ package org.arghyam.jalsoochak.analytics.service;
 
 import org.arghyam.jalsoochak.analytics.dto.response.AverageSchemeRegularityResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.AverageWaterSupplyResponse;
+import org.arghyam.jalsoochak.analytics.dto.response.OutageReasonSchemeCountResponse;
+import org.arghyam.jalsoochak.analytics.dto.response.PeriodicWaterQuantityResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.ReadingSubmissionRateResponse;
+import org.arghyam.jalsoochak.analytics.enums.PeriodScale;
 
 import java.time.LocalDate;
-
+import java.util.Map;
 public interface SchemeRegularityService {
 
     AverageSchemeRegularityResponse getAverageSchemeRegularity(Integer lgdId, LocalDate startDate, LocalDate endDate);
 
+    AverageSchemeRegularityResponse getAverageSchemeRegularityForChildRegions(
+            Integer lgdId, LocalDate startDate, LocalDate endDate);
+
     ReadingSubmissionRateResponse getReadingSubmissionRate(Integer lgdId, LocalDate startDate, LocalDate endDate);
 
     AverageSchemeRegularityResponse getAverageSchemeRegularityByDepartment(
+            Integer parentDepartmentId, LocalDate startDate, LocalDate endDate);
+
+    AverageSchemeRegularityResponse getAverageSchemeRegularityByDepartmentForChildRegions(
             Integer parentDepartmentId, LocalDate startDate, LocalDate endDate);
 
     ReadingSubmissionRateResponse getReadingSubmissionRateByDepartment(
@@ -29,4 +38,18 @@ public interface SchemeRegularityService {
 
     AverageWaterSupplyResponse getAverageWaterSupplyPerSchemeByDepartment(
             Integer tenantId, Integer parentDepartmentId, LocalDate startDate, LocalDate endDate);
+
+    PeriodicWaterQuantityResponse getPeriodicWaterQuantityByLgdCode(
+            String lgdCode, LocalDate startDate, LocalDate endDate, PeriodScale scale);
+
+    PeriodicWaterQuantityResponse getPeriodicWaterQuantityByDepartment(
+            Integer departmentId, LocalDate startDate, LocalDate endDate, PeriodScale scale);
+
+    OutageReasonSchemeCountResponse getOutageReasonSchemeCountByLgd(Integer lgdId);
+
+    OutageReasonSchemeCountResponse getOutageReasonSchemeCountByDepartment(Integer departmentId);
+
+    Map<String, Integer> getSchemeStatusCountByLgd(Integer lgdId);
+
+    Map<String, Integer> getSchemeStatusCountByDepartment(Integer departmentId);
 }

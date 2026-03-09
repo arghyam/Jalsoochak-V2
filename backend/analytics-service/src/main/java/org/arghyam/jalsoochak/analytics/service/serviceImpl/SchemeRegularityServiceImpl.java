@@ -2,7 +2,13 @@ package org.arghyam.jalsoochak.analytics.service.serviceImpl;
 
 import org.arghyam.jalsoochak.analytics.dto.response.AverageSchemeRegularityResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.AverageWaterSupplyResponse;
+import org.arghyam.jalsoochak.analytics.dto.response.OutageReasonSchemeCountResponse;
+import org.arghyam.jalsoochak.analytics.dto.response.PeriodicWaterQuantityResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.ReadingSubmissionRateResponse;
+import org.arghyam.jalsoochak.analytics.enums.OutageReason;
+import org.arghyam.jalsoochak.analytics.enums.PeriodScale;
+import org.arghyam.jalsoochak.analytics.enums.RegularityScope;
+import org.arghyam.jalsoochak.analytics.enums.SchemeStatus;
 import org.arghyam.jalsoochak.analytics.entity.DimTenant;
 import org.arghyam.jalsoochak.analytics.repository.DimTenantRepository;
 import org.arghyam.jalsoochak.analytics.repository.SchemeRegularityRepository;
@@ -24,6 +30,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
 
 @Service
 @RequiredArgsConstructor
@@ -93,12 +100,17 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
         AverageSchemeRegularityResponse response = AverageSchemeRegularityResponse.builder()
                 .lgdId(lgdId)
                 .parentDepartmentId(null)
+                .parentLgdLevel(null)
+                .parentDepartmentLevel(null)
+                .scope(RegularityScope.CURRENT.name().toLowerCase())
                 .startDate(startDate)
                 .endDate(endDate)
                 .daysInRange(daysInRange)
                 .schemeCount(metrics.schemeCount())
                 .totalSupplyDays(metrics.totalSupplyDays())
                 .averageRegularity(averageRegularity)
+                .childRegionCount(0)
+                .childRegions(List.of())
                 .build();
         writeToCache(cacheKey, response);
         return response;
@@ -197,12 +209,162 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
         AverageSchemeRegularityResponse response = AverageSchemeRegularityResponse.builder()
                 .lgdId(null)
                 .parentDepartmentId(parentDepartmentId)
+                .parentLgdLevel(null)
+                .parentDepartmentLevel(null)
+                .scope(RegularityScope.CURRENT.name().toLowerCase())
                 .startDate(startDate)
                 .endDate(endDate)
                 .daysInRange(daysInRange)
                 .schemeCount(metrics.schemeCount())
                 .totalSupplyDays(metrics.totalSupplyDays())
                 .averageRegularity(averageRegularity)
+                .childRegionCount(0)
+                .childRegions(List.of())
+                .build();
+        writeToCache(cacheKey, response);
+        return response;
+    }
+
+    @Override
+    public AverageSchemeRegularityResponse getAverageSchemeRegularityForChildRegions(
+            Integer lgdId, LocalDate startDate, LocalDate endDate) {
+        validateLgdInput(lgdId);
+        validateDateRange(startDate, endDate);
+
+        String cacheKey = SCHEME_REGULARITY_CACHE_PREFIX
+                + ":lgd:" + lgdId
+                + ":scope:child"
+                + ":start:" + startDate
+                + ":end:" + endDate;
+        AverageSchemeRegularityResponse cached = readFromCache(cacheKey, AverageSchemeRegularityResponse.class);
+        if (cached != null) {
+            return cached;
+        }
+
+        Integer parentLgdLevel = schemeRegularityRepository.getLgdLevel(lgdId);
+        if (parentLgdLevel == null) {
+            throw new IllegalArgumentException("lgd_id not found in dim_lgd_location_table: " + lgdId);
+        }
+        if (parentLgdLevel >= 6) {
+            throw new IllegalArgumentException("No child LGD level available for parent_lgd_id: " + lgdId);
+        }
+
+        int daysInRange = (int) ChronoUnit.DAYS.between(startDate, endDate) + 1;
+        List<SchemeRegularityRepository.ChildRegionSchemeRegularityMetrics> metrics =
+                schemeRegularityRepository.getChildSchemeRegularityMetricsByLgd(lgdId, startDate, endDate);
+
+        List<AverageSchemeRegularityResponse.ChildRegionRegularity> childRegions = metrics.stream()
+                .map(m -> AverageSchemeRegularityResponse.ChildRegionRegularity.builder()
+                        .lgdId(m.lgdId())
+                        .departmentId(null)
+                        .title(m.title())
+                        .schemeCount(m.schemeCount())
+                        .totalSupplyDays(m.totalSupplyDays())
+                        .averageRegularity(m.averageRegularity())
+                        .build())
+                .toList();
+
+        int totalSchemeCount = metrics.stream()
+                .map(SchemeRegularityRepository.ChildRegionSchemeRegularityMetrics::schemeCount)
+                .mapToInt(Integer::intValue)
+                .sum();
+        int totalSupplyDays = metrics.stream()
+                .map(SchemeRegularityRepository.ChildRegionSchemeRegularityMetrics::totalSupplyDays)
+                .mapToInt(Integer::intValue)
+                .sum();
+        BigDecimal averageRegularity = BigDecimal.ZERO;
+        if (totalSchemeCount > 0 && daysInRange > 0) {
+            averageRegularity = BigDecimal.valueOf(totalSupplyDays)
+                    .divide(BigDecimal.valueOf((long) totalSchemeCount * daysInRange), 4, RoundingMode.HALF_UP);
+        }
+
+        AverageSchemeRegularityResponse response = AverageSchemeRegularityResponse.builder()
+                .lgdId(lgdId)
+                .parentDepartmentId(null)
+                .parentLgdLevel(parentLgdLevel)
+                .parentDepartmentLevel(null)
+                .scope(RegularityScope.CHILD.name().toLowerCase())
+                .startDate(startDate)
+                .endDate(endDate)
+                .daysInRange(daysInRange)
+                .schemeCount(totalSchemeCount)
+                .totalSupplyDays(totalSupplyDays)
+                .averageRegularity(averageRegularity)
+                .childRegionCount(childRegions.size())
+                .childRegions(childRegions)
+                .build();
+        writeToCache(cacheKey, response);
+        return response;
+    }
+
+    @Override
+    public AverageSchemeRegularityResponse getAverageSchemeRegularityByDepartmentForChildRegions(
+            Integer parentDepartmentId, LocalDate startDate, LocalDate endDate) {
+        validateDepartmentInput(parentDepartmentId);
+        validateDateRange(startDate, endDate);
+
+        String cacheKey = SCHEME_REGULARITY_CACHE_PREFIX
+                + ":department:" + parentDepartmentId
+                + ":scope:child"
+                + ":start:" + startDate
+                + ":end:" + endDate;
+        AverageSchemeRegularityResponse cached = readFromCache(cacheKey, AverageSchemeRegularityResponse.class);
+        if (cached != null) {
+            return cached;
+        }
+
+        Integer parentDepartmentLevel = schemeRegularityRepository.getDepartmentLevel(parentDepartmentId);
+        if (parentDepartmentLevel == null) {
+            throw new IllegalArgumentException(
+                    "parent_department_id not found in dim_department_location_table: " + parentDepartmentId);
+        }
+        if (parentDepartmentLevel >= 6) {
+            throw new IllegalArgumentException("No child department level available for parent_department_id: " + parentDepartmentId);
+        }
+
+        int daysInRange = (int) ChronoUnit.DAYS.between(startDate, endDate) + 1;
+        List<SchemeRegularityRepository.ChildRegionSchemeRegularityMetrics> metrics =
+                schemeRegularityRepository.getChildSchemeRegularityMetricsByDepartment(parentDepartmentId, startDate, endDate);
+
+        List<AverageSchemeRegularityResponse.ChildRegionRegularity> childRegions = metrics.stream()
+                .map(m -> AverageSchemeRegularityResponse.ChildRegionRegularity.builder()
+                        .lgdId(null)
+                        .departmentId(m.departmentId())
+                        .title(m.title())
+                        .schemeCount(m.schemeCount())
+                        .totalSupplyDays(m.totalSupplyDays())
+                        .averageRegularity(m.averageRegularity())
+                        .build())
+                .toList();
+
+        int totalSchemeCount = metrics.stream()
+                .map(SchemeRegularityRepository.ChildRegionSchemeRegularityMetrics::schemeCount)
+                .mapToInt(Integer::intValue)
+                .sum();
+        int totalSupplyDays = metrics.stream()
+                .map(SchemeRegularityRepository.ChildRegionSchemeRegularityMetrics::totalSupplyDays)
+                .mapToInt(Integer::intValue)
+                .sum();
+        BigDecimal averageRegularity = BigDecimal.ZERO;
+        if (totalSchemeCount > 0 && daysInRange > 0) {
+            averageRegularity = BigDecimal.valueOf(totalSupplyDays)
+                    .divide(BigDecimal.valueOf((long) totalSchemeCount * daysInRange), 4, RoundingMode.HALF_UP);
+        }
+
+        AverageSchemeRegularityResponse response = AverageSchemeRegularityResponse.builder()
+                .lgdId(null)
+                .parentDepartmentId(parentDepartmentId)
+                .parentLgdLevel(null)
+                .parentDepartmentLevel(parentDepartmentLevel)
+                .scope(RegularityScope.CHILD.name().toLowerCase())
+                .startDate(startDate)
+                .endDate(endDate)
+                .daysInRange(daysInRange)
+                .schemeCount(totalSchemeCount)
+                .totalSupplyDays(totalSupplyDays)
+                .averageRegularity(averageRegularity)
+                .childRegionCount(childRegions.size())
+                .childRegions(childRegions)
                 .build();
         writeToCache(cacheKey, response);
         return response;
@@ -257,7 +419,7 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
         String cacheKey = ":water_supply:tenant:" + tenantId
                 + ":start:" + startDate
                 + ":end:" + endDate
-                + ":v2";
+                + ":v3";
         AverageWaterSupplyResponse cached = readFromCache(cacheKey, AverageWaterSupplyResponse.class);
         if (cached != null) {
             return cached;
@@ -281,6 +443,8 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
         AverageWaterSupplyResponse response = AverageWaterSupplyResponse.builder()
                 .tenantId(tenantId)
                 .stateCode(getTenantStateCode(tenantId))
+                .parentLgdLevel(null)
+                .parentDepartmentLevel(null)
                 .startDate(startDate)
                 .endDate(endDate)
                 .daysInRange(daysInRange)
@@ -301,7 +465,7 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
         String cacheKey = ":water_supply:nation"
                 + ":start:" + startDate
                 + ":end:" + endDate
-                + ":v2";
+                + ":v3";
         AverageWaterSupplyResponse cached = readFromCache(cacheKey, AverageWaterSupplyResponse.class);
         if (cached != null) {
             return cached;
@@ -326,6 +490,8 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
         AverageWaterSupplyResponse response = AverageWaterSupplyResponse.builder()
                 .tenantId(null)
                 .stateCode(null)
+                .parentLgdLevel(null)
+                .parentDepartmentLevel(null)
                 .startDate(startDate)
                 .endDate(endDate)
                 .daysInRange(daysInRange)
@@ -360,10 +526,15 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
                 + ":lgd:" + lgdId
                 + ":start:" + startDate
                 + ":end:" + endDate
-                + ":v2";
+                + ":v3";
         AverageWaterSupplyResponse cached = readFromCache(cacheKey, AverageWaterSupplyResponse.class);
         if (cached != null) {
             return cached;
+        }
+
+        Integer parentLgdLevel = schemeRegularityRepository.getLgdLevel(lgdId);
+        if (parentLgdLevel == null) {
+            throw new IllegalArgumentException("lgd_id not found in dim_lgd_location_table: " + lgdId);
         }
 
         int daysInRange = (int) ChronoUnit.DAYS.between(startDate, endDate) + 1;
@@ -403,6 +574,8 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
         AverageWaterSupplyResponse response = AverageWaterSupplyResponse.builder()
                 .tenantId(tenantId)
                 .stateCode(getTenantStateCode(tenantId))
+                .parentLgdLevel(parentLgdLevel)
+                .parentDepartmentLevel(null)
                 .startDate(startDate)
                 .endDate(endDate)
                 .daysInRange(daysInRange)
@@ -437,10 +610,16 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
                 + ":department:" + parentDepartmentId
                 + ":start:" + startDate
                 + ":end:" + endDate
-                + ":v2";
+                + ":v3";
         AverageWaterSupplyResponse cached = readFromCache(cacheKey, AverageWaterSupplyResponse.class);
         if (cached != null) {
             return cached;
+        }
+
+        Integer parentDepartmentLevel = schemeRegularityRepository.getDepartmentLevel(parentDepartmentId);
+        if (parentDepartmentLevel == null) {
+            throw new IllegalArgumentException(
+                    "parent_department_id not found in dim_department_location_table: " + parentDepartmentId);
         }
 
         int daysInRange = (int) ChronoUnit.DAYS.between(startDate, endDate) + 1;
@@ -480,6 +659,8 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
         AverageWaterSupplyResponse response = AverageWaterSupplyResponse.builder()
                 .tenantId(tenantId)
                 .stateCode(getTenantStateCode(tenantId))
+                .parentLgdLevel(null)
+                .parentDepartmentLevel(parentDepartmentLevel)
                 .startDate(startDate)
                 .endDate(endDate)
                 .daysInRange(daysInRange)
@@ -492,9 +673,123 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
         return response;
     }
 
+    @Override
+    public PeriodicWaterQuantityResponse getPeriodicWaterQuantityByLgdCode(
+            String lgdCode, LocalDate startDate, LocalDate endDate, PeriodScale scale) {
+        validateLgdCodeInput(lgdCode);
+        validateDateRange(startDate, endDate);
+        validateScaleInput(scale);
+
+        List<SchemeRegularityRepository.PeriodicWaterQuantityMetrics> metrics =
+                schemeRegularityRepository.getPeriodicWaterQuantityByLgdCode(lgdCode, startDate, endDate, scale);
+
+        return buildPeriodicWaterQuantityResponse(lgdCode, null, startDate, endDate, scale, metrics);
+    }
+
+    @Override
+    public PeriodicWaterQuantityResponse getPeriodicWaterQuantityByDepartment(
+            Integer departmentId, LocalDate startDate, LocalDate endDate, PeriodScale scale) {
+        validateDepartmentInput(departmentId);
+        validateDateRange(startDate, endDate);
+        validateScaleInput(scale);
+
+        List<SchemeRegularityRepository.PeriodicWaterQuantityMetrics> metrics =
+                schemeRegularityRepository.getPeriodicWaterQuantityByDepartment(departmentId, startDate, endDate, scale);
+
+        return buildPeriodicWaterQuantityResponse(null, departmentId, startDate, endDate, scale, metrics);
+    }
+
+    @Override
+    public OutageReasonSchemeCountResponse getOutageReasonSchemeCountByLgd(Integer lgdId) {
+        validateLgdInput(lgdId);
+        Integer parentLgdLevel = schemeRegularityRepository.getLgdLevel(lgdId);
+        if (parentLgdLevel == null) {
+            throw new IllegalArgumentException("lgd_id not found in dim_lgd_location_table: " + lgdId);
+        }
+
+        List<SchemeRegularityRepository.OutageReasonSchemeCount> rows =
+                schemeRegularityRepository.getOutageReasonSchemeCountByLgd(lgdId);
+        List<SchemeRegularityRepository.ChildRegionRef> childRegions =
+                schemeRegularityRepository.getChildRegionsByLgd(lgdId);
+        List<SchemeRegularityRepository.ChildRegionOutageReasonSchemeCount> childRows =
+                schemeRegularityRepository.getChildOutageReasonSchemeCountByLgd(lgdId);
+
+        return OutageReasonSchemeCountResponse.builder()
+                .lgdId(lgdId)
+                .departmentId(null)
+                .parentLgdLevel(parentLgdLevel)
+                .parentDepartmentLevel(null)
+                .outageReasonSchemeCount(buildReasonCountMap(rows))
+                .childRegionCount(childRegions.size())
+                .childRegions(buildChildOutageRegions(
+                        childRegions,
+                        childRows,
+                        SchemeRegularityRepository.ChildRegionOutageReasonSchemeCount::lgdId))
+                .build();
+    }
+
+    @Override
+    public OutageReasonSchemeCountResponse getOutageReasonSchemeCountByDepartment(Integer departmentId) {
+        validateDepartmentInput(departmentId);
+        Integer parentDepartmentLevel = schemeRegularityRepository.getDepartmentLevel(departmentId);
+        if (parentDepartmentLevel == null) {
+            throw new IllegalArgumentException("department_id not found in dim_department_location_table: " + departmentId);
+        }
+
+        List<SchemeRegularityRepository.OutageReasonSchemeCount> rows =
+                schemeRegularityRepository.getOutageReasonSchemeCountByDepartment(departmentId);
+        List<SchemeRegularityRepository.ChildRegionRef> childRegions =
+                schemeRegularityRepository.getChildRegionsByDepartment(departmentId);
+        List<SchemeRegularityRepository.ChildRegionOutageReasonSchemeCount> childRows =
+                schemeRegularityRepository.getChildOutageReasonSchemeCountByDepartment(departmentId);
+
+        return OutageReasonSchemeCountResponse.builder()
+                .lgdId(null)
+                .departmentId(departmentId)
+                .parentLgdLevel(null)
+                .parentDepartmentLevel(parentDepartmentLevel)
+                .outageReasonSchemeCount(buildReasonCountMap(rows))
+                .childRegionCount(childRegions.size())
+                .childRegions(buildChildOutageRegions(
+                        childRegions,
+                        childRows,
+                        SchemeRegularityRepository.ChildRegionOutageReasonSchemeCount::departmentId))
+                .build();
+    }
+
+    @Override
+    public Map<String, Integer> getSchemeStatusCountByLgd(Integer lgdId) {
+        validateLgdInput(lgdId);
+        SchemeRegularityRepository.SchemeStatusCount count =
+                schemeRegularityRepository.getSchemeStatusCountByLgd(lgdId);
+        return Map.of(
+                SchemeStatus.ACTIVE.name().toLowerCase() + "_schemes_count",
+                count.activeSchemeCount() == null ? 0 : count.activeSchemeCount(),
+                SchemeStatus.INACTIVE.name().toLowerCase() + "_schemes_count",
+                count.inactiveSchemeCount() == null ? 0 : count.inactiveSchemeCount());
+    }
+
+    @Override
+    public Map<String, Integer> getSchemeStatusCountByDepartment(Integer departmentId) {
+        validateDepartmentInput(departmentId);
+        SchemeRegularityRepository.SchemeStatusCount count =
+                schemeRegularityRepository.getSchemeStatusCountByDepartment(departmentId);
+        return Map.of(
+                SchemeStatus.ACTIVE.name().toLowerCase() + "_schemes_count",
+                count.activeSchemeCount() == null ? 0 : count.activeSchemeCount(),
+                SchemeStatus.INACTIVE.name().toLowerCase() + "_schemes_count",
+                count.inactiveSchemeCount() == null ? 0 : count.inactiveSchemeCount());
+    }
+
     private void validateLgdInput(Integer lgdId) {
         if (lgdId == null || lgdId <= 0) {
             throw new IllegalArgumentException("lgd_id must be a positive integer");
+        }
+    }
+
+    private void validateLgdCodeInput(String lgdCode) {
+        if (lgdCode == null || lgdCode.isBlank()) {
+            throw new IllegalArgumentException("lgd_code must be a non-empty string");
         }
     }
 
@@ -517,6 +812,88 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
         if (endDate.isBefore(startDate)) {
             throw new IllegalArgumentException("end_date must be on or after start_date");
         }
+    }
+
+    private void validateScaleInput(PeriodScale scale) {
+        if (scale == null) {
+            throw new IllegalArgumentException("scale is required and must be one of: day, week, month");
+        }
+    }
+
+    private PeriodicWaterQuantityResponse buildPeriodicWaterQuantityResponse(
+            String lgdCode,
+            Integer departmentId,
+            LocalDate startDate,
+            LocalDate endDate,
+            PeriodScale scale,
+            List<SchemeRegularityRepository.PeriodicWaterQuantityMetrics> metrics) {
+        List<PeriodicWaterQuantityResponse.PeriodicMetric> periodicMetrics = metrics.stream()
+                .map(metric -> PeriodicWaterQuantityResponse.PeriodicMetric.builder()
+                        .periodStartDate(metric.periodStartDate())
+                        .periodEndDate(metric.periodEndDate().isAfter(endDate) ? endDate : metric.periodEndDate())
+                        .periodLabel(metric.periodLabel())
+                        .averageWaterQuantity(metric.averageWaterQuantity())
+                        .householdCount(metric.householdCount())
+                        .build())
+                .toList();
+
+        return PeriodicWaterQuantityResponse.builder()
+                .lgdCode(lgdCode)
+                .departmentId(departmentId)
+                .scale(scale.name().toLowerCase())
+                .startDate(startDate)
+                .endDate(endDate)
+                .periodCount(periodicMetrics.size())
+                .metrics(periodicMetrics)
+                .build();
+    }
+
+    private Map<String, Integer> buildReasonCountMap(
+            List<SchemeRegularityRepository.OutageReasonSchemeCount> rows) {
+        Map<String, Integer> reasonCountMap = initReasonCountMap();
+        for (SchemeRegularityRepository.OutageReasonSchemeCount row : rows) {
+            reasonCountMap.put(
+                    OutageReason.getKeyForCode(row.outageReason()),
+                    row.schemeCount() == null ? 0 : row.schemeCount());
+        }
+        return reasonCountMap;
+    }
+
+    private List<OutageReasonSchemeCountResponse.ChildRegionOutageReasonSchemeCount> buildChildOutageRegions(
+            List<SchemeRegularityRepository.ChildRegionRef> childRegions,
+            List<SchemeRegularityRepository.ChildRegionOutageReasonSchemeCount> childRows,
+            Function<SchemeRegularityRepository.ChildRegionOutageReasonSchemeCount, Integer> regionIdExtractor) {
+        Map<Integer, OutageReasonSchemeCountResponse.ChildRegionOutageReasonSchemeCount> childById = new LinkedHashMap<>();
+        for (SchemeRegularityRepository.ChildRegionRef childRegion : childRegions) {
+            Integer regionId = childRegion.lgdId() != null ? childRegion.lgdId() : childRegion.departmentId();
+            childById.put(
+                    regionId,
+                    OutageReasonSchemeCountResponse.ChildRegionOutageReasonSchemeCount.builder()
+                            .lgdId(childRegion.lgdId())
+                            .departmentId(childRegion.departmentId())
+                            .title(childRegion.title())
+                            .outageReasonSchemeCount(initReasonCountMap())
+                            .build());
+        }
+        for (SchemeRegularityRepository.ChildRegionOutageReasonSchemeCount row : childRows) {
+            Integer regionId = regionIdExtractor.apply(row);
+            OutageReasonSchemeCountResponse.ChildRegionOutageReasonSchemeCount child = childById.get(regionId);
+            if (child == null) {
+                continue;
+            }
+            child.getOutageReasonSchemeCount().put(
+                    OutageReason.getKeyForCode(row.outageReason()),
+                    row.schemeCount() == null ? 0 : row.schemeCount());
+        }
+        return childById.values().stream().toList();
+    }
+
+    private Map<String, Integer> initReasonCountMap() {
+        Map<String, Integer> reasonCountMap = new LinkedHashMap<>();
+        for (OutageReason outageReason : OutageReason.values()) {
+            reasonCountMap.put(outageReason.getKey(), 0);
+        }
+        return reasonCountMap;
     }
 
     private String getTenantStateCode(Integer tenantId) {

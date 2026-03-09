@@ -8,8 +8,13 @@ import org.arghyam.jalsoochak.analytics.entity.FactSchemePerformance;
 import org.arghyam.jalsoochak.analytics.entity.FactWaterQuantity;
 import org.arghyam.jalsoochak.analytics.dto.response.AverageSchemeRegularityResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.AverageWaterSupplyResponse;
+import org.arghyam.jalsoochak.analytics.dto.response.OutageReasonSchemeCountResponse;
+import org.arghyam.jalsoochak.analytics.dto.response.PeriodicWaterQuantityResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.ReadingSubmissionRateResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.TenantDetailsResponse;
+import org.arghyam.jalsoochak.analytics.enums.PeriodScale;
+import org.arghyam.jalsoochak.analytics.enums.RegularityScope;
+import org.arghyam.jalsoochak.analytics.enums.WaterSupplyScope;
 import org.arghyam.jalsoochak.analytics.repository.DimSchemeRepository;
 import org.arghyam.jalsoochak.analytics.repository.DimTenantRepository;
 import org.arghyam.jalsoochak.analytics.repository.FactEscalationRepository;
@@ -20,6 +25,8 @@ import org.arghyam.jalsoochak.analytics.service.DateDimensionService;
 import org.arghyam.jalsoochak.analytics.service.SchemeRegularityService;
 import org.arghyam.jalsoochak.analytics.service.TenantDetailsService;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -32,6 +39,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/v1/analytics")
@@ -152,6 +160,67 @@ public class AnalyticsController {
         return ResponseEntity.ok(waterQuantityRepository.findAll());
     }
 
+    @GetMapping("/water-quantity/periodic")
+    @Operation(summary = "Get periodic average water quantity and household count for an LGD code or department")
+    public ResponseEntity<PeriodicWaterQuantityResponse> getPeriodicWaterQuantity(
+            @RequestParam(name = "start_date") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam(name = "end_date") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
+            @Parameter(
+                    description = "Time aggregation scale",
+                    required = true,
+                    schema = @Schema(type = "string", allowableValues = {"day", "week", "month"}))
+            @RequestParam(name = "scale") String scale,
+            @RequestParam(name = "lgd_code", required = false) String lgdCode,
+            @RequestParam(name = "department_id", required = false) Integer departmentId) {
+        if (lgdCode != null && departmentId != null) {
+            throw new IllegalArgumentException("Provide either lgd_code or department_id, not both");
+        }
+        if (lgdCode == null && departmentId == null) {
+            throw new IllegalArgumentException("Provide either lgd_code or department_id");
+        }
+        PeriodScale periodScale = PeriodScale.fromValue(scale);
+        if (lgdCode != null) {
+            return ResponseEntity.ok(
+                    schemeRegularityService.getPeriodicWaterQuantityByLgdCode(lgdCode, startDate, endDate, periodScale));
+        }
+        return ResponseEntity.ok(
+                schemeRegularityService.getPeriodicWaterQuantityByDepartment(departmentId, startDate, endDate, periodScale));
+    }
+
+    @GetMapping("/outage-reasons")
+    @Operation(summary = "Get outage reason wise scheme count for an LGD or department area")
+    public ResponseEntity<OutageReasonSchemeCountResponse> getOutageReasonWiseSchemeCount(
+            @RequestParam(name = "lgd_id", required = false) Integer lgdId,
+            @RequestParam(name = "department_id", required = false) Integer departmentId) {
+        if (lgdId != null && departmentId != null) {
+            throw new IllegalArgumentException("Provide either lgd_id or department_id, not both");
+        }
+        if (lgdId == null && departmentId == null) {
+            throw new IllegalArgumentException("Provide either lgd_id or department_id");
+        }
+        if (lgdId != null) {
+            return ResponseEntity.ok(schemeRegularityService.getOutageReasonSchemeCountByLgd(lgdId));
+        }
+        return ResponseEntity.ok(schemeRegularityService.getOutageReasonSchemeCountByDepartment(departmentId));
+    }
+
+    @GetMapping("/schemes/status-count")
+    @Operation(summary = "Get active and inactive scheme count for an LGD or department area")
+    public ResponseEntity<Map<String, Integer>> getSchemeStatusCount(
+            @RequestParam(name = "lgd_id", required = false) Integer lgdId,
+            @RequestParam(name = "department_id", required = false) Integer departmentId) {
+        if (lgdId != null && departmentId != null) {
+            throw new IllegalArgumentException("Provide either lgd_id or department_id, not both");
+        }
+        if (lgdId == null && departmentId == null) {
+            throw new IllegalArgumentException("Provide either lgd_id or department_id");
+        }
+        if (lgdId != null) {
+            return ResponseEntity.ok(schemeRegularityService.getSchemeStatusCountByLgd(lgdId));
+        }
+        return ResponseEntity.ok(schemeRegularityService.getSchemeStatusCountByDepartment(departmentId));
+    }
+
 
     @GetMapping("/escalations")
     @Operation(summary = "Query escalation data by tenant or scheme")
@@ -189,14 +258,29 @@ public class AnalyticsController {
     }
 
     @GetMapping("/scheme-regularity/average")
-    @Operation(summary = "Get average regularity of schemes for an LGD or department area within a date range")
+    @Operation(summary = "Get average scheme regularity for current area or immediate children (scope=current|child) within a date range")
     public ResponseEntity<AverageSchemeRegularityResponse> getAverageSchemeRegularity(
             @RequestParam(name = "lgd_id", required = false) Integer lgdId,
             @RequestParam(name = "parent_department_id", required = false) Integer parentDepartmentId,
+            @Parameter(
+                    description = "Response scope",
+                    required = false,
+                    schema = @Schema(type = "string", allowableValues = {"current", "child"}, defaultValue = "current"))
+            @RequestParam(name = "scope", defaultValue = "current") String scope,
             @RequestParam(name = "start_date") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
             @RequestParam(name = "end_date") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
         if (lgdId != null && parentDepartmentId != null) {
             throw new IllegalArgumentException("Provide either lgd_id or parent_department_id, not both");
+        }
+        RegularityScope regularityScope = RegularityScope.fromValue(scope);
+        if (regularityScope == RegularityScope.CHILD) {
+            if (parentDepartmentId != null) {
+                return ResponseEntity.ok(
+                        schemeRegularityService.getAverageSchemeRegularityByDepartmentForChildRegions(
+                                parentDepartmentId, startDate, endDate));
+            }
+            return ResponseEntity.ok(
+                    schemeRegularityService.getAverageSchemeRegularityForChildRegions(lgdId, startDate, endDate));
         }
         if (parentDepartmentId != null) {
             return ResponseEntity.ok(
@@ -205,7 +289,7 @@ public class AnalyticsController {
         return ResponseEntity.ok(schemeRegularityService.getAverageSchemeRegularity(lgdId, startDate, endDate));
     }
 
-    @GetMapping("/scheme-regularity/reading-submission-rate")
+    @GetMapping("/reading-submission-rate")
     @Operation(summary = "Get reading submission rate of schemes for an LGD or department area within a date range")
     public ResponseEntity<ReadingSubmissionRateResponse> getReadingSubmissionRate(
             @RequestParam(name = "lgd_id", required = false) Integer lgdId,
@@ -226,31 +310,54 @@ public class AnalyticsController {
     // This endpoint is used to get the average water supply per region in liters/household; 
     // tenant_id optional for nation-level state aggregates
     @GetMapping("/water-supply/average-per-region")
-    @Operation(summary = "Get average water supply per regionin liters/household; tenant_id optional for nation-level state aggregates")
+    @Operation(summary = "Get average water supply per region in liters/household with response scope (scheme|child)")
     public ResponseEntity<AverageWaterSupplyResponse> getAverageWaterSupplyPerScheme(
             @RequestParam(name = "tenant_id", required = false) Integer tenantId,
             @RequestParam(name = "parent_lgd_id", required = false) Integer parentLgdId,
             @RequestParam(name = "parent_department_id", required = false) Integer parentDepartmentId,
+            @Parameter(
+                    description = "Response scope",
+                    required = false,
+                    schema = @Schema(type = "string", allowableValues = {"scheme", "child"}, defaultValue = "scheme"))
+            @RequestParam(name = "scope", defaultValue = "scheme") String scope,
             @RequestParam(name = "start_date") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
             @RequestParam(name = "end_date") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
         if (parentLgdId != null && parentDepartmentId != null) {
             throw new IllegalArgumentException("Provide either parent_lgd_id or parent_department_id, not both");
         }
+        WaterSupplyScope waterSupplyScope = WaterSupplyScope.fromValue(scope);
+        if (waterSupplyScope == WaterSupplyScope.SCHEME) {
+            if (tenantId == null) {
+                throw new IllegalArgumentException("tenant_id is required when scope=scheme");
+            }
+            if (parentLgdId != null || parentDepartmentId != null) {
+                throw new IllegalArgumentException("parent_lgd_id or parent_department_id is not supported when scope=scheme");
+            }
+            AverageWaterSupplyResponse response =
+                    schemeRegularityService.getAverageWaterSupplyPerScheme(tenantId, startDate, endDate);
+            response.setChildRegionCount(null);
+            response.setChildRegions(null);
+            return ResponseEntity.ok(response);
+        }
+
+        AverageWaterSupplyResponse response;
         if (tenantId == null) {
             if (parentLgdId != null || parentDepartmentId != null) {
                 throw new IllegalArgumentException("tenant_id is required when parent_lgd_id or parent_department_id is provided");
             }
-            return ResponseEntity.ok(schemeRegularityService.getAverageWaterSupplyPerNation(startDate, endDate));
+            response = schemeRegularityService.getAverageWaterSupplyPerNation(startDate, endDate);
+        } else if (parentLgdId != null) {
+            response = schemeRegularityService.getAverageWaterSupplyPerSchemeByLgd(tenantId, parentLgdId, startDate, endDate);
+        } else if (parentDepartmentId != null) {
+            response = schemeRegularityService.getAverageWaterSupplyPerSchemeByDepartment(
+                    tenantId, parentDepartmentId, startDate, endDate);
+        } else {
+            throw new IllegalArgumentException(
+                    "Provide parent_lgd_id or parent_department_id when scope=child and tenant_id is provided");
         }
-        if (parentLgdId != null) {
-            return ResponseEntity.ok(
-                    schemeRegularityService.getAverageWaterSupplyPerSchemeByLgd(tenantId, parentLgdId, startDate, endDate));
-        }
-        if (parentDepartmentId != null) {
-            return ResponseEntity.ok(
-                    schemeRegularityService.getAverageWaterSupplyPerSchemeByDepartment(tenantId, parentDepartmentId, startDate, endDate));
-        }
-        return ResponseEntity.ok(schemeRegularityService.getAverageWaterSupplyPerScheme(tenantId, startDate, endDate));
+        response.setSchemeCount(null);
+        response.setSchemes(null);
+        return ResponseEntity.ok(response);
     }
 
     @PostMapping("/date-dimension/populate")

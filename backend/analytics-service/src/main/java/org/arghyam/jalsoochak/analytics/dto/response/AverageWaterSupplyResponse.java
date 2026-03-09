@@ -1,5 +1,6 @@
 package org.arghyam.jalsoochak.analytics.dto.response;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -17,12 +18,16 @@ public class AverageWaterSupplyResponse {
 
     private Integer tenantId;
     private String stateCode;
+    private Integer parentLgdLevel;
+    private Integer parentDepartmentLevel;
     private LocalDate startDate;
     private LocalDate endDate;
     private Integer daysInRange;
     private Integer schemeCount;
     private Integer childRegionCount;
+    @JsonInclude(JsonInclude.Include.NON_NULL)
     private List<SchemeWaterSupply> schemes;
+    @JsonInclude(JsonInclude.Include.NON_NULL)
     private List<ChildRegionWaterSupply> childRegions;
 
     @Data
