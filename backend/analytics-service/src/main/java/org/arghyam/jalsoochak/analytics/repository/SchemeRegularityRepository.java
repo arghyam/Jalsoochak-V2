@@ -158,6 +158,173 @@ public class SchemeRegularityRepository {
         return new SchemeRegularityMetrics(schemeCount, totalSupplyDays);
     }
 
+    public List<ChildRegionReadingSubmissionMetrics> getChildReadingSubmissionRateMetricsByLgd(
+            Integer parentLgdId, LocalDate startDate, LocalDate endDate) {
+        Integer lgdLevel = getLgdLevel(parentLgdId);
+        if (lgdLevel == null) {
+            throw new IllegalArgumentException("lgd_id not found in dim_lgd_location_table: " + parentLgdId);
+        }
+        if (lgdLevel >= 6) {
+            throw new IllegalArgumentException("No child LGD level available for parent_lgd_id: " + parentLgdId);
+        }
+        int childLevel = lgdLevel + 1;
+        long daysInRange = ChronoUnit.DAYS.between(startDate, endDate) + 1;
+        if (daysInRange <= 0) {
+            return List.of();
+        }
+
+        String parentSchemeLgdColumn = resolveSchemeLgdColumn(lgdLevel);
+        String childSchemeLgdColumn = resolveSchemeLgdColumn(childLevel);
+        String childRegionParentLgdColumn = resolveChildRegionLgdParentColumn(lgdLevel);
+
+        String sql = String.format("""
+                WITH child_regions AS (
+                    SELECT
+                        l.lgd_id AS child_lgd_id,
+                        l.title
+                    FROM analytics_schema.dim_lgd_location_table l
+                    WHERE l.lgd_level = ?
+                      AND l.%1$s = ?
+                ),
+                schemes_in_scope AS (
+                    SELECT
+                        s.scheme_id,
+                        s.%2$s AS child_lgd_id
+                    FROM analytics_schema.dim_scheme_table s
+                    WHERE s.%3$s = ?
+                ),
+                scheme_submission_days AS (
+                    SELECT m.scheme_id, COUNT(DISTINCT m.reading_date)::int AS submission_days
+                    FROM analytics_schema.fact_meter_reading_table m
+                    JOIN schemes_in_scope ss
+                        ON ss.scheme_id = m.scheme_id
+                    WHERE m.reading_date BETWEEN ? AND ?
+                      AND m.confirmed_reading >= 0
+                    GROUP BY m.scheme_id
+                )
+                SELECT
+                    c.child_lgd_id AS lgd_id,
+                    c.title,
+                    COALESCE(COUNT(s.scheme_id), 0)::int AS scheme_count,
+                    COALESCE(SUM(sd.submission_days), 0)::int AS total_submission_days
+                FROM child_regions c
+                LEFT JOIN schemes_in_scope s
+                    ON s.child_lgd_id = c.child_lgd_id
+                LEFT JOIN scheme_submission_days sd
+                    ON sd.scheme_id = s.scheme_id
+                GROUP BY c.child_lgd_id, c.title
+                ORDER BY c.child_lgd_id
+                """, childRegionParentLgdColumn, childSchemeLgdColumn, parentSchemeLgdColumn);
+
+        return jdbcTemplate.query(
+                sql,
+                (rs, rowNum) -> {
+                    int schemeCount = rs.getInt("scheme_count");
+                    int totalSubmissionDays = rs.getInt("total_submission_days");
+                    BigDecimal readingSubmissionRate = BigDecimal.ZERO;
+                    if (schemeCount > 0) {
+                        readingSubmissionRate = BigDecimal.valueOf(totalSubmissionDays)
+                                .divide(BigDecimal.valueOf((long) schemeCount * daysInRange), 4, RoundingMode.HALF_UP);
+                    }
+                    return new ChildRegionReadingSubmissionMetrics(
+                            rs.getInt("lgd_id"),
+                            null,
+                            rs.getString("title"),
+                            schemeCount,
+                            totalSubmissionDays,
+                            readingSubmissionRate);
+                },
+                childLevel,
+                parentLgdId,
+                parentLgdId,
+                startDate,
+                endDate);
+    }
+
+    public List<ChildRegionReadingSubmissionMetrics> getChildReadingSubmissionRateMetricsByDepartment(
+            Integer parentDepartmentId, LocalDate startDate, LocalDate endDate) {
+        Integer departmentLevel = getDepartmentLevel(parentDepartmentId);
+        if (departmentLevel == null) {
+            throw new IllegalArgumentException(
+                    "parent_department_id not found in dim_department_location_table: " + parentDepartmentId);
+        }
+        if (departmentLevel >= 6) {
+            throw new IllegalArgumentException("No child department level available for parent_department_id: " + parentDepartmentId);
+        }
+        int childLevel = departmentLevel + 1;
+        long daysInRange = ChronoUnit.DAYS.between(startDate, endDate) + 1;
+        if (daysInRange <= 0) {
+            return List.of();
+        }
+
+        String parentSchemeDepartmentColumn = resolveSchemeDepartmentColumn(departmentLevel);
+        String childSchemeDepartmentColumn = resolveSchemeDepartmentColumn(childLevel);
+        String childRegionParentDepartmentColumn = resolveChildRegionDepartmentParentColumn(departmentLevel);
+
+        String sql = String.format("""
+                WITH child_regions AS (
+                    SELECT
+                        d.department_id AS child_department_id,
+                        d.title
+                    FROM analytics_schema.dim_department_location_table d
+                    WHERE d.department_level = ?
+                      AND d.%1$s = ?
+                ),
+                schemes_in_scope AS (
+                    SELECT
+                        s.scheme_id,
+                        s.%2$s AS child_department_id
+                    FROM analytics_schema.dim_scheme_table s
+                    WHERE s.%3$s = ?
+                ),
+                scheme_submission_days AS (
+                    SELECT m.scheme_id, COUNT(DISTINCT m.reading_date)::int AS submission_days
+                    FROM analytics_schema.fact_meter_reading_table m
+                    JOIN schemes_in_scope ss
+                        ON ss.scheme_id = m.scheme_id
+                    WHERE m.reading_date BETWEEN ? AND ?
+                      AND m.confirmed_reading >= 0
+                    GROUP BY m.scheme_id
+                )
+                SELECT
+                    c.child_department_id AS department_id,
+                    c.title,
+                    COALESCE(COUNT(s.scheme_id), 0)::int AS scheme_count,
+                    COALESCE(SUM(sd.submission_days), 0)::int AS total_submission_days
+                FROM child_regions c
+                LEFT JOIN schemes_in_scope s
+                    ON s.child_department_id = c.child_department_id
+                LEFT JOIN scheme_submission_days sd
+                    ON sd.scheme_id = s.scheme_id
+                GROUP BY c.child_department_id, c.title
+                ORDER BY c.child_department_id
+                """, childRegionParentDepartmentColumn, childSchemeDepartmentColumn, parentSchemeDepartmentColumn);
+
+        return jdbcTemplate.query(
+                sql,
+                (rs, rowNum) -> {
+                    int schemeCount = rs.getInt("scheme_count");
+                    int totalSubmissionDays = rs.getInt("total_submission_days");
+                    BigDecimal readingSubmissionRate = BigDecimal.ZERO;
+                    if (schemeCount > 0) {
+                        readingSubmissionRate = BigDecimal.valueOf(totalSubmissionDays)
+                                .divide(BigDecimal.valueOf((long) schemeCount * daysInRange), 4, RoundingMode.HALF_UP);
+                    }
+                    return new ChildRegionReadingSubmissionMetrics(
+                            null,
+                            rs.getInt("department_id"),
+                            rs.getString("title"),
+                            schemeCount,
+                            totalSubmissionDays,
+                            readingSubmissionRate);
+                },
+                childLevel,
+                parentDepartmentId,
+                parentDepartmentId,
+                startDate,
+                endDate);
+    }
+
     public List<ChildRegionSchemeRegularityMetrics> getChildSchemeRegularityMetricsByLgd(
             Integer lgdId, LocalDate startDate, LocalDate endDate) {
         Integer lgdLevel = getLgdLevel(lgdId);
@@ -1085,6 +1252,15 @@ public class SchemeRegularityRepository {
             Integer schemeCount,
             Integer totalSupplyDays,
             BigDecimal averageRegularity) {
+    }
+
+    public record ChildRegionReadingSubmissionMetrics(
+            Integer lgdId,
+            Integer departmentId,
+            String title,
+            Integer schemeCount,
+            Integer totalSubmissionDays,
+            BigDecimal readingSubmissionRate) {
     }
 
     private record LgdIdentifier(Integer lgdId, Integer lgdLevel) {
