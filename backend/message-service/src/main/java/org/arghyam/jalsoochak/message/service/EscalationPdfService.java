@@ -18,6 +18,7 @@ import java.nio.file.Paths;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
+import java.util.UUID;
 
 /**
  * Generates an escalation PDF report for a given officer using Apache PDFBox.
@@ -49,7 +50,8 @@ public class EscalationPdfService {
         String dateStr = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd"));
         String safeOfficerName = (officerName != null ? officerName : "Unknown")
                 .replaceAll("[^a-zA-Z0-9_\\-]", "_");
-        String filename = String.format("escalation_L%d_%s_%s.pdf", level, safeOfficerName, dateStr);
+        String filename = String.format("escalation_L%d_%s_%s-%s.pdf",
+                level, safeOfficerName, dateStr, UUID.randomUUID());
         Path filePath = Paths.get(reportDir, filename);
 
         try (PDDocument doc = new PDDocument()) {

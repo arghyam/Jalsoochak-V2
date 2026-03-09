@@ -36,6 +36,15 @@ public class TenantConfigRepository {
         return rows.stream().findFirst();
     }
 
+    public Optional<String> findLanguageSelectionPrompt(Integer tenantId, String languageKey) {
+        if (languageKey == null || languageKey.isBlank()) {
+            return findLanguageSelectionPrompt(tenantId);
+        }
+        String langSpecificKey = "language_selection_prompt_" + languageKey;
+        return findConfigValue(tenantId, langSpecificKey)
+                .or(() -> findLanguageSelectionPrompt(tenantId));
+    }
+
     public List<String> findLanguageOptions(Integer tenantId) {
         String sql = """
                 SELECT config_value
@@ -162,5 +171,40 @@ public class TenantConfigRepository {
         String langSpecificKey = "meter_change_confirmation_template_" + languageKey;
         return findConfigValue(tenantId, langSpecificKey)
                 .or(() -> findConfigValue(tenantId, "meter_change_confirmation_template"));
+    }
+
+    public Optional<String> findIssueReportPrompt(Integer tenantId, String languageKey) {
+        String langSpecificKey = "issue_report_prompt_" + languageKey;
+        return findConfigValue(tenantId, langSpecificKey)
+                .or(() -> findConfigValue(tenantId, "issue_report_prompt"));
+    }
+
+    public List<String> findIssueReportReasons(Integer tenantId, String languageKey) {
+        String localizedSql = """
+                SELECT config_value
+                FROM common_schema.tenant_config_master_table
+                WHERE tenant_id = ?
+                  AND config_key ~ '^issue_report_reason_[0-9]+_%s$'
+                ORDER BY regexp_replace(config_key, '^issue_report_reason_([0-9]+)_%s$', '\\1')::int
+                """.formatted(languageKey, languageKey);
+        List<String> localized = jdbcTemplate.query(localizedSql, (rs, n) -> rs.getString("config_value"), tenantId);
+        if (!localized.isEmpty()) {
+            return localized;
+        }
+
+        String genericSql = """
+                SELECT config_value
+                FROM common_schema.tenant_config_master_table
+                WHERE tenant_id = ?
+                  AND config_key ~ '^issue_report_reason_[0-9]+$'
+                ORDER BY regexp_replace(config_key, '^issue_report_reason_([0-9]+)$', '\\1')::int
+                """;
+        return jdbcTemplate.query(genericSql, (rs, n) -> rs.getString("config_value"), tenantId);
+    }
+
+    public Optional<String> findIssueReportConfirmationTemplate(Integer tenantId, String languageKey) {
+        String langSpecificKey = "issue_report_confirmation_template_" + languageKey;
+        return findConfigValue(tenantId, langSpecificKey)
+                .or(() -> findConfigValue(tenantId, "issue_report_confirmation_template"));
     }
 }

@@ -4,6 +4,7 @@ import org.arghyam.jalsoochak.telemetry.config.TenantContext;
 import org.arghyam.jalsoochak.telemetry.dto.response.CreateReadingResponse;
 import org.arghyam.jalsoochak.telemetry.dto.response.FlowVisionResult;
 import org.arghyam.jalsoochak.telemetry.dto.requests.CreateReadingRequest;
+import org.arghyam.jalsoochak.telemetry.repository.TelemetryConfirmedReadingSnapshot;
 import org.arghyam.jalsoochak.telemetry.repository.TelemetryOperator;
 import org.arghyam.jalsoochak.telemetry.repository.TelemetryReadingRecord;
 import org.arghyam.jalsoochak.telemetry.repository.TelemetryTenantRepository;
@@ -59,6 +60,27 @@ public class BfmReadingService {
             try {
                 ocrResult = flowVisionService.extractReading(request.getReadingUrl());
                 if (ocrResult == null || ocrResult.getAdjustedReading() == null) {
+                    int retries = telemetryTenantRepository.countAnomaliesByTypeForToday(
+                            schemaName,
+                            operatorInRequest.id(),
+                            request.getSchemeId(),
+                            AnomalyConstants.TYPE_UNREADABLE_IMAGE
+                    ) + 1;
+                    telemetryTenantRepository.createAnomalyRecord(
+                            schemaName,
+                            AnomalyConstants.TYPE_UNREADABLE_IMAGE,
+                            operatorInRequest.id(),
+                            request.getSchemeId(),
+                            null,
+                            null,
+                            null,
+                            retries,
+                            null,
+                            null,
+                            0,
+                            "Unreadable image. OCR could not extract a valid meter reading.",
+                            AnomalyConstants.STATUS_OPEN
+                    );
                     return CreateReadingResponse.builder()
                             .success(false)
                             .message("Could not read meter value from image. Please retry with a clearer photo.")
@@ -70,6 +92,27 @@ public class BfmReadingService {
                 confidenceLevel = ocrResult.getQualityConfidence();
             } catch (Exception ex) {
                 log.error("FlowVision OCR failed for URL: {}", request.getReadingUrl(), ex);
+                int retries = telemetryTenantRepository.countAnomaliesByTypeForToday(
+                        schemaName,
+                        operatorInRequest.id(),
+                        request.getSchemeId(),
+                        AnomalyConstants.TYPE_UNREADABLE_IMAGE
+                ) + 1;
+                telemetryTenantRepository.createAnomalyRecord(
+                        schemaName,
+                        AnomalyConstants.TYPE_UNREADABLE_IMAGE,
+                        operatorInRequest.id(),
+                        request.getSchemeId(),
+                        null,
+                        null,
+                        null,
+                        retries,
+                        null,
+                        null,
+                        0,
+                        "Unreadable image. OCR failed during extraction.",
+                        AnomalyConstants.STATUS_OPEN
+                );
                 return CreateReadingResponse.builder()
                         .success(false)
                         .message("OCR failed. Please try again with a clearer image.")
@@ -79,9 +122,11 @@ public class BfmReadingService {
             }
         }
 
-        boolean isValid = finalReading != null
-                && finalReading.compareTo(BigDecimal.ZERO) > 0
-                && (confidenceLevel == null || confidenceLevel.compareTo(BigDecimal.valueOf(0.7)) >= 0);
+        boolean hasPositiveReading = finalReading != null
+                && finalReading.compareTo(BigDecimal.ZERO) > 0;
+        boolean hasAcceptableConfidence = confidenceLevel == null
+                || confidenceLevel.compareTo(BigDecimal.valueOf(0.7)) >= 0;
+        boolean isValid = hasPositiveReading && hasAcceptableConfidence;
 
         String correlationId = Optional.ofNullable(ocrResult)
                 .map(FlowVisionResult::getCorrelationId)
@@ -92,6 +137,70 @@ public class BfmReadingService {
                 .map(FlowVisionResult::getAdjustedReading)
                 .orElse(finalReading);
         BigDecimal confirmedReading = request.getReadingValue() != null ? request.getReadingValue() : finalReading;
+
+        Optional<TelemetryConfirmedReadingSnapshot> previousSnapshotOpt = telemetryTenantRepository
+                .findLatestConfirmedReadingSnapshot(schemaName, request.getSchemeId(), null);
+
+        if (previousSnapshotOpt.isPresent() && confirmedReading != null
+                && confirmedReading.compareTo(previousSnapshotOpt.get().confirmedReading()) < 0) {
+            TelemetryConfirmedReadingSnapshot previousSnapshot = previousSnapshotOpt.get();
+            String submittedReadingText = confirmedReading.stripTrailingZeros().toPlainString();
+            String previousReadingText = previousSnapshot.confirmedReading().stripTrailingZeros().toPlainString();
+            telemetryTenantRepository.createAnomalyRecord(
+                    schemaName,
+                    AnomalyConstants.TYPE_READING_LESS_THAN_PREVIOUS,
+                    operatorInRequest.id(),
+                    request.getSchemeId(),
+                    extractedReading,
+                    confidenceLevel,
+                    confirmedReading,
+                    0,
+                    previousSnapshot.confirmedReading(),
+                    previousSnapshot.createdAt(),
+                    0,
+                    "Submitted reading is less than previous confirmed reading.",
+                    AnomalyConstants.STATUS_OPEN
+            );
+            return CreateReadingResponse.builder()
+                    .success(false)
+                    .message("Reading cannot be less than previous reading. Submitted reading: "
+                            + submittedReadingText + ". Previous reading: " + previousReadingText + ".")
+                    .correlationId(UUID.randomUUID().toString())
+                    .meterReading(confirmedReading)
+                    .qualityStatus("REJECTED")
+                    .lastConfirmedReading(previousSnapshot.confirmedReading())
+                    .build();
+        }
+
+        if (previousSnapshotOpt.isPresent() && extractedReading != null
+                && extractedReading.compareTo(previousSnapshotOpt.get().confirmedReading()) == 0
+                && request.getReadingUrl() != null && !request.getReadingUrl().isBlank()) {
+            TelemetryConfirmedReadingSnapshot previousSnapshot = previousSnapshotOpt.get();
+            telemetryTenantRepository.createAnomalyRecord(
+                    schemaName,
+                    AnomalyConstants.TYPE_DUPLICATE_IMAGE_SUBMISSION,
+                    operatorInRequest.id(),
+                    request.getSchemeId(),
+                    extractedReading,
+                    confidenceLevel,
+                    confirmedReading,
+                    0,
+                    previousSnapshot.confirmedReading(),
+                    previousSnapshot.createdAt(),
+                    0,
+                    "Duplicate image submission detected. Extracted reading matches previous confirmed reading.",
+                    AnomalyConstants.STATUS_OPEN
+            );
+            return CreateReadingResponse.builder()
+                    .success(false)
+                    .message("Duplicate image submission detected. The extracted reading matches the previous reading.")
+                    .correlationId(correlationId)
+                    .meterReading(confirmedReading)
+                    .qualityConfidence(confidenceLevel)
+                    .qualityStatus("REJECTED")
+                    .lastConfirmedReading(previousSnapshot.confirmedReading())
+                    .build();
+        }
 
         Long readingId = telemetryTenantRepository.createFlowReading(
                 schemaName,
@@ -105,9 +214,11 @@ public class BfmReadingService {
                 request.getMeterChangeReason()
         );
 
-        BigDecimal lastConfirmedReading = telemetryTenantRepository
-                .findLastConfirmedReading(schemaName, request.getSchemeId(), readingId)
-                .orElse(null);
+        BigDecimal lastConfirmedReading = previousSnapshotOpt
+                .map(TelemetryConfirmedReadingSnapshot::confirmedReading)
+                .orElseGet(() -> telemetryTenantRepository
+                        .findLastConfirmedReading(schemaName, request.getSchemeId(), readingId)
+                        .orElse(null));
 
         String finalMessage;
         String readingText = finalReading != null ? finalReading.stripTrailingZeros().toPlainString() : null;
@@ -117,7 +228,7 @@ public class BfmReadingService {
             } else {
                 finalMessage = "Reading captured successfully";
             }
-        } else if (finalReading == null || finalReading.compareTo(BigDecimal.ZERO) <= 0) {
+        } else if (!hasPositiveReading) {
             finalMessage = "Invalid reading value";
         } else if (ocrResult != null && readingText != null) {
             finalMessage = "Low OCR confidence. Extracted reading: " + readingText + ". Please confirm reading.";
@@ -126,7 +237,7 @@ public class BfmReadingService {
         }
 
         return CreateReadingResponse.builder()
-                .success(isValid)
+                .success(hasPositiveReading)
                 .message(messageOverride(contactId, finalMessage))
                 .correlationId(correlationId)
                 .meterReading(finalReading)
