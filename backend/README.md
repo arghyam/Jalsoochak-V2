@@ -121,7 +121,7 @@ docker run -d --name kafka -p 9092:9092 \
 
 ---
 
-## Start PostgreSQL with Docker
+<!-- ## Start PostgreSQL with Docker
 
 ```bash
 docker run -d \
@@ -131,7 +131,7 @@ docker run -d \
   -e POSTGRES_USER=YOUR_USERNAME \
   -e POSTGRES_PASSWORD=YOUR_PASSWORD \
   postgres:16-alpine
-```
+``` -->
 
 > **Note:** Update `YOUR_USERNAME` and `YOUR_PASSWORD` in each service's `application.yml` with real credentials.
 

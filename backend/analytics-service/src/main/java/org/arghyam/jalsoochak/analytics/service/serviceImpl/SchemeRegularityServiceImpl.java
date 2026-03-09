@@ -117,19 +117,19 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
     }
 
     @Override
-    public ReadingSubmissionRateResponse getReadingSubmissionRate(Integer lgdId, LocalDate startDate, LocalDate endDate) {
-        validateLgdInput(lgdId);
+    public ReadingSubmissionRateResponse getReadingSubmissionRateByLgd(Integer parentLgdId, LocalDate startDate, LocalDate endDate) {
+        validateLgdInput(parentLgdId);
         validateDateRange(startDate, endDate);
         // #region agent log
         appendDebugLog(
                 "H3",
-                "SchemeRegularityServiceImpl:getReadingSubmissionRate:entry",
+                "SchemeRegularityServiceImpl:getReadingSubmissionRateByLgd:entry",
                 "Submission rate request entry",
-                Map.of("lgdId", lgdId, "startDate", String.valueOf(startDate), "endDate", String.valueOf(endDate)));
+                Map.of("parentLgdId", parentLgdId, "startDate", String.valueOf(startDate), "endDate", String.valueOf(endDate)));
         // #endregion
 
         String cacheKey = READING_SUBMISSION_RATE_CACHE_PREFIX
-                + ":lgd:" + lgdId
+                + ":lgd:" + parentLgdId
                 + ":start:" + startDate
                 + ":end:" + endDate;
         ReadingSubmissionRateResponse cached = readFromCache(cacheKey, ReadingSubmissionRateResponse.class);
@@ -140,12 +140,12 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
         int daysInRange = (int) ChronoUnit.DAYS.between(startDate, endDate) + 1;
         SchemeRegularityRepository.SchemeRegularityMetrics metrics;
         try {
-            metrics = schemeRegularityRepository.getReadingSubmissionRateMetrics(lgdId, startDate, endDate);
+            metrics = schemeRegularityRepository.getReadingSubmissionRateMetricsByLgd(parentLgdId, startDate, endDate);
         } catch (Exception ex) {
             // #region agent log
             appendDebugLog(
                     "H3",
-                    "SchemeRegularityServiceImpl:getReadingSubmissionRate:repo_exception",
+                    "SchemeRegularityServiceImpl:getReadingSubmissionRateByLgd:repo_exception",
                     "Submission rate repository call failed",
                     Map.of("errorType", ex.getClass().getName(), "errorMessage", String.valueOf(ex.getMessage())));
             // #endregion
@@ -154,7 +154,7 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
         // #region agent log
         appendDebugLog(
                 "H3",
-                "SchemeRegularityServiceImpl:getReadingSubmissionRate:repo_success",
+                "SchemeRegularityServiceImpl:getReadingSubmissionRateByLgd:repo_success",
                 "Submission rate repository call succeeded",
                 Map.of("daysInRange", daysInRange, "schemeCount", metrics.schemeCount(), "totalSupplyDays", metrics.totalSupplyDays()));
         // #endregion
@@ -167,7 +167,7 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
         }
 
         ReadingSubmissionRateResponse response = ReadingSubmissionRateResponse.builder()
-                .lgdId(lgdId)
+                .parentLgdId(parentLgdId)
                 .parentDepartmentId(null)
                 .startDate(startDate)
                 .endDate(endDate)
@@ -397,7 +397,7 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
         }
 
         ReadingSubmissionRateResponse response = ReadingSubmissionRateResponse.builder()
-                .lgdId(null)
+                .parentLgdId(null)
                 .parentDepartmentId(parentDepartmentId)
                 .startDate(startDate)
                 .endDate(endDate)

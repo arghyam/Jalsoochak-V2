@@ -52,10 +52,10 @@ public class SchemeRegularityRepository {
         return new SchemeRegularityMetrics(schemeCount, totalSupplyDays);
     }
 
-    public SchemeRegularityMetrics getReadingSubmissionRateMetrics(Integer lgdId, LocalDate startDate, LocalDate endDate) {
-        Integer lgdLevel = getLgdLevel(lgdId);
+    public SchemeRegularityMetrics getReadingSubmissionRateMetricsByLgd(Integer parentLgdId, LocalDate startDate, LocalDate endDate) {
+        Integer lgdLevel = getLgdLevel(parentLgdId);
         if (lgdLevel == null) {
-            throw new IllegalArgumentException("lgd_id not found in dim_lgd_location_table: " + lgdId);
+            throw new IllegalArgumentException("lgd_id not found in dim_lgd_location_table: " + parentLgdId);
         }
         String schemeLgdColumn = resolveSchemeLgdColumn(lgdLevel);
 
@@ -79,7 +79,7 @@ public class SchemeRegularityRepository {
                     COALESCE((SELECT SUM(submission_days)::int FROM scheme_submission_days), 0) AS total_supply_days
                 """, schemeLgdColumn);
 
-        Map<String, Object> result = jdbcTemplate.queryForMap(sql, lgdId, startDate, endDate);
+        Map<String, Object> result = jdbcTemplate.queryForMap(sql, parentLgdId, startDate, endDate);
         int schemeCount = result.get("scheme_count") instanceof Number value ? value.intValue() : 0;
         int totalSupplyDays = result.get("total_supply_days") instanceof Number value ? value.intValue() : 0;
 
