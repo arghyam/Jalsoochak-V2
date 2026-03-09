@@ -1,14 +1,14 @@
-name: Image Build & SonarQube Scan for Analysis Service
+name: Image Build & SonarQube Scan for Analytics Service
 
 on:
   push:
     branches: ["main", "dev"]
     paths:
-      - 'backend/analysis-service/**'
+      - 'backend/analytics-service/**'
   pull_request:
     types: [opened, synchronize, reopened]
     paths:
-      - 'backend/analysis-service/**'
+      - 'backend/analytics-service/**'
   workflow_dispatch:
   workflow_call:
 
@@ -41,8 +41,8 @@ jobs:
       - name: SonarQube Scan
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-        run:  mvn -B package org.sonarsource.scanner.maven:sonar-maven-plugin:3.11.0.3922:sonar -Dsonar.projectKey=jalsoochak-anomalyservice -Dsonar.organization=jalsoochak -Dsonar.host.url=${{ secrets.SONAR_HOST_URL }} -Dsonar.qualitygate.wait=false
-        working-directory: backend/analysis-service
+        run:  mvn -B package org.sonarsource.scanner.maven:sonar-maven-plugin:3.11.0.3922:sonar -Dsonar.projectKey=jalsoochak-analyticsservice -Dsonar.organization=jalsoochak -Dsonar.host.url=${{ secrets.SONAR_HOST_URL }} -Dsonar.qualitygate.wait=false
+        working-directory: backend/analytics-service
         
       - name: Configure AWS credentials
         if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev'
@@ -63,19 +63,19 @@ jobs:
           ECR_REGISTRY: ${{ steps.ecr-login.outputs.registry }}
           IMAGE_TAG: ${{ github.sha }}
         run: |
-          docker build --build-arg WORK_DIR="backend/analysis-service" -t $ECR_REGISTRY/analysis-service:$IMAGE_TAG -f build/maven/Dockerfile .
-          docker push $ECR_REGISTRY/analysis-service:$IMAGE_TAG
-      - name: Build and Push Docker image for analysis_DB
+          docker build --build-arg WORK_DIR="backend/analytics-service" -t $ECR_REGISTRY/analytics-service:$IMAGE_TAG -f build/maven/Dockerfile .
+          docker push $ECR_REGISTRY/analytics-service:$IMAGE_TAG
+      - name: Build and Push Docker image for analytics_DB
         if: (github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/main') && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
         run: |
-          docker build -t $ECR_REGISTRY/analysis-service-db:$IMAGE_TAG  .
-          docker tag $ECR_REGISTRY/analysis-service-db:$IMAGE_TAG $ECR_REGISTRY/analysis-service-db:$IMAGE_TAG
-          docker push $ECR_REGISTRY/analysis-service-db:$IMAGE_TAG
-        working-directory: backend/analysis-service/src/main/resources/db
+          docker build -t $ECR_REGISTRY/analytics-service-db:$IMAGE_TAG  .
+          docker tag $ECR_REGISTRY/analytics-service-db:$IMAGE_TAG $ECR_REGISTRY/analytics-service-db:$IMAGE_TAG
+          docker push $ECR_REGISTRY/analytics-service-db:$IMAGE_TAG
+        working-directory: backend/analytics-service/src/main/resources/db
   Deployment:
     needs: Docker-Image-Build
     if: github.ref == 'refs/heads/dev'
     uses: arghyam/JalsoochakV2-Devops/.github/workflows/deploy.yaml@dev
     with:
-      service_name: anomaly-service
+      service_name: analytics-service
       image_tag: ${{ github.sha }}
