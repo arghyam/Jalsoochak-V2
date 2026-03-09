@@ -290,14 +290,30 @@ public class AnalyticsController {
     }
 
     @GetMapping("/reading-submission-rate")
-    @Operation(summary = "Get reading submission rate of schemes for an LGD or department area within a date range")
+    @Operation(summary = "Get reading submission rate for current area or immediate children (scope=current|child) within a date range")
     public ResponseEntity<ReadingSubmissionRateResponse> getReadingSubmissionRateByLgd(
             @RequestParam(name = "parent_lgd_id", required = false) Integer parentLgdId,
             @RequestParam(name = "parent_department_id", required = false) Integer parentDepartmentId,
+            @Parameter(
+                    description = "Response scope",
+                    required = false,
+                    schema = @Schema(type = "string", allowableValues = {"current", "child"}, defaultValue = "current"))
+            @RequestParam(name = "scope", defaultValue = "current") String scope,
             @RequestParam(name = "start_date") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
             @RequestParam(name = "end_date") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
         if (parentLgdId != null && parentDepartmentId != null) {
             throw new IllegalArgumentException("Provide either parent_lgd_id or parent_department_id, not both");
+        }
+        RegularityScope regularityScope = RegularityScope.fromValue(scope);
+        if (regularityScope == RegularityScope.CHILD) {
+            if (parentDepartmentId != null) {
+                return ResponseEntity.ok(
+                        schemeRegularityService.getReadingSubmissionRateByDepartmentForChildRegions(
+                                parentDepartmentId, startDate, endDate));
+            }
+            return ResponseEntity.ok(
+                    schemeRegularityService.getReadingSubmissionRateByLgdForChildRegions(
+                            parentLgdId, startDate, endDate));
         }
         if (parentDepartmentId != null) {
             return ResponseEntity.ok(

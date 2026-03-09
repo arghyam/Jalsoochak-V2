@@ -131,7 +131,8 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
         String cacheKey = READING_SUBMISSION_RATE_CACHE_PREFIX
                 + ":lgd:" + parentLgdId
                 + ":start:" + startDate
-                + ":end:" + endDate;
+                + ":end:" + endDate
+                + ":v2";
         ReadingSubmissionRateResponse cached = readFromCache(cacheKey, ReadingSubmissionRateResponse.class);
         if (cached != null) {
             return cached;
@@ -169,12 +170,17 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
         ReadingSubmissionRateResponse response = ReadingSubmissionRateResponse.builder()
                 .parentLgdId(parentLgdId)
                 .parentDepartmentId(null)
+                .parentLgdLevel(null)
+                .parentDepartmentLevel(null)
+                .scope(RegularityScope.CURRENT.name().toLowerCase())
                 .startDate(startDate)
                 .endDate(endDate)
                 .daysInRange(daysInRange)
                 .schemeCount(metrics.schemeCount())
                 .totalSubmissionDays(metrics.totalSupplyDays())
                 .readingSubmissionRate(readingSubmissionRate)
+                .childRegionCount(0)
+                .childRegions(List.of())
                 .build();
         writeToCache(cacheKey, response);
         return response;
@@ -379,7 +385,8 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
         String cacheKey = READING_SUBMISSION_RATE_CACHE_PREFIX
                 + ":department:" + parentDepartmentId
                 + ":start:" + startDate
-                + ":end:" + endDate;
+                + ":end:" + endDate
+                + ":v2";
         ReadingSubmissionRateResponse cached = readFromCache(cacheKey, ReadingSubmissionRateResponse.class);
         if (cached != null) {
             return cached;
@@ -399,12 +406,165 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
         ReadingSubmissionRateResponse response = ReadingSubmissionRateResponse.builder()
                 .parentLgdId(null)
                 .parentDepartmentId(parentDepartmentId)
+                .parentLgdLevel(null)
+                .parentDepartmentLevel(null)
+                .scope(RegularityScope.CURRENT.name().toLowerCase())
                 .startDate(startDate)
                 .endDate(endDate)
                 .daysInRange(daysInRange)
                 .schemeCount(metrics.schemeCount())
                 .totalSubmissionDays(metrics.totalSupplyDays())
                 .readingSubmissionRate(readingSubmissionRate)
+                .childRegionCount(0)
+                .childRegions(List.of())
+                .build();
+        writeToCache(cacheKey, response);
+        return response;
+    }
+
+    @Override
+    public ReadingSubmissionRateResponse getReadingSubmissionRateByLgdForChildRegions(
+            Integer parentLgdId, LocalDate startDate, LocalDate endDate) {
+        validateLgdInput(parentLgdId);
+        validateDateRange(startDate, endDate);
+
+        String cacheKey = READING_SUBMISSION_RATE_CACHE_PREFIX
+                + ":lgd:" + parentLgdId
+                + ":scope:child"
+                + ":start:" + startDate
+                + ":end:" + endDate
+                + ":v2";
+        ReadingSubmissionRateResponse cached = readFromCache(cacheKey, ReadingSubmissionRateResponse.class);
+        if (cached != null) {
+            return cached;
+        }
+
+        Integer parentLgdLevel = schemeRegularityRepository.getLgdLevel(parentLgdId);
+        if (parentLgdLevel == null) {
+            throw new IllegalArgumentException("lgd_id not found in dim_lgd_location_table: " + parentLgdId);
+        }
+        if (parentLgdLevel >= 6) {
+            throw new IllegalArgumentException("No child LGD level available for parent_lgd_id: " + parentLgdId);
+        }
+
+        int daysInRange = (int) ChronoUnit.DAYS.between(startDate, endDate) + 1;
+        List<SchemeRegularityRepository.ChildRegionReadingSubmissionMetrics> metrics =
+                schemeRegularityRepository.getChildReadingSubmissionRateMetricsByLgd(parentLgdId, startDate, endDate);
+
+        List<ReadingSubmissionRateResponse.ChildRegionReadingSubmissionRate> childRegions = metrics.stream()
+                .map(m -> ReadingSubmissionRateResponse.ChildRegionReadingSubmissionRate.builder()
+                        .lgdId(m.lgdId())
+                        .departmentId(null)
+                        .title(m.title())
+                        .schemeCount(m.schemeCount())
+                        .totalSubmissionDays(m.totalSubmissionDays())
+                        .readingSubmissionRate(m.readingSubmissionRate())
+                        .build())
+                .toList();
+
+        int totalSchemeCount = metrics.stream()
+                .map(SchemeRegularityRepository.ChildRegionReadingSubmissionMetrics::schemeCount)
+                .mapToInt(Integer::intValue)
+                .sum();
+        int totalSubmissionDays = metrics.stream()
+                .map(SchemeRegularityRepository.ChildRegionReadingSubmissionMetrics::totalSubmissionDays)
+                .mapToInt(Integer::intValue)
+                .sum();
+        BigDecimal readingSubmissionRate = BigDecimal.ZERO;
+        if (totalSchemeCount > 0 && daysInRange > 0) {
+            readingSubmissionRate = BigDecimal.valueOf(totalSubmissionDays)
+                    .divide(BigDecimal.valueOf((long) totalSchemeCount * daysInRange), 4, RoundingMode.HALF_UP);
+        }
+
+        ReadingSubmissionRateResponse response = ReadingSubmissionRateResponse.builder()
+                .parentLgdId(parentLgdId)
+                .parentDepartmentId(null)
+                .parentLgdLevel(parentLgdLevel)
+                .parentDepartmentLevel(null)
+                .scope(RegularityScope.CHILD.name().toLowerCase())
+                .startDate(startDate)
+                .endDate(endDate)
+                .daysInRange(daysInRange)
+                .schemeCount(totalSchemeCount)
+                .totalSubmissionDays(totalSubmissionDays)
+                .readingSubmissionRate(readingSubmissionRate)
+                .childRegionCount(childRegions.size())
+                .childRegions(childRegions)
+                .build();
+        writeToCache(cacheKey, response);
+        return response;
+    }
+
+    @Override
+    public ReadingSubmissionRateResponse getReadingSubmissionRateByDepartmentForChildRegions(
+            Integer parentDepartmentId, LocalDate startDate, LocalDate endDate) {
+        validateDepartmentInput(parentDepartmentId);
+        validateDateRange(startDate, endDate);
+
+        String cacheKey = READING_SUBMISSION_RATE_CACHE_PREFIX
+                + ":department:" + parentDepartmentId
+                + ":scope:child"
+                + ":start:" + startDate
+                + ":end:" + endDate
+                + ":v2";
+        ReadingSubmissionRateResponse cached = readFromCache(cacheKey, ReadingSubmissionRateResponse.class);
+        if (cached != null) {
+            return cached;
+        }
+
+        Integer parentDepartmentLevel = schemeRegularityRepository.getDepartmentLevel(parentDepartmentId);
+        if (parentDepartmentLevel == null) {
+            throw new IllegalArgumentException(
+                    "parent_department_id not found in dim_department_location_table: " + parentDepartmentId);
+        }
+        if (parentDepartmentLevel >= 6) {
+            throw new IllegalArgumentException("No child department level available for parent_department_id: " + parentDepartmentId);
+        }
+
+        int daysInRange = (int) ChronoUnit.DAYS.between(startDate, endDate) + 1;
+        List<SchemeRegularityRepository.ChildRegionReadingSubmissionMetrics> metrics =
+                schemeRegularityRepository.getChildReadingSubmissionRateMetricsByDepartment(
+                        parentDepartmentId, startDate, endDate);
+
+        List<ReadingSubmissionRateResponse.ChildRegionReadingSubmissionRate> childRegions = metrics.stream()
+                .map(m -> ReadingSubmissionRateResponse.ChildRegionReadingSubmissionRate.builder()
+                        .lgdId(null)
+                        .departmentId(m.departmentId())
+                        .title(m.title())
+                        .schemeCount(m.schemeCount())
+                        .totalSubmissionDays(m.totalSubmissionDays())
+                        .readingSubmissionRate(m.readingSubmissionRate())
+                        .build())
+                .toList();
+
+        int totalSchemeCount = metrics.stream()
+                .map(SchemeRegularityRepository.ChildRegionReadingSubmissionMetrics::schemeCount)
+                .mapToInt(Integer::intValue)
+                .sum();
+        int totalSubmissionDays = metrics.stream()
+                .map(SchemeRegularityRepository.ChildRegionReadingSubmissionMetrics::totalSubmissionDays)
+                .mapToInt(Integer::intValue)
+                .sum();
+        BigDecimal readingSubmissionRate = BigDecimal.ZERO;
+        if (totalSchemeCount > 0 && daysInRange > 0) {
+            readingSubmissionRate = BigDecimal.valueOf(totalSubmissionDays)
+                    .divide(BigDecimal.valueOf((long) totalSchemeCount * daysInRange), 4, RoundingMode.HALF_UP);
+        }
+
+        ReadingSubmissionRateResponse response = ReadingSubmissionRateResponse.builder()
+                .parentLgdId(null)
+                .parentDepartmentId(parentDepartmentId)
+                .parentLgdLevel(null)
+                .parentDepartmentLevel(parentDepartmentLevel)
+                .scope(RegularityScope.CHILD.name().toLowerCase())
+                .startDate(startDate)
+                .endDate(endDate)
+                .daysInRange(daysInRange)
+                .schemeCount(totalSchemeCount)
+                .totalSubmissionDays(totalSubmissionDays)
+                .readingSubmissionRate(readingSubmissionRate)
+                .childRegionCount(childRegions.size())
+                .childRegions(childRegions)
                 .build();
         writeToCache(cacheKey, response);
         return response;

@@ -18,6 +18,9 @@ public interface SchemeRegularityService {
 
     ReadingSubmissionRateResponse getReadingSubmissionRateByLgd(Integer parentLgdId, LocalDate startDate, LocalDate endDate);
 
+    ReadingSubmissionRateResponse getReadingSubmissionRateByLgdForChildRegions(
+            Integer parentLgdId, LocalDate startDate, LocalDate endDate);
+
     AverageSchemeRegularityResponse getAverageSchemeRegularityByDepartment(
             Integer parentDepartmentId, LocalDate startDate, LocalDate endDate);
 
@@ -25,6 +28,9 @@ public interface SchemeRegularityService {
             Integer parentDepartmentId, LocalDate startDate, LocalDate endDate);
 
     ReadingSubmissionRateResponse getReadingSubmissionRateByDepartment(
+            Integer parentDepartmentId, LocalDate startDate, LocalDate endDate);
+
+    ReadingSubmissionRateResponse getReadingSubmissionRateByDepartmentForChildRegions(
             Integer parentDepartmentId, LocalDate startDate, LocalDate endDate);
 
     AverageWaterSupplyResponse getAverageWaterSupplyPerScheme(
