@@ -14,7 +14,7 @@ import java.time.LocalDate;
 @AllArgsConstructor
 public class ReadingSubmissionRateResponse {
 
-    private Integer lgdId;
+    private Integer parentLgdId;
     private Integer parentDepartmentId;
     private LocalDate startDate;
     private LocalDate endDate;

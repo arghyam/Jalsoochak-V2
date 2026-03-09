@@ -16,7 +16,7 @@ public interface SchemeRegularityService {
     AverageSchemeRegularityResponse getAverageSchemeRegularityForChildRegions(
             Integer lgdId, LocalDate startDate, LocalDate endDate);
 
-    ReadingSubmissionRateResponse getReadingSubmissionRate(Integer lgdId, LocalDate startDate, LocalDate endDate);
+    ReadingSubmissionRateResponse getReadingSubmissionRateByLgd(Integer parentLgdId, LocalDate startDate, LocalDate endDate);
 
     AverageSchemeRegularityResponse getAverageSchemeRegularityByDepartment(
             Integer parentDepartmentId, LocalDate startDate, LocalDate endDate);

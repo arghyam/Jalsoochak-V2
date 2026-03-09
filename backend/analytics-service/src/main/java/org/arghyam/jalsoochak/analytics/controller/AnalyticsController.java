@@ -91,7 +91,7 @@ public class AnalyticsController {
         AverageSchemeRegularityResponse averageResponse = schemeRegularityService
                 .getAverageSchemeRegularity(parentLgdId, startDate, endDate);
         ReadingSubmissionRateResponse submissionRateResponse = schemeRegularityService
-                .getReadingSubmissionRate(parentLgdId, startDate, endDate);
+                .getReadingSubmissionRateByLgd(parentLgdId, startDate, endDate);
         response.setAverageSchemeRegularity(averageResponse.getAverageRegularity());
         response.setReadingSubmissionRate(submissionRateResponse.getReadingSubmissionRate());
         return ResponseEntity.ok(response);
@@ -291,19 +291,19 @@ public class AnalyticsController {
 
     @GetMapping("/reading-submission-rate")
     @Operation(summary = "Get reading submission rate of schemes for an LGD or department area within a date range")
-    public ResponseEntity<ReadingSubmissionRateResponse> getReadingSubmissionRate(
-            @RequestParam(name = "lgd_id", required = false) Integer lgdId,
+    public ResponseEntity<ReadingSubmissionRateResponse> getReadingSubmissionRateByLgd(
+            @RequestParam(name = "parent_lgd_id", required = false) Integer parentLgdId,
             @RequestParam(name = "parent_department_id", required = false) Integer parentDepartmentId,
             @RequestParam(name = "start_date") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
             @RequestParam(name = "end_date") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
-        if (lgdId != null && parentDepartmentId != null) {
-            throw new IllegalArgumentException("Provide either lgd_id or parent_department_id, not both");
+        if (parentLgdId != null && parentDepartmentId != null) {
+            throw new IllegalArgumentException("Provide either parent_lgd_id or parent_department_id, not both");
         }
         if (parentDepartmentId != null) {
             return ResponseEntity.ok(
                     schemeRegularityService.getReadingSubmissionRateByDepartment(parentDepartmentId, startDate, endDate));
         }
-        return ResponseEntity.ok(schemeRegularityService.getReadingSubmissionRate(lgdId, startDate, endDate));
+        return ResponseEntity.ok(schemeRegularityService.getReadingSubmissionRateByLgd(parentLgdId, startDate, endDate));
     }
 
 
