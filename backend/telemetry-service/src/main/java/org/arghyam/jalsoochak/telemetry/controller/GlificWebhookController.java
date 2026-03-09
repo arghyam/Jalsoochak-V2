@@ -7,11 +7,13 @@ import org.arghyam.jalsoochak.telemetry.dto.response.SelectionResponse;
 import org.arghyam.jalsoochak.telemetry.dto.requests.ClosingRequest;
 import org.arghyam.jalsoochak.telemetry.dto.requests.GlificWebhookRequest;
 import org.arghyam.jalsoochak.telemetry.dto.requests.IntroRequest;
+import org.arghyam.jalsoochak.telemetry.dto.requests.IssueReportRequest;
 import org.arghyam.jalsoochak.telemetry.dto.requests.ManualReadingRequest;
 import org.arghyam.jalsoochak.telemetry.dto.requests.MeterChangeRequest;
 import org.arghyam.jalsoochak.telemetry.dto.requests.SelectedChannelRequest;
 import org.arghyam.jalsoochak.telemetry.dto.requests.SelectedItemRequest;
 import org.arghyam.jalsoochak.telemetry.dto.requests.SelectedLanguageRequest;
+import org.arghyam.jalsoochak.telemetry.dto.requests.UpdatedPreviousReadingRequest;
 import org.arghyam.jalsoochak.telemetry.service.GlificWebhookService;
 import jakarta.validation.Valid;
 import org.slf4j.Logger;
@@ -206,6 +208,70 @@ public class GlificWebhookController {
         }
     }
 
+    @PostMapping("/issueReport")
+    public ResponseEntity<IntroResponse> issueReportPrompt(@RequestBody @Valid IntroRequest request) {
+        try {
+            IntroResponse response = glificWebhookService.issueReportPromptMessage(request);
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            log.error("Error preparing issue report prompt for contactId {}: {}", request.getContactId(), e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(
+                    IntroResponse.builder()
+                            .success(false)
+                            .message("Issue report prompt could not be prepared.")
+                            .build()
+            );
+        }
+    }
+
+    @PostMapping("/issueReport/submit")
+    public ResponseEntity<IntroResponse> issueReportSubmit(@RequestBody @Valid IssueReportRequest request) {
+        try {
+            IntroResponse response = glificWebhookService.issueReportSubmitMessage(request);
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            log.error("Error saving issue report for contactId {}: {}", request.getContactId(), e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(
+                    IntroResponse.builder()
+                            .success(false)
+                            .message("Issue report could not be saved.")
+                            .build()
+            );
+        }
+    }
+
+    @PostMapping("/others")
+    public ResponseEntity<IntroResponse> othersPrompt(@RequestBody @Valid IntroRequest request) {
+        try {
+            IntroResponse response = glificWebhookService.othersPromptMessage(request);
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            log.error("Error preparing others prompt for contactId {}: {}", request.getContactId(), e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(
+                    IntroResponse.builder()
+                            .success(false)
+                            .message("Others prompt could not be prepared.")
+                            .build()
+            );
+        }
+    }
+
+    @PostMapping("/others/submitted")
+    public ResponseEntity<IntroResponse> othersSubmitted(@RequestBody @Valid IssueReportRequest request) {
+        try {
+            IntroResponse response = glificWebhookService.othersSubmittedMessage(request);
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            log.error("Error saving others issue report for contactId {}: {}", request.getContactId(), e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(
+                    IntroResponse.builder()
+                            .success(false)
+                            .message("Issue report could not be saved.")
+                            .build()
+            );
+        }
+    }
+
     @PostMapping("/takemeterreading")
     public ResponseEntity<IntroResponse> takeMeterReading(@RequestBody @Valid MeterChangeRequest request) {
         try {
@@ -233,6 +299,24 @@ public class GlificWebhookController {
                     CreateReadingResponse.builder()
                             .success(false)
                             .message("Manual reading could not be saved.")
+                            .qualityStatus("REJECTED")
+                            .correlationId(request.getContactId())
+                            .build()
+            );
+        }
+    }
+
+    @PostMapping("/updatedPreviousReading")
+    public ResponseEntity<CreateReadingResponse> updatedPreviousReading(@RequestBody @Valid UpdatedPreviousReadingRequest request) {
+        try {
+            CreateReadingResponse response = glificWebhookService.updatePreviousReadingMessage(request);
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            log.error("Error updating previous day reading for contactId {}: {}", request.getContactId(), e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(
+                    CreateReadingResponse.builder()
+                            .success(false)
+                            .message("Previous day reading could not be updated.")
                             .qualityStatus("REJECTED")
                             .correlationId(request.getContactId())
                             .build()

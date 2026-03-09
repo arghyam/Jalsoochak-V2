@@ -1,0 +1,52 @@
+package org.arghyam.jalsoochak.tenant.enums;
+
+import org.arghyam.jalsoochak.tenant.dto.internal.ChannelListConfigDTO;
+import org.arghyam.jalsoochak.tenant.dto.internal.ConfigValueDTO;
+import org.arghyam.jalsoochak.tenant.dto.internal.SimpleConfigValueDTO;
+
+import lombok.Getter;
+import lombok.RequiredArgsConstructor;
+
+/**
+ * Global configuration keys for system-level platform settings.
+ * Each key declares the expected DTO class for that key.
+ * These are managed by Super Admins and serve as defaults.
+ * Implements ConfigKey sealed interface to restrict config keys to known types.
+ */
+@Getter
+@RequiredArgsConstructor
+public enum SystemConfigKeyEnum implements ConfigKey {
+
+    /**
+     * System Supported Communication Channels.
+     * Defines all channels supported at platform level (BFM, ELM, PDU, IOT, MAN).
+     * Super User can add/remove supported channels at system level.
+     */
+    SYSTEM_SUPPORTED_CHANNELS(ChannelListConfigDTO.class),
+
+    /**
+     * Water Quantity Supply Threshold.
+     * Percentage deviation from Water Norm above which supply is marked as inadequate.
+     * Managed by Super User.
+     */
+    WATER_QUANTITY_SUPPLY_THRESHOLD(SimpleConfigValueDTO.class),
+
+    /**
+     * BFM Image Reading Confidence Level Threshold.
+     * Minimum confidence level for AI Reader (FlowVision) meter readings.
+     * Readings below this threshold are marked with low confidence flag.
+     * Managed by Super User.
+     */
+    BFM_IMAGE_READING_CONFIDENCE_LEVEL_THRESHOLD(SimpleConfigValueDTO.class),
+
+    /**
+     * Location Affinity Threshold.
+     * Configurable parameter for validating whether submitted meter reading
+     * is in the vicinity of the Scheme.
+     * Managed by Super User.
+     */
+    LOCATION_AFFINITY_THRESHOLD(SimpleConfigValueDTO.class);
+
+    private final Class<? extends ConfigValueDTO> dtoClass;
+
+}

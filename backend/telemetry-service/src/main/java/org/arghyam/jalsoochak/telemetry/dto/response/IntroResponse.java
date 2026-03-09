@@ -11,6 +11,7 @@ public class IntroResponse {
     private boolean success;
     private String message;
     private String correlationId;
+    private String selected;
     private Boolean hasBfm;
     private Boolean hasElectric;
     private Boolean isBfmorIsElectrical;

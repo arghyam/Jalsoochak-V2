@@ -1,0 +1,81 @@
+package org.arghyam.jalsoochak.telemetry.service;
+
+import lombok.extern.slf4j.Slf4j;
+import org.arghyam.jalsoochak.telemetry.dto.requests.CreateReadingRequest;
+import org.arghyam.jalsoochak.telemetry.dto.requests.GlificWebhookRequest;
+import org.arghyam.jalsoochak.telemetry.dto.response.CreateReadingResponse;
+import org.arghyam.jalsoochak.telemetry.repository.TelemetryOperatorWithSchema;
+import org.arghyam.jalsoochak.telemetry.repository.TelemetryTenantRepository;
+import org.springframework.stereotype.Service;
+
+@Service
+@Slf4j
+public class GlificImageWorkflowService {
+
+    private final GlificMediaService glificMediaService;
+    private final BfmReadingService bfmReadingService;
+    private final TelemetryTenantRepository telemetryTenantRepository;
+    private final GlificOperatorContextService operatorContextService;
+    private final GlificLocalizationService localizationService;
+
+    public GlificImageWorkflowService(GlificMediaService glificMediaService,
+                                      BfmReadingService bfmReadingService,
+                                      TelemetryTenantRepository telemetryTenantRepository,
+                                      GlificOperatorContextService operatorContextService,
+                                      GlificLocalizationService localizationService) {
+        this.glificMediaService = glificMediaService;
+        this.bfmReadingService = bfmReadingService;
+        this.telemetryTenantRepository = telemetryTenantRepository;
+        this.operatorContextService = operatorContextService;
+        this.localizationService = localizationService;
+    }
+
+    public CreateReadingResponse processImage(GlificWebhookRequest glificWebhookRequest) {
+        try {
+            String contactId = glificWebhookRequest.getContactId();
+            String mediaId = glificWebhookRequest.getMediaId();
+            String mediaUrl = glificWebhookRequest.getMediaUrl();
+
+            byte[] imageBytes = glificMediaService.downloadImage(mediaId, mediaUrl);
+            log.debug("Downloaded image for contactId {} (bytes={})", contactId, imageBytes.length);
+
+            String imageStorageUrl = glificMediaService.uploadImage(contactId, imageBytes);
+
+            TelemetryOperatorWithSchema operatorWithSchema = operatorContextService.resolveOperatorWithSchema(contactId);
+            String languageKey = localizationService.normalizeLanguageKey(
+                    operatorContextService.resolveOperatorLanguage(operatorWithSchema, operatorWithSchema.operator().tenantId())
+            );
+
+            Long schemeId = telemetryTenantRepository
+                    .findFirstSchemeForUser(operatorWithSchema.schemaName(), operatorWithSchema.operator().id())
+                    .orElseThrow(() -> new IllegalStateException("Operator is not mapped to any scheme"));
+
+            CreateReadingRequest createReadingRequest = CreateReadingRequest.builder()
+                    .schemeId(schemeId)
+                    .operatorId(operatorWithSchema.operator().id())
+                    .readingUrl(imageStorageUrl)
+                    .readingValue(null)
+                    .readingTime(null)
+                    .build();
+
+            CreateReadingResponse response = bfmReadingService.createReading(
+                    createReadingRequest,
+                    operatorWithSchema.schemaName(),
+                    operatorWithSchema.operator(),
+                    contactId
+            );
+            response.setMessage(localizationService.localizeMessage(response.getMessage(), languageKey));
+            return response;
+        } catch (Exception e) {
+            log.error("Unexpected error processing image for contactId {}: {}", glificWebhookRequest.getContactId(), e.getMessage(), e);
+            String languageKey = localizationService.resolveLanguageKeyForContact(glificWebhookRequest.getContactId());
+            String descriptiveMessage = localizationService.resolveUserFacingErrorMessage(e, "Image could not be processed.", languageKey);
+            return CreateReadingResponse.builder()
+                    .success(false)
+                    .message(descriptiveMessage)
+                    .qualityStatus("REJECTED")
+                    .correlationId(glificWebhookRequest.getContactId())
+                    .build();
+        }
+    }
+}

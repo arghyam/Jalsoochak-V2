@@ -2,22 +2,30 @@ server:
   port: 8081
 
 spring:
+  config:
+    import: optional:file:./tenant-service/.env[.properties],optional:file:.env[.properties]
+
   application:
     name: tenant-service
 
   datasource:
-    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/jalsoochak_db}?stringtype=unspecified
-    username: ${SPRING_DATASOURCE_USERNAME:postgres}
-    password: ${SPRING_DATASOURCE_PASSWORD:Zaqwsx@1123}
+    url: ${SPRING_DATASOURCE_URL}
+    username: ${SPRING_DATASOURCE_USERNAME}
+    password: ${SPRING_DATASOURCE_PASSWORD}
     driver-class-name: org.postgresql.Driver
     hikari:
       maximum-pool-size: 10
       minimum-idle: 2
       connection-timeout: 30000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+      leak-detection-threshold: 30000
       initialization-fail-timeout: -1
+      connection-init-sql: SET search_path TO common_schema, public
 
   flyway:
     enabled: true
+    baseline-version: 0
     locations: classpath:db/migration
     baseline-on-migrate: true
     default-schema: common_schema
@@ -32,11 +40,25 @@ spring:
         dialect: org.hibernate.dialect.PostgreSQLDialect
         default_schema: common_schema
 
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      database: ${REDIS_DATABASE:0}
+
   kafka:
     bootstrap-servers: localhost:9092
     consumer:
       group-id: tenant-service-group
       auto-offset-reset: earliest
+      enable-auto-commit: false
+      max-poll-records: 50
+      properties:
+        session.timeout.ms: 30000
+        heartbeat.interval.ms: 10000
+        max.poll.interval.ms: 600000
+        fetch.max.wait.ms: 500
 
 eureka:
   client:
@@ -58,8 +80,79 @@ management:
       exposure:
         include: "*"
 
+# ────────────────────────────────────────────────────────────── # Nudge & Escalation Scheduler Configuration # ──────────────────────────────────────────────────────────────
+# Fallback defaults used when a tenant has no row in tenant_config_master_table
+nudge:
+  schedule:
+    hour: 18
+    minute: 00
+escalation:
+  schedule:
+    hour: 18
+    minute: 00
+  level1:
+    threshold:
+      days: 3 # Days of missed uploads before level-1 officer is notified
+    officer:
+      user_type: SECTION_OFFICER
+  level2:
+    threshold:
+      days: 7 # Days before level-2 officer is notified
+    officer:
+      user_type: DISTRICT_OFFICER
 logging:
   file:
     name: ${LOG_FILE_PATH:../logger/logs/backend-services.log}
   pattern:
     level: "service=${spring.application.name} %5p"
+
+tenant:
+  defaults:
+    lgd-location-hierarchy:
+      - level: 1
+        level-name:
+          - title: "State"
+      - level: 2
+        level-name:
+          - title: "District"
+      - level: 3
+        level-name:
+          - title: "Block"
+      - level: 4
+        level-name:
+          - title: "Panchayat"
+      - level: 5
+        level-name:
+          - title: "Village"
+    dept-location-hierarchy:
+      - level: 1
+        level-name:
+          - title: "State"
+      - level: 2
+        level-name:
+          - title: "Zone"
+      - level: 3
+        level-name:
+          - title: "Circle"
+      - level: 4
+        level-name:
+          - title: "Division"
+      - level: 5
+        level-name:
+          - title: "Sub-division"
+    meter-change-reasons:
+      - id: "METER_REPLACED"
+        name: "Meter Replaced"
+        sequence-order: 1
+        is-default: true
+        editable: true
+      - id: "METER_NOT_WORKING"
+        name: "Meter Not Working"
+        sequence-order: 2
+        is-default: true
+        editable: true
+      - id: "METER_DAMAGED"
+        name: "Meter Damaged"
+        sequence-order: 3
+        is-default: true
+        editable: true
