@@ -240,6 +240,38 @@ public class GlificWebhookController {
         }
     }
 
+    @PostMapping("/issueReport/telemetry")
+    public ResponseEntity<IntroResponse> issueReportTelemetryPrompt(@RequestBody @Valid IntroRequest request) {
+        try {
+            IntroResponse response = glificWebhookService.issueReportTelemetryPromptMessage(request);
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            log.error("Error preparing telemetry issue report prompt for contactId {}: {}", request.getContactId(), e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(
+                    IntroResponse.builder()
+                            .success(false)
+                            .message("Issue report prompt could not be prepared.")
+                            .build()
+            );
+        }
+    }
+
+    @PostMapping("/issueReport/telemetry/submit")
+    public ResponseEntity<IntroResponse> issueReportTelemetrySubmit(@RequestBody @Valid IssueReportRequest request) {
+        try {
+            IntroResponse response = glificWebhookService.issueReportTelemetrySubmitMessage(request);
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            log.error("Error saving telemetry issue report for contactId {}: {}", request.getContactId(), e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(
+                    IntroResponse.builder()
+                            .success(false)
+                            .message("Issue report could not be saved.")
+                            .build()
+            );
+        }
+    }
+
     @PostMapping("/others")
     public ResponseEntity<IntroResponse> othersPrompt(@RequestBody @Valid IntroRequest request) {
         try {
