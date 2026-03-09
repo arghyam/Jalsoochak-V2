@@ -67,7 +67,7 @@ jobs:
   Deployment:
     needs: Docker-Image-Build
     if: github.ref == 'refs/heads/dev'
-    uses: arghyam/JalsoochakV2-Devops/.github/workflows/deploy.yaml@dev
+    uses: arghyam/JalSoochak-DevOps/.github/workflows/deploy.yaml@dev
     with:
       service_name: servicediscovery
       image_tag: ${{ github.sha }}
