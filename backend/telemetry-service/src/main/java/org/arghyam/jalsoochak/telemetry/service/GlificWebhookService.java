@@ -90,6 +90,14 @@ public class GlificWebhookService {
         return meterWorkflowService.issueReportSubmitMessage(request);
     }
 
+    public IntroResponse issueReportTelemetryPromptMessage(IntroRequest request) {
+        return meterWorkflowService.issueReportTelemetryPromptMessage(request);
+    }
+
+    public IntroResponse issueReportTelemetrySubmitMessage(IssueReportRequest request) {
+        return meterWorkflowService.issueReportTelemetrySubmitMessage(request);
+    }
+
     public IntroResponse othersPromptMessage(IntroRequest request) {
         return meterWorkflowService.othersPromptMessage(request);
     }

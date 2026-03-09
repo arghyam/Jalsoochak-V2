@@ -62,6 +62,24 @@ public class GlificMeterWorkflowService {
             "incorrectReadingEnteredPreviously",
             "others"
     );
+    private static final List<String> TELEMETRY_ISSUE_REASONS = List.of(
+            "Meter Replaced",
+            "Meter not working",
+            "Meter Damaged",
+            "Others"
+    );
+    private static final List<String> TELEMETRY_ISSUE_REASONS_HINDI = List.of(
+            "मीटर बदला गया",
+            "मीटर काम नहीं कर रहा",
+            "मीटर खराब है",
+            "अन्य"
+    );
+    private static final List<String> TELEMETRY_ISSUE_REASON_SELECTION_KEYS = List.of(
+            "meterReplaced",
+            "meterNotWorking",
+            "meterDamaged",
+            "others"
+    );
 
     private final GlificOperatorContextService operatorContextService;
     private final GlificLocalizationService localizationService;
@@ -256,7 +274,7 @@ public class GlificMeterWorkflowService {
             }
             String rawIssueReason = request.getIssueReason().trim();
             String resolvedIssueReason = resolveSelection(rawIssueReason, reasons).orElse(rawIssueReason);
-            String selectedKey = resolveIssueSelectionKey(rawIssueReason, resolvedIssueReason, reasons);
+            String selectedKey = resolveIssueSelectionKey(rawIssueReason, resolvedIssueReason, reasons, DEFAULT_ISSUE_REASON_SELECTION_KEYS);
 
             Long schemeId = telemetryTenantRepository
                     .findFirstSchemeForUser(operatorWithSchema.schemaName(), operatorWithSchema.operator().id())
@@ -322,6 +340,111 @@ public class GlificMeterWorkflowService {
             return IntroResponse.builder()
                     .success(false)
                     .message("Others prompt could not be prepared.")
+                    .build();
+        }
+    }
+
+    public IntroResponse issueReportTelemetryPromptMessage(IntroRequest request) {
+        try {
+            if (request.getContactId() == null || request.getContactId().isBlank()) {
+                throw new IllegalStateException("contactId is required");
+            }
+
+            TelemetryOperatorWithSchema operatorWithSchema = operatorContextService.resolveOperatorWithSchema(request.getContactId());
+            Integer tenantId = operatorWithSchema.operator().tenantId();
+            if (tenantId == null) {
+                throw new IllegalStateException("Operator tenant could not be resolved");
+            }
+
+            String languageKey = localizationService.normalizeLanguageKey(
+                    operatorContextService.resolveOperatorLanguage(operatorWithSchema, tenantId)
+            );
+
+            String prompt = "hindi".equals(languageKey) ? DEFAULT_ISSUE_PROMPT_HINDI : DEFAULT_ISSUE_PROMPT_ENGLISH;
+            List<String> reasons = "hindi".equals(languageKey) ? TELEMETRY_ISSUE_REASONS_HINDI : TELEMETRY_ISSUE_REASONS;
+
+            StringBuilder message = new StringBuilder(prompt.trim());
+            for (int i = 0; i < reasons.size(); i++) {
+                message.append("\n")
+                        .append(i + 1)
+                        .append(". ")
+                        .append(reasons.get(i));
+            }
+
+            return IntroResponse.builder()
+                    .success(true)
+                    .message(message.toString())
+                    .build();
+        } catch (Exception e) {
+            log.error("Error preparing telemetry issue report prompt for contactId {}: {}", request.getContactId(), e.getMessage(), e);
+            return IntroResponse.builder()
+                    .success(false)
+                    .message("Issue report prompt could not be prepared.")
+                    .build();
+        }
+    }
+
+    public IntroResponse issueReportTelemetrySubmitMessage(IssueReportRequest request) {
+        try {
+            if (request.getContactId() == null || request.getContactId().isBlank()) {
+                throw new IllegalStateException("contactId is required");
+            }
+            if (request.getIssueReason() == null || request.getIssueReason().isBlank()) {
+                throw new IllegalStateException("issueReason is required");
+            }
+
+            TelemetryOperatorWithSchema operatorWithSchema = operatorContextService.resolveOperatorWithSchema(request.getContactId());
+            Integer tenantId = operatorWithSchema.operator().tenantId();
+            if (tenantId == null) {
+                throw new IllegalStateException("Operator tenant could not be resolved");
+            }
+            String languageKey = localizationService.normalizeLanguageKey(
+                    operatorContextService.resolveOperatorLanguage(operatorWithSchema, tenantId)
+            );
+
+            List<String> reasons = "hindi".equals(languageKey) ? TELEMETRY_ISSUE_REASONS_HINDI : TELEMETRY_ISSUE_REASONS;
+            String rawIssueReason = request.getIssueReason().trim();
+            String resolvedIssueReason = resolveSelection(rawIssueReason, reasons).orElse(rawIssueReason);
+            String selectedKey = resolveIssueSelectionKey(
+                    rawIssueReason,
+                    resolvedIssueReason,
+                    reasons,
+                    TELEMETRY_ISSUE_REASON_SELECTION_KEYS
+            );
+
+            Long schemeId = telemetryTenantRepository
+                    .findFirstSchemeForUser(operatorWithSchema.schemaName(), operatorWithSchema.operator().id())
+                    .orElseThrow(() -> new IllegalStateException("Operator is not mapped to any scheme"));
+
+            String correlationId = "issue-report-" + UUID.randomUUID();
+            telemetryTenantRepository.createIssueReportRecord(
+                    operatorWithSchema.schemaName(),
+                    schemeId,
+                    operatorWithSchema.operator().id(),
+                    LocalDateTime.now(),
+                    correlationId,
+                    resolvedIssueReason
+            );
+
+            String fallbackMessage = "Issue reported. Thank you.";
+            if ("hindi".equals(languageKey)) {
+                fallbackMessage = "समस्या रिपोर्ट हो गई है। धन्यवाद।";
+            }
+
+            String message = tenantConfigRepository.findIssueReportConfirmationTemplate(tenantId, languageKey)
+                    .orElse(fallbackMessage);
+
+            return IntroResponse.builder()
+                    .success(true)
+                    .message(message)
+                    .correlationId(correlationId)
+                    .selected(selectedKey)
+                    .build();
+        } catch (Exception e) {
+            log.error("Error saving telemetry issue report for contactId {}: {}", request.getContactId(), e.getMessage(), e);
+            return IntroResponse.builder()
+                    .success(false)
+                    .message("Issue report could not be saved.")
                     .build();
         }
     }
@@ -652,12 +775,15 @@ public class GlificMeterWorkflowService {
         return options.stream().filter(v -> v.equalsIgnoreCase(value)).findFirst();
     }
 
-    private String resolveIssueSelectionKey(String rawIssueReason, String resolvedIssueReason, List<String> reasons) {
+    private String resolveIssueSelectionKey(String rawIssueReason,
+                                            String resolvedIssueReason,
+                                            List<String> reasons,
+                                            List<String> selectionKeys) {
         String raw = rawIssueReason == null ? "" : rawIssueReason.trim();
         Integer index = parseSelectionIndex(raw, reasons.size());
         if (index != null) {
-            if (index >= 0 && index < DEFAULT_ISSUE_REASON_SELECTION_KEYS.size()) {
-                return DEFAULT_ISSUE_REASON_SELECTION_KEYS.get(index);
+            if (index >= 0 && index < selectionKeys.size()) {
+                return selectionKeys.get(index);
             }
             if (index >= 0 && index < reasons.size()) {
                 return toLowerCamelToken(reasons.get(index));
@@ -666,8 +792,8 @@ public class GlificMeterWorkflowService {
 
         for (int i = 0; i < reasons.size(); i++) {
             if (reasons.get(i).equalsIgnoreCase(resolvedIssueReason)) {
-                if (i < DEFAULT_ISSUE_REASON_SELECTION_KEYS.size()) {
-                    return DEFAULT_ISSUE_REASON_SELECTION_KEYS.get(i);
+                if (i < selectionKeys.size()) {
+                    return selectionKeys.get(i);
                 }
                 return toLowerCamelToken(resolvedIssueReason);
             }
