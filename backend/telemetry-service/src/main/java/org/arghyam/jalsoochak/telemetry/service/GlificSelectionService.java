@@ -277,14 +277,14 @@ public class GlificSelectionService {
             if (itemOptions.isEmpty()) {
                 throw new IllegalStateException("No item options configured. Add item_1/item_2... or language-specific keys.");
             }
-            List<String> visibleItemOptions = applyItemVisibilityRules(tenantId, languageKey, itemOptions);
+            List<VisibleItemOption> visibleItemOptions = buildVisibleItemOptions(tenantId, languageKey, itemOptions);
 
             StringBuilder message = new StringBuilder(prompt.trim());
             for (int i = 0; i < visibleItemOptions.size(); i++) {
                 message.append("\n")
                         .append(i + 1)
                         .append(". ")
-                        .append(visibleItemOptions.get(i));
+                        .append(visibleItemOptions.get(i).label());
             }
 
             return IntroResponse.builder()
@@ -321,12 +321,16 @@ public class GlificSelectionService {
             if (itemOptions.isEmpty()) {
                 throw new IllegalStateException("No item options configured for tenant");
             }
-            List<String> visibleItemOptions = applyItemVisibilityRules(tenantId, languageKey, itemOptions);
+            List<VisibleItemOption> visibleItemOptions = buildVisibleItemOptions(tenantId, languageKey, itemOptions);
 
-            String selectedItemLabel = resolveSelection(request.getChannel(), visibleItemOptions)
-                    .orElseThrow(() -> new IllegalStateException("Invalid item selection"));
+            int selectedIndex = resolveSelectionIndex(
+                    request.getChannel(),
+                    visibleItemOptions.stream().map(VisibleItemOption::label).toList()
+            ).orElseThrow(() -> new IllegalStateException("Invalid item selection"));
 
-            String selectedCode = toItemCode(selectedItemLabel, itemOptions);
+            VisibleItemOption selectedItem = visibleItemOptions.get(selectedIndex);
+            String selectedItemLabel = selectedItem.label();
+            String selectedCode = selectedItem.code();
 
             String template = tenantConfigRepository
                     .findConfigValue(tenantId, "item_selection_confirmation_template_" + languageKey)
@@ -354,6 +358,10 @@ public class GlificSelectionService {
     }
 
     private Optional<String> resolveSelection(String rawSelection, List<String> options) {
+        return resolveSelectionIndex(rawSelection, options).map(index -> options.get(index));
+    }
+
+    private Optional<Integer> resolveSelectionIndex(String rawSelection, List<String> options) {
         String value = rawSelection.trim();
         int digitEnd = 0;
         while (digitEnd < value.length() && Character.isDigit(value.charAt(digitEnd))) {
@@ -362,10 +370,15 @@ public class GlificSelectionService {
         if (digitEnd > 0) {
             int index = Integer.parseInt(value.substring(0, digitEnd));
             if (index >= 1 && index <= options.size()) {
-                return Optional.of(options.get(index - 1));
+                return Optional.of(index - 1);
             }
         }
-        return options.stream().filter(v -> v.equalsIgnoreCase(value)).findFirst();
+        for (int i = 0; i < options.size(); i++) {
+            if (options.get(i).equalsIgnoreCase(value)) {
+                return Optional.of(i);
+            }
+        }
+        return Optional.empty();
     }
 
     private String toWords(int number) {
@@ -463,16 +476,16 @@ public class GlificSelectionService {
         };
     }
 
-    private List<String> applyItemVisibilityRules(Integer tenantId,
-                                                  String languageKey,
-                                                  List<String> itemOptions) {
+    private List<VisibleItemOption> buildVisibleItemOptions(Integer tenantId,
+                                                            String languageKey,
+                                                            List<String> itemOptions) {
         List<String> channelOptions = tenantConfigRepository.findChannelOptions(tenantId, languageKey);
         boolean showChannelChange = channelOptions.size() > 1;
 
         List<String> languageOptions = tenantConfigRepository.findLanguageOptions(tenantId);
         boolean showLanguageChange = languageOptions.size() > 1;
 
-        List<String> filtered = new ArrayList<>();
+        List<VisibleItemOption> filtered = new ArrayList<>();
         for (String option : itemOptions) {
             String itemCode = toItemCode(option, itemOptions);
             if ("channelChange".equals(itemCode) && !showChannelChange) {
@@ -481,13 +494,20 @@ public class GlificSelectionService {
             if ("languageChange".equals(itemCode) && !showLanguageChange) {
                 continue;
             }
+            String displayLabel = option;
             if ("reportIssue".equals(itemCode)) {
-                filtered.add(normalizeIssueReportLabel(option, languageKey));
-                continue;
+                displayLabel = normalizeIssueReportLabel(option, languageKey);
             }
-            filtered.add(option);
+            filtered.add(new VisibleItemOption(displayLabel, itemCode));
         }
-        return filtered.isEmpty() ? itemOptions : filtered;
+        if (filtered.isEmpty()) {
+            List<VisibleItemOption> fallback = new ArrayList<>();
+            for (String option : itemOptions) {
+                fallback.add(new VisibleItemOption(option, toItemCode(option, itemOptions)));
+            }
+            return fallback;
+        }
+        return filtered;
     }
 
     private String normalizeIssueReportLabel(String option, String languageKey) {
@@ -521,5 +541,8 @@ public class GlificSelectionService {
         }
         String normalized = channelOption.toLowerCase().replaceAll("[^a-z0-9]+", "");
         return normalized.contains("electric");
+    }
+
+    private record VisibleItemOption(String label, String code) {
     }
 }
