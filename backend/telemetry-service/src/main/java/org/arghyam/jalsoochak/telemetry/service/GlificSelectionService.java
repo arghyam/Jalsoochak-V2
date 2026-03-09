@@ -469,9 +469,9 @@ public class GlificSelectionService {
         }
         return switch (index) {
             case 1 -> "readingSubmission";
-            case 2 -> "channelChange";
-            case 3 -> "reportIssue";
-            case 4 -> "languageChange";
+            case 2 -> "reportIssue";
+            case 3 -> "languageChange";
+            case 4 -> "channelChange";
             default -> localizationService.normalizeLanguageKey(selectedItemLabel);
         };
     }
