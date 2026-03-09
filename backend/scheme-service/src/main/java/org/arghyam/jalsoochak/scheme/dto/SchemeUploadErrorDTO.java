@@ -9,9 +9,8 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class SampleDTO {
-
-    private Long id;
-    private String schemeName;
-    private String schemeCode;
+public class SchemeUploadErrorDTO {
+    private Integer rowNumber;
+    private String field;
+    private String message;
 }
