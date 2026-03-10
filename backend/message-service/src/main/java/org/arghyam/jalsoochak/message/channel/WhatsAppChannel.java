@@ -75,8 +75,8 @@ public class WhatsAppChannel implements NotificationChannel {
      * The flow (configured in Glific) sends the HSM template with interactive buttons
      * and handles subsequent button-response interactions.
      *
-     * <p>Use this as the preferred nudge path when interactive buttons are needed.
-     * Fall back to {@link #sendNudge} if {@code glific.flow.nudge-id} is not set.</p>
+     * <p>Requires {`@code` glific.flow.nudge-id} to be configured. Returns {`@code` false}
+     * if the flow initiation fails for any reason.</p>
      *
      * @param phone        recipient WhatsApp phone number (E.164 format)
      * @param operatorName operator name passed as flow variable {@code operator_name}

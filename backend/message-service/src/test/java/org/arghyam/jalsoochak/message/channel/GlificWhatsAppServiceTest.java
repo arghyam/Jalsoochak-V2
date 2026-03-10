@@ -44,6 +44,7 @@ class GlificWhatsAppServiceTest {
 
     @BeforeEach
     void setUp() {
+        ReflectionTestUtils.setField(service, "objectMapper", mapper);
         ReflectionTestUtils.setField(service, "nudgeTemplateId", "nudge-tmpl-1");
         ReflectionTestUtils.setField(service, "nudgeFlowId", "flow-123");
         ReflectionTestUtils.setField(service, "escalationTemplateId", "2");   // must be numeric for Integer.parseInt

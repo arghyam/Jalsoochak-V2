@@ -215,14 +215,9 @@ public class GlificWhatsAppService {
                 "contactId", contactId,
                 "defaultResults", defaultResults));
 
+        checkErrors(response, "startContactFlow");
         JsonNode flowNode = response.path("startContactFlow");
-        if (flowNode.isMissingNode() || flowNode.isNull()) {
-            throw new RuntimeException("Glific GraphQL response missing key: startContactFlow");
-        }
-        JsonNode errors = flowNode.path("errors");
-        if (errors.isArray() && !errors.isEmpty()) {
-            throw new RuntimeException("Glific startContactFlow error: " + errors);
-        }
+
         boolean success = flowNode.path("success").asBoolean(false);
         if (!success) {
             throw new RuntimeException("Glific startContactFlow returned success=false for contactId=" + contactId);
