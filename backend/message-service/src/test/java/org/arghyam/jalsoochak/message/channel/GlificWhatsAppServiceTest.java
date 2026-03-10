@@ -44,7 +44,9 @@ class GlificWhatsAppServiceTest {
 
     @BeforeEach
     void setUp() {
+        ReflectionTestUtils.setField(service, "objectMapper", mapper);
         ReflectionTestUtils.setField(service, "nudgeTemplateId", "nudge-tmpl-1");
+        ReflectionTestUtils.setField(service, "nudgeFlowId", "flow-123");
         ReflectionTestUtils.setField(service, "escalationTemplateId", "2");   // must be numeric for Integer.parseInt
         ReflectionTestUtils.setField(service, "escalationCaption", "Escalations");
         ReflectionTestUtils.setField(service, "escalationThumbnail", "");
@@ -200,6 +202,76 @@ class GlificWhatsAppServiceTest {
         assertThat(input.get("mediaId")).isEqualTo(1);   // Integer.parseInt("1")
         assertThat(input.get("isHsm")).isEqualTo(true);
         assertThat((List<?>) input.get("params")).isEmpty();
+    }
+
+    // ──────────────────────── startNudgeFlow ───────────────────────────────────
+
+    @Test
+    void startNudgeFlow_callsStartContactFlowMutation_withFlowIdAndContactId() throws Exception {
+        JsonNode response = mapper.readTree("""
+                {"startContactFlow":{"success":true,"errors":[]}}
+                """);
+        when(client.execute(contains("startContactFlow"), anyMap())).thenReturn(response);
+
+        service.startNudgeFlow(42L, "Ramesh", "06 March 2026");
+
+        ArgumentCaptor<Map<String, Object>> varsCaptor = varsCaptor();
+        verify(client).execute(contains("startContactFlow"), varsCaptor.capture());
+
+        Map<String, Object> vars = varsCaptor.getValue();
+        assertThat(vars.get("flowId")).isEqualTo("flow-123");
+        assertThat(vars.get("contactId")).isEqualTo(42L);
+    }
+
+    @Test
+    void startNudgeFlow_passesDefaultResults_withOperatorNameAndDate() throws Exception {
+        JsonNode response = mapper.readTree("""
+                {"startContactFlow":{"success":true,"errors":[]}}
+                """);
+        when(client.execute(contains("startContactFlow"), anyMap())).thenReturn(response);
+
+        service.startNudgeFlow(42L, "Ramesh", "06 March 2026");
+
+        ArgumentCaptor<Map<String, Object>> varsCaptor = varsCaptor();
+        verify(client).execute(contains("startContactFlow"), varsCaptor.capture());
+
+        String defaultResults = (String) varsCaptor.getValue().get("defaultResults");
+        JsonNode parsed = mapper.readTree(defaultResults);
+        assertThat(parsed.get("1").asText()).isEqualTo("Ramesh");
+        assertThat(parsed.get("2").asText()).isEqualTo("06 March 2026");
+    }
+
+    @Test
+    void startNudgeFlow_throwsIllegalState_whenFlowIdNotConfigured() {
+        ReflectionTestUtils.setField(service, "nudgeFlowId", "");
+
+        assertThatThrownBy(() -> service.startNudgeFlow(42L, "Ramesh", "06 March 2026"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("glific.flow.nudge-id");
+    }
+
+    @Test
+    void startNudgeFlow_throwsException_whenGlificReturnsErrors() throws Exception {
+        JsonNode response = mapper.readTree("""
+                {"startContactFlow":{"success":false,"errors":[{"key":"flow","message":"not found"}]}}
+                """);
+        when(client.execute(contains("startContactFlow"), anyMap())).thenReturn(response);
+
+        assertThatThrownBy(() -> service.startNudgeFlow(42L, "Ramesh", "06 March 2026"))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessageContaining("startContactFlow");
+    }
+
+    @Test
+    void startNudgeFlow_throwsException_whenSuccessIsFalse() throws Exception {
+        JsonNode response = mapper.readTree("""
+                {"startContactFlow":{"success":false,"errors":[]}}
+                """);
+        when(client.execute(contains("startContactFlow"), anyMap())).thenReturn(response);
+
+        assertThatThrownBy(() -> service.startNudgeFlow(42L, "Ramesh", "06 March 2026"))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessageContaining("success=false");
     }
 
     // ──────────────────────── GraphQL error handling ────────────────────────────
