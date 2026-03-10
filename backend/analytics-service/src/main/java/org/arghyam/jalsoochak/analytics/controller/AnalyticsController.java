@@ -161,7 +161,7 @@ public class AnalyticsController {
     }
 
     @GetMapping("/water-quantity/periodic")
-    @Operation(summary = "Get periodic average water quantity and household count for an LGD code or department")
+    @Operation(summary = "Get periodic average water quantity and household count for an LGD ID or department")
     public ResponseEntity<PeriodicWaterQuantityResponse> getPeriodicWaterQuantity(
             @RequestParam(name = "start_date") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
             @RequestParam(name = "end_date") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
@@ -170,26 +170,6 @@ public class AnalyticsController {
                     required = true,
                     schema = @Schema(type = "string", allowableValues = {"day", "week", "month"}))
             @RequestParam(name = "scale") String scale,
-            @RequestParam(name = "lgd_code", required = false) String lgdCode,
-            @RequestParam(name = "department_id", required = false) Integer departmentId) {
-        if (lgdCode != null && departmentId != null) {
-            throw new IllegalArgumentException("Provide either lgd_code or department_id, not both");
-        }
-        if (lgdCode == null && departmentId == null) {
-            throw new IllegalArgumentException("Provide either lgd_code or department_id");
-        }
-        PeriodScale periodScale = PeriodScale.fromValue(scale);
-        if (lgdCode != null) {
-            return ResponseEntity.ok(
-                    schemeRegularityService.getPeriodicWaterQuantityByLgdCode(lgdCode, startDate, endDate, periodScale));
-        }
-        return ResponseEntity.ok(
-                schemeRegularityService.getPeriodicWaterQuantityByDepartment(departmentId, startDate, endDate, periodScale));
-    }
-
-    @GetMapping("/outage-reasons")
-    @Operation(summary = "Get outage reason wise scheme count for an LGD or department area")
-    public ResponseEntity<OutageReasonSchemeCountResponse> getOutageReasonWiseSchemeCount(
             @RequestParam(name = "lgd_id", required = false) Integer lgdId,
             @RequestParam(name = "department_id", required = false) Integer departmentId) {
         if (lgdId != null && departmentId != null) {
@@ -198,10 +178,34 @@ public class AnalyticsController {
         if (lgdId == null && departmentId == null) {
             throw new IllegalArgumentException("Provide either lgd_id or department_id");
         }
+        PeriodScale periodScale = PeriodScale.fromValue(scale);
         if (lgdId != null) {
-            return ResponseEntity.ok(schemeRegularityService.getOutageReasonSchemeCountByLgd(lgdId));
+            return ResponseEntity.ok(
+                    schemeRegularityService.getPeriodicWaterQuantityByLgdId(lgdId, startDate, endDate, periodScale));
         }
-        return ResponseEntity.ok(schemeRegularityService.getOutageReasonSchemeCountByDepartment(departmentId));
+        return ResponseEntity.ok(
+                schemeRegularityService.getPeriodicWaterQuantityByDepartment(departmentId, startDate, endDate, periodScale));
+    }
+
+    @GetMapping("/outage-reasons")
+    @Operation(summary = "Get outage reason wise scheme count for an LGD or department area")
+    public ResponseEntity<OutageReasonSchemeCountResponse> getOutageReasonWiseSchemeCount(
+            @RequestParam(name = "start_date") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam(name = "end_date") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
+            @RequestParam(name = "parent_lgd_id", required = false) Integer parentLgdId,
+            @RequestParam(name = "parent_department_id", required = false) Integer parentDepartmentId) {
+        if (parentLgdId != null && parentDepartmentId != null) {
+            throw new IllegalArgumentException("Provide either parent_lgd_id or parent_department_id, not both");
+        }
+        if (parentLgdId == null && parentDepartmentId == null) {
+            throw new IllegalArgumentException("Provide either parent_lgd_id or parent_department_id");
+        }
+        if (parentLgdId != null) {
+            return ResponseEntity.ok(
+                    schemeRegularityService.getOutageReasonSchemeCountByLgd(parentLgdId, startDate, endDate));
+        }
+        return ResponseEntity.ok(
+                schemeRegularityService.getOutageReasonSchemeCountByDepartment(parentDepartmentId, startDate, endDate));
     }
 
     @GetMapping("/schemes/status-count")

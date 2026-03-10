@@ -15,7 +15,7 @@ import java.util.List;
 @AllArgsConstructor
 public class PeriodicWaterQuantityResponse {
 
-    private String lgdCode;
+    private Integer lgdId;
     private Integer departmentId;
     private String scale;
     private LocalDate startDate;
@@ -30,7 +30,6 @@ public class PeriodicWaterQuantityResponse {
     public static class PeriodicMetric {
         private LocalDate periodStartDate;
         private LocalDate periodEndDate;
-        private String periodLabel;
         private BigDecimal averageWaterQuantity;
         private Integer householdCount;
     }

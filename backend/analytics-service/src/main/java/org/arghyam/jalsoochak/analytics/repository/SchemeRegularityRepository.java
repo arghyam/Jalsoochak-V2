@@ -492,7 +492,8 @@ public class SchemeRegularityRepository {
                 endDate);
     }
 
-    public List<OutageReasonSchemeCount> getOutageReasonSchemeCountByLgd(Integer lgdId) {
+    public List<OutageReasonSchemeCount> getOutageReasonSchemeCountByLgd(
+            Integer lgdId, LocalDate startDate, LocalDate endDate) {
         Integer lgdLevel = getLgdLevel(lgdId);
         if (lgdLevel == null) {
             throw new IllegalArgumentException("lgd_id not found in dim_lgd_location_table: " + lgdId);
@@ -512,6 +513,7 @@ public class SchemeRegularityRepository {
                 JOIN schemes_in_lgd sl
                     ON sl.scheme_id = f.scheme_id
                 WHERE f.outage_reason IS NOT NULL
+                  AND f.date BETWEEN ? AND ?
                 GROUP BY f.outage_reason
                 ORDER BY f.outage_reason
                 """, schemeLgdColumn);
@@ -521,10 +523,13 @@ public class SchemeRegularityRepository {
                 (rs, rowNum) -> new OutageReasonSchemeCount(
                         (Integer) rs.getObject("outage_reason"),
                         rs.getInt("scheme_count")),
-                lgdId);
+                lgdId,
+                startDate,
+                endDate);
     }
 
-    public List<OutageReasonSchemeCount> getOutageReasonSchemeCountByDepartment(Integer departmentId) {
+    public List<OutageReasonSchemeCount> getOutageReasonSchemeCountByDepartment(
+            Integer departmentId, LocalDate startDate, LocalDate endDate) {
         Integer departmentLevel = getDepartmentLevel(departmentId);
         if (departmentLevel == null) {
             throw new IllegalArgumentException("department_id not found in dim_department_location_table: " + departmentId);
@@ -544,6 +549,7 @@ public class SchemeRegularityRepository {
                 JOIN schemes_in_department sd
                     ON sd.scheme_id = f.scheme_id
                 WHERE f.outage_reason IS NOT NULL
+                  AND f.date BETWEEN ? AND ?
                 GROUP BY f.outage_reason
                 ORDER BY f.outage_reason
                 """, schemeDepartmentColumn);
@@ -553,7 +559,9 @@ public class SchemeRegularityRepository {
                 (rs, rowNum) -> new OutageReasonSchemeCount(
                         (Integer) rs.getObject("outage_reason"),
                         rs.getInt("scheme_count")),
-                departmentId);
+                departmentId,
+                startDate,
+                endDate);
     }
 
     public List<ChildRegionRef> getChildRegionsByLgd(Integer lgdId) {
@@ -614,7 +622,8 @@ public class SchemeRegularityRepository {
                 departmentId);
     }
 
-    public List<ChildRegionOutageReasonSchemeCount> getChildOutageReasonSchemeCountByLgd(Integer lgdId) {
+    public List<ChildRegionOutageReasonSchemeCount> getChildOutageReasonSchemeCountByLgd(
+            Integer lgdId, LocalDate startDate, LocalDate endDate) {
         Integer lgdLevel = getLgdLevel(lgdId);
         if (lgdLevel == null) {
             throw new IllegalArgumentException("lgd_id not found in dim_lgd_location_table: " + lgdId);
@@ -642,6 +651,7 @@ public class SchemeRegularityRepository {
                 JOIN analytics_schema.fact_water_quantity_table f
                     ON f.scheme_id = ss.scheme_id
                 WHERE f.outage_reason IS NOT NULL
+                  AND f.date BETWEEN ? AND ?
                 GROUP BY ss.child_lgd_id, f.outage_reason
                 ORDER BY ss.child_lgd_id, f.outage_reason
                 """, childSchemeLgdColumn, parentSchemeLgdColumn);
@@ -653,10 +663,13 @@ public class SchemeRegularityRepository {
                         null,
                         (Integer) rs.getObject("outage_reason"),
                         rs.getInt("scheme_count")),
-                lgdId);
+                lgdId,
+                startDate,
+                endDate);
     }
 
-    public List<ChildRegionOutageReasonSchemeCount> getChildOutageReasonSchemeCountByDepartment(Integer departmentId) {
+    public List<ChildRegionOutageReasonSchemeCount> getChildOutageReasonSchemeCountByDepartment(
+            Integer departmentId, LocalDate startDate, LocalDate endDate) {
         Integer departmentLevel = getDepartmentLevel(departmentId);
         if (departmentLevel == null) {
             throw new IllegalArgumentException("department_id not found in dim_department_location_table: " + departmentId);
@@ -684,6 +697,7 @@ public class SchemeRegularityRepository {
                 JOIN analytics_schema.fact_water_quantity_table f
                     ON f.scheme_id = ss.scheme_id
                 WHERE f.outage_reason IS NOT NULL
+                  AND f.date BETWEEN ? AND ?
                 GROUP BY ss.child_department_id, f.outage_reason
                 ORDER BY ss.child_department_id, f.outage_reason
                 """, childSchemeDepartmentColumn, parentSchemeDepartmentColumn);
@@ -695,7 +709,9 @@ public class SchemeRegularityRepository {
                         rs.getInt("department_id"),
                         (Integer) rs.getObject("outage_reason"),
                         rs.getInt("scheme_count")),
-                departmentId);
+                departmentId,
+                startDate,
+                endDate);
     }
 
     public SchemeStatusCount getSchemeStatusCountByLgd(Integer lgdId) {
@@ -1019,14 +1035,14 @@ public class SchemeRegularityRepository {
                 endDate);
     }
 
-    public List<PeriodicWaterQuantityMetrics> getPeriodicWaterQuantityByLgdCode(
-            String lgdCode, LocalDate startDate, LocalDate endDate, PeriodScale scale) {
-        LgdIdentifier lgdIdentifier = getLgdIdentifierByCode(lgdCode);
-        if (lgdIdentifier == null) {
-            throw new IllegalArgumentException("lgd_code not found in dim_lgd_location_table: " + lgdCode);
+    public List<PeriodicWaterQuantityMetrics> getPeriodicWaterQuantityByLgdId(
+            Integer lgdId, LocalDate startDate, LocalDate endDate, PeriodScale scale) {
+        Integer lgdLevel = getLgdLevel(lgdId);
+        if (lgdLevel == null) {
+            throw new IllegalArgumentException("lgd_id not found in dim_lgd_location_table: " + lgdId);
         }
-        String schemeLgdColumn = resolveSchemeLgdColumn(lgdIdentifier.lgdLevel());
-        return getPeriodicWaterQuantityMetrics(schemeLgdColumn, lgdIdentifier.lgdId(), startDate, endDate, scale);
+        String schemeLgdColumn = resolveSchemeLgdColumn(lgdLevel);
+        return getPeriodicWaterQuantityMetrics(schemeLgdColumn, lgdId, startDate, endDate, scale);
     }
 
     public List<PeriodicWaterQuantityMetrics> getPeriodicWaterQuantityByDepartment(
@@ -1058,7 +1074,7 @@ public class SchemeRegularityRepository {
                     SELECT DISTINCT
                         %2$s AS period_start_date,
                         %3$s AS period_end_date,
-                        %4$s AS period_label
+                        %4$s AS scope
                     FROM generate_series(?::date, ?::date, INTERVAL '1 day') AS g(day_date)
                 ),
                 water_by_period AS (
@@ -1078,7 +1094,7 @@ public class SchemeRegularityRepository {
                 SELECT
                     p.period_start_date,
                     p.period_end_date,
-                    p.period_label,
+                    p.scope,
                     COALESCE(w.avg_water_quantity, 0)::numeric AS average_water_quantity,
                     h.household_count
                 FROM periods p
@@ -1098,7 +1114,7 @@ public class SchemeRegularityRepository {
                 (rs, rowNum) -> new PeriodicWaterQuantityMetrics(
                         rs.getObject("period_start_date", LocalDate.class),
                         rs.getObject("period_end_date", LocalDate.class),
-                        rs.getString("period_label"),
+                        rs.getString("scope"),
                         rs.getBigDecimal("average_water_quantity").setScale(4, RoundingMode.HALF_UP),
                         rs.getInt("household_count")),
                 locationId,
@@ -1116,24 +1132,6 @@ public class SchemeRegularityRepository {
                 LIMIT 1
                 """;
         return jdbcTemplate.query(sql, (rs, rowNum) -> (Integer) rs.getObject("lgd_level"), lgdId)
-                .stream()
-                .findFirst()
-                .orElse(null);
-    }
-
-    private LgdIdentifier getLgdIdentifierByCode(String lgdCode) {
-        String sql = """
-                SELECT l.lgd_id, l.lgd_level
-                FROM analytics_schema.dim_lgd_location_table l
-                WHERE l.lgd_code = ?
-                LIMIT 1
-                """;
-        return jdbcTemplate.query(
-                        sql,
-                        (rs, rowNum) -> new LgdIdentifier(
-                                rs.getInt("lgd_id"),
-                                rs.getInt("lgd_level")),
-                        lgdCode)
                 .stream()
                 .findFirst()
                 .orElse(null);
@@ -1263,9 +1261,6 @@ public class SchemeRegularityRepository {
             BigDecimal readingSubmissionRate) {
     }
 
-    private record LgdIdentifier(Integer lgdId, Integer lgdLevel) {
-    }
-
     private record PeriodSqlParts(
             String periodStartFromSeries,
             String periodEndFromSeries,
@@ -1292,7 +1287,7 @@ public class SchemeRegularityRepository {
     public record PeriodicWaterQuantityMetrics(
             LocalDate periodStartDate,
             LocalDate periodEndDate,
-            String periodLabel,
+            String scope,
             BigDecimal averageWaterQuantity,
             Integer householdCount) {
     }
