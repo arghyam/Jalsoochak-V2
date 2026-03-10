@@ -1,0 +1,520 @@
+package org.arghyam.jalsoochak.user.service;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.arghyam.jalsoochak.user.clients.KeycloakClient;
+import org.arghyam.jalsoochak.user.config.KeycloakProvider;
+import org.arghyam.jalsoochak.user.config.properties.FrontendProperties;
+import org.arghyam.jalsoochak.user.config.properties.InviteProperties;
+import org.arghyam.jalsoochak.user.dto.common.PageResponseDTO;
+import org.arghyam.jalsoochak.user.dto.request.ChangePasswordRequestDTO;
+import org.arghyam.jalsoochak.user.dto.request.InviteRequestDTO;
+import org.arghyam.jalsoochak.user.dto.response.AdminUserResponseDTO;
+import org.arghyam.jalsoochak.user.exceptions.BadRequestException;
+import org.arghyam.jalsoochak.user.exceptions.ForbiddenAccessException;
+import org.arghyam.jalsoochak.user.exceptions.InsufficientActiveUsersException;
+import org.arghyam.jalsoochak.user.exceptions.InvalidCredentialsException;
+import org.arghyam.jalsoochak.user.exceptions.ResourceNotFoundException;
+import org.arghyam.jalsoochak.user.exceptions.UnauthorizedAccessException;
+import org.arghyam.jalsoochak.user.exceptions.UserAlreadyExistsException;
+import org.arghyam.jalsoochak.user.repository.UserCommonRepository;
+import org.arghyam.jalsoochak.user.repository.UserTenantRepository;
+import org.arghyam.jalsoochak.user.repository.records.AdminUserRow;
+import org.arghyam.jalsoochak.user.service.serviceImpl.UserManagementServiceImpl;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Answers;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.http.HttpStatus;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
+import org.springframework.web.server.ResponseStatusException;
+
+import java.util.List;
+import java.util.Optional;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+@ExtendWith(MockitoExtension.class)
+@DisplayName("UserManagementServiceImpl - Unit Tests")
+class UserManagementServiceImplTest {
+
+    @Mock(answer = Answers.RETURNS_DEEP_STUBS)
+    private KeycloakProvider keycloakProvider;
+
+    @Mock
+    private KeycloakClient keycloakClient;
+
+    @Mock
+    private UserCommonRepository userCommonRepository;
+
+    @Mock
+    private UserTenantRepository userTenantRepository;
+
+    @Mock
+    private MailService mailService;
+
+    @Mock
+    private KeycloakAdminHelper keycloakAdminHelper;
+
+    @Mock
+    private InviteProperties inviteProperties;
+
+    @Mock
+    private FrontendProperties frontendProperties;
+
+    @Mock
+    private TokenService tokenService;
+
+    private UserManagementServiceImpl userManagementService;
+
+    @BeforeEach
+    void setUp() {
+        userManagementService = new UserManagementServiceImpl(
+                keycloakProvider, keycloakClient, userCommonRepository, userTenantRepository,
+                mailService, keycloakAdminHelper, inviteProperties, frontendProperties,
+                tokenService, new ObjectMapper()
+        );
+    }
+
+    // ── helpers ───────────────────────────────────────────────────────────────────
+
+    private AdminUserRow userRow(Long id, String uuid, String email, int tenantId, int adminLevel, int status) {
+        return new AdminUserRow(id, uuid, email, "91XXXXXXXXXX", tenantId, adminLevel, status, 0, null);
+    }
+
+    private AdminUserResponseDTO responseDTO(Long id, String email, String role) {
+        return AdminUserResponseDTO.builder().id(id).email(email).role(role).active(true).build();
+    }
+
+    /** JWT auth token for SUPER_USER (no tenant authority). */
+    private JwtAuthenticationToken superUserAuth(String uuid) {
+        Jwt jwt = Jwt.withTokenValue("token")
+                .header("alg", "RS256")
+                .claim("sub", uuid)
+                .build();
+        return new JwtAuthenticationToken(jwt, List.of(new SimpleGrantedAuthority("ROLE_SUPER_USER")));
+    }
+
+    /** JWT auth token for STATE_ADMIN with a specific tenant authority. */
+    private JwtAuthenticationToken stateAdminAuth(String uuid, String tenantCode) {
+        Jwt jwt = Jwt.withTokenValue("token")
+                .header("alg", "RS256")
+                .claim("sub", uuid)
+                .build();
+        return new JwtAuthenticationToken(jwt, List.of(
+                new SimpleGrantedAuthority("ROLE_STATE_ADMIN"),
+                new SimpleGrantedAuthority("TENANT_" + tenantCode.toUpperCase())
+        ));
+    }
+
+    // ── getMe ─────────────────────────────────────────────────────────────────────
+
+    @Nested
+    @DisplayName("getMe()")
+    class GetMeTests {
+
+        @Test
+        @DisplayName("Should return profile for authenticated user")
+        void getMe_success() {
+            AdminUserRow row = userRow(1L, "kc-id", "user@example.com", 0, 1, 1);
+            AdminUserResponseDTO dto = responseDTO(1L, "user@example.com", "SUPER_USER");
+
+            when(userCommonRepository.findAdminUserByUuid("kc-id")).thenReturn(Optional.of(row));
+            when(keycloakAdminHelper.buildAdminUserResponse(row)).thenReturn(dto);
+
+            AdminUserResponseDTO result = userManagementService.getMe("kc-id");
+
+            assertNotNull(result);
+            assertEquals("user@example.com", result.getEmail());
+            assertEquals("SUPER_USER", result.getRole());
+        }
+
+        @Test
+        @DisplayName("Should throw ResourceNotFoundException when uuid has no DB record")
+        void getMe_notFound_throwsResourceNotFound() {
+            when(userCommonRepository.findAdminUserByUuid("unknown")).thenReturn(Optional.empty());
+
+            assertThrows(ResourceNotFoundException.class, () -> userManagementService.getMe("unknown"));
+        }
+    }
+
+    // ── getUserById ───────────────────────────────────────────────────────────────
+
+    @Nested
+    @DisplayName("getUserById()")
+    class GetUserByIdTests {
+
+        @Test
+        @DisplayName("Should return user DTO for valid id")
+        void getUserById_success() {
+            AdminUserRow row = userRow(5L, "kc-id", "admin@example.com", 1, 2, 1);
+            AdminUserResponseDTO dto = responseDTO(5L, "admin@example.com", "STATE_ADMIN");
+
+            when(userCommonRepository.findAdminUserById(5L)).thenReturn(Optional.of(row));
+            when(keycloakAdminHelper.buildAdminUserResponse(row)).thenReturn(dto);
+
+            AdminUserResponseDTO result = userManagementService.getUserById(5L);
+
+            assertEquals("admin@example.com", result.getEmail());
+        }
+
+        @Test
+        @DisplayName("Should throw ResourceNotFoundException when id not found")
+        void getUserById_notFound_throwsResourceNotFound() {
+            when(userCommonRepository.findAdminUserById(99L)).thenReturn(Optional.empty());
+
+            assertThrows(ResourceNotFoundException.class, () -> userManagementService.getUserById(99L));
+        }
+    }
+
+    // ── listSuperUsers ────────────────────────────────────────────────────────────
+
+    @Nested
+    @DisplayName("listSuperUsers()")
+    class ListSuperUsersTests {
+
+        @Test
+        @DisplayName("Should return paginated super users")
+        void listSuperUsers_success() {
+            AdminUserRow row = userRow(1L, "kc-1", "su@example.com", 0, 1, 1);
+            AdminUserResponseDTO dto = responseDTO(1L, "su@example.com", "SUPER_USER");
+
+            when(userCommonRepository.listSuperUsers(0, 20)).thenReturn(List.of(row));
+            when(userCommonRepository.countSuperUsers()).thenReturn(1L);
+            when(keycloakAdminHelper.buildAdminUserResponse(row)).thenReturn(dto);
+
+            PageResponseDTO<AdminUserResponseDTO> result = userManagementService.listSuperUsers(0, 20);
+
+            assertEquals(1, result.getContent().size());
+            assertEquals(1L, result.getTotalElements());
+            assertEquals(1, result.getTotalPages());
+        }
+    }
+
+    // ── listStateAdmins ───────────────────────────────────────────────────────────
+
+    @Nested
+    @DisplayName("listStateAdmins()")
+    class ListStateAdminsTests {
+
+        @Test
+        @DisplayName("SUPER_USER with tenantCode should filter by that tenant")
+        void listStateAdmins_superUser_withTenantCode_filtersResults() {
+            Authentication auth = superUserAuth("kc-super");
+            AdminUserRow row = userRow(2L, "kc-2", "sa@example.com", 1, 2, 1);
+            AdminUserResponseDTO dto = responseDTO(2L, "sa@example.com", "STATE_ADMIN");
+
+            when(userCommonRepository.findTenantIdByStateCode("MP")).thenReturn(Optional.of(1));
+            when(userCommonRepository.listStateAdminsByTenant(1, 0, 20)).thenReturn(List.of(row));
+            when(userCommonRepository.countStateAdminsByTenant(1)).thenReturn(1L);
+            when(keycloakAdminHelper.buildAdminUserResponse(row)).thenReturn(dto);
+
+            PageResponseDTO<AdminUserResponseDTO> result = userManagementService.listStateAdmins("MP", auth, 0, 20);
+
+            assertEquals(1, result.getContent().size());
+        }
+
+        @Test
+        @DisplayName("STATE_ADMIN should only see admins in their own tenant")
+        void listStateAdmins_stateAdmin_usesOwnTenant() {
+            Authentication auth = stateAdminAuth("kc-sa", "MP");
+            AdminUserRow row = userRow(2L, "kc-2", "sa@example.com", 1, 2, 1);
+            AdminUserResponseDTO dto = responseDTO(2L, "sa@example.com", "STATE_ADMIN");
+
+            when(userCommonRepository.findTenantIdByStateCode("MP")).thenReturn(Optional.of(1));
+            when(userCommonRepository.listStateAdminsByTenant(1, 0, 20)).thenReturn(List.of(row));
+            when(userCommonRepository.countStateAdminsByTenant(1)).thenReturn(1L);
+            when(keycloakAdminHelper.buildAdminUserResponse(row)).thenReturn(dto);
+
+            PageResponseDTO<AdminUserResponseDTO> result = userManagementService.listStateAdmins(null, auth, 0, 20);
+
+            assertEquals(1, result.getContent().size());
+        }
+    }
+
+    // ── inviteUser ────────────────────────────────────────────────────────────────
+
+    @Nested
+    @DisplayName("inviteUser()")
+    class InviteUserTests {
+
+        @Test
+        @DisplayName("SUPER_USER should invite SUPER_USER successfully")
+        void inviteUser_superUserInvitesSuperUser_success() {
+            Authentication auth = superUserAuth("kc-super");
+            AdminUserRow callerRow = userRow(1L, "kc-super", "super@example.com", 0, 1, 1);
+
+            when(userCommonRepository.findAdminUserByUuid("kc-super")).thenReturn(Optional.of(callerRow));
+            when(userCommonRepository.findUserTypeNameById(1)).thenReturn(Optional.of("SUPER_USER"));
+            // findAdminUserByEmail returns empty → user does not yet exist (fresh invite)
+            when(userCommonRepository.findAdminUserByEmail("new@example.com")).thenReturn(Optional.empty());
+            // adminLevelId lookup for the invited role
+            when(userCommonRepository.findUserTypeIdByName("SUPER_USER")).thenReturn(Optional.of(1));
+            when(tokenService.generateRawToken()).thenReturn("raw-invite-token");
+            when(tokenService.hash("raw-invite-token")).thenReturn("invite-hash");
+            when(inviteProperties.expiryHours()).thenReturn(24);
+            doNothing().when(userCommonRepository).upsertToken(
+                    eq("new@example.com"), eq("invite-hash"), eq("INVITE"), anyString(), any(), eq(1));
+            when(frontendProperties.baseUrl()).thenReturn("http://localhost:3000");
+            when(frontendProperties.invitePath()).thenReturn("/invite");
+
+            InviteRequestDTO req = new InviteRequestDTO();
+            req.setEmail("new@example.com");
+            req.setRole("SUPER_USER");
+
+            userManagementService.inviteUser(req, auth);
+
+            verify(userCommonRepository).upsertToken(
+                    eq("new@example.com"), eq("invite-hash"), eq("INVITE"), anyString(), any(), eq(1));
+            verify(mailService).sendMailAfterCommit(any());
+        }
+
+        @Test
+        @DisplayName("Should throw UnauthorizedAccessException when caller not in DB")
+        void inviteUser_callerNotInDB_throwsUnauthorized() {
+            Authentication auth = superUserAuth("kc-unknown");
+            when(userCommonRepository.findAdminUserByUuid("kc-unknown")).thenReturn(Optional.empty());
+
+            InviteRequestDTO req = new InviteRequestDTO();
+            req.setEmail("new@example.com");
+            req.setRole("SUPER_USER");
+
+            assertThrows(UnauthorizedAccessException.class, () -> userManagementService.inviteUser(req, auth));
+        }
+
+        @Test
+        @DisplayName("STATE_ADMIN inviting across state boundary should throw ForbiddenAccessException")
+        void inviteUser_stateAdminCrossState_throwsForbidden() {
+            Authentication auth = stateAdminAuth("kc-sa", "MP");
+            AdminUserRow callerRow = userRow(2L, "kc-sa", "sa@example.com", 1, 2, 1);
+
+            when(userCommonRepository.findAdminUserByUuid("kc-sa")).thenReturn(Optional.of(callerRow));
+            when(userCommonRepository.findUserTypeNameById(2)).thenReturn(Optional.of("STATE_ADMIN"));
+
+            InviteRequestDTO req = new InviteRequestDTO();
+            req.setEmail("other@example.com");
+            req.setRole("STATE_ADMIN");
+            req.setTenantCode("GJ"); // different state
+
+            assertThrows(ForbiddenAccessException.class, () -> userManagementService.inviteUser(req, auth));
+        }
+
+        @Test
+        @DisplayName("Should throw UserAlreadyExistsException when email already registered")
+        void inviteUser_emailAlreadyExists_throwsConflict() {
+            Authentication auth = superUserAuth("kc-super");
+            AdminUserRow callerRow = userRow(1L, "kc-super", "super@example.com", 0, 1, 1);
+
+            when(userCommonRepository.findAdminUserByUuid("kc-super")).thenReturn(Optional.of(callerRow));
+            when(userCommonRepository.findUserTypeNameById(1)).thenReturn(Optional.of("SUPER_USER"));
+            // User exists and is active (status=1, not PENDING) → duplicate
+            AdminUserRow existingUser = userRow(3L, "kc-dup", "dup@example.com", 0, 1, 1);
+            when(userCommonRepository.findAdminUserByEmail("dup@example.com")).thenReturn(Optional.of(existingUser));
+
+            InviteRequestDTO req = new InviteRequestDTO();
+            req.setEmail("dup@example.com");
+            req.setRole("SUPER_USER");
+
+            assertThrows(UserAlreadyExistsException.class, () -> userManagementService.inviteUser(req, auth));
+        }
+
+        @Test
+        @DisplayName("Should throw BadRequestException when STATE_ADMIN role has no tenantCode")
+        void inviteUser_stateAdminWithNoTenantCode_throwsBadRequest() {
+            Authentication auth = superUserAuth("kc-super");
+            AdminUserRow callerRow = userRow(1L, "kc-super", "super@example.com", 0, 1, 1);
+
+            when(userCommonRepository.findAdminUserByUuid("kc-super")).thenReturn(Optional.of(callerRow));
+            when(userCommonRepository.findUserTypeNameById(1)).thenReturn(Optional.of("SUPER_USER"));
+
+            InviteRequestDTO req = new InviteRequestDTO();
+            req.setEmail("new@example.com");
+            req.setRole("STATE_ADMIN");
+            // tenantCode intentionally omitted
+
+            assertThrows(BadRequestException.class, () -> userManagementService.inviteUser(req, auth));
+        }
+
+        @Test
+        @DisplayName("Should throw ResourceNotFoundException when tenantCode does not exist")
+        void inviteUser_tenantNotFound_throwsResourceNotFound() {
+            Authentication auth = superUserAuth("kc-super");
+            AdminUserRow callerRow = userRow(1L, "kc-super", "super@example.com", 0, 1, 1);
+
+            when(userCommonRepository.findAdminUserByUuid("kc-super")).thenReturn(Optional.of(callerRow));
+            when(userCommonRepository.findUserTypeNameById(1)).thenReturn(Optional.of("SUPER_USER"));
+            when(userCommonRepository.existsTenantByStateCode("XX")).thenReturn(false);
+
+            InviteRequestDTO req = new InviteRequestDTO();
+            req.setEmail("new@example.com");
+            req.setRole("STATE_ADMIN");
+            req.setTenantCode("XX");
+
+            assertThrows(ResourceNotFoundException.class, () -> userManagementService.inviteUser(req, auth));
+        }
+    }
+
+    // ── deactivateUser ────────────────────────────────────────────────────────────
+
+    @Nested
+    @DisplayName("deactivateUser()")
+    class DeactivateUserTests {
+
+        @Test
+        @DisplayName("Should throw InsufficientActiveUsersException when deactivating last super user")
+        void deactivateUser_lastSuperUser_throwsInsufficient() {
+            Authentication auth = superUserAuth("kc-super");
+            AdminUserRow target = userRow(1L, "kc-target", "su@example.com", 0, 1, 1);
+
+            when(userCommonRepository.findAdminUserById(1L)).thenReturn(Optional.of(target));
+            when(userCommonRepository.findUserTypeNameById(1)).thenReturn(Optional.of("SUPER_USER"));
+            when(userCommonRepository.countActiveSuperUsers()).thenReturn(1);
+
+            assertThrows(InsufficientActiveUsersException.class,
+                    () -> userManagementService.deactivateUser(1L, auth));
+        }
+
+        @Test
+        @DisplayName("Should throw InsufficientActiveUsersException when deactivating last state admin in tenant")
+        void deactivateUser_lastStateAdmin_throwsInsufficient() {
+            Authentication auth = superUserAuth("kc-super");
+            AdminUserRow target = userRow(2L, "kc-target", "sa@example.com", 1, 2, 1);
+
+            when(userCommonRepository.findAdminUserById(2L)).thenReturn(Optional.of(target));
+            when(userCommonRepository.findUserTypeNameById(2)).thenReturn(Optional.of("STATE_ADMIN"));
+            when(userCommonRepository.countActiveStateAdminsForTenant(1)).thenReturn(1);
+
+            assertThrows(InsufficientActiveUsersException.class,
+                    () -> userManagementService.deactivateUser(2L, auth));
+        }
+
+        @Test
+        @DisplayName("STATE_ADMIN deactivating user in another state should throw ForbiddenAccessException")
+        void deactivateUser_crossTenant_throwsForbidden() {
+            Authentication auth = stateAdminAuth("kc-sa", "MP");
+            AdminUserRow target = userRow(3L, "kc-target", "other@example.com", 2, 2, 1);
+
+            when(userCommonRepository.findAdminUserById(3L)).thenReturn(Optional.of(target));
+            when(userCommonRepository.findUserTypeNameById(2)).thenReturn(Optional.of("STATE_ADMIN"));
+            // caller is MP, target is in tenant 2 → different state
+            when(userCommonRepository.findTenantStateCodeById(2)).thenReturn(Optional.of("GJ"));
+
+            assertThrows(ForbiddenAccessException.class,
+                    () -> userManagementService.deactivateUser(3L, auth));
+        }
+
+        @Test
+        @DisplayName("Should deactivate user and disable in Keycloak on success")
+        void deactivateUser_success() {
+            Authentication auth = superUserAuth("kc-super");
+            AdminUserRow target = userRow(4L, "kc-target", "su2@example.com", 0, 1, 1);
+            AdminUserRow callerRow = userRow(1L, "kc-super", "super@example.com", 0, 1, 1);
+
+            when(userCommonRepository.findAdminUserById(4L)).thenReturn(Optional.of(target));
+            when(userCommonRepository.findUserTypeNameById(1)).thenReturn(Optional.of("SUPER_USER"));
+            when(userCommonRepository.countActiveSuperUsers()).thenReturn(3);
+            when(userCommonRepository.findAdminUserByUuid("kc-super")).thenReturn(Optional.of(callerRow));
+            doNothing().when(userCommonRepository).deactivateAdminUser(4L, 1L);
+
+            userManagementService.deactivateUser(4L, auth);
+
+            verify(userCommonRepository).deactivateAdminUser(4L, 1L);
+        }
+
+        @Test
+        @DisplayName("Should throw ResourceNotFoundException when target user not found")
+        void deactivateUser_targetNotFound_throwsResourceNotFound() {
+            Authentication auth = superUserAuth("kc-super");
+            when(userCommonRepository.findAdminUserById(99L)).thenReturn(Optional.empty());
+
+            assertThrows(ResourceNotFoundException.class,
+                    () -> userManagementService.deactivateUser(99L, auth));
+        }
+    }
+
+    // ── activateUser ──────────────────────────────────────────────────────────────
+
+    @Nested
+    @DisplayName("activateUser()")
+    class ActivateUserTests {
+
+        @Test
+        @DisplayName("Should activate user and enable in Keycloak on success")
+        void activateUser_success() {
+            Authentication auth = superUserAuth("kc-super");
+            AdminUserRow target = userRow(5L, "kc-target", "deactivated@example.com", 0, 1, 0);
+            AdminUserRow callerRow = userRow(1L, "kc-super", "super@example.com", 0, 1, 1);
+
+            when(userCommonRepository.findAdminUserById(5L)).thenReturn(Optional.of(target));
+            when(userCommonRepository.findAdminUserByUuid("kc-super")).thenReturn(Optional.of(callerRow));
+            doNothing().when(userCommonRepository).activateAdminUser(5L, 1L);
+
+            userManagementService.activateUser(5L, auth);
+
+            verify(userCommonRepository).activateAdminUser(5L, 1L);
+        }
+
+        @Test
+        @DisplayName("Should throw UnauthorizedAccessException when caller not in DB")
+        void activateUser_callerNotInDB_throwsUnauthorized() {
+            Authentication auth = superUserAuth("kc-unknown");
+            AdminUserRow target = userRow(5L, "kc-target", "deactivated@example.com", 0, 1, 0);
+
+            when(userCommonRepository.findAdminUserById(5L)).thenReturn(Optional.of(target));
+            when(userCommonRepository.findAdminUserByUuid("kc-unknown")).thenReturn(Optional.empty());
+
+            assertThrows(UnauthorizedAccessException.class,
+                    () -> userManagementService.activateUser(5L, auth));
+        }
+    }
+
+    // ── changePassword ────────────────────────────────────────────────────────────
+
+    @Nested
+    @DisplayName("changePassword()")
+    class ChangePasswordTests {
+
+        @Test
+        @DisplayName("Should throw InvalidCredentialsException when current password is wrong")
+        void changePassword_wrongCurrentPassword_throwsInvalidCredentials() {
+            AdminUserRow user = userRow(1L, "kc-id", "user@example.com", 0, 1, 1);
+            when(userCommonRepository.findAdminUserByUuid("kc-id")).thenReturn(Optional.of(user));
+            when(keycloakClient.obtainToken("user@example.com", "wrongpass"))
+                    .thenThrow(new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid credentials"));
+
+            ChangePasswordRequestDTO req = new ChangePasswordRequestDTO();
+            req.setCurrentPassword("wrongpass");
+            req.setNewPassword("NewPass@123");
+
+            assertThrows(InvalidCredentialsException.class,
+                    () -> userManagementService.changePassword("kc-id", req));
+        }
+
+        @Test
+        @DisplayName("Should throw ResourceNotFoundException when user not found")
+        void changePassword_userNotFound_throwsResourceNotFound() {
+            when(userCommonRepository.findAdminUserByUuid("kc-missing")).thenReturn(Optional.empty());
+
+            ChangePasswordRequestDTO req = new ChangePasswordRequestDTO();
+            req.setCurrentPassword("pass");
+            req.setNewPassword("NewPass@123");
+
+            assertThrows(ResourceNotFoundException.class,
+                    () -> userManagementService.changePassword("kc-missing", req));
+        }
+    }
+}

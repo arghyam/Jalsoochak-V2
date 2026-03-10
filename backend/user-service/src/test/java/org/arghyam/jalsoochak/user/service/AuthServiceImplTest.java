@@ -1,0 +1,498 @@
+package org.arghyam.jalsoochak.user.service;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.arghyam.jalsoochak.user.clients.KeycloakClient;
+import org.arghyam.jalsoochak.user.clients.KeycloakTokenResponse;
+import org.arghyam.jalsoochak.user.config.KeycloakProvider;
+import org.arghyam.jalsoochak.user.config.properties.FrontendProperties;
+import org.arghyam.jalsoochak.user.config.properties.InviteProperties;
+import org.arghyam.jalsoochak.user.config.properties.PasswordResetProperties;
+import org.arghyam.jalsoochak.user.dto.internal.AuthResult;
+import org.arghyam.jalsoochak.user.dto.request.ActivateAccountRequestDTO;
+import org.arghyam.jalsoochak.user.dto.request.ForgotPasswordRequestDTO;
+import org.arghyam.jalsoochak.user.dto.request.LoginRequestDTO;
+import org.arghyam.jalsoochak.user.dto.request.ResetPasswordRequestDTO;
+import org.arghyam.jalsoochak.user.dto.response.InviteInfoResponseDTO;
+import org.arghyam.jalsoochak.user.exceptions.AccountDeactivatedException;
+import org.arghyam.jalsoochak.user.exceptions.BadRequestException;
+import org.arghyam.jalsoochak.user.exceptions.InvalidCredentialsException;
+import org.arghyam.jalsoochak.user.exceptions.ResourceNotFoundException;
+import org.arghyam.jalsoochak.user.exceptions.UserAlreadyExistsException;
+import org.arghyam.jalsoochak.user.repository.TenantUserRecord;
+import org.arghyam.jalsoochak.user.repository.UserCommonRepository;
+import org.arghyam.jalsoochak.user.repository.UserTenantRepository;
+import org.arghyam.jalsoochak.user.repository.records.AdminUserRow;
+import org.arghyam.jalsoochak.user.repository.records.AdminUserTokenRow;
+import org.arghyam.jalsoochak.user.service.serviceImpl.AuthServiceImpl;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Answers;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+
+import java.time.LocalDateTime;
+import java.util.Optional;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+@ExtendWith(MockitoExtension.class)
+@DisplayName("AuthServiceImpl - Unit Tests")
+class AuthServiceImplTest {
+
+    /**
+     * A minimal JWT whose payload decodes to {"sub":"kc-uuid"}.
+     * Used wherever AuthServiceImpl calls SecurityUtils.extractSubFromJwt().
+     */
+    private static final String FAKE_JWT =
+            "eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJrYy11dWlkIn0.fake_sig";
+
+    @Mock(answer = Answers.RETURNS_DEEP_STUBS)
+    private KeycloakProvider keycloakProvider;
+
+    @Mock
+    private KeycloakClient keycloakClient;
+
+    @Mock
+    private UserCommonRepository userCommonRepository;
+
+    @Mock
+    private UserTenantRepository userTenantRepository;
+
+    @Mock
+    private MailService mailService;
+
+    @Mock
+    private KeycloakAdminHelper keycloakAdminHelper;
+
+    @Mock
+    private InviteProperties inviteProperties;
+
+    @Mock
+    private PasswordResetProperties passwordResetProperties;
+
+    @Mock
+    private FrontendProperties frontendProperties;
+
+    @Mock
+    private TokenService tokenService;
+
+    private AuthServiceImpl authService;
+
+    @BeforeEach
+    void setUp() {
+        authService = new AuthServiceImpl(
+                keycloakProvider, keycloakClient, userCommonRepository, userTenantRepository,
+                mailService, keycloakAdminHelper, inviteProperties, passwordResetProperties,
+                frontendProperties, tokenService, new ObjectMapper()
+        );
+    }
+
+    // ── helpers ──────────────────────────────────────────────────────────────────
+
+    private AdminUserRow superUserRow() {
+        return new AdminUserRow(1L, "kc-uuid", "user@example.com", "91XXXXXXXXXX", 0, 1, 1, 0, null);
+    }
+
+    private AdminUserRow stateAdminRow() {
+        return new AdminUserRow(2L, "kc-sa", "sa@example.com", "91XXXXXXXXXX", 1, 2, 1, 0, null);
+    }
+
+    private AdminUserRow deactivatedUser() {
+        return new AdminUserRow(1L, "kc-uuid", "user@example.com", "91XXXXXXXXXX", 0, 1, 0, 0, null);
+    }
+
+    private AdminUserTokenRow activeTokenRow(String email, String hash, String type, String metadata) {
+        return new AdminUserTokenRow(1L, email, hash, type, metadata,
+                LocalDateTime.now().plusHours(1), null, null, LocalDateTime.now());
+    }
+
+    private AdminUserTokenRow expiredTokenRow(String email, String hash, String type) {
+        return new AdminUserTokenRow(1L, email, hash, type, null,
+                LocalDateTime.now().minusHours(1), null, null, LocalDateTime.now());
+    }
+
+    /**
+     * Returns a Keycloak token response using FAKE_JWT as the access token.
+     * FAKE_JWT is a valid base64url-encoded JWT with payload {"sub":"kc-uuid"},
+     * required by AuthServiceImpl.refreshToken() which calls extractSubFromJwt().
+     */
+    private KeycloakTokenResponse tokenResponse() {
+        return new KeycloakTokenResponse(FAKE_JWT, "refresh-token", 300, 1800, "Bearer", null, null, "openid");
+    }
+
+    private LoginRequestDTO loginRequest(String email, String password) {
+        LoginRequestDTO req = new LoginRequestDTO();
+        req.setEmail(email);
+        req.setPassword(password);
+        return req;
+    }
+
+    // ── login ────────────────────────────────────────────────────────────────────
+
+    @Nested
+    @DisplayName("login()")
+    class LoginTests {
+
+        @Test
+        @DisplayName("SUPER_USER: should return enriched AuthResult with phoneNumber, no name")
+        void login_superUser_returnsAuthResult() {
+            when(userCommonRepository.findAdminUserByEmail("user@example.com")).thenReturn(Optional.of(superUserRow()));
+            when(keycloakClient.obtainToken("user@example.com", "pass")).thenReturn(tokenResponse());
+            when(userCommonRepository.findUserTypeNameById(1)).thenReturn(Optional.of("SUPER_USER"));
+
+            AuthResult result = authService.login(loginRequest("user@example.com", "pass"));
+
+            assertNotNull(result);
+            assertEquals(FAKE_JWT, result.tokenResponse().getAccessToken());
+            assertEquals("SUPER_USER", result.tokenResponse().getRole());
+            assertEquals(1L, result.tokenResponse().getPersonId());
+            assertEquals("91XXXXXXXXXX", result.tokenResponse().getPhoneNumber());
+            assertNull(result.tokenResponse().getName());
+            assertEquals("refresh-token", result.refreshToken());
+            assertEquals(1800, result.refreshExpiresIn());
+            verify(userTenantRepository, never()).findUserByEmail(anyString(), anyString());
+        }
+
+        @Test
+        @DisplayName("STATE_ADMIN: should call findUserByEmail and populate name")
+        void login_stateAdmin_populatesName() {
+            when(userCommonRepository.findAdminUserByEmail("sa@example.com")).thenReturn(Optional.of(stateAdminRow()));
+            when(keycloakClient.obtainToken("sa@example.com", "pass")).thenReturn(tokenResponse());
+            when(userCommonRepository.findUserTypeNameById(2)).thenReturn(Optional.of("STATE_ADMIN"));
+            when(userCommonRepository.findTenantStateCodeById(1)).thenReturn(Optional.of("MP"));
+
+            TenantUserRecord tenantUser = new TenantUserRecord(10L, 1, "91XXXXXXXXXX", "sa@example.com", 2L, "STATE_ADMIN", "State Admin");
+            when(userTenantRepository.findUserByEmail("tenant_mp", "sa@example.com")).thenReturn(Optional.of(tenantUser));
+
+            AuthResult result = authService.login(loginRequest("sa@example.com", "pass"));
+
+            assertEquals("State Admin", result.tokenResponse().getName());
+            assertEquals("MP", result.tokenResponse().getTenantCode());
+            verify(userTenantRepository).findUserByEmail("tenant_mp", "sa@example.com");
+        }
+
+        @Test
+        @DisplayName("STATE_ADMIN: name is null when tenant user record not found")
+        void login_stateAdmin_nameNullIfTenantUserMissing() {
+            when(userCommonRepository.findAdminUserByEmail("sa@example.com")).thenReturn(Optional.of(stateAdminRow()));
+            when(keycloakClient.obtainToken("sa@example.com", "pass")).thenReturn(tokenResponse());
+            when(userCommonRepository.findUserTypeNameById(2)).thenReturn(Optional.of("STATE_ADMIN"));
+            when(userCommonRepository.findTenantStateCodeById(1)).thenReturn(Optional.of("MP"));
+            when(userTenantRepository.findUserByEmail("tenant_mp", "sa@example.com")).thenReturn(Optional.empty());
+
+            AuthResult result = authService.login(loginRequest("sa@example.com", "pass"));
+
+            assertNull(result.tokenResponse().getName());
+        }
+
+        @Test
+        @DisplayName("Should throw InvalidCredentialsException when user not found")
+        void login_userNotFound_throwsInvalidCredentials() {
+            when(userCommonRepository.findAdminUserByEmail(anyString())).thenReturn(Optional.empty());
+
+            assertThrows(InvalidCredentialsException.class,
+                    () -> authService.login(loginRequest("nobody@example.com", "pass")));
+        }
+
+        @Test
+        @DisplayName("Should throw AccountDeactivatedException when account is deactivated")
+        void login_deactivated_throwsAccountDeactivated() {
+            when(userCommonRepository.findAdminUserByEmail("user@example.com")).thenReturn(Optional.of(deactivatedUser()));
+
+            assertThrows(AccountDeactivatedException.class,
+                    () -> authService.login(loginRequest("user@example.com", "pass")));
+
+            verify(keycloakClient, never()).obtainToken(anyString(), anyString());
+        }
+    }
+
+    // ── refreshToken ─────────────────────────────────────────────────────────────
+
+    @Nested
+    @DisplayName("refreshToken()")
+    class RefreshTokenTests {
+
+        @Test
+        @DisplayName("Should return AuthResult with new tokens on valid refresh token")
+        void refreshToken_success() {
+            // FAKE_JWT payload decodes to {"sub":"kc-uuid"} — extractSubFromJwt() returns "kc-uuid"
+            when(keycloakClient.refreshToken("valid-refresh")).thenReturn(tokenResponse());
+            when(userCommonRepository.findAdminUserByUuid("kc-uuid")).thenReturn(Optional.of(superUserRow()));
+            when(userCommonRepository.findUserTypeNameById(1)).thenReturn(Optional.of("SUPER_USER"));
+
+            AuthResult result = authService.refreshToken("valid-refresh");
+
+            assertEquals(FAKE_JWT, result.tokenResponse().getAccessToken());
+            assertEquals("refresh-token", result.refreshToken());
+            assertEquals(1800, result.refreshExpiresIn());
+        }
+
+        @Test
+        @DisplayName("Should throw BadRequestException when refresh token is blank")
+        void refreshToken_blank_throwsBadRequest() {
+            assertThrows(BadRequestException.class, () -> authService.refreshToken(""));
+            assertThrows(BadRequestException.class, () -> authService.refreshToken(null));
+            verify(keycloakClient, never()).refreshToken(anyString());
+        }
+    }
+
+    // ── getInviteInfo ─────────────────────────────────────────────────────────────
+
+    @Nested
+    @DisplayName("getInviteInfo()")
+    class GetInviteInfoTests {
+
+        @Test
+        @DisplayName("Should return invite info from a valid opaque token")
+        void getInviteInfo_validToken_returnsInfo() {
+            String rawToken = "raw-invite-token";
+            String hash = "invite-hash";
+            when(tokenService.hash(rawToken)).thenReturn(hash);
+            when(userCommonRepository.findActiveTokenByHash(hash)).thenReturn(Optional.of(
+                    activeTokenRow("invited@example.com", hash, "INVITE",
+                            "{\"role\":\"STATE_ADMIN\",\"tenantName\":\"Madhya Pradesh\"}")));
+            // getInviteInfo checks existsActiveAdminUserByEmail (not existsAdminUserByEmail)
+            when(userCommonRepository.existsActiveAdminUserByEmail("invited@example.com")).thenReturn(false);
+
+            InviteInfoResponseDTO info = authService.getInviteInfo(rawToken);
+
+            assertEquals("invited@example.com", info.getEmail());
+            assertEquals("STATE_ADMIN", info.getRole());
+            assertEquals("Madhya Pradesh", info.getTenantName());
+        }
+
+        @Test
+        @DisplayName("Should throw BadRequestException when token not found in DB")
+        void getInviteInfo_unknownToken_throwsBadRequest() {
+            when(tokenService.hash(anyString())).thenReturn("unknown-hash");
+            when(userCommonRepository.findActiveTokenByHash("unknown-hash")).thenReturn(Optional.empty());
+
+            assertThrows(BadRequestException.class, () -> authService.getInviteInfo("unknown-token"));
+        }
+
+        @Test
+        @DisplayName("Should throw UserAlreadyExistsException when account already exists")
+        void getInviteInfo_accountExists_throwsUserAlreadyExists() {
+            String hash = "existing-hash";
+            when(tokenService.hash("raw")).thenReturn(hash);
+            when(userCommonRepository.findActiveTokenByHash(hash)).thenReturn(Optional.of(
+                    activeTokenRow("existing@example.com", hash, "INVITE", "{\"role\":\"SUPER_USER\"}")));
+            // Actual code uses existsActiveAdminUserByEmail
+            when(userCommonRepository.existsActiveAdminUserByEmail("existing@example.com")).thenReturn(true);
+
+            assertThrows(UserAlreadyExistsException.class, () -> authService.getInviteInfo("raw"));
+        }
+    }
+
+    // ── forgotPassword ────────────────────────────────────────────────────────────
+
+    @Nested
+    @DisplayName("forgotPassword()")
+    class ForgotPasswordTests {
+
+        @Test
+        @DisplayName("Should return silently (OWASP) when email is not registered")
+        void forgotPassword_userNotFound_returnsQuietly() {
+            when(userCommonRepository.findAdminUserByEmail("nobody@example.com")).thenReturn(Optional.empty());
+
+            ForgotPasswordRequestDTO req = new ForgotPasswordRequestDTO();
+            req.setEmail("nobody@example.com");
+
+            authService.forgotPassword(req); // no exception
+
+            verify(mailService, never()).sendMailAfterCommit(any());
+        }
+
+        @Test
+        @DisplayName("Should generate token, upsert in DB, and send reset email when user is registered")
+        void forgotPassword_userFound_sendsEmail() {
+            when(userCommonRepository.findAdminUserByEmail("user@example.com")).thenReturn(Optional.of(superUserRow()));
+            when(tokenService.generateRawToken()).thenReturn("raw-reset-token");
+            when(tokenService.hash("raw-reset-token")).thenReturn("reset-hash");
+            when(passwordResetProperties.expiryHours()).thenReturn(1);
+            when(frontendProperties.baseUrl()).thenReturn("http://localhost:3000");
+            when(frontendProperties.resetPath()).thenReturn("/reset-password");
+            doNothing().when(userCommonRepository).upsertToken(
+                    eq("user@example.com"), eq("reset-hash"), eq("RESET"), eq(null), any(), eq(null));
+
+            ForgotPasswordRequestDTO req = new ForgotPasswordRequestDTO();
+            req.setEmail("user@example.com");
+
+            authService.forgotPassword(req);
+
+            verify(userCommonRepository).upsertToken(
+                    eq("user@example.com"), eq("reset-hash"), eq("RESET"), eq(null), any(), eq(null));
+            verify(mailService).sendMailAfterCommit(any());
+        }
+    }
+
+    // ── resetPassword ─────────────────────────────────────────────────────────────
+
+    @Nested
+    @DisplayName("resetPassword()")
+    class ResetPasswordTests {
+
+        @Test
+        @DisplayName("Should reset password when token is valid and has not been used")
+        void resetPassword_success() {
+            String rawToken = "raw-reset-token";
+            String hash = "reset-hash";
+            when(tokenService.hash(rawToken)).thenReturn(hash);
+            AdminUserTokenRow tokenRow = activeTokenRow("user@example.com", hash, "RESET", null);
+            when(userCommonRepository.findActiveTokenByHash(hash)).thenReturn(Optional.of(tokenRow));
+
+            AdminUserRow user = new AdminUserRow(1L, "kc-uuid", "user@example.com", "91XXXXXXXXXX", 0, 1, 1, 0, null);
+            when(userCommonRepository.findAdminUserByEmail("user@example.com")).thenReturn(Optional.of(user));
+            doNothing().when(userCommonRepository).markTokenUsed(hash);
+
+            ResetPasswordRequestDTO req = new ResetPasswordRequestDTO();
+            req.setToken(rawToken);
+            req.setNewPassword("NewPass@123");
+
+            authService.resetPassword(req);
+
+            verify(userCommonRepository).markTokenUsed(hash);
+        }
+
+        @Test
+        @DisplayName("Should throw BadRequestException when token not found (not active)")
+        void resetPassword_tokenNotFound_throwsBadRequest() {
+            when(tokenService.hash(anyString())).thenReturn("no-hash");
+            when(userCommonRepository.findActiveTokenByHash("no-hash")).thenReturn(Optional.empty());
+
+            ResetPasswordRequestDTO req = new ResetPasswordRequestDTO();
+            req.setToken("no-token");
+            req.setNewPassword("NewPass@123");
+
+            assertThrows(BadRequestException.class, () -> authService.resetPassword(req));
+        }
+
+        @Test
+        @DisplayName("Should throw BadRequestException when token is expired")
+        void resetPassword_tokenExpired_throwsBadRequest() {
+            String hash = "expired-hash";
+            when(tokenService.hash("expired")).thenReturn(hash);
+            when(userCommonRepository.findActiveTokenByHash(hash)).thenReturn(Optional.of(
+                    expiredTokenRow("user@example.com", hash, "RESET")));
+
+            ResetPasswordRequestDTO req = new ResetPasswordRequestDTO();
+            req.setToken("expired");
+            req.setNewPassword("NewPass@123");
+
+            assertThrows(BadRequestException.class, () -> authService.resetPassword(req));
+        }
+
+        @Test
+        @DisplayName("Should throw ResourceNotFoundException when user not found by email in token")
+        void resetPassword_userNotFound_throwsResourceNotFound() {
+            String hash = "hash-ghost";
+            when(tokenService.hash("ghost")).thenReturn(hash);
+            when(userCommonRepository.findActiveTokenByHash(hash)).thenReturn(Optional.of(
+                    activeTokenRow("ghost@example.com", hash, "RESET", null)));
+            when(userCommonRepository.findAdminUserByEmail("ghost@example.com")).thenReturn(Optional.empty());
+
+            ResetPasswordRequestDTO req = new ResetPasswordRequestDTO();
+            req.setToken("ghost");
+            req.setNewPassword("NewPass@123");
+
+            assertThrows(ResourceNotFoundException.class, () -> authService.resetPassword(req));
+        }
+    }
+
+    // ── activateAccount ───────────────────────────────────────────────────────────
+
+    @Nested
+    @DisplayName("activateAccount()")
+    class ActivateAccountTests {
+
+        @Test
+        @DisplayName("Should throw BadRequestException when invite token not found")
+        void activateAccount_invalidToken_throwsBadRequest() {
+            when(tokenService.hash(anyString())).thenReturn("bad-hash");
+            when(userCommonRepository.findActiveTokenByHash("bad-hash")).thenReturn(Optional.empty());
+
+            ActivateAccountRequestDTO req = new ActivateAccountRequestDTO();
+            req.setInviteToken("bad-token");
+            req.setFirstName("Test");
+            req.setLastName("User");
+            req.setPassword("Pass@123");
+            req.setPhoneNumber("91XXXXXXXXXX");
+
+            assertThrows(BadRequestException.class, () -> authService.activateAccount(req));
+        }
+
+        @Test
+        @DisplayName("Should throw UserAlreadyExistsException when user record is already active (status != 2)")
+        void activateAccount_emailAlreadyExists_throwsUserAlreadyExists() {
+            String hash = "dup-hash";
+            when(tokenService.hash("dup-token")).thenReturn(hash);
+            when(userCommonRepository.findActiveTokenByHash(hash)).thenReturn(Optional.of(
+                    activeTokenRow("existing@example.com", hash, "INVITE", "{\"role\":\"SUPER_USER\"}")));
+            // activateAccount finds the user record and checks status; status=1 (active) => already registered
+            AdminUserRow activeUser = new AdminUserRow(5L, "kc-dup", "existing@example.com", "91XXXXXXXXXX", 0, 1, 1, 0, null);
+            when(userCommonRepository.findAdminUserByEmail("existing@example.com")).thenReturn(Optional.of(activeUser));
+
+            ActivateAccountRequestDTO req = new ActivateAccountRequestDTO();
+            req.setInviteToken("dup-token");
+            req.setFirstName("Test");
+            req.setLastName("User");
+            req.setPassword("Pass@123");
+            req.setPhoneNumber("91XXXXXXXXXX");
+
+            assertThrows(UserAlreadyExistsException.class, () -> authService.activateAccount(req));
+        }
+
+        @Test
+        @DisplayName("Should create SUPER_USER, mark token used, and return AuthResult")
+        void activateAccount_superUser_returnsAuthResult() {
+            String hash = "su-hash";
+            when(tokenService.hash("su-token")).thenReturn(hash);
+            when(userCommonRepository.findActiveTokenByHash(hash)).thenReturn(Optional.of(
+                    activeTokenRow("newsuper@example.com", hash, "INVITE", "{\"role\":\"SUPER_USER\"}")));
+
+            // Pending user record (status=2) created at invite time
+            AdminUserRow pendingUser = new AdminUserRow(10L, "pending-uuid", "newsuper@example.com", "", 0, 1, 2, 0, null);
+            when(userCommonRepository.findAdminUserByEmail("newsuper@example.com")).thenReturn(Optional.of(pendingUser));
+
+            when(keycloakProvider.getRealm()).thenReturn("test-realm");
+            jakarta.ws.rs.core.Response createResp = jakarta.ws.rs.core.Response
+                    .created(java.net.URI.create("http://keycloak/users/new-kc-id"))
+                    .build();
+            when(keycloakProvider.getAdminInstance().realm("test-realm").users().create(any()))
+                    .thenReturn(createResp);
+            doNothing().when(keycloakAdminHelper).assignRoleToUser(anyString(), anyString());
+            doNothing().when(userCommonRepository).markTokenUsed(hash);
+            doNothing().when(userCommonRepository).activatePendingAdminUser(eq(10L), anyString(), anyString());
+            when(keycloakClient.obtainToken(anyString(), anyString())).thenReturn(tokenResponse());
+
+            ActivateAccountRequestDTO req = new ActivateAccountRequestDTO();
+            req.setInviteToken("su-token");
+            req.setFirstName("New");
+            req.setLastName("Super");
+            req.setPassword("Pass@123");
+            req.setPhoneNumber("91XXXXXXXXXX");
+
+            AuthResult result = authService.activateAccount(req);
+
+            assertNotNull(result);
+            assertEquals(FAKE_JWT, result.tokenResponse().getAccessToken());
+            assertNull(result.tokenResponse().getName());
+            assertEquals("91XXXXXXXXXX", result.tokenResponse().getPhoneNumber());
+            verify(userCommonRepository).markTokenUsed(hash);
+            verify(userCommonRepository).activatePendingAdminUser(eq(10L), anyString(), anyString());
+        }
+    }
+}
