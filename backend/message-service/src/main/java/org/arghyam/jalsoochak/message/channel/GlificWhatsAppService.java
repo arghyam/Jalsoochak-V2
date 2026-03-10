@@ -92,9 +92,9 @@ public class GlificWhatsAppService {
 
     @PostConstruct
     void validateTemplates() {
-        if (nudgeTemplateId == null || nudgeTemplateId.isBlank()
+        if (nudgeFlowId == null || nudgeFlowId.isBlank()
                 || escalationTemplateId == null || escalationTemplateId.isBlank()) {
-            throw new IllegalStateException("glific.template.nudge-id and glific.template.escalation-id must be configured");
+            throw new IllegalStateException("glific.flow.nudge-id and glific.template.escalation-id must be configured");
         }
     }
 
@@ -205,7 +205,7 @@ public class GlificWhatsAppService {
         String defaultResults;
         try {
             defaultResults = objectMapper.writeValueAsString(
-                    Map.of("operator_name", operatorName, "date", date));
+                    Map.of("1", operatorName, "2", date));
         } catch (JsonProcessingException e) {
             throw new RuntimeException("Failed to serialize flow defaultResults", e);
         }

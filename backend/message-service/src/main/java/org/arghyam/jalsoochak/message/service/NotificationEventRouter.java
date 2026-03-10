@@ -106,12 +106,12 @@ public class NotificationEventRouter {
 
         String todayDate = LocalDate.now()
                 .format(DateTimeFormatter.ofPattern("dd MMMM yyyy"));
-        boolean sent = whatsAppChannel.sendNudge(phone, operatorName, todayDate);
+        boolean sent = whatsAppChannel.sendNudgeViaFlow(phone, operatorName, todayDate);
         if (!sent) {
-                throw new IllegalStateException("[Router/NUDGE] WhatsApp nudge delivery failed");
+                throw new IllegalStateException("[Router/NUDGE] WhatsApp nudge flow initiation failed");
             }
-        log.info("[Router/NUDGE] → SENT");
-        log.debug("[Router/NUDGE] phone={} → SENT", phone);
+        log.info("[Router/NUDGE] → FLOW INITIATED");
+        log.debug("[Router/NUDGE] phone={} → FLOW INITIATED", phone);
     }
 
     private void handleEscalation(JsonNode root) throws Exception {
