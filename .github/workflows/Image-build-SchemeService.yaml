@@ -16,6 +16,7 @@ permissions:
   contents: read
   id-token: write
   pull-requests: write
+  security-events: write
 
 jobs:
   Docker-Image-Build:
@@ -65,6 +66,29 @@ jobs:
         run: |
           docker build --build-arg WORK_DIR="backend/scheme-service" -t $ECR_REGISTRY/scheme-service:$IMAGE_TAG -f build/maven/Dockerfile .
           docker push $ECR_REGISTRY/scheme-service:$IMAGE_TAG
+
+      - name: Cache Trivy DB
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/trivy
+          key: ${{ runner.os }}-trivy-db
+
+      - name: Run Trivy vulnerability scanner
+        continue-on-error: true
+        uses: aquasecurity/trivy-action@master
+        with:
+          # Image to scan (use commit SHA for traceability)
+          image-ref: ${{ steps.ecr-login.outputs.registry }}/scheme-service:${{ github.sha }}
+          # Output format for GitHub Security tab integration
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          severity: 'HIGH,CRITICAL'
+          ignore-unfixed: true
+
+      - name: Upload Trivy scan results
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: 'trivy-results.sarif'
 
 
   Deployment:
