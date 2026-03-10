@@ -836,16 +836,16 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
     }
 
     @Override
-    public PeriodicWaterQuantityResponse getPeriodicWaterQuantityByLgdCode(
-            String lgdCode, LocalDate startDate, LocalDate endDate, PeriodScale scale) {
-        validateLgdCodeInput(lgdCode);
+    public PeriodicWaterQuantityResponse getPeriodicWaterQuantityByLgdId(
+            Integer lgdId, LocalDate startDate, LocalDate endDate, PeriodScale scale) {
+        validateLgdInput(lgdId);
         validateDateRange(startDate, endDate);
         validateScaleInput(scale);
 
         List<SchemeRegularityRepository.PeriodicWaterQuantityMetrics> metrics =
-                schemeRegularityRepository.getPeriodicWaterQuantityByLgdCode(lgdCode, startDate, endDate, scale);
+                schemeRegularityRepository.getPeriodicWaterQuantityByLgdId(lgdId, startDate, endDate, scale);
 
-        return buildPeriodicWaterQuantityResponse(lgdCode, null, startDate, endDate, scale, metrics);
+        return buildPeriodicWaterQuantityResponse(lgdId, null, startDate, endDate, scale, metrics);
     }
 
     @Override
@@ -862,23 +862,27 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
     }
 
     @Override
-    public OutageReasonSchemeCountResponse getOutageReasonSchemeCountByLgd(Integer lgdId) {
-        validateLgdInput(lgdId);
-        Integer parentLgdLevel = schemeRegularityRepository.getLgdLevel(lgdId);
+    public OutageReasonSchemeCountResponse getOutageReasonSchemeCountByLgd(
+            Integer parentLgdId, LocalDate startDate, LocalDate endDate) {
+        validateLgdInput(parentLgdId);
+        validateDateRange(startDate, endDate);
+        Integer parentLgdLevel = schemeRegularityRepository.getLgdLevel(parentLgdId);
         if (parentLgdLevel == null) {
-            throw new IllegalArgumentException("lgd_id not found in dim_lgd_location_table: " + lgdId);
+            throw new IllegalArgumentException("parent_lgd_id not found in dim_lgd_location_table: " + parentLgdId);
         }
 
         List<SchemeRegularityRepository.OutageReasonSchemeCount> rows =
-                schemeRegularityRepository.getOutageReasonSchemeCountByLgd(lgdId);
+                schemeRegularityRepository.getOutageReasonSchemeCountByLgd(parentLgdId, startDate, endDate);
         List<SchemeRegularityRepository.ChildRegionRef> childRegions =
-                schemeRegularityRepository.getChildRegionsByLgd(lgdId);
+                schemeRegularityRepository.getChildRegionsByLgd(parentLgdId);
         List<SchemeRegularityRepository.ChildRegionOutageReasonSchemeCount> childRows =
-                schemeRegularityRepository.getChildOutageReasonSchemeCountByLgd(lgdId);
+                schemeRegularityRepository.getChildOutageReasonSchemeCountByLgd(parentLgdId, startDate, endDate);
 
         return OutageReasonSchemeCountResponse.builder()
-                .lgdId(lgdId)
+                .lgdId(parentLgdId)
                 .departmentId(null)
+                .startDate(startDate)
+                .endDate(endDate)
                 .parentLgdLevel(parentLgdLevel)
                 .parentDepartmentLevel(null)
                 .outageReasonSchemeCount(buildReasonCountMap(rows))
@@ -891,23 +895,30 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
     }
 
     @Override
-    public OutageReasonSchemeCountResponse getOutageReasonSchemeCountByDepartment(Integer departmentId) {
-        validateDepartmentInput(departmentId);
-        Integer parentDepartmentLevel = schemeRegularityRepository.getDepartmentLevel(departmentId);
+    public OutageReasonSchemeCountResponse getOutageReasonSchemeCountByDepartment(
+            Integer parentDepartmentId, LocalDate startDate, LocalDate endDate) {
+        validateDepartmentInput(parentDepartmentId);
+        validateDateRange(startDate, endDate);
+        Integer parentDepartmentLevel = schemeRegularityRepository.getDepartmentLevel(parentDepartmentId);
         if (parentDepartmentLevel == null) {
-            throw new IllegalArgumentException("department_id not found in dim_department_location_table: " + departmentId);
+            throw new IllegalArgumentException(
+                    "parent_department_id not found in dim_department_location_table: " + parentDepartmentId);
         }
 
         List<SchemeRegularityRepository.OutageReasonSchemeCount> rows =
-                schemeRegularityRepository.getOutageReasonSchemeCountByDepartment(departmentId);
+                schemeRegularityRepository.getOutageReasonSchemeCountByDepartment(
+                        parentDepartmentId, startDate, endDate);
         List<SchemeRegularityRepository.ChildRegionRef> childRegions =
-                schemeRegularityRepository.getChildRegionsByDepartment(departmentId);
+                schemeRegularityRepository.getChildRegionsByDepartment(parentDepartmentId);
         List<SchemeRegularityRepository.ChildRegionOutageReasonSchemeCount> childRows =
-                schemeRegularityRepository.getChildOutageReasonSchemeCountByDepartment(departmentId);
+                schemeRegularityRepository.getChildOutageReasonSchemeCountByDepartment(
+                        parentDepartmentId, startDate, endDate);
 
         return OutageReasonSchemeCountResponse.builder()
                 .lgdId(null)
-                .departmentId(departmentId)
+                .departmentId(parentDepartmentId)
+                .startDate(startDate)
+                .endDate(endDate)
                 .parentLgdLevel(null)
                 .parentDepartmentLevel(parentDepartmentLevel)
                 .outageReasonSchemeCount(buildReasonCountMap(rows))
@@ -949,12 +960,6 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
         }
     }
 
-    private void validateLgdCodeInput(String lgdCode) {
-        if (lgdCode == null || lgdCode.isBlank()) {
-            throw new IllegalArgumentException("lgd_code must be a non-empty string");
-        }
-    }
-
     private void validateTenantInput(Integer tenantId) {
         if (tenantId == null || tenantId <= 0) {
             throw new IllegalArgumentException("tenant_id must be a positive integer");
@@ -983,7 +988,7 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
     }
 
     private PeriodicWaterQuantityResponse buildPeriodicWaterQuantityResponse(
-            String lgdCode,
+            Integer lgdId,
             Integer departmentId,
             LocalDate startDate,
             LocalDate endDate,
@@ -993,14 +998,13 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
                 .map(metric -> PeriodicWaterQuantityResponse.PeriodicMetric.builder()
                         .periodStartDate(metric.periodStartDate())
                         .periodEndDate(metric.periodEndDate().isAfter(endDate) ? endDate : metric.periodEndDate())
-                        .periodLabel(metric.periodLabel())
                         .averageWaterQuantity(metric.averageWaterQuantity())
                         .householdCount(metric.householdCount())
                         .build())
                 .toList();
 
         return PeriodicWaterQuantityResponse.builder()
-                .lgdCode(lgdCode)
+                .lgdId(lgdId)
                 .departmentId(departmentId)
                 .scale(scale.name().toLowerCase())
                 .startDate(startDate)

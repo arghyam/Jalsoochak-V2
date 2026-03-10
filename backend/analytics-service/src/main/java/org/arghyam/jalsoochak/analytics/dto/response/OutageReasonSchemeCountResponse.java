@@ -6,6 +6,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 
@@ -17,6 +18,8 @@ public class OutageReasonSchemeCountResponse {
 
     private Integer lgdId;
     private Integer departmentId;
+    private LocalDate startDate;
+    private LocalDate endDate;
     private Integer parentLgdLevel;
     private Integer parentDepartmentLevel;
     private Map<String, Integer> outageReasonSchemeCount;

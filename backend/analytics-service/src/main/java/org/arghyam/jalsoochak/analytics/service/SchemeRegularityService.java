@@ -45,15 +45,17 @@ public interface SchemeRegularityService {
     AverageWaterSupplyResponse getAverageWaterSupplyPerSchemeByDepartment(
             Integer tenantId, Integer parentDepartmentId, LocalDate startDate, LocalDate endDate);
 
-    PeriodicWaterQuantityResponse getPeriodicWaterQuantityByLgdCode(
-            String lgdCode, LocalDate startDate, LocalDate endDate, PeriodScale scale);
+    PeriodicWaterQuantityResponse getPeriodicWaterQuantityByLgdId(
+            Integer lgdId, LocalDate startDate, LocalDate endDate, PeriodScale scale);
 
     PeriodicWaterQuantityResponse getPeriodicWaterQuantityByDepartment(
             Integer departmentId, LocalDate startDate, LocalDate endDate, PeriodScale scale);
 
-    OutageReasonSchemeCountResponse getOutageReasonSchemeCountByLgd(Integer lgdId);
+    OutageReasonSchemeCountResponse getOutageReasonSchemeCountByLgd(
+            Integer parentLgdId, LocalDate startDate, LocalDate endDate);
 
-    OutageReasonSchemeCountResponse getOutageReasonSchemeCountByDepartment(Integer departmentId);
+    OutageReasonSchemeCountResponse getOutageReasonSchemeCountByDepartment(
+            Integer parentDepartmentId, LocalDate startDate, LocalDate endDate);
 
     Map<String, Integer> getSchemeStatusCountByLgd(Integer lgdId);
 
