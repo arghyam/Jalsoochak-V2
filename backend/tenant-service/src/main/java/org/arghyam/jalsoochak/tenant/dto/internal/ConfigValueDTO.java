@@ -15,5 +15,6 @@ public sealed interface ConfigValueDTO permits
         StateITSystemConfigDTO,
         TimeSettingsConfigDTO,
         NudgeTimingConfigDTO,
-        EscalationRulesConfigDTO {
+        EscalationRulesConfigDTO,
+        GlificMessagesConfigDTO {
 }
