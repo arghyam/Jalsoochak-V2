@@ -18,13 +18,16 @@ public class GlificMessageService {
     private final GlificOperatorContextService operatorContextService;
     private final GlificLocalizationService localizationService;
     private final TenantConfigRepository tenantConfigRepository;
+    private final GlificMessageTemplatesService templatesService;
 
     public GlificMessageService(GlificOperatorContextService operatorContextService,
                                 GlificLocalizationService localizationService,
-                                TenantConfigRepository tenantConfigRepository) {
+                                TenantConfigRepository tenantConfigRepository,
+                                GlificMessageTemplatesService templatesService) {
         this.operatorContextService = operatorContextService;
         this.localizationService = localizationService;
         this.tenantConfigRepository = tenantConfigRepository;
+        this.templatesService = templatesService;
     }
 
     public IntroResponse introMessage(IntroRequest introRequest) {
@@ -48,19 +51,9 @@ public class GlificMessageService {
                     .map(localizationService::normalizeLanguageKey)
                     .orElse("english");
 
-            String template;
-            if (selectedLanguageOpt.isPresent() && !"english".equals(languageKey)) {
-                template = tenantConfigRepository
-                        .findConfigValue(tenantId, "intro_message_" + languageKey)
-                        .orElseThrow(() -> new IllegalStateException(
-                                "Intro message is not configured for selected language. Add intro_message_" + languageKey));
-            } else {
-                template = tenantConfigRepository
-                        .findConfigValue(tenantId, "intro_message_" + languageKey)
-                        .or(() -> tenantConfigRepository.findConfigValue(tenantId, "intro_message"))
-                        .orElseThrow(() -> new IllegalStateException(
-                                "Intro message is not configured. Add intro_message_" + languageKey + " or intro_message"));
-            }
+            String template = templatesService
+                    .resolveScreenMessage(tenantId, "INTRO_MESSAGE", languageKey)
+                    .orElseGet(() -> resolveLegacyIntroMessage(tenantId, selectedLanguageOpt, languageKey));
 
             log.info("Resolved intro message config for contactId {} with language key '{}'", introRequest.getContactId(), languageKey);
 
@@ -94,19 +87,9 @@ public class GlificMessageService {
                     .map(localizationService::normalizeLanguageKey)
                     .orElse("english");
 
-            String template;
-            if (selectedLanguageOpt.isPresent() && !"english".equals(languageKey)) {
-                template = tenantConfigRepository
-                        .findConfigValue(tenantId, "closing_message_" + languageKey)
-                        .orElseThrow(() -> new IllegalStateException(
-                                "Closing message is not configured for selected language. Add closing_message_" + languageKey));
-            } else {
-                template = tenantConfigRepository
-                        .findConfigValue(tenantId, "closing_message_" + languageKey)
-                        .or(() -> tenantConfigRepository.findConfigValue(tenantId, "closing_message"))
-                        .orElseThrow(() -> new IllegalStateException(
-                                "Closing message is not configured. Add closing_message_" + languageKey + " or closing_message"));
-            }
+            String template = templatesService
+                    .resolveScreenMessage(tenantId, "CLOSING_MESSAGE", languageKey)
+                    .orElseGet(() -> resolveLegacyClosingMessage(tenantId, selectedLanguageOpt, languageKey));
 
             log.info("Resolved closing message config for contactId {} with language key '{}'", closingRequest.getContactId(), languageKey);
 
@@ -121,5 +104,33 @@ public class GlificMessageService {
                     .message("Something went wrong. Please try again.")
                     .build();
         }
+    }
+
+    private String resolveLegacyIntroMessage(Integer tenantId, Optional<String> selectedLanguageOpt, String languageKey) {
+        if (selectedLanguageOpt.isPresent() && !"english".equals(languageKey)) {
+            return tenantConfigRepository
+                    .findConfigValue(tenantId, "intro_message_" + languageKey)
+                    .orElseThrow(() -> new IllegalStateException(
+                            "Intro message is not configured for selected language. Add intro_message_" + languageKey));
+        }
+        return tenantConfigRepository
+                .findConfigValue(tenantId, "intro_message_" + languageKey)
+                .or(() -> tenantConfigRepository.findConfigValue(tenantId, "intro_message"))
+                .orElseThrow(() -> new IllegalStateException(
+                        "Intro message is not configured. Add intro_message_" + languageKey + " or intro_message"));
+    }
+
+    private String resolveLegacyClosingMessage(Integer tenantId, Optional<String> selectedLanguageOpt, String languageKey) {
+        if (selectedLanguageOpt.isPresent() && !"english".equals(languageKey)) {
+            return tenantConfigRepository
+                    .findConfigValue(tenantId, "closing_message_" + languageKey)
+                    .orElseThrow(() -> new IllegalStateException(
+                            "Closing message is not configured for selected language. Add closing_message_" + languageKey));
+        }
+        return tenantConfigRepository
+                .findConfigValue(tenantId, "closing_message_" + languageKey)
+                .or(() -> tenantConfigRepository.findConfigValue(tenantId, "closing_message"))
+                .orElseThrow(() -> new IllegalStateException(
+                        "Closing message is not configured. Add closing_message_" + languageKey + " or closing_message"));
     }
 }

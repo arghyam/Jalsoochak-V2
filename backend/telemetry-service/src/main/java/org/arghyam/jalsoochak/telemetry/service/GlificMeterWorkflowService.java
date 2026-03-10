@@ -84,15 +84,18 @@ public class GlificMeterWorkflowService {
     private final GlificOperatorContextService operatorContextService;
     private final GlificLocalizationService localizationService;
     private final TenantConfigRepository tenantConfigRepository;
+    private final GlificMessageTemplatesService templatesService;
     private final TelemetryTenantRepository telemetryTenantRepository;
 
     public GlificMeterWorkflowService(GlificOperatorContextService operatorContextService,
                                       GlificLocalizationService localizationService,
                                       TenantConfigRepository tenantConfigRepository,
+                                      GlificMessageTemplatesService templatesService,
                                       TelemetryTenantRepository telemetryTenantRepository) {
         this.operatorContextService = operatorContextService;
         this.localizationService = localizationService;
         this.tenantConfigRepository = tenantConfigRepository;
+        this.templatesService = templatesService;
         this.telemetryTenantRepository = telemetryTenantRepository;
     }
 
@@ -217,15 +220,28 @@ public class GlificMeterWorkflowService {
 
             String defaultPrompt = "hindi".equals(languageKey) ? DEFAULT_ISSUE_PROMPT_HINDI : DEFAULT_ISSUE_PROMPT_ENGLISH;
 
-            String prompt = tenantConfigRepository.findIssueReportPrompt(tenantId, languageKey)
-                    .map(String::trim)
-                    .filter(p -> !p.equalsIgnoreCase(LEGACY_ISSUE_PROMPT_ENGLISH)
-                            && !p.equals(LEGACY_ISSUE_PROMPT_HINDI))
-                    .orElse(defaultPrompt);
+            Optional<String> promptFromTemplate = templatesService.resolveScreenPrompt(tenantId, "ISSUE_REPORT", languageKey);
+            String prompt;
+            if (promptFromTemplate.isPresent()) {
+                prompt = promptFromTemplate.get().trim();
+            } else {
+                prompt = tenantConfigRepository.findIssueReportPrompt(tenantId, languageKey)
+                        .map(String::trim)
+                        .filter(p -> !p.equalsIgnoreCase(LEGACY_ISSUE_PROMPT_ENGLISH)
+                                && !p.equals(LEGACY_ISSUE_PROMPT_HINDI))
+                        .orElse(defaultPrompt);
+            }
 
-            List<String> reasons = tenantConfigRepository.findIssueReportReasons(tenantId, languageKey);
-            if (reasons.isEmpty()) {
-                reasons = "hindi".equals(languageKey) ? DEFAULT_ISSUE_REASONS_HINDI : DEFAULT_ISSUE_REASONS;
+            List<GlificMessageTemplatesService.TemplateOption> templateReasons =
+                    templatesService.resolveScreenReasons(tenantId, "ISSUE_REPORT");
+            List<String> reasons;
+            if (!templateReasons.isEmpty()) {
+                reasons = templateReasons.stream().map(r -> r.labelForLanguageKey(languageKey)).toList();
+            } else {
+                reasons = tenantConfigRepository.findIssueReportReasons(tenantId, languageKey);
+                if (reasons.isEmpty()) {
+                    reasons = "hindi".equals(languageKey) ? DEFAULT_ISSUE_REASONS_HINDI : DEFAULT_ISSUE_REASONS;
+                }
             }
 
             StringBuilder message = new StringBuilder(prompt.trim());
@@ -268,9 +284,16 @@ public class GlificMeterWorkflowService {
                     operatorContextService.resolveOperatorLanguage(operatorWithSchema, tenantId)
             );
 
-            List<String> reasons = tenantConfigRepository.findIssueReportReasons(tenantId, languageKey);
-            if (reasons.isEmpty()) {
-                reasons = "hindi".equals(languageKey) ? DEFAULT_ISSUE_REASONS_HINDI : DEFAULT_ISSUE_REASONS;
+            List<GlificMessageTemplatesService.TemplateOption> templateReasons =
+                    templatesService.resolveScreenReasons(tenantId, "ISSUE_REPORT");
+            List<String> reasons;
+            if (!templateReasons.isEmpty()) {
+                reasons = templateReasons.stream().map(r -> r.labelForLanguageKey(languageKey)).toList();
+            } else {
+                reasons = tenantConfigRepository.findIssueReportReasons(tenantId, languageKey);
+                if (reasons.isEmpty()) {
+                    reasons = "hindi".equals(languageKey) ? DEFAULT_ISSUE_REASONS_HINDI : DEFAULT_ISSUE_REASONS;
+                }
             }
             String rawIssueReason = request.getIssueReason().trim();
             String resolvedIssueReason = resolveSelection(rawIssueReason, reasons).orElse(rawIssueReason);
@@ -296,7 +319,9 @@ public class GlificMeterWorkflowService {
                 fallbackMessage = "समस्या रिपोर्ट हो गई है। धन्यवाद।";
             }
 
-            String message = tenantConfigRepository.findIssueReportConfirmationTemplate(tenantId, languageKey)
+            String message = templatesService
+                    .resolveScreenConfirmationTemplate(tenantId, "ISSUE_REPORT", languageKey)
+                    .or(() -> tenantConfigRepository.findIssueReportConfirmationTemplate(tenantId, languageKey))
                     .orElse(fallbackMessage);
 
             return IntroResponse.builder()
@@ -487,7 +512,9 @@ public class GlificMeterWorkflowService {
             if ("hindi".equals(languageKey)) {
                 fallbackMessage = "समस्या रिपोर्ट हो गई है। धन्यवाद।";
             }
-            String message = tenantConfigRepository.findIssueReportConfirmationTemplate(tenantId, languageKey)
+            String message = templatesService
+                    .resolveScreenConfirmationTemplate(tenantId, "ISSUE_REPORT", languageKey)
+                    .or(() -> tenantConfigRepository.findIssueReportConfirmationTemplate(tenantId, languageKey))
                     .orElse(fallbackMessage);
 
             return IntroResponse.builder()

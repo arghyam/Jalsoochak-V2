@@ -34,6 +34,7 @@ public class GlificSelectionService {
     private final GlificOperatorContextService operatorContextService;
     private final GlificLocalizationService localizationService;
     private final TenantConfigRepository tenantConfigRepository;
+    private final GlificMessageTemplatesService templatesService;
     private final TelemetryTenantRepository telemetryTenantRepository;
     private final UserLanguagePreferenceRepository userLanguagePreferenceRepository;
     private final GlificContactSyncService glificContactSyncService;
@@ -41,12 +42,14 @@ public class GlificSelectionService {
     public GlificSelectionService(GlificOperatorContextService operatorContextService,
                                   GlificLocalizationService localizationService,
                                   TenantConfigRepository tenantConfigRepository,
+                                  GlificMessageTemplatesService templatesService,
                                   TelemetryTenantRepository telemetryTenantRepository,
                                   UserLanguagePreferenceRepository userLanguagePreferenceRepository,
                                   GlificContactSyncService glificContactSyncService) {
         this.operatorContextService = operatorContextService;
         this.localizationService = localizationService;
         this.tenantConfigRepository = tenantConfigRepository;
+        this.templatesService = templatesService;
         this.telemetryTenantRepository = telemetryTenantRepository;
         this.userLanguagePreferenceRepository = userLanguagePreferenceRepository;
         this.glificContactSyncService = glificContactSyncService;
@@ -67,10 +70,20 @@ public class GlificSelectionService {
             String languageKey = localizationService.normalizeLanguageKey(
                     operatorContextService.resolveOperatorLanguage(operatorWithSchema, tenantId)
             );
-            String prompt = tenantConfigRepository.findLanguageSelectionPrompt(tenantId, languageKey)
+            String prompt = templatesService.resolveScreenPrompt(tenantId, "LANGUAGE_SELECTION", languageKey)
+                    .or(() -> tenantConfigRepository.findLanguageSelectionPrompt(tenantId, languageKey))
                     .orElseThrow(() -> new IllegalStateException("language_selection_prompt is not configured"));
 
-            List<String> languageOptions = tenantConfigRepository.findLanguageOptions(tenantId);
+            List<GlificMessageTemplatesService.TemplateOption> languageTemplateOptions =
+                    templatesService.resolveScreenOptions(tenantId, "LANGUAGE_SELECTION");
+            List<String> languageOptions;
+            if (!languageTemplateOptions.isEmpty()) {
+                languageOptions = languageTemplateOptions.stream()
+                        .map(opt -> opt.labelForLanguageKey(languageKey))
+                        .toList();
+            } else {
+                languageOptions = tenantConfigRepository.findLanguageOptions(tenantId);
+            }
             if (languageOptions.isEmpty()) {
                 throw new IllegalStateException("No language options configured. Add language_1, language_2, ...");
             }
@@ -112,15 +125,37 @@ public class GlificSelectionService {
                 throw new IllegalStateException("Operator tenant could not be resolved");
             }
 
-            List<String> languageOptions = tenantConfigRepository.findLanguageOptions(tenantId);
-            if (languageOptions.isEmpty()) {
-                throw new IllegalStateException("No language options configured for tenant");
+            String currentLanguageKey = localizationService.normalizeLanguageKey(
+                    operatorContextService.resolveOperatorLanguage(operatorWithSchema, tenantId)
+            );
+
+            List<GlificMessageTemplatesService.TemplateOption> languageTemplateOptions =
+                    templatesService.resolveScreenOptions(tenantId, "LANGUAGE_SELECTION");
+            String selectedLanguage;
+            int selectedLanguageId;
+            String selectedLanguageKey;
+            String selectedLanguageDisplayLabel;
+            if (!languageTemplateOptions.isEmpty()) {
+                int selectedIndex = resolveTemplateSelectionIndex(request.getLanguage(), languageTemplateOptions, currentLanguageKey)
+                        .orElseThrow(() -> new IllegalStateException("Invalid language selection"));
+                GlificMessageTemplatesService.TemplateOption selectedOpt = languageTemplateOptions.get(selectedIndex);
+                selectedLanguageId = selectedOpt.order() > 0 ? selectedOpt.order() : (selectedIndex + 1);
+                // Persist a canonical label (prefer English) so downstream normalization/sync keeps working.
+                selectedLanguage = selectedOpt.canonicalLabel();
+                selectedLanguageKey = localizationService.normalizeLanguageKey(selectedLanguage);
+                selectedLanguageDisplayLabel = selectedOpt.labelForLanguageKey(selectedLanguageKey);
+            } else {
+                List<String> languageOptions = tenantConfigRepository.findLanguageOptions(tenantId);
+                if (languageOptions.isEmpty()) {
+                    throw new IllegalStateException("No language options configured for tenant");
+                }
+                selectedLanguage = resolveSelection(request.getLanguage(), languageOptions)
+                        .orElseThrow(() -> new IllegalStateException("Invalid language selection"));
+                selectedLanguageId = languageOptions.indexOf(selectedLanguage) + 1;
+                selectedLanguageKey = localizationService.normalizeLanguageKey(selectedLanguage);
+                selectedLanguageDisplayLabel = selectedLanguage;
             }
 
-            String selectedLanguage = resolveSelection(request.getLanguage(), languageOptions)
-                    .orElseThrow(() -> new IllegalStateException("Invalid language selection"));
-
-            int selectedLanguageId = languageOptions.indexOf(selectedLanguage) + 1;
             telemetryTenantRepository.updateUserLanguageId(
                     operatorWithSchema.schemaName(),
                     operatorWithSchema.operator().id(),
@@ -129,14 +164,14 @@ public class GlificSelectionService {
             userLanguagePreferenceRepository.upsert(tenantId, request.getContactId(), selectedLanguage);
             glificContactSyncService.syncContactLanguageAsync(request.getContactId(), selectedLanguage);
 
-            String languageSpecificKey = "language_selection_confirmation_template_" + localizationService.normalizeLanguageKey(selectedLanguage);
-            String confirmationTemplate = tenantConfigRepository
-                    .findConfigValue(tenantId, languageSpecificKey)
+            String confirmationTemplate = templatesService
+                    .resolveScreenConfirmationTemplate(tenantId, "LANGUAGE_SELECTION", selectedLanguageKey)
+                    .or(() -> tenantConfigRepository.findConfigValue(tenantId, "language_selection_confirmation_template_" + selectedLanguageKey))
                     .or(() -> tenantConfigRepository.findConfigValue(tenantId, "language_selection_confirmation_template"))
                     .orElse("Language selected: {language}");
-            String selectedLanguageKey = localizationService.normalizeLanguageKey(selectedLanguage);
+
             String localizedConfirmation = localizationService.localizeMessage(
-                    confirmationTemplate.replace("{language}", selectedLanguage),
+                    confirmationTemplate.replace("{language}", selectedLanguageDisplayLabel),
                     selectedLanguageKey
             );
 
@@ -167,10 +202,20 @@ public class GlificSelectionService {
             }
 
             String languageKey = localizationService.normalizeLanguageKey(operatorContextService.resolveOperatorLanguage(operatorWithSchema, tenantId));
-            String prompt = tenantConfigRepository.findChannelSelectionPrompt(tenantId, languageKey)
+            String prompt = templatesService.resolveScreenPrompt(tenantId, "CHANNEL_SELECTION", languageKey)
+                    .or(() -> tenantConfigRepository.findChannelSelectionPrompt(tenantId, languageKey))
                     .orElse("Please select your preferred channel by typing the corresponding number:");
 
-            List<String> channelOptions = tenantConfigRepository.findChannelOptions(tenantId, languageKey);
+            List<GlificMessageTemplatesService.TemplateOption> channelTemplateOptions =
+                    templatesService.resolveScreenOptions(tenantId, "CHANNEL_SELECTION");
+            List<String> channelOptions;
+            if (!channelTemplateOptions.isEmpty()) {
+                channelOptions = channelTemplateOptions.stream()
+                        .map(opt -> opt.labelForLanguageKey(languageKey))
+                        .toList();
+            } else {
+                channelOptions = tenantConfigRepository.findChannelOptions(tenantId, languageKey);
+            }
             if (channelOptions.isEmpty()) {
                 throw new IllegalStateException("No channel options configured. Add channel_1/channel_2 or language-specific keys.");
             }
@@ -220,22 +265,33 @@ public class GlificSelectionService {
 
             String languageKey = localizationService.normalizeLanguageKey(operatorContextService.resolveOperatorLanguage(operatorWithSchema, tenantId));
 
-            List<String> channelOptions = tenantConfigRepository.findChannelOptions(tenantId, languageKey);
-            if (channelOptions.isEmpty()) {
-                throw new IllegalStateException("No channel options configured for tenant");
+            List<GlificMessageTemplatesService.TemplateOption> channelTemplateOptions =
+                    templatesService.resolveScreenOptions(tenantId, "CHANNEL_SELECTION");
+            String selectedChannel;
+            int selectedChannelId;
+            if (!channelTemplateOptions.isEmpty()) {
+                int selectedIndex = resolveTemplateSelectionIndex(request.getChannel(), channelTemplateOptions, languageKey)
+                        .orElseThrow(() -> new IllegalStateException("Invalid channel selection"));
+                GlificMessageTemplatesService.TemplateOption selectedOpt = channelTemplateOptions.get(selectedIndex);
+                selectedChannel = selectedOpt.labelForLanguageKey(languageKey);
+                selectedChannelId = selectedOpt.order() > 0 ? selectedOpt.order() : (selectedIndex + 1);
+            } else {
+                List<String> channelOptions = tenantConfigRepository.findChannelOptions(tenantId, languageKey);
+                if (channelOptions.isEmpty()) {
+                    throw new IllegalStateException("No channel options configured for tenant");
+                }
+                selectedChannel = resolveSelection(request.getChannel(), channelOptions)
+                        .orElseThrow(() -> new IllegalStateException("Invalid channel selection"));
+                selectedChannelId = channelOptions.indexOf(selectedChannel) + 1;
             }
-
-            String selectedChannel = resolveSelection(request.getChannel(), channelOptions)
-                    .orElseThrow(() -> new IllegalStateException("Invalid channel selection"));
-
-            int selectedChannelId = channelOptions.indexOf(selectedChannel) + 1;
             Long schemeId = telemetryTenantRepository
                     .findFirstSchemeForUser(operatorWithSchema.schemaName(), operatorWithSchema.operator().id())
                     .orElseThrow(() -> new IllegalStateException("Operator is not mapped to any scheme"));
             telemetryTenantRepository.updateSchemeChannel(operatorWithSchema.schemaName(), schemeId, selectedChannelId);
 
-            String confirmationTemplate = tenantConfigRepository
-                    .findConfigValue(tenantId, "channel_selection_confirmation_template_" + languageKey)
+            String confirmationTemplate = templatesService
+                    .resolveScreenConfirmationTemplate(tenantId, "CHANNEL_SELECTION", languageKey)
+                    .or(() -> tenantConfigRepository.findConfigValue(tenantId, "channel_selection_confirmation_template_" + languageKey))
                     .or(() -> tenantConfigRepository.findConfigValue(tenantId, "channel_selection_confirmation_template"))
                     .orElse("Channel selected: {channel}");
 
@@ -274,14 +330,22 @@ public class GlificSelectionService {
 
             String languageKey = localizationService.normalizeLanguageKey(operatorContextService.resolveOperatorLanguage(operatorWithSchema, tenantId));
 
-            String prompt = tenantConfigRepository.findItemSelectionPrompt(tenantId, languageKey)
+            String prompt = templatesService.resolveScreenPrompt(tenantId, "ITEM_SELECTION", languageKey)
+                    .or(() -> tenantConfigRepository.findItemSelectionPrompt(tenantId, languageKey))
                     .orElse("Please select what you want to do:");
 
-            List<String> itemOptions = tenantConfigRepository.findItemOptions(tenantId, languageKey);
-            if (itemOptions.isEmpty()) {
-                throw new IllegalStateException("No item options configured. Add item_1/item_2... or language-specific keys.");
+            List<GlificMessageTemplatesService.TemplateOption> itemTemplateOptions =
+                    templatesService.resolveScreenOptions(tenantId, "ITEM_SELECTION");
+            List<VisibleItemOption> visibleItemOptions;
+            if (!itemTemplateOptions.isEmpty()) {
+                visibleItemOptions = buildVisibleItemOptionsFromTemplates(tenantId, languageKey, itemTemplateOptions);
+            } else {
+                List<String> itemOptions = tenantConfigRepository.findItemOptions(tenantId, languageKey);
+                if (itemOptions.isEmpty()) {
+                    throw new IllegalStateException("No item options configured. Add item_1/item_2... or language-specific keys.");
+                }
+                visibleItemOptions = buildVisibleItemOptions(tenantId, languageKey, itemOptions);
             }
-            List<VisibleItemOption> visibleItemOptions = buildVisibleItemOptions(tenantId, languageKey, itemOptions);
 
             StringBuilder message = new StringBuilder(prompt.trim());
             for (int i = 0; i < visibleItemOptions.size(); i++) {
@@ -321,11 +385,18 @@ public class GlificSelectionService {
 
             String languageKey = localizationService.normalizeLanguageKey(operatorContextService.resolveOperatorLanguage(operatorWithSchema, tenantId));
 
-            List<String> itemOptions = tenantConfigRepository.findItemOptions(tenantId, languageKey);
-            if (itemOptions.isEmpty()) {
-                throw new IllegalStateException("No item options configured for tenant");
+            List<GlificMessageTemplatesService.TemplateOption> itemTemplateOptions =
+                    templatesService.resolveScreenOptions(tenantId, "ITEM_SELECTION");
+            List<VisibleItemOption> visibleItemOptions;
+            if (!itemTemplateOptions.isEmpty()) {
+                visibleItemOptions = buildVisibleItemOptionsFromTemplates(tenantId, languageKey, itemTemplateOptions);
+            } else {
+                List<String> itemOptions = tenantConfigRepository.findItemOptions(tenantId, languageKey);
+                if (itemOptions.isEmpty()) {
+                    throw new IllegalStateException("No item options configured for tenant");
+                }
+                visibleItemOptions = buildVisibleItemOptions(tenantId, languageKey, itemOptions);
             }
-            List<VisibleItemOption> visibleItemOptions = buildVisibleItemOptions(tenantId, languageKey, itemOptions);
 
             int selectedIndex = resolveSelectionIndex(
                     request.getChannel(),
@@ -336,8 +407,9 @@ public class GlificSelectionService {
             String selectedItemLabel = selectedItem.label();
             String selectedCode = selectedItem.code();
 
-            String template = tenantConfigRepository
-                    .findConfigValue(tenantId, "item_selection_confirmation_template_" + languageKey)
+            String template = templatesService
+                    .resolveScreenConfirmationTemplate(tenantId, "ITEM_SELECTION", languageKey)
+                    .or(() -> tenantConfigRepository.findConfigValue(tenantId, "item_selection_confirmation_template_" + languageKey))
                     .or(() -> tenantConfigRepository.findConfigValue(tenantId, "item_selection_confirmation_template"))
                     .orElse("{item} selected");
 
@@ -480,6 +552,116 @@ public class GlificSelectionService {
         };
     }
 
+    private Optional<Integer> resolveTemplateSelectionIndex(String rawSelection,
+                                                           List<GlificMessageTemplatesService.TemplateOption> options,
+                                                           String languageKeyForDisplay) {
+        if (rawSelection == null || rawSelection.isBlank()) {
+            return Optional.empty();
+        }
+        String value = rawSelection.trim();
+        int digitEnd = 0;
+        while (digitEnd < value.length() && Character.isDigit(value.charAt(digitEnd))) {
+            digitEnd++;
+        }
+        if (digitEnd > 0) {
+            int index = Integer.parseInt(value.substring(0, digitEnd));
+            if (index >= 1 && index <= options.size()) {
+                return Optional.of(index - 1);
+            }
+        }
+
+        // Try display labels first.
+        for (int i = 0; i < options.size(); i++) {
+            String display = options.get(i).labelForLanguageKey(languageKeyForDisplay);
+            if (display != null && display.equalsIgnoreCase(value)) {
+                return Optional.of(i);
+            }
+        }
+        // Then match any localized label (including canonical).
+        for (int i = 0; i < options.size(); i++) {
+            if (options.get(i).matchesAnyLabel(value)) {
+                return Optional.of(i);
+            }
+        }
+        return Optional.empty();
+    }
+
+    private List<VisibleItemOption> buildVisibleItemOptionsFromTemplates(Integer tenantId,
+                                                                         String languageKey,
+                                                                         List<GlificMessageTemplatesService.TemplateOption> itemOptions) {
+        List<GlificMessageTemplatesService.TemplateOption> channelOptions =
+                templatesService.resolveScreenOptions(tenantId, "CHANNEL_SELECTION");
+        int channelCount = !channelOptions.isEmpty()
+                ? channelOptions.size()
+                : tenantConfigRepository.findChannelOptions(tenantId, languageKey).size();
+        boolean showChannelChange = channelCount > 1;
+
+        List<GlificMessageTemplatesService.TemplateOption> languageOptions =
+                templatesService.resolveScreenOptions(tenantId, "LANGUAGE_SELECTION");
+        int languageCount = !languageOptions.isEmpty()
+                ? languageOptions.size()
+                : tenantConfigRepository.findLanguageOptions(tenantId).size();
+        boolean showLanguageChange = languageCount > 1;
+
+        List<VisibleItemOption> filtered = new ArrayList<>();
+        for (int i = 0; i < itemOptions.size(); i++) {
+            GlificMessageTemplatesService.TemplateOption opt = itemOptions.get(i);
+            String itemCode = toItemCode(opt, itemOptions, i);
+            if ("channelChange".equals(itemCode) && !showChannelChange) {
+                continue;
+            }
+            if ("languageChange".equals(itemCode) && !showLanguageChange) {
+                continue;
+            }
+            String displayLabel = opt.labelForLanguageKey(languageKey);
+            if ("reportIssue".equals(itemCode)) {
+                displayLabel = normalizeIssueReportLabel(displayLabel, languageKey);
+            }
+            filtered.add(new VisibleItemOption(displayLabel, itemCode));
+        }
+        if (filtered.isEmpty()) {
+            List<VisibleItemOption> fallback = new ArrayList<>();
+            for (int i = 0; i < itemOptions.size(); i++) {
+                GlificMessageTemplatesService.TemplateOption opt = itemOptions.get(i);
+                fallback.add(new VisibleItemOption(opt.labelForLanguageKey(languageKey), toItemCode(opt, itemOptions, i)));
+            }
+            return fallback;
+        }
+        return filtered;
+    }
+
+    private String toItemCode(GlificMessageTemplatesService.TemplateOption opt,
+                              List<GlificMessageTemplatesService.TemplateOption> all,
+                              int index) {
+        String canonical = opt == null ? null : opt.canonicalLabel();
+        String normalized = canonical == null
+                ? ""
+                : canonical.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9\\s]+", " ").trim();
+
+        if (normalized.contains("submit") || normalized.contains("reading")) {
+            return "readingSubmission";
+        }
+        if (normalized.contains("report") || normalized.contains("issue")) {
+            return "reportIssue";
+        }
+        if (normalized.contains("language")) {
+            return "languageChange";
+        }
+        if (normalized.contains("channel")) {
+            return "channelChange";
+        }
+
+        // Backward-compatible fallback for fixed workflows by index.
+        int resolvedIndex = index + 1;
+        return switch (resolvedIndex) {
+            case 1 -> "readingSubmission";
+            case 2 -> "reportIssue";
+            case 3 -> "languageChange";
+            case 4 -> "channelChange";
+            default -> localizationService.normalizeLanguageKey(canonical);
+        };
+    }
+
     private List<VisibleItemOption> buildVisibleItemOptions(Integer tenantId,
                                                             String languageKey,
                                                             List<String> itemOptions) {
@@ -535,16 +717,28 @@ public class GlificSelectionService {
         if (channelOption == null) {
             return false;
         }
-        String normalized = channelOption.toLowerCase().replaceAll("[^a-z0-9]+", "");
-        return normalized.contains("bfm");
+        String trimmed = channelOption.trim();
+        String normalized = trimmed.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]+", "");
+        if (normalized.contains("bfm")) {
+            return true;
+        }
+        // Common Hindi spelling used in tenant templates.
+        String compact = trimmed.replaceAll("\\s+", "");
+        return compact.contains("बीएफएम");
     }
 
     private boolean isElectricChannel(String channelOption) {
         if (channelOption == null) {
             return false;
         }
-        String normalized = channelOption.toLowerCase().replaceAll("[^a-z0-9]+", "");
-        return normalized.contains("electric");
+        String trimmed = channelOption.trim();
+        String normalized = trimmed.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]+", "");
+        if (normalized.contains("electric")) {
+            return true;
+        }
+        // Common Hindi spelling used in tenant templates.
+        String compact = trimmed.replaceAll("\\s+", "");
+        return compact.contains("इलेक्ट्रिक");
     }
 
     private record VisibleItemOption(String label, String code) {
