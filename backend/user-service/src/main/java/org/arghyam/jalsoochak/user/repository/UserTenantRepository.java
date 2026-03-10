@@ -13,52 +13,10 @@ public class UserTenantRepository {
 
     private final JdbcTemplate jdbcTemplate;
 
-    public boolean existsPhoneNumber(String schemaName, String phoneNumber) {
-        validateSchemaName(schemaName);
-        String sql = String.format("""
-                SELECT EXISTS (
-                    SELECT 1
-                    FROM %s.user_table
-                    WHERE phone_number = ?
-                )
-                """, schemaName);
-        Boolean exists = jdbcTemplate.queryForObject(sql, Boolean.class, phoneNumber);
-        return Boolean.TRUE.equals(exists);
-    }
-
     private void validateSchemaName(String schemaName) {
         if (schemaName == null || !schemaName.matches("^[a-z_][a-z0-9_]*$")) {
             throw new IllegalArgumentException("Invalid schema name: " + schemaName);
         }
-    }
-
-    public Optional<TenantUserRecord> findUserByPhone(String schemaName, String phoneNumber) {
-        validateSchemaName(schemaName);
-
-        String sql = String.format("""
-        SELECT u.id,
-               u.tenant_id,
-               u.phone_number,
-               u.email,
-               u.user_type,
-               ut.c_name
-        FROM %s.user_table u
-        LEFT JOIN common_schema.user_type_master_table ut
-               ON ut.id = u.user_type
-        WHERE u.phone_number = ?
-        """, schemaName);
-
-        List<TenantUserRecord> rows = jdbcTemplate.query(sql, (rs, n) ->
-                new TenantUserRecord(
-                        toLong(rs.getObject("id")),
-                        toInteger(rs.getObject("tenant_id")),
-                        rs.getString("phone_number"),
-                        rs.getString("email"),
-                        toLong(rs.getObject("user_type")),
-                        rs.getString("c_name")
-                ), phoneNumber);
-
-        return rows.stream().findFirst();
     }
 
     public Optional<TenantUserRecord> findUserById(String schemaName, Long userId) {
@@ -70,6 +28,7 @@ public class UserTenantRepository {
                u.phone_number,
                u.email,
                u.user_type,
+               u.title,
                ut.c_name
         FROM %s.user_table u
         LEFT JOIN common_schema.user_type_master_table ut
@@ -84,36 +43,58 @@ public class UserTenantRepository {
                         rs.getString("phone_number"),
                         rs.getString("email"),
                         toLong(rs.getObject("user_type")),
-                        rs.getString("c_name")
+                        rs.getString("c_name"),
+                        rs.getString("title")
                 ), userId);
 
         return rows.stream().findFirst();
     }
 
-    public boolean existsEmail(String schemaName, String email) {
+    public Optional<TenantUserRecord> findUserByEmail(String schemaName, String email) {
         validateSchemaName(schemaName);
+
         String sql = String.format("""
-                SELECT EXISTS (
-                    SELECT 1
-                    FROM %s.user_table
-                    WHERE LOWER(email) = LOWER(?)
-                )
-                """, schemaName);
-        Boolean exists = jdbcTemplate.queryForObject(sql, Boolean.class, email);
-        return Boolean.TRUE.equals(exists);
+        SELECT u.id,
+               u.tenant_id,
+               u.phone_number,
+               u.email,
+               u.user_type,
+               u.title,
+               ut.c_name
+        FROM %s.user_table u
+        LEFT JOIN common_schema.user_type_master_table ut
+               ON ut.id = u.user_type
+        WHERE LOWER(u.email) = LOWER(?)
+        """, schemaName);
+
+        List<TenantUserRecord> rows = jdbcTemplate.query(sql, (rs, n) ->
+                new TenantUserRecord(
+                        toLong(rs.getObject("id")),
+                        toInteger(rs.getObject("tenant_id")),
+                        rs.getString("phone_number"),
+                        rs.getString("email"),
+                        toLong(rs.getObject("user_type")),
+                        rs.getString("c_name"),
+                        rs.getString("title")
+                ), email);
+
+        return rows.stream().findFirst();
     }
 
     public Long createUser(String schemaName,
+                           String uuid,
                            Integer tenantId,
                            String title,
                            String email,
                            Integer userTypeId,
                            String phoneNumber,
+                           String password,
                            Long createdBy) {
         validateSchemaName(schemaName);
         String sql = String.format("""
                 INSERT INTO %s.user_table
                 (
+                    uuid,
                     tenant_id,
                     title,
                     email,
@@ -128,23 +109,34 @@ public class UserTenantRepository {
                     updated_by,
                     updated_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, 1, true, true, ?, NOW(), ?, NOW())
+                VALUES (?, ?, ?, ?, ?, ?, ?, 1, true, true, ?, NOW(), ?, NOW())
                 RETURNING id
                 """, schemaName);
 
         Number insertedId = jdbcTemplate.queryForObject(
                 sql,
                 Number.class,
+                uuid,
                 tenantId,
                 title,
                 email,
                 userTypeId,
                 phoneNumber,
-                null,
+                password,
                 createdBy,
                 createdBy
         );
         return insertedId != null ? insertedId.longValue() : null;
+    }
+
+    public void updateUserProfile(String schemaName, Long id, String title, String phoneNumber) {
+        validateSchemaName(schemaName);
+        String sql = String.format("""
+                UPDATE %s.user_table
+                SET title = ?, phone_number = ?, updated_at = NOW()
+                WHERE id = ?
+                """, schemaName);
+        jdbcTemplate.update(sql, title, phoneNumber, id);
     }
 
     private Long toLong(Object value) {
