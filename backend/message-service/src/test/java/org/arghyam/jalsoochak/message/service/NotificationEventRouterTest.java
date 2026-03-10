@@ -58,14 +58,14 @@ class NotificationEventRouterTest {
 
     @Test
     void route_sendsNudge_forValidNudgeEvent() {
-        when(whatsAppChannel.sendNudge(anyString(), anyString(), anyString())).thenReturn(true);
+        when(whatsAppChannel.sendNudgeViaFlow(anyString(), anyString(), anyString())).thenReturn(true);
 
         router.route("""
                 {"eventType":"NUDGE","recipientPhone":"919876543210",
                  "operatorName":"Ramesh","schemeId":"1","tenantId":1,"languageId":0}
                 """);
 
-        verify(whatsAppChannel).sendNudge(eq("919876543210"), eq("Ramesh"), anyString());
+        verify(whatsAppChannel).sendNudgeViaFlow(eq("919876543210"), eq("Ramesh"), anyString());
         verifyNoInteractions(escalationPdfService, minioStorageService, messageTemplateService);
     }
 
@@ -80,24 +80,24 @@ class NotificationEventRouterTest {
 
     @Test
     void route_usesDefaultOperatorName_whenOperatorNameAbsent() {
-        when(whatsAppChannel.sendNudge(anyString(), anyString(), anyString())).thenReturn(true);
+        when(whatsAppChannel.sendNudgeViaFlow(anyString(), anyString(), anyString())).thenReturn(true);
 
         router.route("""
                 {"eventType":"NUDGE","recipientPhone":"911234567890","tenantId":1}
                 """);
 
-        verify(whatsAppChannel).sendNudge(eq("911234567890"), eq("Operator"), anyString());
+        verify(whatsAppChannel).sendNudgeViaFlow(eq("911234567890"), eq("Operator"), anyString());
     }
 
     @Test
     void route_isCaseInsensitive_forNudgeEventType() {
-        when(whatsAppChannel.sendNudge(anyString(), anyString(), anyString())).thenReturn(true);
+        when(whatsAppChannel.sendNudgeViaFlow(anyString(), anyString(), anyString())).thenReturn(true);
 
         router.route("""
                 {"eventType":"nudge","recipientPhone":"919999999999","operatorName":"Op","tenantId":1}
                 """);
 
-        verify(whatsAppChannel).sendNudge(eq("919999999999"), anyString(), anyString());
+        verify(whatsAppChannel).sendNudgeViaFlow(eq("919999999999"), anyString(), anyString());
     }
 
     // ──────────────────────────── ESCALATION ───────────────────────────────────
@@ -173,7 +173,7 @@ class NotificationEventRouterTest {
 
     @Test
     void route_rethrowsException_forKafkaRetry_whenNudgeFails() {
-        when(whatsAppChannel.sendNudge(anyString(), anyString(), anyString()))
+        when(whatsAppChannel.sendNudgeViaFlow(anyString(), anyString(), anyString()))
                 .thenThrow(new RuntimeException("Glific unreachable"));
 
         assertThatThrownBy(() -> router.route("""

@@ -4,9 +4,14 @@ import org.arghyam.jalsoochak.telemetry.repository.TelemetryOperatorWithSchema;
 import org.springframework.stereotype.Service;
 
 import java.util.Locale;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 @Service
 public class GlificLocalizationService {
+    private static final Pattern SUBMITTED_PREVIOUS_PATTERN = Pattern.compile(
+            "(?i)submitted\\s+reading:\\s*([^\\.]+)\\.\\s*previous\\s+reading:\\s*([^\\.]+)\\.?"
+    );
 
     private final GlificOperatorContextService operatorContextService;
 
@@ -63,7 +68,7 @@ public class GlificLocalizationService {
             return localizeMessage("Duplicate image submission detected. Please submit a new image.", languageKey);
         }
         if (normalized.contains("less than previous")) {
-            return localizeMessage("Reading cannot be less than previous confirmed reading.", languageKey);
+            return localizeMessage(message.trim(), languageKey);
         }
         if (normalized.contains("manualreading is required")) {
             return localizeMessage("manualReading is required.", languageKey);
@@ -126,10 +131,14 @@ public class GlificLocalizationService {
             return "डुप्लिकेट इमेज मिली है। कृपया नई इमेज सबमिट करें।";
         }
         if (normalized.contains("reading cannot be less than previous")) {
+            Matcher matcher = SUBMITTED_PREVIOUS_PATTERN.matcher(message);
+            if (matcher.find()) {
+                String submitted = matcher.group(1).trim();
+                String previous = matcher.group(2).trim();
+                return "रीडिंग पिछली पुष्टि की गई रीडिंग से कम नहीं हो सकती। जमा की गई रीडिंग: "
+                        + submitted + "। पिछली रीडिंग: " + previous + "।";
+            }
             return "रीडिंग पिछली पुष्टि की गई रीडिंग से कम नहीं हो सकती।";
-        }
-        if (normalized.contains("manual reading cannot be less than previous")) {
-            return "मैनुअल रीडिंग पिछली पुष्टि की गई रीडिंग से कम नहीं हो सकती।";
         }
         if (normalized.contains("manualreading is required")) {
             return "manualReading अनिवार्य है।";

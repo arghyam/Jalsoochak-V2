@@ -71,6 +71,32 @@ public class WhatsAppChannel implements NotificationChannel {
     }
 
     /**
+     * Initiates a Glific flow for the nudge instead of sending the HSM message directly.
+     * The flow (configured in Glific) sends the HSM template with interactive buttons
+     * and handles subsequent button-response interactions.
+     *
+     * <p>Requires {`@code` glific.flow.nudge-id} to be configured. Returns {`@code` false}
+     * if the flow initiation fails for any reason.</p>
+     *
+     * @param phone        recipient WhatsApp phone number (E.164 format)
+     * @param operatorName operator name passed as flow variable {@code operator_name}
+     * @param date         today's date passed as flow variable {@code date}
+     * @return {@code true} if the flow was successfully initiated
+     */
+    public boolean sendNudgeViaFlow(String phone, String operatorName, String date) {
+        try {
+            Long contactId = glificWhatsAppService.optIn(phone);
+            glificWhatsAppService.startNudgeFlow(contactId, operatorName, date);
+            log.info("[WHATSAPP] Nudge flow initiated");
+            log.debug("[WHATSAPP] Nudge flow initiated for {}", phone);
+            return true;
+        } catch (Exception ex) {
+            log.error("[WHATSAPP] Failed to initiate nudge flow: {}", ex.getMessage(), ex);
+            return false;
+        }
+    }
+
+    /**
      * Sends the escalation PDF (document HSM) to the officer via Glific.
      *
      * @param toPhone     recipient WhatsApp phone number (E.164 format)

@@ -275,7 +275,24 @@ public class TelemetryTenantRepository {
                                         String correlationId,
                                         String issueReason) {
         validateSchemaName(schemaName);
-        String sql = String.format("""
+        LocalDate readingDate = LocalDate.from(readingAt);
+        Optional<Long> existingId = findLatestFlowReadingRecordForDate(schemaName, schemeId, operatorId, readingDate);
+        if (existingId.isPresent()) {
+            String updateSql = String.format("""
+                    UPDATE %s.flow_reading_table
+                    SET reading_at = ?,
+                        reading_date = ?,
+                        correlation_id = ?,
+                        issue_report_reason = ?,
+                        updated_by = ?,
+                        updated_at = NOW()
+                    WHERE id = ?
+                    """, schemaName);
+            jdbcTemplate.update(updateSql, readingAt, readingDate, correlationId, issueReason, operatorId, existingId.get());
+            return existingId.get();
+        }
+
+        String insertSql = String.format("""
                 INSERT INTO %s.flow_reading_table
                     (scheme_id, reading_at, reading_date, extracted_reading, confirmed_reading,
                      correlation_id, quantity, channel, meter_change_reason, issue_report_reason, image_url, created_by, created_at, updated_by, updated_at)
@@ -283,18 +300,37 @@ public class TelemetryTenantRepository {
                 RETURNING id
                 """, schemaName);
 
-        Number id = jdbcTemplate.queryForObject(
-                sql,
+        Number createdId = jdbcTemplate.queryForObject(
+                insertSql,
                 Number.class,
                 schemeId,
                 readingAt,
-                LocalDate.from(readingAt),
+                readingDate,
                 correlationId,
                 issueReason,
                 operatorId,
                 operatorId
         );
-        return id != null ? id.longValue() : null;
+        return createdId != null ? createdId.longValue() : null;
+    }
+
+    private Optional<Long> findLatestFlowReadingRecordForDate(String schemaName,
+                                                              Long schemeId,
+                                                              Long operatorId,
+                                                              LocalDate readingDate) {
+        validateSchemaName(schemaName);
+        String sql = String.format("""
+                SELECT id
+                FROM %s.flow_reading_table
+                WHERE scheme_id = ?
+                  AND created_by = ?
+                  AND reading_date = ?
+                  AND deleted_at IS NULL
+                ORDER BY id DESC
+                LIMIT 1
+                """, schemaName);
+        List<Long> rows = jdbcTemplate.query(sql, (rs, n) -> toLong(rs.getObject("id")), schemeId, operatorId, readingDate);
+        return rows.stream().findFirst();
     }
 
     public Optional<TelemetryPendingMeterChangeRecord> findLatestPendingMeterChangeRecord(String schemaName, Long schemeId, Long operatorId) {
@@ -563,6 +599,44 @@ public class TelemetryTenantRepository {
                         toLong(rs.getObject("created_by"))
                 ), schemeId, operatorId);
         return rows.stream().findFirst();
+    }
+
+    public Optional<TelemetryReadingRecord> findLatestCompletedReadingForPreviousDay(String schemaName,
+                                                                                      Long schemeId,
+                                                                                      Long operatorId) {
+        validateSchemaName(schemaName);
+        String sql = String.format("""
+                SELECT id, correlation_id, created_by
+                FROM %s.flow_reading_table
+                WHERE scheme_id = ?
+                  AND created_by = ?
+                  AND reading_date = (CURRENT_DATE - INTERVAL '1 day')::date
+                  AND extracted_reading > 0
+                  AND confirmed_reading > 0
+                  AND deleted_at IS NULL
+                ORDER BY reading_at DESC, id DESC
+                LIMIT 1
+                """, schemaName);
+        List<TelemetryReadingRecord> rows = jdbcTemplate.query(sql, (rs, n) ->
+                new TelemetryReadingRecord(
+                        toLong(rs.getObject("id")),
+                        rs.getString("correlation_id"),
+                        toLong(rs.getObject("created_by"))
+                ), schemeId, operatorId);
+        return rows.stream().findFirst();
+    }
+
+    public void updateReadingValues(String schemaName, Long readingId, BigDecimal readingValue, Long updatedBy) {
+        validateSchemaName(schemaName);
+        String sql = String.format("""
+                UPDATE %s.flow_reading_table
+                SET extracted_reading = ?,
+                    confirmed_reading = ?,
+                    updated_by = ?,
+                    updated_at = NOW()
+                WHERE id = ?
+                """, schemaName);
+        jdbcTemplate.update(sql, readingValue, readingValue, updatedBy, readingId);
     }
 
     public void updateConfirmedReading(String schemaName, Long readingId, BigDecimal confirmedReading, Long updatedBy) {

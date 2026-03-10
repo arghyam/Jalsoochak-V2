@@ -66,6 +66,8 @@ public class FactServiceImpl implements FactService {
                 .schemeId(event.getSchemeId())
                 .userId(event.getUserId())
                 .waterQuantity(event.getWaterQuantity())
+                .submissionStatus(event.getSubmissionStatus())
+                .outageReason(event.getOutageReason())
                 .date(date)
                 .createdAt(now)
                 .updatedAt(now)

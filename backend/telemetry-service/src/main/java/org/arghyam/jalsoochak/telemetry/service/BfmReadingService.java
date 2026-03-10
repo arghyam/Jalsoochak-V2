@@ -144,6 +144,8 @@ public class BfmReadingService {
         if (previousSnapshotOpt.isPresent() && confirmedReading != null
                 && confirmedReading.compareTo(previousSnapshotOpt.get().confirmedReading()) < 0) {
             TelemetryConfirmedReadingSnapshot previousSnapshot = previousSnapshotOpt.get();
+            String submittedReadingText = confirmedReading.stripTrailingZeros().toPlainString();
+            String previousReadingText = previousSnapshot.confirmedReading().stripTrailingZeros().toPlainString();
             telemetryTenantRepository.createAnomalyRecord(
                     schemaName,
                     AnomalyConstants.TYPE_READING_LESS_THAN_PREVIOUS,
@@ -161,7 +163,8 @@ public class BfmReadingService {
             );
             return CreateReadingResponse.builder()
                     .success(false)
-                    .message("Reading cannot be less than previous reading.")
+                    .message("Reading cannot be less than previous reading. Submitted reading: "
+                            + submittedReadingText + ". Previous reading: " + previousReadingText + ".")
                     .correlationId(UUID.randomUUID().toString())
                     .meterReading(confirmedReading)
                     .qualityStatus("REJECTED")

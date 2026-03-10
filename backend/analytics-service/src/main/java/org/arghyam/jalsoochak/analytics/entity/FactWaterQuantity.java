@@ -46,4 +46,10 @@ public class FactWaterQuantity {
 
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
+
+    @Column(name = "submission_status")
+    private Integer submissionStatus;
+
+    @Column(name = "outage_reason")
+    private Integer outageReason;
 }

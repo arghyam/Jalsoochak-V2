@@ -1,6 +1,8 @@
 package org.arghyam.jalsoochak.message.channel;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -52,6 +54,14 @@ public class GlificWhatsAppService {
               }
             }""";
 
+    private static final String START_CONTACT_FLOW_MUTATION = """
+            mutation startContactFlow($flowId: ID!, $contactId: ID!, $defaultResults: Json!) {
+              startContactFlow(flowId: $flowId, contactId: $contactId, defaultResults: $defaultResults) {
+                success
+                errors { key message }
+              }
+            }""";
+
     private static final String CREATE_AND_SEND_MESSAGE_MUTATION = """
     mutation createAndSendMessage($input: MessageInput!) {
       createAndSendMessage(input: $input) {
@@ -69,6 +79,7 @@ public class GlificWhatsAppService {
     """;
 
     private final GlificGraphQLClient client;
+    private final ObjectMapper objectMapper;
 
     @Value("${glific.template.nudge-id:}")
     private String nudgeTemplateId;
@@ -76,11 +87,14 @@ public class GlificWhatsAppService {
     @Value("${glific.template.escalation-id:}")
     private String escalationTemplateId;
 
+    @Value("${glific.flow.nudge-id:}")
+    private String nudgeFlowId;
+
     @PostConstruct
     void validateTemplates() {
-        if (nudgeTemplateId == null || nudgeTemplateId.isBlank()
+        if (nudgeFlowId == null || nudgeFlowId.isBlank()
                 || escalationTemplateId == null || escalationTemplateId.isBlank()) {
-            throw new IllegalStateException("glific.template.nudge-id and glific.template.escalation-id must be configured");
+            throw new IllegalStateException("glific.flow.nudge-id and glific.template.escalation-id must be configured");
         }
     }
 
@@ -169,6 +183,54 @@ public class GlificWhatsAppService {
         checkErrors(response, "createAndSendMessage");
 
         log.debug("[Glific] Escalation HSM sent to contactId={}", contactId);
+    }
+
+    /**
+     * Initiates a Glific flow for the nudge contact via the {@code startContactFlow} mutation.
+     *
+     * <p>Instead of sending a plain HSM message, this triggers the interactive nudge flow
+     * configured in Glific (identified by {@code glific.flow.nudge-id}). The flow sends
+     * an HSM template with clickable buttons and continues the conversation based on
+     * the operator's button response.</p>
+     *
+     * <p>Operator name and date are passed as {@code defaultResults} using template variable
+     * keys {@code "1"} and {@code "2"} respectively, matching the HSM template parameter order.</p>
+     *
+     * <p>{@code glific.flow.nudge-id} is a required configuration — startup fails fast
+     * if it is absent (see {@code @PostConstruct} validation).</p>
+     *
+     * @param contactId    Glific contact ID obtained from {@link #optIn}
+     * @param operatorName operator name; mapped to HSM template variable {@code {{1}}}
+     * @param date         today's date string; mapped to HSM template variable {@code {{2}}}
+     * @throws IllegalStateException if {@code glific.flow.nudge-id} is blank
+     * @throws RuntimeException      if Glific returns GraphQL errors or {@code success=false}
+     */
+    public void startNudgeFlow(Long contactId, String operatorName, String date) {
+        if (nudgeFlowId == null || nudgeFlowId.isBlank()) {
+            throw new IllegalStateException("glific.flow.nudge-id is not configured");
+        }
+
+        String defaultResults;
+        try {
+            defaultResults = objectMapper.writeValueAsString(
+                    Map.of("1", operatorName, "2", date));
+        } catch (JsonProcessingException e) {
+            throw new RuntimeException("Failed to serialize flow defaultResults", e);
+        }
+
+        JsonNode response = client.execute(START_CONTACT_FLOW_MUTATION, Map.of(
+                "flowId", nudgeFlowId,
+                "contactId", contactId,
+                "defaultResults", defaultResults));
+
+        checkErrors(response, "startContactFlow");
+        JsonNode flowNode = response.path("startContactFlow");
+
+        boolean success = flowNode.path("success").asBoolean(false);
+        if (!success) {
+            throw new RuntimeException("Glific startContactFlow returned success=false for contactId=" + contactId);
+        }
+        log.debug("[Glific] Nudge flow started for contactId={}", contactId);
     }
 
     private void checkErrors(JsonNode response, String mutationKey) {
