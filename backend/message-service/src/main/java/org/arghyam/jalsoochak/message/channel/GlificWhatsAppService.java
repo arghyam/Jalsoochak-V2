@@ -186,16 +186,24 @@ public class GlificWhatsAppService {
     }
 
     /**
-     * Initiates a Glific flow for the nudge contact, passing operator name and date as
-     * flow variables so the flow can populate the HSM template and handle button responses.
+     * Initiates a Glific flow for the nudge contact via the {@code startContactFlow} mutation.
      *
-     * <p>Requires {@code glific.flow.nudge-id} to be configured.
-     * Falls back gracefully — if the flow ID is not set, throws {@link IllegalStateException}
-     * so the caller can fall back to {@link #sendNudgeHsm}.</p>
+     * <p>Instead of sending a plain HSM message, this triggers the interactive nudge flow
+     * configured in Glific (identified by {@code glific.flow.nudge-id}). The flow sends
+     * an HSM template with clickable buttons and continues the conversation based on
+     * the operator's button response.</p>
      *
-     * @param contactId    Glific contact ID (from {@link #optIn})
-     * @param operatorName operator name passed as flow variable {@code operator_name}
-     * @param date         today's date passed as flow variable {@code date}
+     * <p>Operator name and date are passed as {@code defaultResults} using template variable
+     * keys {@code "1"} and {@code "2"} respectively, matching the HSM template parameter order.</p>
+     *
+     * <p>{@code glific.flow.nudge-id} is a required configuration — startup fails fast
+     * if it is absent (see {@code @PostConstruct} validation).</p>
+     *
+     * @param contactId    Glific contact ID obtained from {@link #optIn}
+     * @param operatorName operator name; mapped to HSM template variable {@code {{1}}}
+     * @param date         today's date string; mapped to HSM template variable {@code {{2}}}
+     * @throws IllegalStateException if {@code glific.flow.nudge-id} is blank
+     * @throws RuntimeException      if Glific returns GraphQL errors or {@code success=false}
      */
     public void startNudgeFlow(Long contactId, String operatorName, String date) {
         if (nudgeFlowId == null || nudgeFlowId.isBlank()) {
