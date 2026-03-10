@@ -2,7 +2,7 @@ name: Image Build & SonarQube Scan for Anomaly Service
 
 on:
   push:
-    branches: ["main", "dev"]
+    branches: ["main", "dev", "security"]
     paths:
       - 'backend/anomaly-service/**'
   pull_request:
@@ -45,7 +45,7 @@ jobs:
         working-directory: backend/anomaly-service
         
       - name: Configure AWS credentials
-        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev'
+        if: github.ref == 'refs/heads/security' || github.ref == 'refs/heads/dev'
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -53,12 +53,12 @@ jobs:
           aws-region: ${{ secrets.AWS_REGION }}
 
       - name: Login to Amazon ECR
-        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev'
+        if: github.ref == 'refs/heads/security' || github.ref == 'refs/heads/dev'
         id: ecr-login
         uses: aws-actions/amazon-ecr-login@v2
 
       - name: Docker build
-        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev'
+        if: github.ref == 'refs/heads/security' || github.ref == 'refs/heads/dev'
         env:
           ECR_REGISTRY: ${{ steps.ecr-login.outputs.registry }}
           IMAGE_TAG: ${{ github.sha }}
