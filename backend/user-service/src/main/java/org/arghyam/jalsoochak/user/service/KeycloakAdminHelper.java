@@ -1,0 +1,83 @@
+package org.arghyam.jalsoochak.user.service;
+
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.arghyam.jalsoochak.user.config.KeycloakProvider;
+import org.arghyam.jalsoochak.user.dto.response.AdminUserResponseDTO;
+import org.arghyam.jalsoochak.user.repository.UserCommonRepository;
+import org.arghyam.jalsoochak.user.repository.records.AdminUserRow;
+import org.keycloak.representations.idm.RoleRepresentation;
+import org.keycloak.representations.idm.UserRepresentation;
+import org.springframework.stereotype.Component;
+
+import java.util.List;
+
+@Slf4j
+@Component
+@RequiredArgsConstructor
+public class KeycloakAdminHelper {
+
+    private final KeycloakProvider keycloakProvider;
+    private final UserCommonRepository userCommonRepository;
+
+    /**
+     * Builds a full AdminUserResponseDTO by enriching an AdminUserRow with
+     * firstName/lastName from Keycloak and resolving role/tenantCode names.
+     */
+    public AdminUserResponseDTO buildAdminUserResponse(AdminUserRow user) {
+        String roleName = userCommonRepository.findUserTypeNameById(user.adminLevel()).orElse(null);
+        String tenantCode = user.tenantId() != 0
+                ? userCommonRepository.findTenantStateCodeById(user.tenantId()).orElse(null)
+                : null;
+
+        String firstName = null;
+        String lastName = null;
+        if (user.uuid() != null) {
+            try {
+                UserRepresentation rep = keycloakProvider.getAdminInstance()
+                        .realm(keycloakProvider.getRealm())
+                        .users().get(user.uuid()).toRepresentation();
+                firstName = rep.getFirstName();
+                lastName = rep.getLastName();
+            } catch (Exception e) {
+                log.warn("Could not fetch Keycloak profile for user {}", user.id());
+            }
+        }
+
+        return AdminUserResponseDTO.builder()
+                .id(user.id())
+                .email(user.email())
+                .firstName(firstName)
+                .lastName(lastName)
+                .phoneNumber(user.phoneNumber())
+                .role(roleName)
+                .tenantCode(tenantCode)
+                .active(user.status() == 1)
+                .createdAt(user.createdAt())
+                .build();
+    }
+
+    /**
+     * Assigns a Keycloak realm role to a user by role name.
+     */
+    public void assignRoleToUser(String keycloakId, String roleName) {
+        var realmResource = keycloakProvider.getAdminInstance().realm(keycloakProvider.getRealm());
+        RoleRepresentation role = realmResource.roles().get(roleName).toRepresentation();
+        realmResource.users().get(keycloakId).roles().realmLevel().add(List.of(role));
+        log.debug("Assigned role '{}' to Keycloak user {}", roleName, keycloakId);
+    }
+
+    /**
+     * Deletes a Keycloak user — used for compensation on failed account creation.
+     */
+    public void deleteUser(String keycloakId) {
+        if (keycloakId == null) return;
+        try {
+            keycloakProvider.getAdminInstance().realm(keycloakProvider.getRealm())
+                    .users().get(keycloakId).remove();
+            log.info("Compensated: deleted Keycloak user {}", keycloakId);
+        } catch (Exception e) {
+            log.error("Failed to compensate Keycloak user {}", keycloakId, e);
+        }
+    }
+}
