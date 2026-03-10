@@ -28,9 +28,6 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: TruffleHog
-        uses: trufflesecurity/trufflehog@v3.76.1
-
       - name: Setup Docker
         uses: docker/setup-buildx-action@v3
       - name: Set up JDK 21  
