@@ -93,8 +93,9 @@ public class UserController {
     @PatchMapping("/{id}")
     @PreAuthorize("hasRole('SUPER_USER')")
     public ResponseEntity<ApiResponseDTO<AdminUserResponseDTO>> updateUserById(@PathVariable Long id,
+                                                                               Authentication authentication,
                                                                                @Valid @RequestBody UpdateProfileRequestDTO request) {
-        return ResponseEntity.ok(ApiResponseDTO.of(200, "User updated", userManagementService.updateUserById(id, request)));
+        return ResponseEntity.ok(ApiResponseDTO.of(200, "User updated", userManagementService.updateUserById(id, authentication, request)));
     }
 
     @PutMapping("/{id}/deactivate")

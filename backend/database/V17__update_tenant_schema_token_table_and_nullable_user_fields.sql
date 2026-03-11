@@ -40,6 +40,7 @@ BEGIN
                 WHERE token_type IS NULL', tenant_schema);
             -- Enforce NOT NULL now that all rows are backfilled
             EXECUTE format('ALTER TABLE %1$I.user_token_table
+                ALTER COLUMN email      SET NOT NULL,
                 ALTER COLUMN token_hash SET NOT NULL,
                 ALTER COLUMN token_type SET NOT NULL,
                 ALTER COLUMN expires_at SET NOT NULL', tenant_schema);

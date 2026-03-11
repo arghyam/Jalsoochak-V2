@@ -1,6 +1,5 @@
 package org.arghyam.jalsoochak.user.clients;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
@@ -19,21 +18,18 @@ import org.springframework.web.server.ResponseStatusException;
 public class KeycloakClient {
 
     private final RestClient restClient;
-    private final ObjectMapper objectMapper;
 
     private final String tokenUrl;
     private final String logoutUrl;
     private final String clientId;
     private final String clientSecret;
 
-    public KeycloakClient(ObjectMapper objectMapper,
-                          @Value("${keycloak.auth-server-url}") String authServerUrl,
+    public KeycloakClient(@Value("${keycloak.auth-server-url}") String authServerUrl,
                           @Value("${keycloak.realm}") String realm,
                           @Value("${keycloak.resource}") String clientId,
                           @Value("${keycloak.credentials.secret}") String clientSecret,
                           @Value("${http-client.connect-timeout-ms}") int connectTimeoutMs,
                           @Value("${http-client.read-timeout-ms}") int readTimeoutMs) {
-        this.objectMapper = objectMapper;
         this.tokenUrl = authServerUrl + "/realms/" + realm + "/protocol/openid-connect/token";
         this.logoutUrl = authServerUrl + "/realms/" + realm + "/protocol/openid-connect/logout";
         this.clientId = clientId;
@@ -88,23 +84,20 @@ public class KeycloakClient {
 
     private KeycloakTokenResponse postForToken(String url, MultiValueMap<String, String> body) {
         try {
-            String responseBody = restClient.post()
+            return restClient.post()
                     .uri(url)
                     .contentType(MediaType.APPLICATION_FORM_URLENCODED)
                     .accept(MediaType.APPLICATION_JSON)
                     .body(body)
                     .retrieve()
-                    .body(String.class);
-
-            if (responseBody == null) {
-                throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Keycloak token request failed");
-            }
-
-            return objectMapper.readValue(responseBody, KeycloakTokenResponse.class);
+                    .body(KeycloakTokenResponse.class);
         } catch (RestClientResponseException e) {
             log.error("Keycloak token error: status={}, body={}", e.getStatusCode().value(), e.getResponseBodyAsString());
-            if (e.getStatusCode() == HttpStatus.UNAUTHORIZED || e.getStatusCode() == HttpStatus.BAD_REQUEST) {
+            if (e.getStatusCode() == HttpStatus.UNAUTHORIZED) {
                 throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid username, password, or refresh token", e);
+            }
+            if (e.getStatusCode() == HttpStatus.BAD_REQUEST) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Malformed token request or invalid grant parameters", e);
             }
             throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Keycloak token request failed", e);
         } catch (ResponseStatusException e) {

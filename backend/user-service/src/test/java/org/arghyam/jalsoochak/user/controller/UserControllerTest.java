@@ -302,7 +302,8 @@ class UserControllerTest {
 
             when(userManagementService.listSuperUsers(anyInt(), anyInt())).thenReturn(page);
 
-            mockMvc.perform(get("/api/v1/users/super-users"))
+            mockMvc.perform(get("/api/v1/users/super-users")
+                            .with(mockJwt()))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.status").value(200))
                     .andExpect(jsonPath("$.data.content[0].email").value("su@example.com"))
@@ -379,7 +380,7 @@ class UserControllerTest {
             AdminUserResponseDTO dto = AdminUserResponseDTO.builder()
                     .id(3L).email("admin@example.com").firstName("Updated").build();
 
-            when(userManagementService.updateUserById(anyLong(), any())).thenReturn(dto);
+            when(userManagementService.updateUserById(anyLong(), any(), any())).thenReturn(dto);
 
             String payload = """
                     {

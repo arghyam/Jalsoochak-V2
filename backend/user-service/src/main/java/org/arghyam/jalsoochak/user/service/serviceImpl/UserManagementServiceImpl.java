@@ -221,11 +221,12 @@ public class UserManagementServiceImpl implements UserManagementService {
                 && (request.getPhoneNumber() != null || request.getFirstName() != null || request.getLastName() != null)) {
             String tenantCode = userCommonRepository.findTenantStateCodeById(user.tenantId()).orElse(null);
             if (tenantCode != null) {
-                userTenantRepository.updateUserProfile(
-                        "tenant_" + tenantCode.toLowerCase(),
-                        user.id(),
-                        rep.getFirstName() + " " + rep.getLastName(),
-                        request.getPhoneNumber());
+                String schema = "tenant_" + tenantCode.toLowerCase();
+                String phoneToSet = request.getPhoneNumber() != null ? request.getPhoneNumber()
+                        : userTenantRepository.findUserByEmail(schema, user.email())
+                                .map(r -> r.phoneNumber()).orElse(null);
+                userTenantRepository.updateUserProfile(schema, user.id(),
+                        rep.getFirstName() + " " + rep.getLastName(), phoneToSet);
             }
         }
 
@@ -314,9 +315,19 @@ public class UserManagementServiceImpl implements UserManagementService {
 
     @Override
     @Transactional
-    public AdminUserResponseDTO updateUserById(Long id, UpdateProfileRequestDTO request) {
+    public AdminUserResponseDTO updateUserById(Long id, Authentication caller, UpdateProfileRequestDTO request) {
         AdminUserRow user = userCommonRepository.findAdminUserById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+
+        String callerRole = SecurityUtils.extractRole(caller);
+        if ("STATE_ADMIN".equals(callerRole)) {
+            String callerTenantCode = SecurityUtils.extractTenantCode(caller);
+            String targetTenantCode = user.tenantId() != 0
+                    ? userCommonRepository.findTenantStateCodeById(user.tenantId()).orElse(null) : null;
+            if (callerTenantCode == null || !callerTenantCode.equalsIgnoreCase(targetTenantCode)) {
+                throw new ForbiddenAccessException("Cannot update user from another state");
+            }
+        }
 
         if (user.status() == 2) {
             throw new BadRequestException("Cannot update a user who has not completed registration");
@@ -337,11 +348,12 @@ public class UserManagementServiceImpl implements UserManagementService {
                 && (request.getPhoneNumber() != null || request.getFirstName() != null || request.getLastName() != null)) {
             String tenantCode = userCommonRepository.findTenantStateCodeById(user.tenantId()).orElse(null);
             if (tenantCode != null) {
-                userTenantRepository.updateUserProfile(
-                        "tenant_" + tenantCode.toLowerCase(),
-                        user.id(),
-                        rep.getFirstName() + " " + rep.getLastName(),
-                        request.getPhoneNumber());
+                String schema = "tenant_" + tenantCode.toLowerCase();
+                String phoneToSet = request.getPhoneNumber() != null ? request.getPhoneNumber()
+                        : userTenantRepository.findUserById(schema, user.id())
+                                .map(r -> r.phoneNumber()).orElse(null);
+                userTenantRepository.updateUserProfile(schema, user.id(),
+                        rep.getFirstName() + " " + rep.getLastName(), phoneToSet);
             }
         }
 

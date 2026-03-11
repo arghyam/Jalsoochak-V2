@@ -335,7 +335,7 @@ public class UserCommonRepository {
         String sql = """
                 SELECT id, email, token_hash, token_type, metadata::TEXT, expires_at, used_at, deleted_at, created_at
                 FROM common_schema.admin_user_token_table
-                WHERE token_hash = ? AND used_at IS NULL AND deleted_at IS NULL
+                WHERE token_hash = ? AND used_at IS NULL AND deleted_at IS NULL AND expires_at > NOW()
                 LIMIT 1
                 """;
         List<AdminUserTokenRow> rows = jdbcTemplate.query(sql, (rs, n) -> mapTokenRow(rs), tokenHash);
@@ -358,13 +358,20 @@ public class UserCommonRepository {
         return rows.stream().findFirst();
     }
 
-    /** Mark token as consumed — one-time use. */
-    public void markTokenUsed(String tokenHash) {
-        jdbcTemplate.update("""
+    /**
+     * Atomically validates and consumes an active, non-expired token only when its type matches.
+     * Returns the consumed row if successful; empty if invalid, expired, used, or type mismatch.
+     */
+    @Transactional
+    public Optional<AdminUserTokenRow> consumeActiveTokenOfType(String tokenHash, String expectedType) {
+        String sql = """
                 UPDATE common_schema.admin_user_token_table
                 SET used_at = NOW()
-                WHERE token_hash = ?
-                """, tokenHash);
+                WHERE token_hash = ? AND token_type = ? AND used_at IS NULL AND deleted_at IS NULL AND expires_at > NOW()
+                RETURNING id, email, token_hash, token_type, metadata::TEXT, expires_at, used_at, deleted_at, created_at
+                """;
+        List<AdminUserTokenRow> rows = jdbcTemplate.query(sql, (rs, n) -> mapTokenRow(rs), tokenHash, expectedType);
+        return rows.stream().findFirst();
     }
 
     /** Admin revocation. */

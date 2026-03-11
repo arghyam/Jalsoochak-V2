@@ -123,6 +123,7 @@ public class MailService {
                 mailTask.run();
             } catch (Exception e) {
                 log.error("Failed to send email", e);
+                throw e;
             }
         }
     }

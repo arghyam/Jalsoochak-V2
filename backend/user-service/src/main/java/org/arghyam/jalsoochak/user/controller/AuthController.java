@@ -32,14 +32,14 @@ import org.springframework.web.bind.annotation.RestController;
 @RequiredArgsConstructor
 public class AuthController {
 
-    private final AuthService userService;
+    private final AuthService authService;
     private final CookieHelper cookieHelper;
 
     @PostMapping("/login")
     public ResponseEntity<ApiResponseDTO<TokenResponseDTO>> login(
             @Valid @RequestBody LoginRequestDTO request,
             HttpServletResponse response) {
-        AuthResult result = userService.login(request);
+        AuthResult result = authService.login(request);
         response.addHeader(HttpHeaders.SET_COOKIE,
                 cookieHelper.buildRefreshCookie(result.refreshToken(), result.refreshExpiresIn()).toString());
         return ResponseEntity.ok(ApiResponseDTO.of(200, "Login successful", result.tokenResponse()));
@@ -47,12 +47,12 @@ public class AuthController {
 
     @PostMapping("/refresh")
     public ResponseEntity<ApiResponseDTO<TokenResponseDTO>> refresh(
-            @CookieValue(name = "refresh_token", required = false) String refreshToken,
+            @CookieValue(name = CookieHelper.REFRESH_COOKIE_NAME, required = false) String refreshToken,
             HttpServletResponse response) {
         if (refreshToken == null || refreshToken.isBlank()) {
             throw new BadRequestException("Refresh token cookie is missing");
         }
-        AuthResult result = userService.refreshToken(refreshToken);
+        AuthResult result = authService.refreshToken(refreshToken);
         response.addHeader(HttpHeaders.SET_COOKIE,
                 cookieHelper.buildRefreshCookie(result.refreshToken(), result.refreshExpiresIn()).toString());
         return ResponseEntity.ok(ApiResponseDTO.of(200, "Token refreshed", result.tokenResponse()));
@@ -60,13 +60,13 @@ public class AuthController {
 
     @PostMapping("/logout")
     public ResponseEntity<ApiResponseDTO<Void>> logout(
-            @CookieValue(name = "refresh_token", required = false) String refreshToken,
+            @CookieValue(name = CookieHelper.REFRESH_COOKIE_NAME, required = false) String refreshToken,
             HttpServletResponse response) {
         if (refreshToken == null || refreshToken.isBlank()) {
             throw new BadRequestException("Refresh token cookie is missing");
         }
         try {
-            userService.logout(refreshToken);
+            authService.logout(refreshToken);
         } catch (Exception e) {
             log.error("Logout failed for session: {}", e.getMessage());
             response.addHeader(HttpHeaders.SET_COOKIE, cookieHelper.clearRefreshCookie().toString());
@@ -79,14 +79,14 @@ public class AuthController {
 
     @GetMapping("/invite/info")
     public ResponseEntity<ApiResponseDTO<InviteInfoResponseDTO>> inviteInfo(@RequestParam String token) {
-        return ResponseEntity.ok(ApiResponseDTO.of(200, "Invite info retrieved", userService.getInviteInfo(token)));
+        return ResponseEntity.ok(ApiResponseDTO.of(200, "Invite info retrieved", authService.getInviteInfo(token)));
     }
 
     @PostMapping("/activate-account")
     public ResponseEntity<ApiResponseDTO<TokenResponseDTO>> activateAccount(
             @Valid @RequestBody ActivateAccountRequestDTO request,
             HttpServletResponse response) {
-        AuthResult result = userService.activateAccount(request);
+        AuthResult result = authService.activateAccount(request);
         response.addHeader(HttpHeaders.SET_COOKIE,
                 cookieHelper.buildRefreshCookie(result.refreshToken(), result.refreshExpiresIn()).toString());
         return ResponseEntity.ok(ApiResponseDTO.of(200, "Account activated successfully", result.tokenResponse()));
@@ -94,13 +94,13 @@ public class AuthController {
 
     @PostMapping("/forgot-password")
     public ResponseEntity<ApiResponseDTO<Void>> forgotPassword(@Valid @RequestBody ForgotPasswordRequestDTO request) {
-        userService.forgotPassword(request);
+        authService.forgotPassword(request);
         return ResponseEntity.ok(ApiResponseDTO.of(200, "If this email is registered, a reset link has been sent"));
     }
 
     @PostMapping("/reset-password")
     public ResponseEntity<ApiResponseDTO<Void>> resetPassword(@Valid @RequestBody ResetPasswordRequestDTO request) {
-        userService.resetPassword(request);
+        authService.resetPassword(request);
         return ResponseEntity.ok(ApiResponseDTO.of(200, "Password reset successfully"));
     }
 }

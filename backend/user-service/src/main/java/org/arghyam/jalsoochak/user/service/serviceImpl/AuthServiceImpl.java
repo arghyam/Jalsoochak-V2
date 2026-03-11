@@ -104,10 +104,6 @@ public class AuthServiceImpl implements AuthService {
             throw new BadRequestException("Invite link is invalid or has expired");
         }
 
-        if (tokenRow.expiresAt() != null && tokenRow.expiresAt().isBefore(Instant.now())) {
-            throw new BadRequestException("Invite link has expired");
-        }
-
         String email = tokenRow.email();
         String role = parseMetadata(tokenRow.metadata(), "role");
         String tenantName = parseMetadata(tokenRow.metadata(), "tenantName");
@@ -123,13 +119,9 @@ public class AuthServiceImpl implements AuthService {
     @Transactional
     public AuthResult activateAccount(ActivateAccountRequestDTO request) {
         String hash = tokenService.hash(request.getInviteToken());
-        // Atomically validate and consume the token to prevent race conditions
-        AdminUserTokenRow tokenRow = userCommonRepository.consumeActiveToken(hash)
+        // Atomically validate and consume the token, checking type in the same UPDATE
+        AdminUserTokenRow tokenRow = userCommonRepository.consumeActiveTokenOfType(hash, "INVITE")
                 .orElseThrow(() -> new BadRequestException("Invite link is invalid, has expired, or has already been used"));
-
-        if (!"INVITE".equals(tokenRow.tokenType())) {
-            throw new BadRequestException("Invite link is invalid, has expired, or has already been used");
-        }
 
         String email = tokenRow.email();
         String role = parseMetadata(tokenRow.metadata(), "role");
@@ -235,12 +227,8 @@ public class AuthServiceImpl implements AuthService {
     public void resetPassword(ResetPasswordRequestDTO request) {
         String hash = tokenService.hash(request.getToken());
         // Atomically validate, consume and check type in one step
-        AdminUserTokenRow tokenRow = userCommonRepository.consumeActiveToken(hash)
+        AdminUserTokenRow tokenRow = userCommonRepository.consumeActiveTokenOfType(hash, "RESET")
                 .orElseThrow(() -> new BadRequestException("Reset link is invalid, has expired, or has already been used"));
-
-        if (!"RESET".equals(tokenRow.tokenType())) {
-            throw new BadRequestException("Reset link is invalid, has expired, or has already been used");
-        }
 
         AdminUserRow user = userCommonRepository.findAdminUserByEmail(tokenRow.email())
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));

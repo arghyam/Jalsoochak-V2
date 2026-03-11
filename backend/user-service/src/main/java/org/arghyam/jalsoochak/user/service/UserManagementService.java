@@ -23,7 +23,7 @@ public interface UserManagementService {
 
     AdminUserResponseDTO getUserById(Long id, Authentication caller);
 
-    AdminUserResponseDTO updateUserById(Long id, UpdateProfileRequestDTO request);
+    AdminUserResponseDTO updateUserById(Long id, Authentication caller, UpdateProfileRequestDTO request);
 
     void deactivateUser(Long id, Authentication caller);
 

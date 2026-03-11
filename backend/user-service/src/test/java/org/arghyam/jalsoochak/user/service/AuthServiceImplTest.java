@@ -353,7 +353,7 @@ class AuthServiceImplTest {
             String hash = "reset-hash";
             when(tokenService.hash(rawToken)).thenReturn(hash);
             AdminUserTokenRow tokenRow = activeTokenRow("user@example.com", hash, "RESET", null);
-            when(userCommonRepository.consumeActiveToken(hash)).thenReturn(Optional.of(tokenRow));
+            when(userCommonRepository.consumeActiveTokenOfType(hash, "RESET")).thenReturn(Optional.of(tokenRow));
 
             AdminUserRow user = new AdminUserRow(1L, "kc-uuid", "user@example.com", "91XXXXXXXXXX", 0, 1, 1, 0, null);
             when(userCommonRepository.findAdminUserByEmail("user@example.com")).thenReturn(Optional.of(user));
@@ -364,14 +364,14 @@ class AuthServiceImplTest {
 
             authService.resetPassword(req);
 
-            verify(userCommonRepository).consumeActiveToken(hash);
+            verify(userCommonRepository).consumeActiveTokenOfType(hash, "RESET");
         }
 
         @Test
         @DisplayName("Should throw BadRequestException when token not found (not active)")
         void resetPassword_tokenNotFound_throwsBadRequest() {
             when(tokenService.hash(anyString())).thenReturn("no-hash");
-            when(userCommonRepository.consumeActiveToken("no-hash")).thenReturn(Optional.empty());
+            when(userCommonRepository.consumeActiveTokenOfType("no-hash", "RESET")).thenReturn(Optional.empty());
 
             ResetPasswordRequestDTO req = new ResetPasswordRequestDTO();
             req.setToken("no-token");
@@ -385,8 +385,8 @@ class AuthServiceImplTest {
         void resetPassword_tokenExpired_throwsBadRequest() {
             String hash = "expired-hash";
             when(tokenService.hash("expired")).thenReturn(hash);
-            // consumeActiveToken excludes expired/used tokens in the SQL WHERE clause
-            when(userCommonRepository.consumeActiveToken(hash)).thenReturn(Optional.empty());
+            // consumeActiveTokenOfType excludes expired/used/type-mismatched tokens in the SQL WHERE clause
+            when(userCommonRepository.consumeActiveTokenOfType(hash, "RESET")).thenReturn(Optional.empty());
 
             ResetPasswordRequestDTO req = new ResetPasswordRequestDTO();
             req.setToken("expired");
@@ -400,7 +400,7 @@ class AuthServiceImplTest {
         void resetPassword_userNotFound_throwsResourceNotFound() {
             String hash = "hash-ghost";
             when(tokenService.hash("ghost")).thenReturn(hash);
-            when(userCommonRepository.consumeActiveToken(hash)).thenReturn(Optional.of(
+            when(userCommonRepository.consumeActiveTokenOfType(hash, "RESET")).thenReturn(Optional.of(
                     activeTokenRow("ghost@example.com", hash, "RESET", null)));
             when(userCommonRepository.findAdminUserByEmail("ghost@example.com")).thenReturn(Optional.empty());
 
@@ -422,7 +422,7 @@ class AuthServiceImplTest {
         @DisplayName("Should throw BadRequestException when invite token not found")
         void activateAccount_invalidToken_throwsBadRequest() {
             when(tokenService.hash(anyString())).thenReturn("bad-hash");
-            when(userCommonRepository.consumeActiveToken("bad-hash")).thenReturn(Optional.empty());
+            when(userCommonRepository.consumeActiveTokenOfType("bad-hash", "INVITE")).thenReturn(Optional.empty());
 
             ActivateAccountRequestDTO req = new ActivateAccountRequestDTO();
             req.setInviteToken("bad-token");
@@ -439,7 +439,7 @@ class AuthServiceImplTest {
         void activateAccount_emailAlreadyExists_throwsUserAlreadyExists() {
             String hash = "dup-hash";
             when(tokenService.hash("dup-token")).thenReturn(hash);
-            when(userCommonRepository.consumeActiveToken(hash)).thenReturn(Optional.of(
+            when(userCommonRepository.consumeActiveTokenOfType(hash, "INVITE")).thenReturn(Optional.of(
                     activeTokenRow("existing@example.com", hash, "INVITE", "{\"role\":\"SUPER_USER\"}")));
             // activateAccount finds the user record and checks status; status=1 (active) => already registered
             AdminUserRow activeUser = new AdminUserRow(5L, "kc-dup", "existing@example.com", "91XXXXXXXXXX", 0, 1, 1, 0, null);
@@ -456,11 +456,11 @@ class AuthServiceImplTest {
         }
 
         @Test
-        @DisplayName("Should create SUPER_USER atomically (consumeActiveToken) and return AuthResult")
+        @DisplayName("Should create SUPER_USER atomically (consumeActiveTokenOfType) and return AuthResult")
         void activateAccount_superUser_returnsAuthResult() {
             String hash = "su-hash";
             when(tokenService.hash("su-token")).thenReturn(hash);
-            when(userCommonRepository.consumeActiveToken(hash)).thenReturn(Optional.of(
+            when(userCommonRepository.consumeActiveTokenOfType(hash, "INVITE")).thenReturn(Optional.of(
                     activeTokenRow("newsuper@example.com", hash, "INVITE", "{\"role\":\"SUPER_USER\"}")));
 
             // Pending user record (status=2) created at invite time
@@ -490,7 +490,7 @@ class AuthServiceImplTest {
             assertEquals(FAKE_JWT, result.tokenResponse().getAccessToken());
             assertNull(result.tokenResponse().getName());
             assertEquals("91XXXXXXXXXX", result.tokenResponse().getPhoneNumber());
-            verify(userCommonRepository).consumeActiveToken(hash);
+            verify(userCommonRepository).consumeActiveTokenOfType(hash, "INVITE");
             verify(userCommonRepository).activatePendingAdminUser(eq(10L), anyString(), anyString());
         }
 
@@ -499,7 +499,7 @@ class AuthServiceImplTest {
         void activateAccount_stateAdmin_returnsAuthResult() {
             String hash = "sa-hash";
             when(tokenService.hash("sa-token")).thenReturn(hash);
-            when(userCommonRepository.consumeActiveToken(hash)).thenReturn(Optional.of(
+            when(userCommonRepository.consumeActiveTokenOfType(hash, "INVITE")).thenReturn(Optional.of(
                     activeTokenRow("newsa@example.com", hash, "INVITE",
                             "{\"role\":\"STATE_ADMIN\",\"tenantCode\":\"MP\"}")));
 

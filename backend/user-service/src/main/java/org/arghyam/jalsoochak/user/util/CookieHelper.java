@@ -9,7 +9,7 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class CookieHelper {
 
-    private static final String REFRESH_COOKIE_NAME = "refresh_token";
+    public static final String REFRESH_COOKIE_NAME = "refresh_token";
     private static final String COOKIE_PATH = "/api/v1/auth";
 
     private final CookieProperties cookieProperties;

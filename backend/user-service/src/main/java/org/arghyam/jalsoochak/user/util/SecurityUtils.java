@@ -47,7 +47,13 @@ public class SecurityUtils {
         try {
             String payload = accessToken.split("\\.")[1];
             String decoded = new String(Base64.getUrlDecoder().decode(payload));
-            return MAPPER.readTree(decoded).path("sub").asText(null);
+            String sub = MAPPER.readTree(decoded).path("sub").asText(null);
+            if (sub == null || sub.isEmpty()) {
+                throw new BadRequestException("Could not parse access token: missing sub claim");
+            }
+            return sub;
+        } catch (BadRequestException e) {
+            throw e;
         } catch (Exception e) {
             throw new BadRequestException("Could not parse access token");
         }
