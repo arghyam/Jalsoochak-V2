@@ -10,6 +10,7 @@ import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.Sheet;
 import org.apache.poi.ss.usermodel.Workbook;
 import org.apache.poi.ss.usermodel.WorkbookFactory;
+import org.arghyam.jalsoochak.scheme.config.TenantContext;
 import org.arghyam.jalsoochak.scheme.dto.SchemeDTO;
 import org.arghyam.jalsoochak.scheme.dto.SchemeUploadErrorDTO;
 import org.arghyam.jalsoochak.scheme.dto.SchemeUploadResponseDTO;
@@ -22,6 +23,8 @@ import org.arghyam.jalsoochak.scheme.repository.SchemeVillageMappingCreateRecord
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.server.ResponseStatusException;
+import org.springframework.http.HttpStatus;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -98,19 +101,21 @@ public class SchemeServiceImpl implements SchemeService {
 
     @Override
     public List<SchemeDTO> getAllSchemes() {
-        return schemeDbRepository.findAllSchemes();
+        String schemaName = requireTenantSchema();
+        return schemeDbRepository.findAllSchemes(schemaName);
     }
 
     @Override
     @Transactional
     public SchemeUploadResponseDTO uploadSchemes(MultipartFile file) {
+        String schemaName = requireTenantSchema();
         validateFile(file);
 
         String extension = extractExtension(file.getOriginalFilename());
         List<ParsedSchemeRow> parsedRows = parseRows(file, extension, REQUIRED_HEADERS);
         List<SchemeCreateRecord> rowsToInsert = validateAndBuildRows(parsedRows);
 
-        schemeDbRepository.insertSchemes(rowsToInsert);
+        schemeDbRepository.insertSchemes(schemaName, rowsToInsert);
 
         return SchemeUploadResponseDTO.builder()
                 .message("Schemes uploaded successfully")
@@ -122,14 +127,15 @@ public class SchemeServiceImpl implements SchemeService {
     @Override
     @Transactional
     public SchemeUploadResponseDTO uploadSchemeMappings(MultipartFile file) {
+        String schemaName = requireTenantSchema();
         validateFile(file);
 
         String extension = extractExtension(file.getOriginalFilename());
         List<ParsedSchemeRow> parsedRows = parseRows(file, extension, REQUIRED_MAPPING_HEADERS);
-        MappingUploadPayload payload = validateAndBuildMappingRows(parsedRows);
+        MappingUploadPayload payload = validateAndBuildMappingRows(schemaName, parsedRows);
 
-        schemeDbRepository.insertVillageMappings(payload.villageRows());
-        schemeDbRepository.insertSubdivisionMappings(payload.subdivisionRows());
+        schemeDbRepository.insertVillageMappings(schemaName, payload.villageRows());
+        schemeDbRepository.insertSubdivisionMappings(schemaName, payload.subdivisionRows());
 
         return SchemeUploadResponseDTO.builder()
                 .message("Scheme mappings uploaded successfully")
@@ -341,7 +347,7 @@ public class SchemeServiceImpl implements SchemeService {
         return insertRows;
     }
 
-    private MappingUploadPayload validateAndBuildMappingRows(List<ParsedSchemeRow> rows) {
+    private MappingUploadPayload validateAndBuildMappingRows(String schemaName, List<ParsedSchemeRow> rows) {
         if (rows.isEmpty()) {
             throw new FileValidationException(
                     "No data rows found in uploaded file",
@@ -372,7 +378,7 @@ public class SchemeServiceImpl implements SchemeService {
                 continue;
             }
 
-            if (!schemeDbRepository.existsSchemeById(schemeId)) {
+            if (!schemeDbRepository.existsSchemeById(schemaName, schemeId)) {
                 errors.add(error(row.rowNumber(), "scheme_id", "scheme_id does not exist"));
                 continue;
             }
@@ -398,6 +404,17 @@ public class SchemeServiceImpl implements SchemeService {
         }
 
         return new MappingUploadPayload(villageRows, subdivisionRows);
+    }
+
+    private String requireTenantSchema() {
+        String schemaName = TenantContext.getSchema();
+        if (schemaName == null || schemaName.isBlank()) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Tenant could not be resolved. Ensure X-Tenant-Code header is set."
+            );
+        }
+        return schemaName;
     }
 
     private boolean hasErrorsForRow(List<SchemeUploadErrorDTO> errors, int rowNumber) {
