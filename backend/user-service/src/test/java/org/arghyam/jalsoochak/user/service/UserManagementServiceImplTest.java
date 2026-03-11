@@ -497,6 +497,22 @@ class UserManagementServiceImplTest {
             assertThrows(UnauthorizedAccessException.class,
                     () -> userManagementService.activateUser(5L, auth));
         }
+
+        @Test
+        @DisplayName("STATE_ADMIN activating user in another state should throw UnauthorizedAccessException")
+        void activateUser_stateAdminCrossTenant_throwsUnauthorized() {
+            Authentication auth = stateAdminAuth("kc-sa", "MP");
+            // Target user is in tenant 2 (GJ), caller is in MP
+            AdminUserRow target = userRow(6L, "kc-target", "other@example.com", 2, 2, 0);
+            AdminUserRow callerRow = userRow(2L, "kc-sa", "sa@example.com", 1, 2, 1);
+
+            when(userCommonRepository.findAdminUserById(6L)).thenReturn(Optional.of(target));
+            when(userCommonRepository.findAdminUserByUuid("kc-sa")).thenReturn(Optional.of(callerRow));
+            when(userCommonRepository.findTenantStateCodeById(2)).thenReturn(Optional.of("GJ"));
+
+            assertThrows(UnauthorizedAccessException.class,
+                    () -> userManagementService.activateUser(6L, auth));
+        }
     }
 
     // ── changePassword ────────────────────────────────────────────────────────────

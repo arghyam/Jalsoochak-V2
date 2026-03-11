@@ -8,6 +8,7 @@ import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 
 import java.util.Base64;
+import java.util.Optional;
 
 @UtilityClass
 public class SecurityUtils {
@@ -61,15 +62,14 @@ public class SecurityUtils {
 
     /**
      * Extracts the role name (SUPER_USER or STATE_ADMIN) from the ROLE_XX authority.
-     * Returns empty string if no matching role is found.
+     * Returns an empty Optional if no matching role is found.
      */
-    public static String extractRole(Authentication auth) {
+    public static Optional<String> extractRole(Authentication auth) {
         return auth.getAuthorities().stream()
                 .map(GrantedAuthority::getAuthority)
                 .filter(a -> a.startsWith("ROLE_"))
                 .map(a -> a.substring("ROLE_".length()))
                 .filter(r -> r.equals("SUPER_USER") || r.equals("STATE_ADMIN"))
-                .findFirst()
-                .orElse("");
+                .findFirst();
     }
 }

@@ -63,7 +63,8 @@ public class AuthController {
             @CookieValue(name = CookieHelper.REFRESH_COOKIE_NAME, required = false) String refreshToken,
             HttpServletResponse response) {
         if (refreshToken == null || refreshToken.isBlank()) {
-            throw new BadRequestException("Refresh token cookie is missing");
+            response.addHeader(HttpHeaders.SET_COOKIE, cookieHelper.clearRefreshCookie().toString());
+            return ResponseEntity.ok(ApiResponseDTO.of(200, "Logged out successfully"));
         }
         try {
             authService.logout(refreshToken);

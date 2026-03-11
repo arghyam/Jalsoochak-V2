@@ -258,11 +258,12 @@ class AuthControllerTest {
         }
 
         @Test
-        @DisplayName("Missing refresh_token cookie should return 400")
-        void logout_noCookie_returns400() throws Exception {
+        @DisplayName("Missing refresh_token cookie should return 200 and clear cookie (idempotent)")
+        void logout_noCookie_returns200AndClearsCookie() throws Exception {
             mockMvc.perform(post("/api/v1/auth/logout"))
-                    .andExpect(status().isBadRequest())
-                    .andExpect(jsonPath("$.status").value(400));
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.status").value(200))
+                    .andExpect(header().string(HttpHeaders.SET_COOKIE, containsString("Max-Age=0")));
         }
     }
 

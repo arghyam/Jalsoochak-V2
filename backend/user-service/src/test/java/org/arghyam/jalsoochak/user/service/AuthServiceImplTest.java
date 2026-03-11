@@ -242,6 +242,15 @@ class AuthServiceImplTest {
         }
 
         @Test
+        @DisplayName("Should throw AccountDeactivatedException when user is deactivated")
+        void refreshToken_deactivatedUser_throwsAccountDeactivated() {
+            when(keycloakClient.refreshToken("valid-refresh")).thenReturn(tokenResponse());
+            when(userCommonRepository.findAdminUserByUuid("kc-uuid")).thenReturn(Optional.of(deactivatedUser()));
+
+            assertThrows(AccountDeactivatedException.class, () -> authService.refreshToken("valid-refresh"));
+        }
+
+        @Test
         @DisplayName("Should throw BadRequestException when refresh token is blank")
         void refreshToken_blank_throwsBadRequest() {
             assertThrows(BadRequestException.class, () -> authService.refreshToken(""));

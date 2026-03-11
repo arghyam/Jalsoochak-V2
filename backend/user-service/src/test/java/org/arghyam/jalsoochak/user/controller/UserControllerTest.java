@@ -389,7 +389,7 @@ class UserControllerTest {
                     }
                     """;
 
-            mockMvc.perform(patch("/api/v1/users/3")
+            mockMvc.perform(patch("/api/v1/users/3").with(mockJwt())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(payload))
                     .andExpect(status().isOk())

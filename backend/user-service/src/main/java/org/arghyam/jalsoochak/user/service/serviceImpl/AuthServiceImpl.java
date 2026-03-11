@@ -86,6 +86,14 @@ public class AuthServiceImpl implements AuthService {
         String sub = SecurityUtils.extractSubFromTrustedKeycloakJwt(token.accessToken());
         AdminUserRow user = userCommonRepository.findAdminUserByUuid(sub)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+
+        if (user.status() == 2) {
+            throw new AccountDeactivatedException("Account is not yet activated. Please check your invite email.");
+        }
+        if (user.status() == 0) {
+            throw new AccountDeactivatedException("Account is deactivated");
+        }
+
         return buildEnrichedAuthResult(token, user);
     }
 

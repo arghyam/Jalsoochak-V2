@@ -30,7 +30,9 @@ CREATE TABLE common_schema.admin_user_token_table (
         REFERENCES common_schema.tenant_admin_user_master_table(id)
 );
 
--- Only one ACTIVE token per email per type (active = not used, not deleted)
+-- Only one ACTIVE token per email per type (active = not used, not deleted).
+-- Emails are always stored lowercase (normalised at application layer),
+-- so a plain index is sufficient and more efficient than a functional one.
 CREATE UNIQUE INDEX uq_active_admin_token
     ON common_schema.admin_user_token_table(email, token_type)
     WHERE used_at IS NULL AND deleted_at IS NULL;

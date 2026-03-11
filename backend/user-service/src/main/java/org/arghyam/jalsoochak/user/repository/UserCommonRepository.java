@@ -326,7 +326,7 @@ public class UserCommonRepository {
                 INSERT INTO common_schema.admin_user_token_table
                     (email, token_hash, token_type, metadata, expires_at, created_by)
                 VALUES (?, ?, ?, ?::jsonb, ?, ?)
-                """, email, tokenHash, tokenType, metadataJson,
+                """, email.toLowerCase(), tokenHash, tokenType, metadataJson,
                 Timestamp.from(expiresAt), createdBy);
     }
 

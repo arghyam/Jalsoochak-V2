@@ -40,6 +40,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -272,9 +273,9 @@ public class UserManagementServiceImpl implements UserManagementService {
     @Override
     public PageResponseDTO<AdminUserResponseDTO> listStateAdmins(String tenantCode, Authentication caller, int page, int limit) {
         Integer tenantId = null;
-        String callerRole = SecurityUtils.extractRole(caller);
+        Optional<String> callerRole = SecurityUtils.extractRole(caller);
 
-        if ("STATE_ADMIN".equals(callerRole)) {
+        if (callerRole.map("STATE_ADMIN"::equals).orElse(false)) {
             String callerTenantCode = SecurityUtils.extractTenantCode(caller);
             if (callerTenantCode == null) {
                 throw new ForbiddenAccessException("Unable to determine caller's tenant");
@@ -300,8 +301,8 @@ public class UserManagementServiceImpl implements UserManagementService {
         AdminUserRow user = userCommonRepository.findAdminUserById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
 
-        String callerRole = SecurityUtils.extractRole(caller);
-        if ("STATE_ADMIN".equals(callerRole)) {
+        Optional<String> callerRole = SecurityUtils.extractRole(caller);
+        if (callerRole.map("STATE_ADMIN"::equals).orElse(false)) {
             String callerTenantCode = SecurityUtils.extractTenantCode(caller);
             String targetTenantCode = user.tenantId() != 0
                     ? userCommonRepository.findTenantStateCodeById(user.tenantId()).orElse(null) : null;
@@ -319,8 +320,8 @@ public class UserManagementServiceImpl implements UserManagementService {
         AdminUserRow user = userCommonRepository.findAdminUserById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
 
-        String callerRole = SecurityUtils.extractRole(caller);
-        if ("STATE_ADMIN".equals(callerRole)) {
+        Optional<String> callerRole = SecurityUtils.extractRole(caller);
+        if (callerRole.map("STATE_ADMIN"::equals).orElse(false)) {
             String callerTenantCode = SecurityUtils.extractTenantCode(caller);
             String targetTenantCode = user.tenantId() != 0
                     ? userCommonRepository.findTenantStateCodeById(user.tenantId()).orElse(null) : null;
@@ -368,9 +369,9 @@ public class UserManagementServiceImpl implements UserManagementService {
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
 
         String targetRole = userCommonRepository.findUserTypeNameById(target.adminLevel()).orElse("");
-        String callerRole = SecurityUtils.extractRole(caller);
+        Optional<String> callerRole = SecurityUtils.extractRole(caller);
 
-        if ("STATE_ADMIN".equals(callerRole)) {
+        if (callerRole.map("STATE_ADMIN"::equals).orElse(false)) {
             String callerTenantCode = SecurityUtils.extractTenantCode(caller);
             String targetTenantCode = target.tenantId() != 0
                     ? userCommonRepository.findTenantStateCodeById(target.tenantId()).orElse(null) : null;
@@ -418,6 +419,16 @@ public class UserManagementServiceImpl implements UserManagementService {
         String callerUuid = SecurityUtils.getKeycloakId(caller);
         AdminUserRow callerRow = userCommonRepository.findAdminUserByUuid(callerUuid)
                 .orElseThrow(() -> new UnauthorizedAccessException("Caller is not registered in the system"));
+
+        Optional<String> callerRole = SecurityUtils.extractRole(caller);
+        if (callerRole.map("STATE_ADMIN"::equals).orElse(false)) {
+            String callerTenantCode = SecurityUtils.extractTenantCode(caller);
+            String targetTenantCode = target.tenantId() != 0
+                    ? userCommonRepository.findTenantStateCodeById(target.tenantId()).orElse(null) : null;
+            if (callerTenantCode == null || !callerTenantCode.equalsIgnoreCase(targetTenantCode)) {
+                throw new UnauthorizedAccessException("Cannot activate user from another state");
+            }
+        }
 
         userCommonRepository.activateAdminUser(id, callerRow.id());
 

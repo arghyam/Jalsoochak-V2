@@ -10,6 +10,7 @@ import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientResponseException;
+import org.arghyam.jalsoochak.user.exceptions.KeycloakLogoutException;
 import org.springframework.web.server.ResponseStatusException;
 
 
@@ -78,7 +79,7 @@ public class KeycloakClient {
                     .toBodilessEntity();
         } catch (Exception e) {
             log.error("Keycloak logout failed", e);
-            throw new RuntimeException("Keycloak logout failed", e);
+            throw new KeycloakLogoutException("Keycloak logout failed", e);
         }
     }
 
