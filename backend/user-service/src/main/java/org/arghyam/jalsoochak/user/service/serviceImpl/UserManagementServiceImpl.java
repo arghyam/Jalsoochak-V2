@@ -16,6 +16,7 @@ import org.arghyam.jalsoochak.user.exceptions.BadRequestException;
 import org.arghyam.jalsoochak.user.exceptions.ForbiddenAccessException;
 import org.arghyam.jalsoochak.user.exceptions.InsufficientActiveUsersException;
 import org.arghyam.jalsoochak.user.exceptions.InvalidCredentialsException;
+import org.arghyam.jalsoochak.user.exceptions.KeycloakOperationException;
 import org.arghyam.jalsoochak.user.exceptions.ResourceNotFoundException;
 import org.arghyam.jalsoochak.user.exceptions.UnauthorizedAccessException;
 import org.arghyam.jalsoochak.user.exceptions.UserAlreadyExistsException;
@@ -391,11 +392,11 @@ public class UserManagementServiceImpl implements UserManagementService {
         }
 
         if ("SUPER_USER".equals(targetRole)) {
-            if (userCommonRepository.countActiveSuperUsers() <= 1) {
+            if (userCommonRepository.lockAndCountActiveSuperUsers() <= 1) {
                 throw new InsufficientActiveUsersException("At least one active super user must remain");
             }
         } else if ("STATE_ADMIN".equals(targetRole)) {
-            if (userCommonRepository.countActiveStateAdminsForTenant(target.tenantId()) <= 1) {
+            if (userCommonRepository.lockAndCountActiveStateAdminsForTenant(target.tenantId()) <= 1) {
                 throw new InsufficientActiveUsersException("At least one active state admin must remain for this state");
             }
         }
@@ -404,12 +405,17 @@ public class UserManagementServiceImpl implements UserManagementService {
         AdminUserRow callerRow = userCommonRepository.findAdminUserByUuid(callerUuid)
                 .orElseThrow(() -> new UnauthorizedAccessException("Caller is not registered in the system"));
 
-        userCommonRepository.deactivateAdminUser(id, callerRow.id());
-
         var usersResource = keycloakProvider.getAdminInstance().realm(keycloakProvider.getRealm()).users();
-        UserRepresentation rep = usersResource.get(target.uuid()).toRepresentation();
-        rep.setEnabled(false);
-        usersResource.get(target.uuid()).update(rep);
+        try {
+            UserRepresentation rep = usersResource.get(target.uuid()).toRepresentation();
+            rep.setEnabled(false);
+            usersResource.get(target.uuid()).update(rep);
+        } catch (Exception e) {
+            log.error("Failed to disable user {} in Keycloak; aborting deactivation", target.uuid(), e);
+            throw new KeycloakOperationException("Failed to disable user in Keycloak", e);
+        }
+
+        userCommonRepository.deactivateAdminUser(id, callerRow.id());
     }
 
     @Override
@@ -432,7 +438,7 @@ public class UserManagementServiceImpl implements UserManagementService {
             String targetTenantCode = target.tenantId() != 0
                     ? userCommonRepository.findTenantStateCodeById(target.tenantId()).orElse(null) : null;
             if (callerTenantCode == null || !callerTenantCode.equalsIgnoreCase(targetTenantCode)) {
-                throw new UnauthorizedAccessException("Cannot activate user from another state");
+                throw new ForbiddenAccessException("Cannot activate user from another state");
             }
         }
 

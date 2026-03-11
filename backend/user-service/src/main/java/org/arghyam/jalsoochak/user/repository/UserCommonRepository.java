@@ -242,6 +242,34 @@ public class UserCommonRepository {
         return count != null ? count : 0;
     }
 
+    // --- Locking counts for minimum-active guards (TOCTOU-safe, must be called inside @Transactional) ---
+
+    public int lockAndCountActiveSuperUsers() {
+        String sql = """
+                SELECT COUNT(*) FROM (
+                    SELECT id
+                    FROM common_schema.tenant_admin_user_master_table
+                    WHERE tenant_id = 0 AND status = 1 AND deleted_at IS NULL
+                    FOR UPDATE
+                ) locked
+                """;
+        Integer count = jdbcTemplate.queryForObject(sql, Integer.class);
+        return count != null ? count : 0;
+    }
+
+    public int lockAndCountActiveStateAdminsForTenant(Integer tenantId) {
+        String sql = """
+                SELECT COUNT(*) FROM (
+                    SELECT id
+                    FROM common_schema.tenant_admin_user_master_table
+                    WHERE tenant_id = ? AND status = 1 AND deleted_at IS NULL
+                    FOR UPDATE
+                ) locked
+                """;
+        Integer count = jdbcTemplate.queryForObject(sql, Integer.class, tenantId);
+        return count != null ? count : 0;
+    }
+
     // --- Listing (paginated) ---
 
     public List<AdminUserRow> listSuperUsers(int offset, int limit) {
