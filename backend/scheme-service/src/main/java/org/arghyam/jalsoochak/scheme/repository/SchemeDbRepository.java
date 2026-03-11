@@ -9,22 +9,25 @@ import org.springframework.stereotype.Repository;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
 import java.util.List;
+import java.util.regex.Pattern;
 
 @Repository
 @RequiredArgsConstructor
 public class SchemeDbRepository {
 
     private final JdbcTemplate jdbcTemplate;
+    private static final Pattern SAFE_SCHEMA = Pattern.compile("^[a-z_][a-z0-9_]*$");
 
-    public List<SchemeDTO> findAllSchemes() {
-        String sql = """
+    public List<SchemeDTO> findAllSchemes(String schemaName) {
+        validateSchemaName(schemaName);
+        String sql = String.format("""
                 SELECT id, uuid, state_scheme_id, centre_scheme_id, scheme_name,
                        fhtc_count, planned_fhtc, house_hold_count,
                        latitude, longitude, channel, work_status, operating_status
-                FROM scheme_master_table
+                FROM %s.scheme_master_table
                 WHERE deleted_at IS NULL
                 ORDER BY id DESC
-                """;
+                """, schemaName);
 
         return jdbcTemplate.query(sql, (rs, rowNum) -> SchemeDTO.builder()
                 .id(rs.getInt("id"))
@@ -43,21 +46,26 @@ public class SchemeDbRepository {
                 .build());
     }
 
-    public boolean existsSchemeById(Integer schemeId) {
-        String sql = "SELECT EXISTS (SELECT 1 FROM scheme_master_table WHERE id = ? AND deleted_at IS NULL)";
+    public boolean existsSchemeById(String schemaName, Integer schemeId) {
+        validateSchemaName(schemaName);
+        String sql = String.format(
+                "SELECT EXISTS (SELECT 1 FROM %s.scheme_master_table WHERE id = ? AND deleted_at IS NULL)",
+                schemaName
+        );
         Boolean exists = jdbcTemplate.queryForObject(sql, Boolean.class, schemeId);
         return Boolean.TRUE.equals(exists);
     }
 
-    public void insertSchemes(List<SchemeCreateRecord> rows) {
-        String sql = """
-                INSERT INTO scheme_master_table
+    public void insertSchemes(String schemaName, List<SchemeCreateRecord> rows) {
+        validateSchemaName(schemaName);
+        String sql = String.format("""
+                INSERT INTO %s.scheme_master_table
                     (uuid, state_scheme_id, centre_scheme_id, scheme_name,
                      fhtc_count, planned_fhtc, house_hold_count,
                      latitude, longitude, channel, work_status, operating_status,
                      created_at, created_by, updated_at, updated_by, deleted_at, deleted_by)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?, NOW(), ?, NULL, NULL)
-                """;
+                """, schemaName);
 
         jdbcTemplate.batchUpdate(sql, new BatchPreparedStatementSetter() {
             @Override
@@ -86,12 +94,13 @@ public class SchemeDbRepository {
         });
     }
 
-    public void insertVillageMappings(List<SchemeVillageMappingCreateRecord> rows) {
-        String sql = """
-                INSERT INTO scheme_lgd_mapping_table
+    public void insertVillageMappings(String schemaName, List<SchemeVillageMappingCreateRecord> rows) {
+        validateSchemaName(schemaName);
+        String sql = String.format("""
+                INSERT INTO %s.scheme_lgd_mapping_table
                     (scheme_id, parent_lgd_id, parent_lgd_level, created_by, created_at, updated_by, updated_at, deleted_at, deleted_by)
                 VALUES (?, ?, ?, ?, NOW(), ?, NOW(), NULL, NULL)
-                """;
+                """, schemaName);
 
         jdbcTemplate.batchUpdate(sql, new BatchPreparedStatementSetter() {
             @Override
@@ -111,12 +120,13 @@ public class SchemeDbRepository {
         });
     }
 
-    public void insertSubdivisionMappings(List<SchemeSubdivisionMappingCreateRecord> rows) {
-        String sql = """
-                INSERT INTO scheme_department_mapping_table
+    public void insertSubdivisionMappings(String schemaName, List<SchemeSubdivisionMappingCreateRecord> rows) {
+        validateSchemaName(schemaName);
+        String sql = String.format("""
+                INSERT INTO %s.scheme_department_mapping_table
                     (scheme_id, parent_department_id, parent_department_level, created_by, created_at, updated_by, updated_at, deleted_at, deleted_by)
                 VALUES (?, ?, ?, ?, NOW(), ?, NOW(), NULL, NULL)
-                """;
+                """, schemaName);
 
         jdbcTemplate.batchUpdate(sql, new BatchPreparedStatementSetter() {
             @Override
@@ -134,5 +144,11 @@ public class SchemeDbRepository {
                 return rows.size();
             }
         });
+    }
+
+    private void validateSchemaName(String schemaName) {
+        if (schemaName == null || schemaName.isBlank() || !SAFE_SCHEMA.matcher(schemaName).matches()) {
+            throw new IllegalArgumentException("Invalid schema name: " + schemaName);
+        }
     }
 }
