@@ -8,7 +8,7 @@ import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.sql.Timestamp;
-import java.time.LocalDateTime;
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
@@ -125,11 +125,14 @@ public class UserCommonRepository {
      * Sets the real Keycloak UUID, phone number, and status = 1 (active).
      */
     public void activatePendingAdminUser(Long id, String keycloakUuid, String phoneNumber) {
-        jdbcTemplate.update("""
+        int updated = jdbcTemplate.update("""
                 UPDATE common_schema.tenant_admin_user_master_table
                 SET uuid = ?, phone_number = ?, status = 1, updated_at = NOW()
-                WHERE id = ?
+                WHERE id = ? AND status = 2 AND deleted_at IS NULL
                 """, keycloakUuid, phoneNumber, id);
+        if (updated != 1) {
+            throw new IllegalStateException("Expected to activate exactly one pending user with id=" + id + " but updated " + updated + " rows");
+        }
     }
 
     public Optional<AdminUserRow> findAdminUserByUuid(String uuid) {
@@ -312,17 +315,19 @@ public class UserCommonRepository {
      */
     @Transactional
     public void upsertToken(String email, String tokenHash, String tokenType,
-                            String metadataJson, LocalDateTime expiresAt, Integer createdBy) {
+                            String metadataJson, Instant expiresAt, Integer createdBy) {
+        // Use LOWER() on both sides so the revoke matches regardless of stored case
         jdbcTemplate.update("""
                 UPDATE common_schema.admin_user_token_table
                 SET deleted_at = NOW()
-                WHERE email = ? AND token_type = ? AND used_at IS NULL AND deleted_at IS NULL
+                WHERE LOWER(email) = LOWER(?) AND token_type = ? AND used_at IS NULL AND deleted_at IS NULL
                 """, email, tokenType);
         jdbcTemplate.update("""
                 INSERT INTO common_schema.admin_user_token_table
                     (email, token_hash, token_type, metadata, expires_at, created_by)
                 VALUES (?, ?, ?, ?::jsonb, ?, ?)
-                """, email, tokenHash, tokenType, metadataJson, expiresAt, createdBy);
+                """, email, tokenHash, tokenType, metadataJson,
+                Timestamp.from(expiresAt), createdBy);
     }
 
     /** Find an active (not used, not deleted, not expired) token by hash. */
@@ -332,6 +337,22 @@ public class UserCommonRepository {
                 FROM common_schema.admin_user_token_table
                 WHERE token_hash = ? AND used_at IS NULL AND deleted_at IS NULL
                 LIMIT 1
+                """;
+        List<AdminUserTokenRow> rows = jdbcTemplate.query(sql, (rs, n) -> mapTokenRow(rs), tokenHash);
+        return rows.stream().findFirst();
+    }
+
+    /**
+     * Atomically validates and consumes an active, non-expired token in a single UPDATE.
+     * Returns the consumed row if successful; empty if the token is invalid, expired, or already used.
+     */
+    @Transactional
+    public Optional<AdminUserTokenRow> consumeActiveToken(String tokenHash) {
+        String sql = """
+                UPDATE common_schema.admin_user_token_table
+                SET used_at = NOW()
+                WHERE token_hash = ? AND used_at IS NULL AND deleted_at IS NULL AND expires_at > NOW()
+                RETURNING id, email, token_hash, token_type, metadata::TEXT, expires_at, used_at, deleted_at, created_at
                 """;
         List<AdminUserTokenRow> rows = jdbcTemplate.query(sql, (rs, n) -> mapTokenRow(rs), tokenHash);
         return rows.stream().findFirst();
@@ -383,10 +404,10 @@ public class UserCommonRepository {
                 rs.getString("token_hash"),
                 rs.getString("token_type"),
                 rs.getString("metadata"),
-                expiresAtTs  != null ? expiresAtTs.toLocalDateTime()  : null,
-                usedAtTs     != null ? usedAtTs.toLocalDateTime()     : null,
-                deletedAtTs  != null ? deletedAtTs.toLocalDateTime()  : null,
-                createdAtTs  != null ? createdAtTs.toLocalDateTime()  : null
+                expiresAtTs  != null ? expiresAtTs.toInstant()  : null,
+                usedAtTs     != null ? usedAtTs.toInstant()     : null,
+                deletedAtTs  != null ? deletedAtTs.toInstant()  : null,
+                createdAtTs  != null ? createdAtTs.toInstant()  : null
         );
     }
 }

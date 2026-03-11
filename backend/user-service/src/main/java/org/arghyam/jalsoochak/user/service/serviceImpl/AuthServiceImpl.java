@@ -38,7 +38,8 @@ import org.keycloak.representations.idm.UserRepresentation;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -82,15 +83,15 @@ public class AuthServiceImpl implements AuthService {
             throw new BadRequestException("Refresh token must be provided");
         }
         KeycloakTokenResponse token = keycloakClient.refreshToken(refreshToken);
-        String sub = SecurityUtils.extractSubFromJwt(token.accessToken());
+        String sub = SecurityUtils.extractSubFromTrustedKeycloakJwt(token.accessToken());
         AdminUserRow user = userCommonRepository.findAdminUserByUuid(sub)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
         return buildEnrichedAuthResult(token, user);
     }
 
     @Override
-    public boolean logout(String refreshToken) {
-        return keycloakClient.logout(refreshToken);
+    public void logout(String refreshToken) {
+        keycloakClient.logout(refreshToken);
     }
 
     @Override
@@ -99,7 +100,11 @@ public class AuthServiceImpl implements AuthService {
         AdminUserTokenRow tokenRow = userCommonRepository.findActiveTokenByHash(hash)
                 .orElseThrow(() -> new BadRequestException("Invite link is invalid or has expired"));
 
-        if (tokenRow.expiresAt() != null && tokenRow.expiresAt().isBefore(LocalDateTime.now())) {
+        if (!"INVITE".equals(tokenRow.tokenType())) {
+            throw new BadRequestException("Invite link is invalid or has expired");
+        }
+
+        if (tokenRow.expiresAt() != null && tokenRow.expiresAt().isBefore(Instant.now())) {
             throw new BadRequestException("Invite link has expired");
         }
 
@@ -118,12 +123,12 @@ public class AuthServiceImpl implements AuthService {
     @Transactional
     public AuthResult activateAccount(ActivateAccountRequestDTO request) {
         String hash = tokenService.hash(request.getInviteToken());
-        AdminUserTokenRow tokenRow = userCommonRepository.findActiveTokenByHash(hash)
-                .orElseThrow(() -> new BadRequestException("Invite link is invalid or has expired"));
+        // Atomically validate and consume the token to prevent race conditions
+        AdminUserTokenRow tokenRow = userCommonRepository.consumeActiveToken(hash)
+                .orElseThrow(() -> new BadRequestException("Invite link is invalid, has expired, or has already been used"));
 
-        if (tokenRow.expiresAt() != null && tokenRow.expiresAt().isBefore(LocalDateTime.now())) {
-            userCommonRepository.markTokenUsed(hash);
-            throw new BadRequestException("Invite link has expired");
+        if (!"INVITE".equals(tokenRow.tokenType())) {
+            throw new BadRequestException("Invite link is invalid, has expired, or has already been used");
         }
 
         String email = tokenRow.email();
@@ -150,12 +155,13 @@ public class AuthServiceImpl implements AuthService {
             userRep.setEnabled(true);
             userRep.setEmailVerified(true);
 
-            Response createResponse = usersResource.create(userRep);
-            if (createResponse.getStatus() != 201) {
-                throw new KeycloakOperationException("Failed to create Keycloak user");
+            try (Response createResponse = usersResource.create(userRep)) {
+                if (createResponse.getStatus() != 201) {
+                    throw new KeycloakOperationException("Failed to create Keycloak user");
+                }
+                String location = createResponse.getLocation().toString();
+                keycloakUuid = location.substring(location.lastIndexOf('/') + 1);
             }
-            String location = createResponse.getLocation().toString();
-            keycloakUuid = location.substring(location.lastIndexOf('/') + 1);
 
             CredentialRepresentation cred = new CredentialRepresentation();
             cred.setType(CredentialRepresentation.PASSWORD);
@@ -177,8 +183,6 @@ public class AuthServiceImpl implements AuthService {
             Integer tenantId = "SUPER_USER".equals(role) ? 0
                     : userCommonRepository.findTenantIdByStateCode(tenantCode)
                             .orElseThrow(() -> new ResourceNotFoundException("Tenant not found for code: " + tenantCode));
-
-            userCommonRepository.markTokenUsed(hash);
 
             // Update the PENDING user record with the real Keycloak UUID and activate it
             userCommonRepository.activatePendingAdminUser(pendingUser.id(), keycloakUuid, request.getPhoneNumber());
@@ -220,7 +224,7 @@ public class AuthServiceImpl implements AuthService {
         }
         String raw = tokenService.generateRawToken();
         String hash = tokenService.hash(raw);
-        LocalDateTime expiresAt = LocalDateTime.now().plusHours(passwordResetProperties.expiryHours());
+        Instant expiresAt = Instant.now().plus(passwordResetProperties.expiryMinutes(), ChronoUnit.MINUTES);
         userCommonRepository.upsertToken(request.getEmail(), hash, "RESET", null, expiresAt, null);
         String resetUrl = frontendProperties.baseUrl() + frontendProperties.resetPath() + "?token=" + raw;
         mailService.sendMailAfterCommit(() -> mailService.sendPasswordResetMail(request.getEmail(), resetUrl));
@@ -230,18 +234,16 @@ public class AuthServiceImpl implements AuthService {
     @Transactional
     public void resetPassword(ResetPasswordRequestDTO request) {
         String hash = tokenService.hash(request.getToken());
-        AdminUserTokenRow tokenRow = userCommonRepository.findActiveTokenByHash(hash)
-                .orElseThrow(() -> new BadRequestException("Reset link is invalid or has already been used"));
+        // Atomically validate, consume and check type in one step
+        AdminUserTokenRow tokenRow = userCommonRepository.consumeActiveToken(hash)
+                .orElseThrow(() -> new BadRequestException("Reset link is invalid, has expired, or has already been used"));
 
-        if (tokenRow.expiresAt() != null && tokenRow.expiresAt().isBefore(LocalDateTime.now())) {
-            userCommonRepository.markTokenUsed(hash);
-            throw new BadRequestException("Reset link has expired");
+        if (!"RESET".equals(tokenRow.tokenType())) {
+            throw new BadRequestException("Reset link is invalid, has expired, or has already been used");
         }
 
         AdminUserRow user = userCommonRepository.findAdminUserByEmail(tokenRow.email())
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
-
-        userCommonRepository.markTokenUsed(hash);
 
         CredentialRepresentation cred = new CredentialRepresentation();
         cred.setType(CredentialRepresentation.PASSWORD);
@@ -281,7 +283,7 @@ public class AuthServiceImpl implements AuthService {
                                                         String role, String phoneNumber, String name) {
         TokenResponseDTO resp = buildTokenResponse(token);
         resp.setPersonId(personId);
-        resp.setTenantId(tenantId != null && tenantId != 0 ? tenantId : null);
+        resp.setTenantId(tenantId != null && tenantId != 0 ? String.valueOf(tenantId) : null);
         resp.setTenantCode(tenantCode);
         resp.setRole(role);
         resp.setPhoneNumber(phoneNumber);

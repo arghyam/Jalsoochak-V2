@@ -23,7 +23,7 @@ public class TokenResponseDTO {
     private Long personId;
 
     @JsonProperty("tenant_id")
-    private Integer tenantId;
+    private String tenantId;
 
     @JsonProperty("tenant_code")
     private String tenantCode;

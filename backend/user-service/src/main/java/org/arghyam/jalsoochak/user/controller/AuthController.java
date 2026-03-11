@@ -11,10 +11,12 @@ import org.arghyam.jalsoochak.user.dto.request.LoginRequestDTO;
 import org.arghyam.jalsoochak.user.dto.request.ResetPasswordRequestDTO;
 import org.arghyam.jalsoochak.user.dto.response.InviteInfoResponseDTO;
 import org.arghyam.jalsoochak.user.dto.response.TokenResponseDTO;
+import lombok.extern.slf4j.Slf4j;
 import org.arghyam.jalsoochak.user.exceptions.BadRequestException;
 import org.arghyam.jalsoochak.user.service.AuthService;
 import org.arghyam.jalsoochak.user.util.CookieHelper;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.CookieValue;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -24,6 +26,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+@Slf4j
 @RestController
 @RequestMapping("/api/v1/auth")
 @RequiredArgsConstructor
@@ -62,7 +65,14 @@ public class AuthController {
         if (refreshToken == null || refreshToken.isBlank()) {
             throw new BadRequestException("Refresh token cookie is missing");
         }
-        userService.logout(refreshToken);
+        try {
+            userService.logout(refreshToken);
+        } catch (Exception e) {
+            log.error("Logout failed for session: {}", e.getMessage());
+            response.addHeader(HttpHeaders.SET_COOKIE, cookieHelper.clearRefreshCookie().toString());
+            return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
+                    .body(ApiResponseDTO.of(502, "Logout failed; your session may still be active on the server"));
+        }
         response.addHeader(HttpHeaders.SET_COOKIE, cookieHelper.clearRefreshCookie().toString());
         return ResponseEntity.ok(ApiResponseDTO.of(200, "Logged out successfully"));
     }

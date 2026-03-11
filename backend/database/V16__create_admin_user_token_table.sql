@@ -8,13 +8,20 @@ CREATE TABLE common_schema.admin_user_token_table (
     token_hash  VARCHAR(64)  NOT NULL,   -- SHA-256 hex of raw token
     token_type  VARCHAR(20)  NOT NULL,   -- 'INVITE' | 'RESET'
     metadata    JSONB,                   -- role, tenantCode, tenantName (INVITE only)
-    expires_at  TIMESTAMP    NOT NULL,
-    used_at     TIMESTAMP,               -- set when token is consumed (one-time use)
-    deleted_at  TIMESTAMP,               -- set when admin-revoked
+    expires_at  TIMESTAMPTZ  NOT NULL,
+    used_at     TIMESTAMPTZ,             -- set when token is consumed (one-time use)
+    deleted_at  TIMESTAMPTZ,             -- set when admin-revoked
     deleted_by  INTEGER,                 -- FK to tenant_admin_user_master_table(id)
-    created_at  TIMESTAMP    NOT NULL DEFAULT NOW(),
+    created_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
     created_by  INTEGER,                 -- FK to tenant_admin_user_master_table(id)
 
+    CONSTRAINT chk_aut_token_type
+        CHECK (token_type IN ('INVITE', 'RESET')),
+    CONSTRAINT chk_aut_metadata
+        CHECK (
+            (token_type = 'INVITE' AND metadata IS NOT NULL) OR
+            (token_type = 'RESET'  AND metadata IS NULL)
+        ),
     CONSTRAINT fk_aut_deleted_by
         FOREIGN KEY (deleted_by)
         REFERENCES common_schema.tenant_admin_user_master_table(id),

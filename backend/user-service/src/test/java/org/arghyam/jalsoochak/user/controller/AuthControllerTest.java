@@ -29,6 +29,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import static org.hamcrest.Matchers.containsString;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.when;
@@ -248,7 +249,7 @@ class AuthControllerTest {
         @Test
         @DisplayName("Should return 200 and clear cookie when cookie is present")
         void logout_withCookie_returns200AndClearsCookie() throws Exception {
-            when(authService.logout("valid-refresh")).thenReturn(true);
+            doNothing().when(authService).logout("valid-refresh");
 
             mockMvc.perform(post("/api/v1/auth/logout")
                             .cookie(new Cookie("refresh_token", "valid-refresh")))
@@ -320,6 +321,25 @@ class AuthControllerTest {
     @Nested
     @DisplayName("POST /api/v1/auth/reset-password")
     class ResetPasswordTests {
+
+        @Test
+        @DisplayName("Should return 200 on successful password reset")
+        void resetPassword_success_returns200() throws Exception {
+            doNothing().when(authService).resetPassword(any());
+
+            String payload = """
+                    {
+                      "token": "valid-token",
+                      "newPassword": "NewPass@123"
+                    }
+                    """;
+
+            mockMvc.perform(post("/api/v1/auth/reset-password")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(payload))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.status").value(200));
+        }
 
         @Test
         @DisplayName("Should return 400 when reset link has already been used")

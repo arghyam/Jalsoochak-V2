@@ -13,9 +13,9 @@ public interface AuthService {
 
     AuthResult refreshToken(String refreshToken);
 
-    boolean logout(String refreshToken);
+    void logout(String refreshToken);
 
-    InviteInfoResponseDTO getInviteInfo(String rawInviteJwt);
+    InviteInfoResponseDTO getInviteInfo(String rawInviteToken);
 
     AuthResult activateAccount(ActivateAccountRequestDTO request);
 

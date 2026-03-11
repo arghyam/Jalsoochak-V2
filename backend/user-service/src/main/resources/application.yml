@@ -38,7 +38,7 @@ spring:
   datasource:
     url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/jalsoochak_db}?stringtype=unspecified
     username: ${SPRING_DATASOURCE_USERNAME:postgres}
-    password: ${SPRING_DATASOURCE_PASSWORD:Zaqwsx@1123}
+    password: ${SPRING_DATASOURCE_PASSWORD}
     driver-class-name: org.postgresql.Driver
     hikari:
       maximum-pool-size: 10
@@ -95,7 +95,7 @@ invite:
   expiry-hours: 24
 
 password-reset:
-  expiry-hours: 1
+  expiry-minutes: ${PASSWORD_RESET_EXPIRY_MINUTES:30}
 
 frontend:
   base-url: ${FRONTEND_BASE_URL:http://localhost:3000}

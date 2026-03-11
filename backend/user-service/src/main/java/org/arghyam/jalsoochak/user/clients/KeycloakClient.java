@@ -67,7 +67,7 @@ public class KeycloakClient {
         return postForToken(tokenUrl, body);
     }
 
-    public boolean logout(String refreshToken) {
+    public void logout(String refreshToken) {
         MultiValueMap<String, String> body = new LinkedMultiValueMap<>();
         body.add("client_id", clientId);
         body.add("client_secret", clientSecret);
@@ -80,10 +80,9 @@ public class KeycloakClient {
                     .body(body)
                     .retrieve()
                     .toBodilessEntity();
-            return true;
         } catch (Exception e) {
-            log.error("Logout failed", e);
-            return false;
+            log.error("Keycloak logout failed", e);
+            throw new RuntimeException("Keycloak logout failed", e);
         }
     }
 

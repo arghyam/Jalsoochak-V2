@@ -21,7 +21,7 @@ public interface UserManagementService {
 
     PageResponseDTO<AdminUserResponseDTO> listStateAdmins(String tenantCode, Authentication caller, int page, int limit);
 
-    AdminUserResponseDTO getUserById(Long id);
+    AdminUserResponseDTO getUserById(Long id, Authentication caller);
 
     AdminUserResponseDTO updateUserById(Long id, UpdateProfileRequestDTO request);
 

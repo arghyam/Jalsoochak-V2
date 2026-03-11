@@ -1,7 +1,11 @@
--- V17: Replace user_invite_table with user_token_table in tenant schemas.
+-- V17: Replace user_invite_table with user_token_table in tenant schemas,
+--      and make user_table.email and user_table.password nullable to support
+--      field staff (operators, inspectors) who have no email or password.
 --
--- Part A: Rename user_invite_table → user_token_table in all existing tenant schemas.
--- Part B: Patch create_tenant_schema() so new tenants get user_token_table.
+-- Part A: Rename user_invite_table → user_token_table in all existing tenant schemas,
+--         and drop NOT NULL from user_table.email and user_table.password.
+-- Part B: Patch create_tenant_schema() so new tenants get user_token_table
+--         and nullable email/password on user_table.
 
 -- ── Part A: Rename in existing tenant schemas ──────────────────────────────
 
@@ -20,14 +24,36 @@ BEGIN
                 ADD COLUMN IF NOT EXISTS email       VARCHAR(255),
                 ADD COLUMN IF NOT EXISTS token_hash  VARCHAR(64),
                 ADD COLUMN IF NOT EXISTS token_type  VARCHAR(20),
-                ADD COLUMN IF NOT EXISTS used_at     TIMESTAMP,
-                ADD COLUMN IF NOT EXISTS expires_at  TIMESTAMP', tenant_schema);
+                ADD COLUMN IF NOT EXISTS used_at     TIMESTAMPTZ,
+                ADD COLUMN IF NOT EXISTS expires_at  TIMESTAMPTZ', tenant_schema);
             -- Backfill email from user_table (user_id was NOT NULL in old schema)
             EXECUTE format('UPDATE %1$I.user_token_table utt
                 SET email = u.email
                 FROM %1$I.user_table u
                 WHERE utt.user_id = u.id AND utt.email IS NULL', tenant_schema);
+            -- Backfill token_type and expires_at for legacy invite rows; mark expired so they cannot be consumed
+            EXECUTE format('UPDATE %1$I.user_token_table
+                SET token_type = ''INVITE'',
+                    token_hash = LPAD(TO_HEX(id), 64, ''0''),
+                    expires_at = NOW() - INTERVAL ''1 second'',
+                    used_at    = COALESCE(used_at, NOW())
+                WHERE token_type IS NULL', tenant_schema);
+            -- Enforce NOT NULL now that all rows are backfilled
+            EXECUTE format('ALTER TABLE %1$I.user_token_table
+                ALTER COLUMN token_hash SET NOT NULL,
+                ALTER COLUMN token_type SET NOT NULL,
+                ALTER COLUMN expires_at SET NOT NULL', tenant_schema);
+            -- Create the same indexes as Part B so existing schemas match new tenants
+            EXECUTE format('CREATE UNIQUE INDEX IF NOT EXISTS idx_%1$s_ut_hash  ON %1$I.user_token_table(token_hash)', tenant_schema);
+            EXECUTE format('CREATE UNIQUE INDEX IF NOT EXISTS uq_%1$s_ut_active ON %1$I.user_token_table(email, token_type) WHERE used_at IS NULL AND deleted_at IS NULL', tenant_schema);
+            EXECUTE format('CREATE INDEX IF NOT EXISTS idx_%1$s_ut_email ON %1$I.user_token_table(email)', tenant_schema);
+            EXECUTE format('CREATE INDEX IF NOT EXISTS idx_%1$s_ut_type  ON %1$I.user_token_table(token_type)', tenant_schema);
         END IF;
+
+        -- Always apply regardless of user_invite_table presence:
+        -- make email and password nullable to support field staff without credentials.
+        EXECUTE format('ALTER TABLE %I.user_table ALTER COLUMN email    DROP NOT NULL', tenant_schema);
+        EXECUTE format('ALTER TABLE %I.user_table ALTER COLUMN password DROP NOT NULL', tenant_schema);
     END LOOP;
 END $$;
 
@@ -56,13 +82,12 @@ BEGIN
         RAISE EXCEPTION 'schema_name must be a valid lowercase identifier (got: %)', schema_name;
     END IF;
 
-    -- Idempotency: skip if already provisioned
+    -- Idempotency: skip if schema already exists (guards against partial re-runs too,
+    -- since all CREATE TABLE/INDEX statements below use IF NOT EXISTS).
     IF EXISTS (
-        SELECT 1 FROM information_schema.tables
-        WHERE table_schema = schema_name
-          AND table_name   = 'scheme_master_table'
+        SELECT 1 FROM pg_namespace WHERE nspname = schema_name
     ) THEN
-        RAISE NOTICE 'Tenant schema "%" is already provisioned. Skipping.', schema_name;
+        RAISE NOTICE 'Tenant schema "%" already exists. Skipping.', schema_name;
         RETURN;
     END IF;
 
@@ -92,15 +117,15 @@ BEGIN
         )', schema_name);
 
     EXECUTE format('
-        CREATE TABLE %1$I.user_table (
+        CREATE TABLE IF NOT EXISTS %1$I.user_table (
             id                          SERIAL          PRIMARY KEY,
             uuid                        VARCHAR(36)     NOT NULL UNIQUE DEFAULT gen_random_uuid()::TEXT,
             tenant_id                   INTEGER         NOT NULL,
             title                       TEXT            NOT NULL,
-            email                       VARCHAR(255)    NOT NULL UNIQUE,
+            email                       VARCHAR(255)    UNIQUE,
             user_type                   INTEGER         NOT NULL,
             phone_number                TEXT            NOT NULL,
-            password                    TEXT            NOT NULL,
+            password                    TEXT,
             status                      INTEGER         NOT NULL,
             email_verification_status   BOOLEAN         DEFAULT FALSE,
             phone_verification_status   BOOLEAN         DEFAULT FALSE,
@@ -162,7 +187,7 @@ BEGIN
         )', schema_name);
 
     EXECUTE format('
-        CREATE TABLE %1$I.scheme_master_table (
+        CREATE TABLE IF NOT EXISTS %1$I.scheme_master_table (
             id                  SERIAL              PRIMARY KEY,
             uuid                VARCHAR(36)         NOT NULL UNIQUE DEFAULT gen_random_uuid()::TEXT,
             state_scheme_id     VARCHAR(255)        NOT NULL,

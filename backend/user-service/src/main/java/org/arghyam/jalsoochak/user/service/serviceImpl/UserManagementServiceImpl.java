@@ -35,7 +35,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -97,8 +98,15 @@ public class UserManagementServiceImpl implements UserManagementService {
                 : userCommonRepository.findTenantIdByStateCode(request.getTenantCode())
                         .orElseThrow(() -> new ResourceNotFoundException("Tenant not found for state code: " + request.getTenantCode()));
 
-        // Create a PENDING user record if this is a fresh invite (not a reinvite of an existing PENDING user)
-        if (existingUser.isEmpty()) {
+        // If a PENDING user already exists, reject if role/tenant metadata differs
+        if (existingUser.isPresent()) {
+            var pending = existingUser.get();
+            if (!pending.adminLevel().equals(adminLevelId) || !pending.tenantId().equals(tenantId)) {
+                throw new BadRequestException(
+                        "A pending invitation exists for this email with different role or tenant. Revoke it before re-inviting.");
+            }
+            // Same role+tenant: fall through to re-send the invite token below
+        } else {
             userCommonRepository.createAdminUserPending(request.getEmail(), tenantId, adminLevelId,
                     callerRow.id() != null ? callerRow.id().intValue() : null);
         }
@@ -121,7 +129,7 @@ public class UserManagementServiceImpl implements UserManagementService {
 
         String raw = tokenService.generateRawToken();
         String hash = tokenService.hash(raw);
-        LocalDateTime expiresAt = LocalDateTime.now().plusHours(inviteProperties.expiryHours());
+        Instant expiresAt = Instant.now().plus(inviteProperties.expiryHours(), ChronoUnit.HOURS);
         userCommonRepository.upsertToken(request.getEmail(), hash, "INVITE", metadataJson, expiresAt,
                 callerRow.id() != null ? callerRow.id().intValue() : null);
 
@@ -177,7 +185,7 @@ public class UserManagementServiceImpl implements UserManagementService {
 
         String raw = tokenService.generateRawToken();
         String hash = tokenService.hash(raw);
-        LocalDateTime expiresAt = LocalDateTime.now().plusHours(inviteProperties.expiryHours());
+        Instant expiresAt = Instant.now().plus(inviteProperties.expiryHours(), ChronoUnit.HOURS);
         userCommonRepository.upsertToken(target.email(), hash, "INVITE", metadataJson, expiresAt,
                 callerRow.id() != null ? callerRow.id().intValue() : null);
 
@@ -209,7 +217,8 @@ public class UserManagementServiceImpl implements UserManagementService {
         }
 
         String roleName = userCommonRepository.findUserTypeNameById(user.adminLevel()).orElse(null);
-        if ("STATE_ADMIN".equals(roleName) && request.getPhoneNumber() != null) {
+        if ("STATE_ADMIN".equals(roleName)
+                && (request.getPhoneNumber() != null || request.getFirstName() != null || request.getLastName() != null)) {
             String tenantCode = userCommonRepository.findTenantStateCodeById(user.tenantId()).orElse(null);
             if (tenantCode != null) {
                 userTenantRepository.updateUserProfile(
@@ -286,9 +295,20 @@ public class UserManagementServiceImpl implements UserManagementService {
     }
 
     @Override
-    public AdminUserResponseDTO getUserById(Long id) {
+    public AdminUserResponseDTO getUserById(Long id, Authentication caller) {
         AdminUserRow user = userCommonRepository.findAdminUserById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+
+        String callerRole = SecurityUtils.extractRole(caller);
+        if ("STATE_ADMIN".equals(callerRole)) {
+            String callerTenantCode = SecurityUtils.extractTenantCode(caller);
+            String targetTenantCode = user.tenantId() != 0
+                    ? userCommonRepository.findTenantStateCodeById(user.tenantId()).orElse(null) : null;
+            if (callerTenantCode == null || !callerTenantCode.equalsIgnoreCase(targetTenantCode)) {
+                throw new ForbiddenAccessException("Cannot view user from another state");
+            }
+        }
+
         return keycloakAdminHelper.buildAdminUserResponse(user);
     }
 
@@ -313,7 +333,8 @@ public class UserManagementServiceImpl implements UserManagementService {
         }
 
         String roleName = userCommonRepository.findUserTypeNameById(user.adminLevel()).orElse(null);
-        if ("STATE_ADMIN".equals(roleName) && request.getPhoneNumber() != null) {
+        if ("STATE_ADMIN".equals(roleName)
+                && (request.getPhoneNumber() != null || request.getFirstName() != null || request.getLastName() != null)) {
             String tenantCode = userCommonRepository.findTenantStateCodeById(user.tenantId()).orElse(null);
             if (tenantCode != null) {
                 userTenantRepository.updateUserProfile(

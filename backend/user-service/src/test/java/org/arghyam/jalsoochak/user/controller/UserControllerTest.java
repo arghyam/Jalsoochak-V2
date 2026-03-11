@@ -27,6 +27,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.when;
@@ -90,7 +91,8 @@ class UserControllerTest {
 
             mockMvc.perform(post("/api/v1/users/invite")
                             .contentType(MediaType.APPLICATION_JSON)
-                            .content(payload))
+                            .content(payload)
+                            .with(mockJwt()))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.status").value(200));
         }
@@ -324,7 +326,8 @@ class UserControllerTest {
             when(userManagementService.listStateAdmins(any(), any(), anyInt(), anyInt())).thenReturn(page);
 
             mockMvc.perform(get("/api/v1/users/state-admins")
-                            .param("tenantCode", "MP"))
+                            .param("tenantCode", "MP")
+                            .with(mockJwt()))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.status").value(200))
                     .andExpect(jsonPath("$.data.content[0].tenantCode").value("MP"));
@@ -343,9 +346,9 @@ class UserControllerTest {
             AdminUserResponseDTO dto = AdminUserResponseDTO.builder()
                     .id(5L).email("admin@example.com").role("STATE_ADMIN").active(true).build();
 
-            when(userManagementService.getUserById(5L)).thenReturn(dto);
+            when(userManagementService.getUserById(eq(5L), any())).thenReturn(dto);
 
-            mockMvc.perform(get("/api/v1/users/5"))
+            mockMvc.perform(get("/api/v1/users/5").with(mockJwt()))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.status").value(200))
                     .andExpect(jsonPath("$.data.email").value("admin@example.com"));
@@ -354,10 +357,10 @@ class UserControllerTest {
         @Test
         @DisplayName("Should return 404 when user does not exist")
         void getUserById_notFound_returns404() throws Exception {
-            when(userManagementService.getUserById(anyLong()))
+            when(userManagementService.getUserById(anyLong(), any()))
                     .thenThrow(new ResourceNotFoundException("User not found"));
 
-            mockMvc.perform(get("/api/v1/users/999"))
+            mockMvc.perform(get("/api/v1/users/999").with(mockJwt()))
                     .andExpect(status().isNotFound())
                     .andExpect(jsonPath("$.status").value(404))
                     .andExpect(jsonPath("$.message").value("User not found"));
@@ -405,7 +408,7 @@ class UserControllerTest {
         void deactivate_success_returns200() throws Exception {
             doNothing().when(userManagementService).deactivateUser(anyLong(), any());
 
-            mockMvc.perform(put("/api/v1/users/4/deactivate"))
+            mockMvc.perform(put("/api/v1/users/4/deactivate").with(mockJwt()))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.status").value(200));
         }
@@ -416,7 +419,7 @@ class UserControllerTest {
             doThrow(new InsufficientActiveUsersException("At least one active super user must remain"))
                     .when(userManagementService).deactivateUser(anyLong(), any());
 
-            mockMvc.perform(put("/api/v1/users/1/deactivate"))
+            mockMvc.perform(put("/api/v1/users/1/deactivate").with(mockJwt()))
                     .andExpect(status().isConflict())
                     .andExpect(jsonPath("$.status").value(409));
         }
@@ -433,7 +436,7 @@ class UserControllerTest {
         void activate_success_returns200() throws Exception {
             doNothing().when(userManagementService).activateUser(anyLong(), any());
 
-            mockMvc.perform(put("/api/v1/users/5/activate"))
+            mockMvc.perform(put("/api/v1/users/5/activate").with(mockJwt()))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.status").value(200));
         }

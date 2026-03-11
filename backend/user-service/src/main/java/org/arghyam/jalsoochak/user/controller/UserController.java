@@ -4,6 +4,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.arghyam.jalsoochak.user.dto.common.ApiResponseDTO;
 import org.arghyam.jalsoochak.user.dto.common.PageResponseDTO;
+import org.arghyam.jalsoochak.user.exceptions.BadRequestException;
 import org.arghyam.jalsoochak.user.dto.request.ChangePasswordRequestDTO;
 import org.arghyam.jalsoochak.user.dto.request.InviteRequestDTO;
 import org.arghyam.jalsoochak.user.dto.request.UpdateProfileRequestDTO;
@@ -63,6 +64,8 @@ public class UserController {
     public ResponseEntity<ApiResponseDTO<PageResponseDTO<AdminUserResponseDTO>>> listSuperUsers(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int limit) {
+        if (page < 0) throw new BadRequestException("page must be >= 0");
+        if (limit < 1 || limit > 100) throw new BadRequestException("limit must be between 1 and 100");
         return ResponseEntity.ok(ApiResponseDTO.of(200, "Super users retrieved",
                 userManagementService.listSuperUsers(page, limit)));
     }
@@ -74,14 +77,17 @@ public class UserController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int limit,
             Authentication authentication) {
+        if (page < 0) throw new BadRequestException("page must be >= 0");
+        if (limit < 1 || limit > 100) throw new BadRequestException("limit must be between 1 and 100");
         return ResponseEntity.ok(ApiResponseDTO.of(200, "State admins retrieved",
                 userManagementService.listStateAdmins(tenantCode, authentication, page, limit)));
     }
 
     @GetMapping("/{id}")
     @PreAuthorize("hasAnyRole('SUPER_USER', 'STATE_ADMIN')")
-    public ResponseEntity<ApiResponseDTO<AdminUserResponseDTO>> getUserById(@PathVariable Long id) {
-        return ResponseEntity.ok(ApiResponseDTO.of(200, "User retrieved", userManagementService.getUserById(id)));
+    public ResponseEntity<ApiResponseDTO<AdminUserResponseDTO>> getUserById(@PathVariable Long id,
+                                                                           Authentication authentication) {
+        return ResponseEntity.ok(ApiResponseDTO.of(200, "User retrieved", userManagementService.getUserById(id, authentication)));
     }
 
     @PatchMapping("/{id}")

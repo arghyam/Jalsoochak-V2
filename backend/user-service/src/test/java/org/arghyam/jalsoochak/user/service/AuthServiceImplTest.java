@@ -33,7 +33,8 @@ import org.mockito.Answers;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import java.time.LocalDateTime;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -116,12 +117,12 @@ class AuthServiceImplTest {
 
     private AdminUserTokenRow activeTokenRow(String email, String hash, String type, String metadata) {
         return new AdminUserTokenRow(1L, email, hash, type, metadata,
-                LocalDateTime.now().plusHours(1), null, null, LocalDateTime.now());
+                Instant.now().plus(1, ChronoUnit.HOURS), null, null, Instant.now());
     }
 
     private AdminUserTokenRow expiredTokenRow(String email, String hash, String type) {
         return new AdminUserTokenRow(1L, email, hash, type, null,
-                LocalDateTime.now().minusHours(1), null, null, LocalDateTime.now());
+                Instant.now().minus(1, ChronoUnit.HOURS), null, null, Instant.now());
     }
 
     /**
@@ -322,7 +323,7 @@ class AuthServiceImplTest {
             when(userCommonRepository.findAdminUserByEmail("user@example.com")).thenReturn(Optional.of(superUserRow()));
             when(tokenService.generateRawToken()).thenReturn("raw-reset-token");
             when(tokenService.hash("raw-reset-token")).thenReturn("reset-hash");
-            when(passwordResetProperties.expiryHours()).thenReturn(1);
+            when(passwordResetProperties.expiryMinutes()).thenReturn(30);
             when(frontendProperties.baseUrl()).thenReturn("http://localhost:3000");
             when(frontendProperties.resetPath()).thenReturn("/reset-password");
             doNothing().when(userCommonRepository).upsertToken(
@@ -352,11 +353,10 @@ class AuthServiceImplTest {
             String hash = "reset-hash";
             when(tokenService.hash(rawToken)).thenReturn(hash);
             AdminUserTokenRow tokenRow = activeTokenRow("user@example.com", hash, "RESET", null);
-            when(userCommonRepository.findActiveTokenByHash(hash)).thenReturn(Optional.of(tokenRow));
+            when(userCommonRepository.consumeActiveToken(hash)).thenReturn(Optional.of(tokenRow));
 
             AdminUserRow user = new AdminUserRow(1L, "kc-uuid", "user@example.com", "91XXXXXXXXXX", 0, 1, 1, 0, null);
             when(userCommonRepository.findAdminUserByEmail("user@example.com")).thenReturn(Optional.of(user));
-            doNothing().when(userCommonRepository).markTokenUsed(hash);
 
             ResetPasswordRequestDTO req = new ResetPasswordRequestDTO();
             req.setToken(rawToken);
@@ -364,14 +364,14 @@ class AuthServiceImplTest {
 
             authService.resetPassword(req);
 
-            verify(userCommonRepository).markTokenUsed(hash);
+            verify(userCommonRepository).consumeActiveToken(hash);
         }
 
         @Test
         @DisplayName("Should throw BadRequestException when token not found (not active)")
         void resetPassword_tokenNotFound_throwsBadRequest() {
             when(tokenService.hash(anyString())).thenReturn("no-hash");
-            when(userCommonRepository.findActiveTokenByHash("no-hash")).thenReturn(Optional.empty());
+            when(userCommonRepository.consumeActiveToken("no-hash")).thenReturn(Optional.empty());
 
             ResetPasswordRequestDTO req = new ResetPasswordRequestDTO();
             req.setToken("no-token");
@@ -381,12 +381,12 @@ class AuthServiceImplTest {
         }
 
         @Test
-        @DisplayName("Should throw BadRequestException when token is expired")
+        @DisplayName("Should throw BadRequestException when token is expired (consumeActiveToken returns empty)")
         void resetPassword_tokenExpired_throwsBadRequest() {
             String hash = "expired-hash";
             when(tokenService.hash("expired")).thenReturn(hash);
-            when(userCommonRepository.findActiveTokenByHash(hash)).thenReturn(Optional.of(
-                    expiredTokenRow("user@example.com", hash, "RESET")));
+            // consumeActiveToken excludes expired/used tokens in the SQL WHERE clause
+            when(userCommonRepository.consumeActiveToken(hash)).thenReturn(Optional.empty());
 
             ResetPasswordRequestDTO req = new ResetPasswordRequestDTO();
             req.setToken("expired");
@@ -400,7 +400,7 @@ class AuthServiceImplTest {
         void resetPassword_userNotFound_throwsResourceNotFound() {
             String hash = "hash-ghost";
             when(tokenService.hash("ghost")).thenReturn(hash);
-            when(userCommonRepository.findActiveTokenByHash(hash)).thenReturn(Optional.of(
+            when(userCommonRepository.consumeActiveToken(hash)).thenReturn(Optional.of(
                     activeTokenRow("ghost@example.com", hash, "RESET", null)));
             when(userCommonRepository.findAdminUserByEmail("ghost@example.com")).thenReturn(Optional.empty());
 
@@ -422,7 +422,7 @@ class AuthServiceImplTest {
         @DisplayName("Should throw BadRequestException when invite token not found")
         void activateAccount_invalidToken_throwsBadRequest() {
             when(tokenService.hash(anyString())).thenReturn("bad-hash");
-            when(userCommonRepository.findActiveTokenByHash("bad-hash")).thenReturn(Optional.empty());
+            when(userCommonRepository.consumeActiveToken("bad-hash")).thenReturn(Optional.empty());
 
             ActivateAccountRequestDTO req = new ActivateAccountRequestDTO();
             req.setInviteToken("bad-token");
@@ -439,7 +439,7 @@ class AuthServiceImplTest {
         void activateAccount_emailAlreadyExists_throwsUserAlreadyExists() {
             String hash = "dup-hash";
             when(tokenService.hash("dup-token")).thenReturn(hash);
-            when(userCommonRepository.findActiveTokenByHash(hash)).thenReturn(Optional.of(
+            when(userCommonRepository.consumeActiveToken(hash)).thenReturn(Optional.of(
                     activeTokenRow("existing@example.com", hash, "INVITE", "{\"role\":\"SUPER_USER\"}")));
             // activateAccount finds the user record and checks status; status=1 (active) => already registered
             AdminUserRow activeUser = new AdminUserRow(5L, "kc-dup", "existing@example.com", "91XXXXXXXXXX", 0, 1, 1, 0, null);
@@ -456,11 +456,11 @@ class AuthServiceImplTest {
         }
 
         @Test
-        @DisplayName("Should create SUPER_USER, mark token used, and return AuthResult")
+        @DisplayName("Should create SUPER_USER atomically (consumeActiveToken) and return AuthResult")
         void activateAccount_superUser_returnsAuthResult() {
             String hash = "su-hash";
             when(tokenService.hash("su-token")).thenReturn(hash);
-            when(userCommonRepository.findActiveTokenByHash(hash)).thenReturn(Optional.of(
+            when(userCommonRepository.consumeActiveToken(hash)).thenReturn(Optional.of(
                     activeTokenRow("newsuper@example.com", hash, "INVITE", "{\"role\":\"SUPER_USER\"}")));
 
             // Pending user record (status=2) created at invite time
@@ -474,7 +474,6 @@ class AuthServiceImplTest {
             when(keycloakProvider.getAdminInstance().realm("test-realm").users().create(any()))
                     .thenReturn(createResp);
             doNothing().when(keycloakAdminHelper).assignRoleToUser(anyString(), anyString());
-            doNothing().when(userCommonRepository).markTokenUsed(hash);
             doNothing().when(userCommonRepository).activatePendingAdminUser(eq(10L), anyString(), anyString());
             when(keycloakClient.obtainToken(anyString(), anyString())).thenReturn(tokenResponse());
 
@@ -491,8 +490,50 @@ class AuthServiceImplTest {
             assertEquals(FAKE_JWT, result.tokenResponse().getAccessToken());
             assertNull(result.tokenResponse().getName());
             assertEquals("91XXXXXXXXXX", result.tokenResponse().getPhoneNumber());
-            verify(userCommonRepository).markTokenUsed(hash);
+            verify(userCommonRepository).consumeActiveToken(hash);
             verify(userCommonRepository).activatePendingAdminUser(eq(10L), anyString(), anyString());
+        }
+
+        @Test
+        @DisplayName("STATE_ADMIN: creates dual DB rows, name populated in response")
+        void activateAccount_stateAdmin_returnsAuthResult() {
+            String hash = "sa-hash";
+            when(tokenService.hash("sa-token")).thenReturn(hash);
+            when(userCommonRepository.consumeActiveToken(hash)).thenReturn(Optional.of(
+                    activeTokenRow("newsa@example.com", hash, "INVITE",
+                            "{\"role\":\"STATE_ADMIN\",\"tenantCode\":\"MP\"}")));
+
+            AdminUserRow pendingUser = new AdminUserRow(20L, "pending-sa-uuid", "newsa@example.com", "", 1, 2, 2, 0, null);
+            when(userCommonRepository.findAdminUserByEmail("newsa@example.com")).thenReturn(Optional.of(pendingUser));
+
+            when(keycloakProvider.getRealm()).thenReturn("test-realm");
+            jakarta.ws.rs.core.Response createResp = jakarta.ws.rs.core.Response
+                    .created(java.net.URI.create("http://keycloak/users/sa-kc-id"))
+                    .build();
+            when(keycloakProvider.getAdminInstance().realm("test-realm").users().create(any()))
+                    .thenReturn(createResp);
+            doNothing().when(keycloakAdminHelper).assignRoleToUser(anyString(), anyString());
+            when(userCommonRepository.findTenantIdByStateCode("MP")).thenReturn(Optional.of(1));
+            doNothing().when(userCommonRepository).activatePendingAdminUser(eq(20L), anyString(), anyString());
+            when(userTenantRepository.createUser(anyString(), anyString(), any(), anyString(),
+                    anyString(), any(), anyString(), anyString(), any())).thenReturn(1L);
+            when(keycloakClient.obtainToken(anyString(), anyString())).thenReturn(tokenResponse());
+
+            ActivateAccountRequestDTO req = new ActivateAccountRequestDTO();
+            req.setInviteToken("sa-token");
+            req.setFirstName("State");
+            req.setLastName("Admin");
+            req.setPassword("Pass@123");
+            req.setPhoneNumber("91XXXXXXXXXX");
+
+            AuthResult result = authService.activateAccount(req);
+
+            assertNotNull(result);
+            assertEquals("State Admin", result.tokenResponse().getName());
+            assertEquals("MP", result.tokenResponse().getTenantCode());
+            verify(userCommonRepository).activatePendingAdminUser(eq(20L), anyString(), anyString());
+            verify(userTenantRepository).createUser(eq("tenant_mp"), anyString(), any(), eq("State Admin"),
+                    eq("newsa@example.com"), any(), anyString(), anyString(), any());
         }
     }
 }

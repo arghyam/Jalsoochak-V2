@@ -40,7 +40,7 @@ public class KeycloakAdminHelper {
                 firstName = rep.getFirstName();
                 lastName = rep.getLastName();
             } catch (Exception e) {
-                log.warn("Could not fetch Keycloak profile for user {}", user.id());
+                log.warn("Could not fetch Keycloak profile for user {}: {}", user.id(), e.getMessage());
             }
         }
 
@@ -61,10 +61,15 @@ public class KeycloakAdminHelper {
      * Assigns a Keycloak realm role to a user by role name.
      */
     public void assignRoleToUser(String keycloakId, String roleName) {
-        var realmResource = keycloakProvider.getAdminInstance().realm(keycloakProvider.getRealm());
-        RoleRepresentation role = realmResource.roles().get(roleName).toRepresentation();
-        realmResource.users().get(keycloakId).roles().realmLevel().add(List.of(role));
-        log.debug("Assigned role '{}' to Keycloak user {}", roleName, keycloakId);
+        try {
+            var realmResource = keycloakProvider.getAdminInstance().realm(keycloakProvider.getRealm());
+            RoleRepresentation role = realmResource.roles().get(roleName).toRepresentation();
+            realmResource.users().get(keycloakId).roles().realmLevel().add(List.of(role));
+            log.debug("Assigned role '{}' to Keycloak user {}", roleName, keycloakId);
+        } catch (Exception e) {
+            log.error("Failed to assign role '{}' to Keycloak user {}: {}", roleName, keycloakId, e.getMessage(), e);
+            throw new RuntimeException("Failed to assign role '" + roleName + "' to user in Keycloak", e);
+        }
     }
 
     /**

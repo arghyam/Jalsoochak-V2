@@ -43,7 +43,7 @@ public class SecurityUtils {
      * Extracts the 'sub' claim (Keycloak UUID) from a raw JWT string without signature verification.
      * Only use this for tokens freshly obtained from Keycloak — never for untrusted input.
      */
-    public static String extractSubFromJwt(String accessToken) {
+    public static String extractSubFromTrustedKeycloakJwt(String accessToken) {
         try {
             String payload = accessToken.split("\\.")[1];
             String decoded = new String(Base64.getUrlDecoder().decode(payload));

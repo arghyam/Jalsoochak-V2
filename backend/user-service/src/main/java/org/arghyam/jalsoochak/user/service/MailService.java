@@ -55,6 +55,13 @@ public class MailService {
     private String fromName;
 
 
+    private static String maskEmail(String email) {
+        if (email == null) return null;
+        int at = email.indexOf('@');
+        if (at <= 0) return "***";
+        return email.charAt(0) + "***" + email.substring(at);
+    }
+
     public void sendPasswordResetMail(String recipientEmail, String resetLink) {
         try {
             MimeMessage message = mailSender.createMimeMessage();
@@ -67,9 +74,9 @@ public class MailService {
                     + "\n\nThis link expires in 1 hour.", RESET_PASSWORD_HTML.formatted(resetLink));
 
             mailSender.send(message);
-            log.info("Password reset email sent successfully to {}", recipientEmail);
+            log.info("Password reset email sent successfully to {}", maskEmail(recipientEmail));
         } catch (Exception e) {
-            log.error("Failed to send password reset email to {}", recipientEmail, e);
+            log.error("Failed to send password reset email to {}", maskEmail(recipientEmail), e);
             throw new RuntimeException("Failed to send password reset email", e);
         }
     }
@@ -88,9 +95,9 @@ public class MailService {
                     INVITE_HTML.formatted(inviteLink));
 
             mailSender.send(message);
-            log.info("Invite email sent successfully to {}", recipientEmail);
+            log.info("Invite email sent successfully to {}", maskEmail(recipientEmail));
         } catch (Exception e) {
-            log.error("Failed to send invite email to {}", recipientEmail, e);
+            log.error("Failed to send invite email to {}", maskEmail(recipientEmail), e);
             throw new RuntimeException("Failed to send invite email", e);
         }
     }
