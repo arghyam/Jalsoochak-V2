@@ -211,7 +211,6 @@ public class UserManagementServiceImpl implements UserManagementService {
         UserRepresentation rep = usersResource.get(keycloakId).toRepresentation();
         if (request.getFirstName() != null) rep.setFirstName(request.getFirstName());
         if (request.getLastName() != null) rep.setLastName(request.getLastName());
-        usersResource.get(keycloakId).update(rep);
 
         if (request.getPhoneNumber() != null) {
             userCommonRepository.updateAdminUserProfile(user.id(), request.getPhoneNumber(), user.id());
@@ -230,6 +229,8 @@ public class UserManagementServiceImpl implements UserManagementService {
                         rep.getFirstName() + " " + rep.getLastName(), phoneToSet);
             }
         }
+
+        usersResource.get(keycloakId).update(rep);
 
         return keycloakAdminHelper.buildAdminUserResponse(
                 userCommonRepository.findAdminUserByUuid(keycloakId).orElse(user));
@@ -334,14 +335,17 @@ public class UserManagementServiceImpl implements UserManagementService {
             throw new BadRequestException("Cannot update a user who has not completed registration");
         }
 
+        String callerUuid = SecurityUtils.getKeycloakId(caller);
+        AdminUserRow callerRow = userCommonRepository.findAdminUserByUuid(callerUuid)
+                .orElseThrow(() -> new UnauthorizedAccessException("Caller is not registered in the system"));
+
         var usersResource = keycloakProvider.getAdminInstance().realm(keycloakProvider.getRealm()).users();
         UserRepresentation rep = usersResource.get(user.uuid()).toRepresentation();
         if (request.getFirstName() != null) rep.setFirstName(request.getFirstName());
         if (request.getLastName() != null) rep.setLastName(request.getLastName());
-        usersResource.get(user.uuid()).update(rep);
 
         if (request.getPhoneNumber() != null) {
-            userCommonRepository.updateAdminUserProfile(user.id(), request.getPhoneNumber(), user.id());
+            userCommonRepository.updateAdminUserProfile(user.id(), request.getPhoneNumber(), callerRow.id());
         }
 
         String roleName = userCommonRepository.findUserTypeNameById(user.adminLevel()).orElse(null);
@@ -357,6 +361,8 @@ public class UserManagementServiceImpl implements UserManagementService {
                         rep.getFirstName() + " " + rep.getLastName(), phoneToSet);
             }
         }
+
+        usersResource.get(user.uuid()).update(rep);
 
         return keycloakAdminHelper.buildAdminUserResponse(
                 userCommonRepository.findAdminUserById(id).orElse(user));
