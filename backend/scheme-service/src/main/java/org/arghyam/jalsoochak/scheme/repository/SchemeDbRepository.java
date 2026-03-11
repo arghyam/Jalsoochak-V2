@@ -2,6 +2,7 @@ package org.arghyam.jalsoochak.scheme.repository;
 
 import lombok.RequiredArgsConstructor;
 import org.arghyam.jalsoochak.scheme.dto.SchemeDTO;
+import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.jdbc.core.BatchPreparedStatementSetter;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
@@ -54,6 +55,26 @@ public class SchemeDbRepository {
         );
         Boolean exists = jdbcTemplate.queryForObject(sql, Boolean.class, schemeId);
         return Boolean.TRUE.equals(exists);
+    }
+
+    public Integer findUserIdByEmail(String schemaName, String email) {
+        validateSchemaName(schemaName);
+        if (email == null || email.isBlank()) {
+            return null;
+        }
+
+        String sql = String.format("""
+                SELECT id
+                FROM %s.user_table
+                WHERE lower(email) = lower(?)
+                  AND deleted_at IS NULL
+                """, schemaName);
+
+        try {
+            return jdbcTemplate.queryForObject(sql, Integer.class, email);
+        } catch (EmptyResultDataAccessException ex) {
+            return null;
+        }
     }
 
     public void insertSchemes(String schemaName, List<SchemeCreateRecord> rows) {
