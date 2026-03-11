@@ -130,7 +130,7 @@ public class SchemeServiceImpl implements SchemeService {
     @Transactional
     public SchemeUploadResponseDTO uploadSchemes(MultipartFile file, String authorizationHeader) {
         String schemaName = requireTenantSchema();
-        int actorUserId = uploadAuthService.requireUserId(schemaName, authorizationHeader);
+        int actorUserId = uploadAuthService.requireStateAdminUserId(schemaName, authorizationHeader);
         validateFile(file);
 
         String extension = extractExtension(file.getOriginalFilename());
@@ -150,7 +150,7 @@ public class SchemeServiceImpl implements SchemeService {
     @Transactional
     public SchemeUploadResponseDTO uploadSchemeMappings(MultipartFile file, String authorizationHeader) {
         String schemaName = requireTenantSchema();
-        int actorUserId = uploadAuthService.requireUserId(schemaName, authorizationHeader);
+        int actorUserId = uploadAuthService.requireStateAdminUserId(schemaName, authorizationHeader);
         validateFile(file);
 
         String extension = extractExtension(file.getOriginalFilename());
