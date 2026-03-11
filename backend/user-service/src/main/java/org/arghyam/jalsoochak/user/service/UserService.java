@@ -16,6 +16,4 @@ public interface UserService {
     TokenResponse refreshToken(String refreshToken);
 
     boolean logout(String refreshToken);
-
-//    Map<String, Object> bulkInviteUsers(MultipartFile file, String tenantCode);
 }

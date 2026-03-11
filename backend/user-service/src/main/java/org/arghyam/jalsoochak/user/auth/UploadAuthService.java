@@ -1,7 +1,7 @@
-package org.arghyam.jalsoochak.scheme.auth;
+package org.arghyam.jalsoochak.user.auth;
 
 import lombok.RequiredArgsConstructor;
-import org.arghyam.jalsoochak.scheme.repository.SchemeDbRepository;
+import org.arghyam.jalsoochak.user.repository.UserUploadRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.jwt.JwtException;
@@ -15,20 +15,15 @@ public class UploadAuthService {
     private static final String REQUIRED_UPLOAD_ROLE = "STATE_ADMIN";
 
     private final JwtTokenValidator jwtTokenValidator;
-    private final SchemeDbRepository schemeDbRepository;
-
-    public int requireUserId(String schemaName, String authorizationHeader) {
-        Jwt jwt = requireJwt(authorizationHeader);
-        return requireUserId(schemaName, jwt);
-    }
+    private final UserUploadRepository userUploadRepository;
 
     public int requireStateAdminUserId(String schemaName, String authorizationHeader) {
         Jwt jwt = requireJwt(authorizationHeader);
         int userId = requireUserId(schemaName, jwt);
-        if (!schemeDbRepository.isUserStateAdmin(schemaName, userId)) {
+        if (!userUploadRepository.isUserStateAdmin(schemaName, userId)) {
             throw new ResponseStatusException(
                     HttpStatus.FORBIDDEN,
-                    "Only " + REQUIRED_UPLOAD_ROLE + " can upload schemes and scheme mappings"
+                    "Only " + REQUIRED_UPLOAD_ROLE + " can upload pump operators"
             );
         }
         return userId;
@@ -36,31 +31,29 @@ public class UploadAuthService {
 
     private int requireUserId(String schemaName, Jwt jwt) {
         String email = jwt.getClaimAsString("email");
-        if (email == null || email.isBlank()) {
-            // Fallback for some Keycloak setups.
-            email = jwt.getClaimAsString("preferred_username");
-        }
-        if (email == null || email.isBlank()) {
+        String username = jwt.getClaimAsString("preferred_username");
+        if ((email == null || email.isBlank()) && (username == null || username.isBlank())) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Token missing user identity (email)");
         }
 
-        Integer userId = schemeDbRepository.findUserIdByEmail(schemaName, email);
+        Integer userId = userUploadRepository.findUserIdByEmailOrPhone(
+                schemaName,
+                email != null ? email.trim() : null,
+                username != null ? username.trim() : null
+        );
         if (userId == null) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "User not found for token");
         }
-
         return userId;
     }
 
     private Jwt requireJwt(String authorizationHeader) {
         String token = extractBearerToken(authorizationHeader);
-
         try {
             return jwtTokenValidator.decodeAndValidate(token);
         } catch (JwtException ex) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid or expired token");
         } catch (IllegalStateException ex) {
-            // Misconfiguration (missing public key etc.)
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, ex.getMessage());
         }
     }
@@ -82,3 +75,4 @@ public class UploadAuthService {
         return token;
     }
 }
+

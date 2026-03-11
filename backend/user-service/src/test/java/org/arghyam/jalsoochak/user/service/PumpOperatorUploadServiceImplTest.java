@@ -1,0 +1,152 @@
+package org.arghyam.jalsoochak.user.service;
+
+import org.arghyam.jalsoochak.user.auth.UploadAuthService;
+import org.arghyam.jalsoochak.user.config.TenantContext;
+import org.arghyam.jalsoochak.user.dto.response.PumpOperatorUploadResponseDTO;
+import org.arghyam.jalsoochak.user.exceptions.BadRequestException;
+import org.arghyam.jalsoochak.user.repository.TenantUserRecord;
+import org.arghyam.jalsoochak.user.repository.UserCommonRepository;
+import org.arghyam.jalsoochak.user.repository.UserSchemeMappingCreateRow;
+import org.arghyam.jalsoochak.user.repository.UserTenantRepository;
+import org.arghyam.jalsoochak.user.repository.UserUploadRepository;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.Captor;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.mock.web.MockMultipartFile;
+
+import java.nio.charset.StandardCharsets;
+import java.util.List;
+import java.util.Optional;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+@ExtendWith(MockitoExtension.class)
+class PumpOperatorUploadServiceImplTest {
+
+    @Mock
+    private UploadAuthService uploadAuthService;
+
+    @Mock
+    private UserTenantRepository userTenantRepository;
+
+    @Mock
+    private UserUploadRepository userUploadRepository;
+
+    @Mock
+    private UserCommonRepository userCommonRepository;
+
+    @InjectMocks
+    private PumpOperatorUploadServiceImpl service;
+
+    @Captor
+    private ArgumentCaptor<List<UserSchemeMappingCreateRow>> listCaptor;
+
+    @AfterEach
+    void cleanupTenant() {
+        TenantContext.clear();
+    }
+
+    @Test
+    void upload_shouldFailValidation_whenUserTypeIsNotPumpOperator() {
+        TenantContext.setSchema("tenant_ka");
+        when(uploadAuthService.requireStateAdminUserId(eq("tenant_ka"), anyString())).thenReturn(10);
+        when(userTenantRepository.findUserById(eq("tenant_ka"), eq(10L)))
+                .thenReturn(Optional.of(new TenantUserRecord(10L, 1, "9111111111", "admin@example.com", 1L, "STATE_ADMIN")));
+        when(userCommonRepository.findUserTypeId(eq("pump_operator"))).thenReturn(Optional.of(2));
+
+        MockMultipartFile file = new MockMultipartFile(
+                "file",
+                "pump-operators.csv",
+                "text/csv",
+                ("first_name,last_name,full_name,phone_number,alternate_number,person_type_id,state_scheme_id,center_scheme_id\n" +
+                 "Ram,Kumar,Ram Kumar,9999999999,,pump_operator,SS-1,CS-1\n").getBytes(StandardCharsets.UTF_8)
+        );
+
+        when(userTenantRepository.findUserByPhone(eq("tenant_ka"), eq("9999999999")))
+                .thenReturn(Optional.of(new TenantUserRecord(1L, 1, "9999999999", "u@example.com", 2L, "STATE_ADMIN")));
+
+        BadRequestException ex = assertThrows(
+                BadRequestException.class,
+                () -> service.uploadPumpOperatorMappings(file, "Bearer token")
+        );
+
+        assertThat(ex.getMessage()).containsIgnoringCase("validation failed");
+        verify(userUploadRepository, never()).insertUserSchemeMappings(anyString(), anyList(), anyInt());
+    }
+
+    @Test
+    void upload_shouldInsertMappings_whenValid() {
+        TenantContext.setSchema("tenant_ka");
+        when(uploadAuthService.requireStateAdminUserId(eq("tenant_ka"), anyString())).thenReturn(10);
+        when(userTenantRepository.findUserById(eq("tenant_ka"), eq(10L)))
+                .thenReturn(Optional.of(new TenantUserRecord(10L, 1, "9111111111", "admin@example.com", 1L, "STATE_ADMIN")));
+        when(userCommonRepository.findUserTypeId(eq("pump_operator"))).thenReturn(Optional.of(2));
+
+        MockMultipartFile file = new MockMultipartFile(
+                "file",
+                "pump-operators.csv",
+                "text/csv",
+                ("first_name,last_name,full_name,phone_number,alternate_number,person_type_id,state_scheme_id,center_scheme_id\n" +
+                 "Ram,Kumar,Ram Kumar,9999999999,,pump_operator,SS-1,CS-1\n").getBytes(StandardCharsets.UTF_8)
+        );
+
+        when(userTenantRepository.findUserByPhone(eq("tenant_ka"), eq("9999999999")))
+                .thenReturn(Optional.of(new TenantUserRecord(1L, 1, "9999999999", "u@example.com", 2L, "PUMP_OPERATOR")));
+        when(userUploadRepository.findSchemeId(eq("tenant_ka"), eq("SS-1"), eq("CS-1"))).thenReturn(100);
+        when(userUploadRepository.existsUserSchemeMapping(eq("tenant_ka"), anyLong(), eq(100))).thenReturn(false);
+
+        PumpOperatorUploadResponseDTO res = service.uploadPumpOperatorMappings(file, "Bearer token");
+
+        assertThat(res.totalRows()).isEqualTo(1);
+        assertThat(res.uploadedRows()).isEqualTo(1);
+        assertThat(res.skippedRows()).isEqualTo(0);
+
+        verify(userUploadRepository).insertUserSchemeMappings(eq("tenant_ka"), listCaptor.capture(), eq(10));
+        assertThat(listCaptor.getValue()).hasSize(1);
+    }
+
+    @Test
+    void upload_shouldOnboardPumpOperator_whenUserDoesNotExist() {
+        TenantContext.setSchema("tenant_ka");
+        when(uploadAuthService.requireStateAdminUserId(eq("tenant_ka"), anyString())).thenReturn(10);
+        when(userTenantRepository.findUserById(eq("tenant_ka"), eq(10L)))
+                .thenReturn(Optional.of(new TenantUserRecord(10L, 1, "9111111111", "admin@example.com", 1L, "STATE_ADMIN")));
+        when(userCommonRepository.findUserTypeId(eq("pump_operator"))).thenReturn(Optional.of(2));
+
+        MockMultipartFile file = new MockMultipartFile(
+                "file",
+                "pump-operators.csv",
+                "text/csv",
+                ("first_name,last_name,full_name,phone_number,alternate_number,person_type_id,state_scheme_id,center_scheme_id\n" +
+                 "Ram,Kumar,Ram Kumar,9999999999,,pump_operator,SS-1,CS-1\n").getBytes(StandardCharsets.UTF_8)
+        );
+
+        when(userTenantRepository.findUserByPhone(eq("tenant_ka"), eq("9999999999")))
+                .thenReturn(Optional.empty());
+        when(userTenantRepository.existsEmail(eq("tenant_ka"), anyString())).thenReturn(false);
+        when(userTenantRepository.createUser(eq("tenant_ka"), eq(1), anyString(), anyString(), eq(2), eq("9999999999"), eq(10L)))
+                .thenReturn(55L);
+
+        when(userUploadRepository.findSchemeId(eq("tenant_ka"), eq("SS-1"), eq("CS-1"))).thenReturn(100);
+        when(userUploadRepository.existsUserSchemeMapping(eq("tenant_ka"), eq(55L), eq(100))).thenReturn(false);
+
+        PumpOperatorUploadResponseDTO res = service.uploadPumpOperatorMappings(file, "Bearer token");
+
+        assertThat(res.uploadedRows()).isEqualTo(1);
+        verify(userTenantRepository).createUser(eq("tenant_ka"), eq(1), anyString(), anyString(), eq(2), eq("9999999999"), eq(10L));
+    }
+}

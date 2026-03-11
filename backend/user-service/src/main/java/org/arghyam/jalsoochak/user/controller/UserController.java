@@ -92,44 +92,4 @@ public class UserController {
         return success ? ResponseEntity.ok("Logged out") :
                 ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Logout failed");
     }
-
-
-//    @PostMapping("/bulk/invite")
-//    public ResponseEntity<?> bulkInvite(
-//            @RequestParam("file") MultipartFile file,
-//            @RequestHeader("X-Tenant-Code") String tenantCode,
-//            @RequestHeader(value = "Authorization", required = false) String authHeader) {
-//
-//        if (authHeader == null || !authHeader.toLowerCase().startsWith("bearer ")) {
-//            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-//                    .body(Map.of("message", "Missing or invalid Authorization header"));
-//        }
-//
-//        try {
-//            if (!userCommonRepository.existsTenantByStateCode(tenantCode)) {
-//                return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-//                        .body(Map.of("message", "Invalid tenant code: " + tenantCode));
-//            }
-//
-//            Map<String, Object> result = userService.bulkInviteUsers(file, tenantCode);
-//            return ResponseEntity.ok(result);
-//
-//        } catch (BadRequestException e) {
-//            log.warn("BadRequestException in bulkInvite: {}", e.getMessage());
-//
-//            Map<String, Object> response = new HashMap<>();
-//            response.put("message", e.getMessage());
-//
-//            if (e.getErrors() != null) {
-//                response.put("errors", e.getErrors());
-//            }
-//
-//            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-//                    .body(response);
-//        } catch (Exception e) {
-//            log.error("Error in bulkInvite", e);
-//            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-//                    .body(Map.of("message", "An unexpected error occurred. Please contact support."));
-//        }
-//    }
 }

@@ -77,6 +77,30 @@ public class SchemeDbRepository {
         }
     }
 
+    public boolean isUserStateAdmin(String schemaName, Integer userId) {
+        validateSchemaName(schemaName);
+        if (userId == null) {
+            return false;
+        }
+
+        String sql = String.format("""
+                SELECT EXISTS (
+                    SELECT 1
+                    FROM %s.user_table u
+                    WHERE u.id = ?
+                      AND u.user_type = (
+                          SELECT ut.id
+                          FROM common_schema.user_type_master_table ut
+                          WHERE lower(ut.c_name) = lower('STATE_ADMIN')
+                          LIMIT 1
+                      )
+                )
+                """, schemaName);
+
+        Boolean ok = jdbcTemplate.queryForObject(sql, Boolean.class, userId);
+        return Boolean.TRUE.equals(ok);
+    }
+
     public void insertSchemes(String schemaName, List<SchemeCreateRecord> rows) {
         validateSchemaName(schemaName);
         String sql = String.format("""
