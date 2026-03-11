@@ -576,6 +576,32 @@ public class TelemetryTenantRepository {
         return rows.stream().findFirst();
     }
 
+    public Optional<TelemetryFlowReadingDetails> findLatestFlowReadingForDate(String schemaName,
+                                                                              Long schemeId,
+                                                                              Long operatorId,
+                                                                              LocalDate readingDate) {
+        validateSchemaName(schemaName);
+        String sql = String.format("""
+                SELECT id, correlation_id, created_by, extracted_reading, confirmed_reading
+                FROM %s.flow_reading_table
+                WHERE scheme_id = ?
+                  AND created_by = ?
+                  AND reading_date = ?
+                  AND deleted_at IS NULL
+                ORDER BY reading_at DESC, id DESC
+                LIMIT 1
+                """, schemaName);
+        List<TelemetryFlowReadingDetails> rows = jdbcTemplate.query(sql, (rs, n) ->
+                new TelemetryFlowReadingDetails(
+                        toLong(rs.getObject("id")),
+                        rs.getString("correlation_id"),
+                        toLong(rs.getObject("created_by")),
+                        rs.getBigDecimal("extracted_reading"),
+                        rs.getBigDecimal("confirmed_reading")
+                ), schemeId, operatorId, readingDate);
+        return rows.stream().findFirst();
+    }
+
     public Optional<TelemetryReadingRecord> findLatestCompletedReadingForToday(String schemaName,
                                                                                 Long schemeId,
                                                                                 Long operatorId) {
