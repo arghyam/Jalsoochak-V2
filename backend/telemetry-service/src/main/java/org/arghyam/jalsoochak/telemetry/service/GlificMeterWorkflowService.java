@@ -10,6 +10,7 @@ import org.arghyam.jalsoochak.telemetry.dto.response.CreateReadingResponse;
 import org.arghyam.jalsoochak.telemetry.dto.response.IntroResponse;
 import org.arghyam.jalsoochak.telemetry.repository.TenantConfigRepository;
 import org.arghyam.jalsoochak.telemetry.repository.TelemetryConfirmedReadingSnapshot;
+import org.arghyam.jalsoochak.telemetry.repository.TelemetryFlowReadingDetails;
 import org.arghyam.jalsoochak.telemetry.repository.TelemetryOperatorWithSchema;
 import org.arghyam.jalsoochak.telemetry.repository.TelemetryPendingMeterChangeRecord;
 import org.arghyam.jalsoochak.telemetry.repository.TelemetryReadingRecord;
@@ -562,19 +563,14 @@ public class GlificMeterWorkflowService {
                     .findFirstSchemeForUser(operatorWithSchema.schemaName(), operatorWithSchema.operator().id())
                     .orElseThrow(() -> new IllegalStateException("Operator is not mapped to any scheme"));
 
-            Optional<TelemetryPendingMeterChangeRecord> pendingOpt = Optional.empty();
+            Optional<TelemetryPendingMeterChangeRecord> pendingOpt = telemetryTenantRepository.findLatestPendingMeterChangeRecord(
+                    operatorWithSchema.schemaName(),
+                    schemeId,
+                    operatorWithSchema.operator().id()
+            );
             String correlationId = (request.getCorrelationId() != null && !request.getCorrelationId().isBlank())
                     ? request.getCorrelationId().trim()
                     : "manual-" + UUID.randomUUID();
-
-            if (request.getCorrelationId() != null && !request.getCorrelationId().isBlank()) {
-                pendingOpt = telemetryTenantRepository.findPendingMeterChangeRecordByCorrelation(
-                        operatorWithSchema.schemaName(),
-                        schemeId,
-                        operatorWithSchema.operator().id(),
-                        correlationId
-                );
-            }
 
             Optional<TelemetryConfirmedReadingSnapshot> previousSnapshotOpt = telemetryTenantRepository
                     .findLatestConfirmedReadingSnapshot(operatorWithSchema.schemaName(), schemeId, null);
@@ -622,22 +618,34 @@ public class GlificMeterWorkflowService {
                 );
                 correlationId = pendingOpt.get().correlationId();
             } else {
-                Optional<TelemetryReadingRecord> todaysReadingOpt =
-                        telemetryTenantRepository.findLatestCompletedReadingForToday(
+                Optional<TelemetryFlowReadingDetails> todaysFlowOpt = telemetryTenantRepository.findLatestFlowReadingForDate(
+                        operatorWithSchema.schemaName(),
+                        schemeId,
+                        operatorWithSchema.operator().id(),
+                        LocalDate.now()
+                );
+
+                if (todaysFlowOpt.isPresent()) {
+                    TelemetryFlowReadingDetails todaysFlow = todaysFlowOpt.get();
+                    BigDecimal extracted = todaysFlow.extractedReading();
+                    if (extracted == null || extracted.compareTo(BigDecimal.ZERO) <= 0) {
+                        telemetryTenantRepository.updateReadingValues(
                                 operatorWithSchema.schemaName(),
-                                schemeId,
+                                todaysFlow.id(),
+                                manualReadingValue,
                                 operatorWithSchema.operator().id()
                         );
-                if (todaysReadingOpt.isPresent()) {
-                    telemetryTenantRepository.updateConfirmedReading(
-                            operatorWithSchema.schemaName(),
-                            todaysReadingOpt.get().id(),
-                            manualReadingValue,
-                            operatorWithSchema.operator().id()
-                    );
-                    if (todaysReadingOpt.get().correlationId() != null
-                            && !todaysReadingOpt.get().correlationId().isBlank()) {
-                        correlationId = todaysReadingOpt.get().correlationId();
+                    } else {
+                        telemetryTenantRepository.updateConfirmedReading(
+                                operatorWithSchema.schemaName(),
+                                todaysFlow.id(),
+                                manualReadingValue,
+                                operatorWithSchema.operator().id()
+                        );
+                    }
+
+                    if (todaysFlow.correlationId() != null && !todaysFlow.correlationId().isBlank()) {
+                        correlationId = todaysFlow.correlationId();
                     }
                 } else {
                     telemetryTenantRepository.createFlowReading(
