@@ -78,6 +78,10 @@ public class EscalationSchedulerService {
             String officerName = (String) officerRow.get("name");
             Integer officerLanguageId = officerRow.get("language_id") != null
                     ? ((Number) officerRow.get("language_id")).intValue() : null;
+            Long officerId = officerRow.get("user_id") != null
+                    ? ((Number) officerRow.get("user_id")).longValue() : null;
+            Long officerWhatsappConnectionId = officerRow.get("whatsapp_connection_id") != null
+                    ? ((Number) officerRow.get("whatsapp_connection_id")).longValue() : null;
             if (officerPhone == null || officerPhone.isBlank()) {
                 continue;
             }
@@ -110,7 +114,8 @@ public class EscalationSchedulerService {
 
             String groupKey = "LEVEL_" + escalationLevel + "|" + officerPhone;
             officerGroups.computeIfAbsent(groupKey, k ->
-                    new OfficerGroup(officerPhone, officerName, escalationLevel, officerLanguageId))
+                    new OfficerGroup(officerPhone, officerName, escalationLevel, officerLanguageId,
+                            officerId, officerWhatsappConnectionId))
                     .details.add(detail);
         }
 
@@ -124,6 +129,9 @@ public class EscalationSchedulerService {
                     .operators(group.details)
                     .tenantId(tenantId)
                     .officerLanguageId(group.officerLanguageId)
+                    .officerId(group.officerId)
+                    .officerWhatsappConnectionId(group.officerWhatsappConnectionId)
+                    .tenantSchema(schema)
                     .build();
             kafkaProducer.publishJson(COMMON_TOPIC, event);
             log.info("[EscalationJob] Published EscalationEvent level={} with {} operators",
@@ -136,13 +144,18 @@ public class EscalationSchedulerService {
         final String officerName;
         final int level;
         final Integer officerLanguageId;
+        final Long officerId;
+        final Long officerWhatsappConnectionId;
         final List<OperatorEscalationDetail> details = new ArrayList<>();
 
-        OfficerGroup(String officerPhone, String officerName, int level, Integer officerLanguageId) {
+        OfficerGroup(String officerPhone, String officerName, int level, Integer officerLanguageId,
+                     Long officerId, Long officerWhatsappConnectionId) {
             this.officerPhone = officerPhone;
             this.officerName = officerName;
             this.level = level;
             this.officerLanguageId = officerLanguageId;
+            this.officerId = officerId;
+            this.officerWhatsappConnectionId = officerWhatsappConnectionId;
         }
     }
 }

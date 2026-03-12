@@ -73,51 +73,62 @@ class WhatsAppChannelTest {
         verify(glificWhatsAppService).sendNudgeHsm(eq(55L), eq("Suresh"), eq("03 March 2026"));
     }
 
+    // ──────────────────────────── sendNudgeViaFlow ─────────────────────────────
+
+    @Test
+    void sendNudgeViaFlow_returnsTrueAndStartsFlow_onSuccess() {
+        boolean result = whatsAppChannel.sendNudgeViaFlow(42L, "Ramesh", "02 March 2026");
+
+        assertThat(result).isTrue();
+        verify(glificWhatsAppService).startNudgeFlow(42L, "Ramesh", "02 March 2026");
+        verify(glificWhatsAppService, never()).optIn(anyString());
+    }
+
+    @Test
+    void sendNudgeViaFlow_returnsFalse_whenStartNudgeFlowThrows() {
+        doThrow(new RuntimeException("Flow error"))
+                .when(glificWhatsAppService).startNudgeFlow(anyLong(), anyString(), anyString());
+
+        boolean result = whatsAppChannel.sendNudgeViaFlow(42L, "Ramesh", "02 March 2026");
+
+        assertThat(result).isFalse();
+        verify(glificWhatsAppService, never()).optIn(anyString());
+    }
+
+    @Test
+    void sendNudgeViaFlow_passesContactIdDirectly() {
+        whatsAppChannel.sendNudgeViaFlow(77L, "Suresh", "03 March 2026");
+
+        verify(glificWhatsAppService).startNudgeFlow(eq(77L), eq("Suresh"), eq("03 March 2026"));
+    }
+
     // ────────────────────────────── sendDocument ───────────────────────────────
 
     @Test
     void sendDocument_returnsTrueAndSendsEscalationHsm_onSuccess() {
-        when(glificWhatsAppService.optIn("919000000000")).thenReturn(77L);
-
-        boolean result = whatsAppChannel.sendDocument(
-                "919000000000", "https://minio.example.com/report.pdf");
+        boolean result = whatsAppChannel.sendDocument(77L, "https://minio.example.com/report.pdf");
 
         assertThat(result).isTrue();
-        verify(glificWhatsAppService).optIn("919000000000");
-        verify(glificWhatsAppService).sendEscalationHsm(
-                77L, "https://minio.example.com/report.pdf");
-    }
-
-    @Test
-    void sendDocument_returnsFalse_whenOptInThrows() {
-        when(glificWhatsAppService.optIn(anyString()))
-                .thenThrow(new RuntimeException("Network error"));
-
-        boolean result = whatsAppChannel.sendDocument(
-                "919000000000", "https://minio.example.com/r.pdf");
-
-        assertThat(result).isFalse();
-        verify(glificWhatsAppService, never()).sendEscalationHsm(anyLong(), anyString());
+        verify(glificWhatsAppService).sendEscalationHsm(77L, "https://minio.example.com/report.pdf");
+        verify(glificWhatsAppService, never()).optIn(anyString());
     }
 
     @Test
     void sendDocument_returnsFalse_whenSendEscalationHsmThrows() {
-        when(glificWhatsAppService.optIn(anyString())).thenReturn(88L);
         doThrow(new RuntimeException("HSM delivery failed"))
                 .when(glificWhatsAppService).sendEscalationHsm(anyLong(), anyString());
 
-        boolean result = whatsAppChannel.sendDocument(
-                "919000000001", "https://minio.example.com/r2.pdf");
+        boolean result = whatsAppChannel.sendDocument(88L, "https://minio.example.com/r2.pdf");
 
         assertThat(result).isFalse();
+        verify(glificWhatsAppService, never()).optIn(anyString());
     }
 
     @Test
     void sendDocument_passesMinioUrl_toEscalationHsm() {
-        when(glificWhatsAppService.optIn("912222222222")).thenReturn(33L);
         String minioUrl = "https://minio.example.com/escalation_L2_report.pdf";
 
-        whatsAppChannel.sendDocument("912222222222", minioUrl);
+        whatsAppChannel.sendDocument(33L, minioUrl);
 
         verify(glificWhatsAppService).sendEscalationHsm(eq(33L), eq(minioUrl));
     }
@@ -125,11 +136,12 @@ class WhatsAppChannelTest {
     // ────────────────────────── onboardOperator ────────────────────────────────
 
     @Test
-    void onboardOperator_callsOptIn_updateLanguage_andStartWelcomeFlow_inOrder() {
+    void onboardOperator_callsOptIn_updateLanguage_andStartWelcomeFlow_inOrder_andReturnsContactId() {
         when(glificWhatsAppService.optIn("919876543210")).thenReturn(42L);
 
-        whatsAppChannel.onboardOperator("919876543210", 2);
+        long contactId = whatsAppChannel.onboardOperator("919876543210", 2);
 
+        assertThat(contactId).isEqualTo(42L);
         InOrder inOrder = inOrder(glificWhatsAppService);
         inOrder.verify(glificWhatsAppService).optIn("919876543210");
         inOrder.verify(glificWhatsAppService).updateContactLanguage(42L, 2);

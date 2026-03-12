@@ -16,4 +16,7 @@ public class NudgeEvent {
     private String schemeId;
     private Integer tenantId;
     private Integer languageId;
+    private Long userId;
+    private Long whatsappConnectionId;
+    private String tenantSchema;
 }

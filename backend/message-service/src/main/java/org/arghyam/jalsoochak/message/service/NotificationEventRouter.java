@@ -1,7 +1,10 @@
 package org.arghyam.jalsoochak.message.service;
 
+import org.arghyam.jalsoochak.message.channel.GlificWhatsAppService;
 import org.arghyam.jalsoochak.message.channel.WhatsAppChannel;
 import org.arghyam.jalsoochak.message.dto.OperatorEscalationDetail;
+import org.arghyam.jalsoochak.message.event.WhatsAppContactRegisteredEvent;
+import org.arghyam.jalsoochak.message.kafka.KafkaProducer;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.annotation.PostConstruct;
@@ -26,6 +29,9 @@ import java.util.List;
  *       sends it as a WhatsApp HSM to the operator.</li>
  *   <li>{@code ESCALATION} — generates a PDF, uploads it to MinIO, fetches
  *       the localized body text, and sends a document HSM to the officer.</li>
+ *   <li>{@code STAFF_SYNC_COMPLETED} — onboards pump operators into Glific and
+ *       publishes {@code WHATSAPP_CONTACT_REGISTERED} events so tenant-service
+ *       can persist the contact IDs.</li>
  * </ul>
  */
 @Service
@@ -33,8 +39,12 @@ import java.util.List;
 @Slf4j
 public class NotificationEventRouter {
 
+    private static final String COMMON_TOPIC = "common-topic";
+
     private final ObjectMapper objectMapper;
     private final WhatsAppChannel whatsAppChannel;
+    private final GlificWhatsAppService glificWhatsAppService;
+    private final KafkaProducer kafkaProducer;
     private final EscalationPdfService escalationPdfService;
     private final MinioStorageService minioStorageService;
     private final MessageTemplateService messageTemplateService;
@@ -83,44 +93,51 @@ public class NotificationEventRouter {
         }
     }
 
-    //TODO: Verify each finding against the current code and only fix it if needed.
-    //
-    //In
-    //`@backend/message-service/src/main/java/org/arghyam/jalsoochak/message/service/NotificationEventRouter.java`
-    //around lines 84 - 98, handleNudge currently ignores tenant/language context and
-    //sends a hardcoded template; extract tenantId, languageId (and schemeId if
-    //needed) from the JsonNode (similar to handleEscalation) and use
-    //messageTemplateService to resolve the tenant/language-specific nudge
-    //template/message (e.g. call a new or existing
-    //messageTemplateService.findNudgeMessage(tenantId, languageId) or reuse the
-    //escalation lookup pattern), then pass the resolved template/message into
-    //whatsAppChannel.sendNudge (or update sendNudge signature to accept the template)
-    //so the nudge is localized per tenant and language.
     private void handleNudge(JsonNode root) {
         String phone = root.path("recipientPhone").asText("");
         String operatorName = root.path("operatorName").asText("Operator");
+        String tenantSchema = root.path("tenantSchema").asText("");
+        long userId = root.path("userId").asLong(0);
+        long storedId = root.path("whatsappConnectionId").asLong(0);
 
         if (phone.isBlank()) {
             log.warn("[Router/NUDGE] recipientPhone is blank, skipping");
             return;
         }
 
-        String todayDate = LocalDate.now()
-                .format(DateTimeFormatter.ofPattern("dd MMMM yyyy"));
-        boolean sent = whatsAppChannel.sendNudgeViaFlow(phone, operatorName, todayDate);
-        if (!sent) {
-                throw new IllegalStateException("[Router/NUDGE] WhatsApp nudge flow initiation failed");
+        String todayDate = LocalDate.now().format(DateTimeFormatter.ofPattern("dd MMMM yyyy"));
+
+        long contactId;
+        if (storedId > 0) {
+            contactId = storedId;
+        } else {
+            contactId = glificWhatsAppService.optIn(phone);
+            if (!tenantSchema.isBlank() && userId > 0) {
+                kafkaProducer.publishJson(COMMON_TOPIC,
+                        WhatsAppContactRegisteredEvent.builder()
+                                .eventType("WHATSAPP_CONTACT_REGISTERED")
+                                .tenantSchema(tenantSchema)
+                                .userId(userId)
+                                .contactId(contactId)
+                                .build());
             }
+        }
+
+        boolean sent = whatsAppChannel.sendNudgeViaFlow(contactId, operatorName, todayDate);
+        if (!sent) {
+            throw new IllegalStateException("[Router/NUDGE] WhatsApp nudge flow initiation failed");
+        }
         log.info("[Router/NUDGE] → FLOW INITIATED");
         log.debug("[Router/NUDGE] phone={} → FLOW INITIATED", phone);
     }
 
     private void handleStaffSyncCompleted(JsonNode root) {
-        JsonNode phonesNode = root.path("pumpOperatorPhones");
+        JsonNode operatorsNode = root.path("pumpOperators");
         int glificLanguageId = root.path("glificLanguageId").asInt(0);
+        String tenantSchema = root.path("tenantSchema").asText("");
 
-        if (!phonesNode.isArray() || phonesNode.isEmpty()) {
-            log.warn("[Router/STAFF_SYNC] pumpOperatorPhones is empty, skipping");
+        if (!operatorsNode.isArray() || operatorsNode.isEmpty()) {
+            log.warn("[Router/STAFF_SYNC] pumpOperators is empty, skipping");
             return;
         }
         if (glificLanguageId == 0) {
@@ -129,11 +146,21 @@ public class NotificationEventRouter {
         }
 
         int success = 0, failed = 0;
-        for (JsonNode phoneNode : phonesNode) {
-            String phone = phoneNode.asText("");
+        for (JsonNode opNode : operatorsNode) {
+            String phone = opNode.path("phone").asText("");
+            long userId = opNode.path("userId").asLong(0);
             if (phone.isBlank()) continue;
             try {
-                whatsAppChannel.onboardOperator(phone, glificLanguageId);
+                long contactId = whatsAppChannel.onboardOperator(phone, glificLanguageId);
+                if (!tenantSchema.isBlank() && userId > 0) {
+                    kafkaProducer.publishJson(COMMON_TOPIC,
+                            WhatsAppContactRegisteredEvent.builder()
+                                    .eventType("WHATSAPP_CONTACT_REGISTERED")
+                                    .tenantSchema(tenantSchema)
+                                    .userId(userId)
+                                    .contactId(contactId)
+                                    .build());
+                }
                 success++;
             } catch (Exception e) {
                 failed++;
@@ -153,6 +180,9 @@ public class NotificationEventRouter {
         int level = root.path("escalationLevel").asInt(1);
         int tenantId = root.path("tenantId").asInt(0);
         int officerLanguageId = root.path("officerLanguageId").asInt(0);
+        String tenantSchema = root.path("tenantSchema").asText("");
+        long officerId = root.path("officerId").asLong(0);
+        long storedId = root.path("officerWhatsappConnectionId").asLong(0);
 
         if (officerPhone.isBlank()) {
             log.warn("[Router/ESCALATION] officerPhone is blank, skipping");
@@ -186,7 +216,23 @@ public class NotificationEventRouter {
             }
         }
 
-        boolean sent = whatsAppChannel.sendDocument(officerPhone, minioUrl);
+        long contactId;
+        if (storedId > 0) {
+            contactId = storedId;
+        } else {
+            contactId = glificWhatsAppService.optIn(officerPhone);
+            if (!tenantSchema.isBlank() && officerId > 0) {
+                kafkaProducer.publishJson(COMMON_TOPIC,
+                        WhatsAppContactRegisteredEvent.builder()
+                                .eventType("WHATSAPP_CONTACT_REGISTERED")
+                                .tenantSchema(tenantSchema)
+                                .userId(officerId)
+                                .contactId(contactId)
+                                .build());
+            }
+        }
+
+        boolean sent = whatsAppChannel.sendDocument(contactId, minioUrl);
         if (!sent) {
             throw new IllegalStateException("[Router/ESCALATION] WhatsApp escalation delivery failed");
         }
