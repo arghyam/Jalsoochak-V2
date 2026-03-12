@@ -7,6 +7,8 @@ import lombok.NoArgsConstructor;
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-public class InviteToken {
-    private String message;
+public class InviteInfoResponseDTO {
+    private String email;
+    private String role;
+    private String tenantName;
 }

@@ -8,6 +8,9 @@ import org.springframework.security.oauth2.jwt.JwtException;
 import org.springframework.stereotype.Component;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.util.List;
+import java.util.Map;
+
 @Component
 @RequiredArgsConstructor
 public class UploadAuthService {
@@ -19,14 +22,52 @@ public class UploadAuthService {
 
     public int requireStateAdminUserId(String schemaName, String authorizationHeader) {
         Jwt jwt = requireJwt(authorizationHeader);
+        requireStateAdminRole(jwt);
         int userId = requireUserId(schemaName, jwt);
-        if (!userUploadRepository.isUserStateAdmin(schemaName, userId)) {
+        return userId;
+    }
+
+    private void requireStateAdminRole(Jwt jwt) {
+        if (!hasRole(jwt, REQUIRED_UPLOAD_ROLE)) {
             throw new ResponseStatusException(
                     HttpStatus.FORBIDDEN,
                     "Only " + REQUIRED_UPLOAD_ROLE + " can upload pump operators"
             );
         }
-        return userId;
+    }
+
+    @SuppressWarnings("unchecked")
+    private boolean hasRole(Jwt jwt, String role) {
+        // Realm roles: realm_access.roles
+        Map<String, Object> realmAccess = jwt.getClaim("realm_access");
+        if (realmAccess != null) {
+            Object rolesObj = realmAccess.get("roles");
+            if (rolesObj instanceof List<?> roles) {
+                for (Object r : roles) {
+                    if (r instanceof String s && s.equals(role)) {
+                        return true;
+                    }
+                }
+            }
+        }
+
+        // Client roles: resource_access.<client>.roles (search all clients to avoid config dependency here)
+        Map<String, Object> resourceAccess = jwt.getClaim("resource_access");
+        if (resourceAccess != null) {
+            for (Object clientBlock : resourceAccess.values()) {
+                if (clientBlock instanceof Map<?, ?> clientMap) {
+                    Object rolesObj = clientMap.get("roles");
+                    if (rolesObj instanceof List<?> roles) {
+                        for (Object r : roles) {
+                            if (r instanceof String s && s.equals(role)) {
+                                return true;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        return false;
     }
 
     private int requireUserId(String schemaName, Jwt jwt) {
@@ -75,4 +116,3 @@ public class UploadAuthService {
         return token;
     }
 }
-
