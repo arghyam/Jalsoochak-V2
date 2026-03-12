@@ -213,6 +213,79 @@ class NotificationEventRouterTest {
                 .hasMessageContaining("Notification event processing failed");
     }
 
+    // ───────────────────────── STAFF_SYNC_COMPLETED ────────────────────────────
+
+    @Test
+    void route_onboardsAllOperators_forValidStaffSyncEvent() {
+        router.route("""
+                {"eventType":"STAFF_SYNC_COMPLETED","tenantCode":"MP","tenantId":1,
+                 "glificLanguageId":"2",
+                 "pumpOperatorPhones":["919876543210","919123456789"]}
+                """);
+
+        verify(whatsAppChannel).onboardOperator("919876543210", 2);
+        verify(whatsAppChannel).onboardOperator("919123456789", 2);
+        verifyNoInteractions(escalationPdfService, minioStorageService, messageTemplateService);
+    }
+
+    @Test
+    void route_skipsStaffSync_whenPhonesArrayIsEmpty() {
+        router.route("""
+                {"eventType":"STAFF_SYNC_COMPLETED","tenantCode":"MP","tenantId":1,
+                 "glificLanguageId":"2","pumpOperatorPhones":[]}
+                """);
+
+        verifyNoInteractions(whatsAppChannel);
+    }
+
+    @Test
+    void route_skipsStaffSync_whenGlificLanguageIdIsZero() {
+        router.route("""
+                {"eventType":"STAFF_SYNC_COMPLETED","tenantCode":"MP","tenantId":1,
+                 "glificLanguageId":"0","pumpOperatorPhones":["919876543210"]}
+                """);
+
+        verifyNoInteractions(whatsAppChannel);
+    }
+
+    @Test
+    void route_skipsStaffSync_whenGlificLanguageIdIsMissing() {
+        router.route("""
+                {"eventType":"STAFF_SYNC_COMPLETED","tenantCode":"MP","tenantId":1,
+                 "pumpOperatorPhones":["919876543210"]}
+                """);
+
+        verifyNoInteractions(whatsAppChannel);
+    }
+
+    @Test
+    void route_rethrowsException_whenAllStaffSyncOnboardingsFail() {
+        doThrow(new RuntimeException("Glific error"))
+                .when(whatsAppChannel).onboardOperator(anyString(), anyInt());
+
+        assertThatThrownBy(() -> router.route("""
+                {"eventType":"STAFF_SYNC_COMPLETED","tenantCode":"MP","tenantId":1,
+                 "glificLanguageId":"2","pumpOperatorPhones":["919876543210","919123456789"]}
+                """))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessageContaining("Notification event processing failed");
+    }
+
+    @Test
+    void route_doesNotThrow_whenPartialStaffSyncOnboardingFails() {
+        doThrow(new RuntimeException("Glific error"))
+                .when(whatsAppChannel).onboardOperator(eq("919876543210"), anyInt());
+        // second phone succeeds (no stub needed — mock returns void by default)
+
+        router.route("""
+                {"eventType":"STAFF_SYNC_COMPLETED","tenantCode":"MP","tenantId":1,
+                 "glificLanguageId":"2","pumpOperatorPhones":["919876543210","919123456789"]}
+                """);
+
+        verify(whatsAppChannel).onboardOperator("919876543210", 2);
+        verify(whatsAppChannel).onboardOperator("919123456789", 2);
+    }
+
     @Test
     void route_rethrowsException_onMalformedJson() {
         assertThatThrownBy(() -> router.route("{not valid json"))

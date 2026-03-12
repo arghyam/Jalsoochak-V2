@@ -6,10 +6,11 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import org.mockito.InOrder;
+
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.anyLong;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.eq;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 /**
@@ -119,6 +120,43 @@ class WhatsAppChannelTest {
         whatsAppChannel.sendDocument("912222222222", minioUrl);
 
         verify(glificWhatsAppService).sendEscalationHsm(eq(33L), eq(minioUrl));
+    }
+
+    // ────────────────────────── onboardOperator ────────────────────────────────
+
+    @Test
+    void onboardOperator_callsOptIn_updateLanguage_andStartWelcomeFlow_inOrder() {
+        when(glificWhatsAppService.optIn("919876543210")).thenReturn(42L);
+
+        whatsAppChannel.onboardOperator("919876543210", 2);
+
+        InOrder inOrder = inOrder(glificWhatsAppService);
+        inOrder.verify(glificWhatsAppService).optIn("919876543210");
+        inOrder.verify(glificWhatsAppService).updateContactLanguage(42L, 2);
+        inOrder.verify(glificWhatsAppService).startWelcomeFlow(42L);
+    }
+
+    @Test
+    void onboardOperator_throwsException_whenOptInFails() {
+        when(glificWhatsAppService.optIn(anyString()))
+                .thenThrow(new RuntimeException("Glific unreachable"));
+
+        assertThatThrownBy(() -> whatsAppChannel.onboardOperator("919876543210", 2))
+                .isInstanceOf(RuntimeException.class);
+
+        verify(glificWhatsAppService, never()).updateContactLanguage(anyLong(), anyInt());
+        verify(glificWhatsAppService, never()).startWelcomeFlow(anyLong());
+    }
+
+    @Test
+    void onboardOperator_throwsException_whenWelcomeFlowFails() {
+        when(glificWhatsAppService.optIn("919876543210")).thenReturn(42L);
+        doThrow(new RuntimeException("Flow error"))
+                .when(glificWhatsAppService).startWelcomeFlow(42L);
+
+        assertThatThrownBy(() -> whatsAppChannel.onboardOperator("919876543210", 2))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessageContaining("Flow error");
     }
 
     // ─────────────────────────── channelType ───────────────────────────────────

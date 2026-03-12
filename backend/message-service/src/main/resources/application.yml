@@ -90,6 +90,7 @@ glific:
     escalation-id: ${GLIFIC_ESCALATION_TEMPLATE_ID:}
   flow:
     nudge-id: ${GLIFIC_NUDGE_FLOW_ID:}
+    welcome-id: ${GLIFIC_WELCOME_FLOW_ID:}
   media:
     escalation-caption: ${GLIFIC_ESCALATION_CAPTION:Escalations}
     escalation-thumbnail: ${GLIFIC_ESCALATION_THUMBNAIL:}
