@@ -12,7 +12,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.LinkedHashSet;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Processes uploads in small transactions so very large CSVs don't create a single massive transaction
@@ -57,7 +59,7 @@ public class PumpOperatorUploadChunkProcessor {
         }
 
         List<UserSchemeMappingCreateRow> insertRows = new ArrayList<>(rows.size());
-        List<String> phonesToNotify = new ArrayList<>(rows.size());
+        List<String> phonesForInsertRows = new ArrayList<>(rows.size());
         int uploaded = 0;
         int skipped = 0;
 
@@ -105,12 +107,9 @@ public class PumpOperatorUploadChunkProcessor {
                     userTenantRepository.updateUserLanguageId(schemaName, userId, preferredLanguageId);
                 }
 
-                // Avoid duplicate mappings for re-uploaded users.
-                if (!userUploadRepository.existsUserSchemeMapping(schemaName, userId, schemeId)) {
-                    insertRows.add(new UserSchemeMappingCreateRow(userId, schemeId));
-                }
-
-                phonesToNotify.add(row.phone());
+                // Idempotent insert (ON CONFLICT DO NOTHING) will safely handle re-uploads + concurrent chunks.
+                insertRows.add(new UserSchemeMappingCreateRow(userId, schemeId));
+                phonesForInsertRows.add(row.phone());
 
                 uploaded++;
             } catch (Exception ex) {
@@ -121,16 +120,28 @@ public class PumpOperatorUploadChunkProcessor {
             }
         }
 
-        userUploadRepository.insertUserSchemeMappings(schemaName, insertRows, actorUserId);
-        userEventPublisher.publishPumpOperatorOnboardedAfterCommit(
-                tenantCode,
-                actor.tenantId(),
-                String.valueOf(preferredLanguageId),
-                phonesToNotify
-        );
+        int[] insertCounts = userUploadRepository.insertUserSchemeMappings(schemaName, insertRows, actorUserId);
+        Set<String> phonesToNotify = new LinkedHashSet<>();
+        int inserted = 0;
+        int n = Math.min(insertCounts.length, phonesForInsertRows.size());
+        for (int i = 0; i < n; i++) {
+            if (insertCounts[i] > 0) {
+                inserted++;
+                phonesToNotify.add(phonesForInsertRows.get(i));
+            }
+        }
+
+        if (!phonesToNotify.isEmpty()) {
+            userEventPublisher.publishPumpOperatorOnboardedAfterCommit(
+                    tenantCode,
+                    actor.tenantId(),
+                    String.valueOf(preferredLanguageId),
+                    new ArrayList<>(phonesToNotify)
+            );
+        }
 
         log.info("[pump-operator-upload] chunk_processed rows={} uploaded={} skipped={} mappings_inserted={}",
-                rows.size(), uploaded, skipped, insertRows.size());
+                rows.size(), uploaded, skipped, inserted);
 
         return new ChunkResult(uploaded, skipped);
     }

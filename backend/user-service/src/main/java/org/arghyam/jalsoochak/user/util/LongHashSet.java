@@ -10,10 +10,12 @@ public final class LongHashSet {
 
     private static final float LOAD_FACTOR = 0.7f;
     // We store value+1 so 0 can be used as the "empty" sentinel.
+    // This encoding can't represent -1L (because -1L + 1 == 0), so handle it explicitly.
     private long[] table;
     private int size;
     private int mask;
     private int maxFill;
+    private boolean hasMinusOne;
 
     public LongHashSet(int expectedSize) {
         int cap = arraySize(Math.max(2, expectedSize), LOAD_FACTOR);
@@ -23,6 +25,16 @@ public final class LongHashSet {
     }
 
     public boolean add(long value) {
+        if (value == -1L) {
+            if (hasMinusOne) {
+                return false;
+            }
+            hasMinusOne = true;
+            if (++size >= maxFill) {
+                rehash(table.length * 2);
+            }
+            return true;
+        }
         long k = value + 1;
         int pos = mix64To32(k) & mask;
         while (true) {
@@ -42,6 +54,9 @@ public final class LongHashSet {
     }
 
     public boolean contains(long value) {
+        if (value == -1L) {
+            return hasMinusOne;
+        }
         long k = value + 1;
         int pos = mix64To32(k) & mask;
         while (true) {
@@ -121,4 +136,3 @@ public final class LongHashSet {
         return x + 1;
     }
 }
-
