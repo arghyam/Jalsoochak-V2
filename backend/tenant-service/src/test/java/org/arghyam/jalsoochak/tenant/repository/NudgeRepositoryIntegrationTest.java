@@ -72,7 +72,7 @@ class NudgeRepositoryIntegrationTest {
     @BeforeEach
     void setUp() {
         operatorTypeId = jdbcTemplate.queryForObject(
-                "SELECT id FROM common_schema.user_type_master_table WHERE c_name = 'OPERATOR'",
+                "SELECT id FROM common_schema.user_type_master_table WHERE UPPER(c_name) = 'PUMP_OPERATOR'",
                 Integer.class);
         sectionOfficerTypeId = jdbcTemplate.queryForObject(
                 "SELECT id FROM common_schema.user_type_master_table WHERE c_name = 'SECTION_OFFICER'",
@@ -106,6 +106,8 @@ class NudgeRepositoryIntegrationTest {
         assertThat(result).hasSize(1);
         assertThat(result.get(0).get("phone_number")).isEqualTo("911111111111");
         assertThat(result.get(0).get("name")).isEqualTo("Op One");
+        assertThat(((Number) result.get(0).get("user_id")).intValue()).isEqualTo(opId);
+        assertThat(result.get(0).get("whatsapp_connection_id")).isNull();
     }
 
     @Test
@@ -174,6 +176,8 @@ class NudgeRepositoryIntegrationTest {
         assertThat(result).hasSize(1);
         assertThat(result.get(0).get("phone_number")).isEqualTo("916666666666");
         assertThat(result.get(0).get("days_since_last_upload")).isNull(); // NULL = never uploaded
+        assertThat(((Number) result.get(0).get("user_id")).intValue()).isEqualTo(opId);
+        assertThat(result.get(0).get("whatsapp_connection_id")).isNull();
     }
 
     @Test
@@ -267,6 +271,53 @@ class NudgeRepositoryIntegrationTest {
                 "tenant_test", schemeId, "SECTION_OFFICER");
 
         assertThat(((Number) result.get("language_id")).intValue()).isEqualTo(3);
+    }
+
+    @Test
+    void findOfficerByUserType_returnsUserIdAndWhatsappConnectionId() {
+        int officerId = insertUser("DO Check", "911199887766", districtOfficerTypeId);
+        insertSchemeMapping(officerId, schemeId, 1);
+
+        Map<String, Object> result = nudgeRepository.findOfficerByUserType(
+                "tenant_test", schemeId, "DISTRICT_OFFICER");
+
+        assertThat(result).isNotNull();
+        assertThat(((Number) result.get("user_id")).intValue()).isEqualTo(officerId);
+        assertThat(result.get("whatsapp_connection_id")).isNull();
+    }
+
+    // ────────────────────────── updateWhatsAppConnectionId ─────────────────────
+
+    @Test
+    void updateWhatsAppConnectionId_persistsContactId() {
+        int opId = insertUser("Op WA", "911900000001", operatorTypeId);
+
+        nudgeRepository.updateWhatsAppConnectionId("tenant_test", opId, 9999L);
+
+        Long stored = jdbcTemplate.queryForObject(
+                "SELECT whatsapp_connection_id FROM tenant_test.user_table WHERE id = ?",
+                Long.class, opId);
+        assertThat(stored).isEqualTo(9999L);
+    }
+
+    @Test
+    void updateWhatsAppConnectionId_rejectsInvalidSchemaName() {
+        assertThatThrownBy(() ->
+                nudgeRepository.updateWhatsAppConnectionId("bad-schema!", 1L, 42L))
+                .hasCauseInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Invalid schema name");
+    }
+
+    @Test
+    void findUsersWithNoUploadToday_returnsStoredWhatsappConnectionId() {
+        int opId = insertUser("Op WA Stored", "911900000002", operatorTypeId);
+        insertSchemeMapping(opId, schemeId, 1);
+        nudgeRepository.updateWhatsAppConnectionId("tenant_test", opId, 1234L);
+
+        List<Map<String, Object>> result = nudgeRepository.findUsersWithNoUploadToday("tenant_test");
+
+        assertThat(result).hasSize(1);
+        assertThat(((Number) result.get(0).get("whatsapp_connection_id")).longValue()).isEqualTo(1234L);
     }
 
     // ──────────────────────────── schema validation ────────────────────────────

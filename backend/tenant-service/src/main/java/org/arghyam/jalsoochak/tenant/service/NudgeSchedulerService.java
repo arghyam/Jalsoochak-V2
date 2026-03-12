@@ -47,6 +47,10 @@ public class NudgeSchedulerService {
                     .schemeId(row.get("scheme_id") != null ? row.get("scheme_id").toString() : "")
                     .tenantId(tenantId)
                     .languageId(row.get("language_id") != null ? ((Number) row.get("language_id")).intValue() : 0)
+                    .userId(row.get("user_id") != null ? ((Number) row.get("user_id")).longValue() : 0L)
+                    .whatsappConnectionId(row.get("whatsapp_connection_id") != null
+                            ? ((Number) row.get("whatsapp_connection_id")).longValue() : 0L)
+                    .tenantSchema(schema)
                     .build();
             kafkaProducer.publishJson(COMMON_TOPIC, event);
             log.debug("[NudgeJob] Published NudgeEvent for phone={}", phone);

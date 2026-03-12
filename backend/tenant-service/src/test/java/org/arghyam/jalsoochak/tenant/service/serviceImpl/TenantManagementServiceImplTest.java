@@ -48,6 +48,7 @@ import org.arghyam.jalsoochak.tenant.event.TenantUpdatedEvent;
 import org.arghyam.jalsoochak.tenant.exception.ResourceNotFoundException;
 import org.arghyam.jalsoochak.tenant.repository.TenantCommonRepository;
 import org.arghyam.jalsoochak.tenant.repository.TenantSchemaRepository;
+import org.arghyam.jalsoochak.tenant.service.TenantSchedulerManager;
 import org.arghyam.jalsoochak.tenant.util.SecurityUtils;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -84,6 +85,9 @@ class TenantManagementServiceImplTest {
     @Mock
     private ApplicationEventPublisher eventPublisher;
 
+    @Mock
+    private TenantSchedulerManager schedulerManager;
+
     private ObjectMapper objectMapper;
 
     private TenantManagementServiceImpl tenantManagementService;
@@ -104,7 +108,8 @@ class TenantManagementServiceImplTest {
             tenantSchemaRepository,
             objectMapper,
             tenantDefaults,
-            eventPublisher
+            eventPublisher,
+            schedulerManager
         );
     }
 
@@ -609,8 +614,45 @@ class TenantManagementServiceImplTest {
             when(tenantCommonRepository.findById(tenantId)).thenReturn(Optional.empty());
 
             // Act & Assert
-            assertThrows(ResourceNotFoundException.class, 
+            assertThrows(ResourceNotFoundException.class,
                     () -> tenantManagementService.setTenantConfigs(tenantId, request));
+        }
+
+        @Test
+        @DisplayName("Should call rescheduleForTenant after persisting a GENERIC schedule config")
+        void testSetTenantConfigs_TriggersReschedule() throws Exception {
+            // Arrange
+            Integer tenantId = 1;
+            TenantResponseDTO tenant = TenantResponseDTO.builder()
+                    .id(tenantId).stateCode("MP").build();
+            Map<TenantConfigKeyEnum, JsonNode> configs = new HashMap<>();
+            configs.put(TenantConfigKeyEnum.PUMP_OPERATOR_REMINDER_NUDGE_TIME,
+                    objectMapper.readTree("{\"nudge\":{\"schedule\":{\"hour\":8,\"minute\":0}}}"));
+
+            SetTenantConfigRequestDTO request = SetTenantConfigRequestDTO.builder()
+                    .configs(configs)
+                    .build();
+
+            ConfigDTO savedConfig = ConfigDTO.builder()
+                    .configKey(TenantConfigKeyEnum.PUMP_OPERATOR_REMINDER_NUDGE_TIME.name())
+                    .configValue("{\"nudge\":{\"schedule\":{\"hour\":8,\"minute\":0}}}")
+                    .build();
+
+            when(tenantCommonRepository.findById(tenantId)).thenReturn(Optional.of(tenant));
+            when(SecurityUtils.getCurrentUserUuid()).thenReturn("user-uuid");
+            when(tenantCommonRepository.findUserIdByUuid("user-uuid")).thenReturn(Optional.of(100));
+            when(tenantCommonRepository.upsertConfig(
+                    eq(tenantId),
+                    eq(TenantConfigKeyEnum.PUMP_OPERATOR_REMINDER_NUDGE_TIME.name()),
+                    anyString(),
+                    eq(100)))
+                    .thenReturn(Optional.of(savedConfig));
+
+            // Act
+            tenantManagementService.setTenantConfigs(tenantId, request);
+
+            // Assert
+            verify(schedulerManager).rescheduleForTenant(tenantId, "MP");
         }
     }
 

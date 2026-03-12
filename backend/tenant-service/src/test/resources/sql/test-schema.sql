@@ -33,7 +33,7 @@ CREATE TABLE common_schema.tenant_config_master_table (
 
 -- Seed reference data
 INSERT INTO common_schema.user_type_master_table (c_name)
-VALUES ('OPERATOR'), ('SECTION_OFFICER'), ('DISTRICT_OFFICER');
+VALUES ('PUMP_OPERATOR'), ('SECTION_OFFICER'), ('DISTRICT_OFFICER');
 
 INSERT INTO common_schema.tenant_master_table (state_code, lgd_code, title, status)
 VALUES ('TS', 1, 'Test State', 1);
@@ -46,7 +46,8 @@ CREATE TABLE tenant_test.user_table (
     title        TEXT    NOT NULL,
     phone_number TEXT    NOT NULL,
     user_type    INTEGER NOT NULL,
-    language_id  INTEGER DEFAULT 0,
+    language_id             INTEGER DEFAULT 0,
+    whatsapp_connection_id  BIGINT  NULL,
     email        VARCHAR(255) NOT NULL DEFAULT 'noop@test.com',
     tenant_id    INTEGER NOT NULL DEFAULT 1,
     status       INTEGER NOT NULL DEFAULT 1

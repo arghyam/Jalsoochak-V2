@@ -71,24 +71,20 @@ public class WhatsAppChannel implements NotificationChannel {
     }
 
     /**
-     * Initiates a Glific flow for the nudge instead of sending the HSM message directly.
-     * The flow (configured in Glific) sends the HSM template with interactive buttons
-     * and handles subsequent button-response interactions.
+     * Initiates a Glific nudge flow using an already-resolved Glific contact ID.
+     * No {@code optIn} call is made — use this path when {@code whatsapp_connection_id}
+     * is already stored in {@code user_table}.
      *
-     * <p>Requires {`@code` glific.flow.nudge-id} to be configured. Returns {`@code` false}
-     * if the flow initiation fails for any reason.</p>
-     *
-     * @param phone        recipient WhatsApp phone number (E.164 format)
-     * @param operatorName operator name passed as flow variable {@code operator_name}
-     * @param date         today's date passed as flow variable {@code date}
+     * @param contactId    Glific contact ID
+     * @param operatorName operator name passed as flow variable
+     * @param date         today's date passed as flow variable
      * @return {@code true} if the flow was successfully initiated
      */
-    public boolean sendNudgeViaFlow(String phone, String operatorName, String date) {
+    public boolean sendNudgeViaFlow(long contactId, String operatorName, String date) {
         try {
-            Long contactId = glificWhatsAppService.optIn(phone);
             glificWhatsAppService.startNudgeFlow(contactId, operatorName, date);
             log.info("[WHATSAPP] Nudge flow initiated");
-            log.debug("[WHATSAPP] Nudge flow initiated for {}", phone);
+            log.debug("[WHATSAPP] Nudge flow initiated for contactId={}", contactId);
             return true;
         } catch (Exception ex) {
             log.error("[WHATSAPP] Failed to initiate nudge flow: {}", ex.getMessage(), ex);
@@ -97,18 +93,38 @@ public class WhatsAppChannel implements NotificationChannel {
     }
 
     /**
-     * Sends the escalation PDF (document HSM) to the officer via Glific.
+     * Opts a pump operator into Glific, sets their preferred language, and starts the welcome flow.
+     * Called during staff-sync onboarding.
      *
-     * @param toPhone     recipient WhatsApp phone number (E.164 format)
+     * @param phone            operator phone number (E.164 format)
+     * @param glificLanguageId Glific-side language ID
+     * @return Glific contact ID assigned to this operator
+     */
+    public long onboardOperator(String phone, int glificLanguageId) {
+        long contactId = glificWhatsAppService.optIn(phone);
+        glificWhatsAppService.updateContactLanguage(contactId, glificLanguageId);
+        glificWhatsAppService.startWelcomeFlow(contactId);
+        log.info("[WHATSAPP] Operator onboarded to Glific");
+        String phoneSuffix = phone != null && phone.length() >= 4
+                ? phone.substring(phone.length() - 4)
+                : "unknown";
+        log.debug("[WHATSAPP] Operator onboarded phoneSuffix={} languageId={}", phoneSuffix, glificLanguageId);
+        return contactId;
+    }
+
+    /**
+     * Sends the escalation PDF (document HSM) to the officer via Glific using an
+     * already-resolved Glific contact ID.
+     *
+     * @param contactId   Glific contact ID of the officer
      * @param documentUrl publicly reachable MinIO URL of the escalation PDF
      * @return {@code true} if the message was accepted by Glific
      */
-    public boolean sendDocument(String toPhone, String documentUrl) {
+    public boolean sendDocument(long contactId, String documentUrl) {
         try {
-            Long contactId = glificWhatsAppService.optIn(toPhone);
             glificWhatsAppService.sendEscalationHsm(contactId, documentUrl);
             log.info("[WHATSAPP] Escalation HSM sent");
-            log.debug("[WHATSAPP] Escalation HSM sent to {}", toPhone);
+            log.debug("[WHATSAPP] Escalation HSM sent to contactId={}", contactId);
             return true;
         } catch (Exception ex) {
             log.error("[WHATSAPP] Failed escalation delivery: {}", ex.getMessage(), ex);
