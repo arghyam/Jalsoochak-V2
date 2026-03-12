@@ -149,7 +149,11 @@ public class NotificationEventRouter {
         for (JsonNode opNode : operatorsNode) {
             String phone = opNode.path("phone").asText("");
             long userId = opNode.path("userId").asLong(0);
-            if (phone.isBlank()) continue;
+            if (phone.isBlank()) {
+                log.error("[Router/STAFF_SYNC] Operator userId={} has blank phone, skipping", userId);
+                failed++;
+                continue;
+            }
             try {
                 long contactId = whatsAppChannel.onboardOperator(phone, glificLanguageId);
                 if (!tenantSchema.isBlank() && userId > 0) {
@@ -160,8 +164,8 @@ public class NotificationEventRouter {
                                     .userId(userId)
                                     .contactId(contactId)
                                     .build());
+                    success++;
                 }
-                success++;
             } catch (Exception e) {
                 failed++;
                 log.error("[Router/STAFF_SYNC] Failed to onboard operator: {}", e.getMessage(), e);
@@ -169,11 +173,9 @@ public class NotificationEventRouter {
         }
         log.info("[Router/STAFF_SYNC] Onboarding complete — success={} failed={} tenantSchema={}",
                 success, failed, tenantSchema);
-
         if (failed > 0) {
-            throw new IllegalStateException(
-                    "[Router/STAFF_SYNC] " + failed + " operator onboarding(s) failed"
-                    + " (success=" + success + ", tenantSchema=" + tenantSchema + ")");
+            log.warn("[Router/STAFF_SYNC] {} operator onboarding(s) failed (success={}, tenantSchema={})",
+                    failed, success, tenantSchema);
         }
     }
 

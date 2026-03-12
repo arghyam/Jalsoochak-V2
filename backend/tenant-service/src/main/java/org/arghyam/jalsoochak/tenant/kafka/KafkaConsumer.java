@@ -30,10 +30,10 @@ public class KafkaConsumer {
                 if (!schema.isBlank() && userId > 0 && contactId > 0) {
                     int updated = nudgeRepository.updateWhatsAppConnectionId(schema, userId, contactId);
                     if (updated > 0) {
-                            log.info("[tenant-service] Updated whatsapp_connection_id for userId={}", userId);
-                        } else {
-                            log.warn("[tenant-service] No rows updated for userId={} in schema={}", userId, schema);
-                        }
+                        log.info("[tenant-service] Updated whatsapp_connection_id for userId={}", userId);
+                    } else {
+                        log.warn("[tenant-service] No rows updated for userId={} in schema={}", userId, schema);
+                    }
                 } else {
                     log.warn("[tenant-service] WHATSAPP_CONTACT_REGISTERED missing required fields, skipping");
                 }
