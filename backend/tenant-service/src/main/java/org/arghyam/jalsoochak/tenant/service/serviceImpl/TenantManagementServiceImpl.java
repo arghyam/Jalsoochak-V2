@@ -289,12 +289,16 @@ public class TenantManagementServiceImpl implements TenantManagementService {
         if (hasScheduleKey) {
             final int finalTenantId = tenantId;
             final String finalStateCode = tenant.getStateCode();
-            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-                @Override
-                public void afterCommit() {
-                    schedulerManager.rescheduleForTenant(finalTenantId, finalStateCode);
-                }
-            });
+            if (TransactionSynchronizationManager.isSynchronizationActive()) {
+                TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                    @Override
+                    public void afterCommit() {
+                        schedulerManager.rescheduleForTenant(finalTenantId, finalStateCode);
+                    }
+                });
+            } else {
+                schedulerManager.rescheduleForTenant(finalTenantId, finalStateCode);
+            }
         }
 
         return TenantConfigResponseDTO.builder()
