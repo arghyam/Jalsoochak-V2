@@ -9,7 +9,9 @@ import org.springframework.stereotype.Repository;
 
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.regex.Pattern;
 
 @Repository
@@ -55,6 +57,47 @@ public class SchemeDbRepository {
         );
         Boolean exists = jdbcTemplate.queryForObject(sql, Boolean.class, schemeId);
         return Boolean.TRUE.equals(exists);
+    }
+
+    /**
+     * Batch existence check for large uploads (avoids N queries).
+     */
+    public Set<Integer> findExistingSchemeIds(String schemaName, List<Integer> schemeIds) {
+        return findExistingIds(schemaName, "scheme_master_table", schemeIds);
+    }
+
+    public boolean existsLgdLocationById(String schemaName, Integer lgdId) {
+        validateSchemaName(schemaName);
+        String sql = String.format(
+                "SELECT EXISTS (SELECT 1 FROM %s.lgd_location_master_table WHERE id = ? AND deleted_at IS NULL)",
+                schemaName
+        );
+        Boolean exists = jdbcTemplate.queryForObject(sql, Boolean.class, lgdId);
+        return Boolean.TRUE.equals(exists);
+    }
+
+    /**
+     * Batch existence check for large uploads (avoids N queries).
+     */
+    public Set<Integer> findExistingLgdLocationIds(String schemaName, List<Integer> lgdIds) {
+        return findExistingIds(schemaName, "lgd_location_master_table", lgdIds);
+    }
+
+    public boolean existsDepartmentLocationById(String schemaName, Integer departmentId) {
+        validateSchemaName(schemaName);
+        String sql = String.format(
+                "SELECT EXISTS (SELECT 1 FROM %s.department_location_master_table WHERE id = ? AND deleted_at IS NULL)",
+                schemaName
+        );
+        Boolean exists = jdbcTemplate.queryForObject(sql, Boolean.class, departmentId);
+        return Boolean.TRUE.equals(exists);
+    }
+
+    /**
+     * Batch existence check for large uploads (avoids N queries).
+     */
+    public Set<Integer> findExistingDepartmentLocationIds(String schemaName, List<Integer> departmentIds) {
+        return findExistingIds(schemaName, "department_location_master_table", departmentIds);
     }
 
     public Integer findUserIdByEmail(String schemaName, String email) {
@@ -139,7 +182,7 @@ public class SchemeDbRepository {
         });
     }
 
-    public void insertVillageMappings(String schemaName, List<SchemeVillageMappingCreateRecord> rows) {
+    public void insertLgdMappings(String schemaName, List<SchemeLgdMappingCreateRecord> rows) {
         validateSchemaName(schemaName);
         String sql = String.format("""
                 INSERT INTO %s.scheme_lgd_mapping_table
@@ -150,10 +193,10 @@ public class SchemeDbRepository {
         jdbcTemplate.batchUpdate(sql, new BatchPreparedStatementSetter() {
             @Override
             public void setValues(PreparedStatement ps, int i) throws SQLException {
-                SchemeVillageMappingCreateRecord row = rows.get(i);
+                SchemeLgdMappingCreateRecord row = rows.get(i);
                 ps.setInt(1, row.schemeId());
                 ps.setInt(2, row.parentLgdId());
-                ps.setString(3, row.parentLgdLevel());
+                ps.setString(3, String.valueOf(row.parentLgdLevel()));
                 ps.setInt(4, row.createdBy());
                 ps.setInt(5, row.updatedBy());
             }
@@ -195,5 +238,42 @@ public class SchemeDbRepository {
         if (schemaName == null || schemaName.isBlank() || !SAFE_SCHEMA.matcher(schemaName).matches()) {
             throw new IllegalArgumentException("Invalid schema name: " + schemaName);
         }
+    }
+
+    private Set<Integer> findExistingIds(String schemaName, String table, List<Integer> ids) {
+        validateSchemaName(schemaName);
+        if (ids == null || ids.isEmpty()) {
+            return Set.of();
+        }
+
+        // Deduplicate to keep the IN clause small and stable.
+        Set<Integer> uniq = new HashSet<>(Math.max(16, ids.size()));
+        for (Integer id : ids) {
+            if (id != null) {
+                uniq.add(id);
+            }
+        }
+        if (uniq.isEmpty()) {
+            return Set.of();
+        }
+
+        StringBuilder placeholders = new StringBuilder();
+        int n = uniq.size();
+        for (int i = 0; i < n; i++) {
+            if (i > 0) {
+                placeholders.append(',');
+            }
+            placeholders.append('?');
+        }
+
+        String sql = String.format(
+                "SELECT id FROM %s.%s WHERE deleted_at IS NULL AND id IN (%s)",
+                schemaName,
+                table,
+                placeholders
+        );
+        Object[] args = uniq.toArray();
+        List<Integer> existing = jdbcTemplate.query(sql, (rs, rowNum) -> rs.getInt("id"), args);
+        return new HashSet<>(existing);
     }
 }

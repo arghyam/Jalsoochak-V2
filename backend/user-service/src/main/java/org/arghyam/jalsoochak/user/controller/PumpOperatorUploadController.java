@@ -7,7 +7,6 @@ import org.arghyam.jalsoochak.user.service.PumpOperatorUploadService;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -23,7 +22,6 @@ public class PumpOperatorUploadController {
     private final PumpOperatorUploadService pumpOperatorUploadService;
 
     @PostMapping(value = "/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    @PreAuthorize("hasRole('STATE_ADMIN')")
     public ResponseEntity<ApiResponseDTO<PumpOperatorUploadResponseDTO>> upload(
             @RequestPart("file") MultipartFile file,
             @RequestHeader(HttpHeaders.AUTHORIZATION) String authorizationHeader

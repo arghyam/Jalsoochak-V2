@@ -9,6 +9,7 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingRequestHeaderException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
@@ -83,6 +84,15 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(TokenAlreadyUsedException.class)
     public ResponseEntity<Map<String, Object>> handleTokenUsed(TokenAlreadyUsedException ex) {
         return build(HttpStatus.BAD_REQUEST, ex.getMessage(), null);
+    }
+
+    @ExceptionHandler(ResponseStatusException.class)
+    public ResponseEntity<Map<String, Object>> handleResponseStatus(ResponseStatusException ex) {
+        HttpStatus status = HttpStatus.valueOf(ex.getStatusCode().value());
+        String message = ex.getReason() != null && !ex.getReason().isBlank()
+                ? ex.getReason()
+                : ex.getMessage();
+        return build(status, message, null);
     }
 
     @ExceptionHandler(Exception.class)

@@ -63,6 +63,9 @@ public class SecurityConfig {
                                 "/api/v1/auth/activate-account",
                                 "/api/v1/auth/forgot-password",
                                 "/api/v1/auth/reset-password",
+                                // Upload endpoint is authorized via UploadAuthService (JWT validation + role check),
+                                // not via Spring Security's JwtDecoder (which may require network access to Keycloak).
+                                "/api/v1/state-admin/pump-operators/upload",
                                 "/v3/api-docs/**",
                                 "/swagger-ui/**",
                                 "/swagger-ui.html",

@@ -1,0 +1,2 @@
+state_scheme_id,centre_scheme_id,scheme_name,fhtc_count,planned_fhtc,house_hold_count,latitude,longitude,channel,work_status,operating_status
+SS-001,CS-001,Test Scheme 1,10,12,25,12.9716,77.5946,Bfm,Ongoing,Operative

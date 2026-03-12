@@ -173,6 +173,19 @@ public class UserTenantRepository {
         jdbcTemplate.update(sql, title, phoneNumber, id);
     }
 
+    public void updateUserLanguageId(String schemaName, Long userId, Integer languageId) {
+        validateSchemaName(schemaName);
+        if (userId == null) {
+            return;
+        }
+        String sql = String.format("""
+                UPDATE %s.user_table
+                SET language_id = ?, updated_at = NOW()
+                WHERE id = ?
+                """, schemaName);
+        jdbcTemplate.update(sql, languageId, userId);
+    }
+
     private Long toLong(Object value) {
         if (value == null) {
             return null;

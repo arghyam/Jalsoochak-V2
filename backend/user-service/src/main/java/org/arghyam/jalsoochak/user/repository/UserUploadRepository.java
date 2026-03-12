@@ -134,34 +134,20 @@ public class UserUploadRepository {
         }
     }
 
-    public boolean existsUserSchemeMapping(String schemaName, long userId, int schemeId) {
-        validateSchemaName(schemaName);
-        String sql = String.format("""
-                SELECT EXISTS (
-                    SELECT 1
-                    FROM %s.user_scheme_mapping_table
-                    WHERE user_id = ?
-                      AND scheme_id = ?
-                      AND deleted_at IS NULL
-                )
-                """, schemaName);
-        Boolean ok = jdbcTemplate.queryForObject(sql, Boolean.class, userId, schemeId);
-        return Boolean.TRUE.equals(ok);
-    }
-
-    public void insertUserSchemeMappings(String schemaName, List<UserSchemeMappingCreateRow> rows, int actorUserId) {
+    public int[] insertUserSchemeMappings(String schemaName, List<UserSchemeMappingCreateRow> rows, int actorUserId) {
         validateSchemaName(schemaName);
         if (rows == null || rows.isEmpty()) {
-            return;
+            return new int[0];
         }
 
         String sql = String.format("""
                 INSERT INTO %s.user_scheme_mapping_table
                     (user_id, scheme_id, status, created_by, created_at, updated_by, updated_at, deleted_at, deleted_by)
                 VALUES (?, ?, 1, ?, NOW(), ?, NOW(), NULL, NULL)
+                ON CONFLICT DO NOTHING
                 """, schemaName);
 
-        jdbcTemplate.batchUpdate(sql, new BatchPreparedStatementSetter() {
+        return jdbcTemplate.batchUpdate(sql, new BatchPreparedStatementSetter() {
             @Override
             public void setValues(PreparedStatement ps, int i) throws SQLException {
                 UserSchemeMappingCreateRow row = rows.get(i);
