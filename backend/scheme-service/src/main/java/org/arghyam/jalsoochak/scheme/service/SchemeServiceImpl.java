@@ -10,6 +10,8 @@ import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.Sheet;
 import org.apache.poi.ss.usermodel.Workbook;
 import org.apache.poi.ss.usermodel.WorkbookFactory;
+import org.arghyam.jalsoochak.scheme.auth.UploadAuthService;
+import org.arghyam.jalsoochak.scheme.config.TenantContext;
 import org.arghyam.jalsoochak.scheme.dto.SchemeDTO;
 import org.arghyam.jalsoochak.scheme.dto.SchemeUploadErrorDTO;
 import org.arghyam.jalsoochak.scheme.dto.SchemeUploadResponseDTO;
@@ -22,6 +24,8 @@ import org.arghyam.jalsoochak.scheme.repository.SchemeVillageMappingCreateRecord
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.server.ResponseStatusException;
+import org.springframework.http.HttpStatus;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -39,7 +43,20 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class SchemeServiceImpl implements SchemeService {
 
-    private static final List<String> REQUIRED_HEADERS = List.of(
+    private static final List<String> SCHEME_HEADERS_V2 = List.of(
+            "state_scheme_id",
+            "centre_scheme_id",
+            "scheme_name",
+            "fhtc_count",
+            "planned_fhtc",
+            "house_hold_count",
+            "latitude",
+            "longitude",
+            "channel",
+            "work_status",
+            "operating_status"
+    );
+    private static final List<String> SCHEME_HEADERS_V1 = List.of(
             "state_scheme_id",
             "centre_scheme_id",
             "scheme_name",
@@ -54,7 +71,13 @@ public class SchemeServiceImpl implements SchemeService {
             "created_by",
             "updated_by"
     );
-    private static final List<String> REQUIRED_MAPPING_HEADERS = List.of(
+
+    private static final List<String> MAPPING_HEADERS_V2 = List.of(
+            "scheme_id",
+            "village_id",
+            "subdivision_id"
+    );
+    private static final List<String> MAPPING_HEADERS_V1 = List.of(
             "scheme_id",
             "village_id",
             "subdivision_id",
@@ -95,22 +118,26 @@ public class SchemeServiceImpl implements SchemeService {
     private static final DataFormatter DATA_FORMATTER = new DataFormatter();
 
     private final SchemeDbRepository schemeDbRepository;
+    private final UploadAuthService uploadAuthService;
 
     @Override
     public List<SchemeDTO> getAllSchemes() {
-        return schemeDbRepository.findAllSchemes();
+        String schemaName = requireTenantSchema();
+        return schemeDbRepository.findAllSchemes(schemaName);
     }
 
     @Override
     @Transactional
-    public SchemeUploadResponseDTO uploadSchemes(MultipartFile file) {
+    public SchemeUploadResponseDTO uploadSchemes(MultipartFile file, String authorizationHeader) {
+        String schemaName = requireTenantSchema();
+        int actorUserId = uploadAuthService.requireStateAdminUserId(schemaName, authorizationHeader);
         validateFile(file);
 
         String extension = extractExtension(file.getOriginalFilename());
-        List<ParsedSchemeRow> parsedRows = parseRows(file, extension, REQUIRED_HEADERS);
-        List<SchemeCreateRecord> rowsToInsert = validateAndBuildRows(parsedRows);
+        List<ParsedSchemeRow> parsedRows = parseRows(file, extension, List.of(SCHEME_HEADERS_V2, SCHEME_HEADERS_V1));
+        List<SchemeCreateRecord> rowsToInsert = validateAndBuildRows(parsedRows, actorUserId);
 
-        schemeDbRepository.insertSchemes(rowsToInsert);
+        schemeDbRepository.insertSchemes(schemaName, rowsToInsert);
 
         return SchemeUploadResponseDTO.builder()
                 .message("Schemes uploaded successfully")
@@ -121,15 +148,17 @@ public class SchemeServiceImpl implements SchemeService {
 
     @Override
     @Transactional
-    public SchemeUploadResponseDTO uploadSchemeMappings(MultipartFile file) {
+    public SchemeUploadResponseDTO uploadSchemeMappings(MultipartFile file, String authorizationHeader) {
+        String schemaName = requireTenantSchema();
+        int actorUserId = uploadAuthService.requireStateAdminUserId(schemaName, authorizationHeader);
         validateFile(file);
 
         String extension = extractExtension(file.getOriginalFilename());
-        List<ParsedSchemeRow> parsedRows = parseRows(file, extension, REQUIRED_MAPPING_HEADERS);
-        MappingUploadPayload payload = validateAndBuildMappingRows(parsedRows);
+        List<ParsedSchemeRow> parsedRows = parseRows(file, extension, List.of(MAPPING_HEADERS_V2, MAPPING_HEADERS_V1));
+        MappingUploadPayload payload = validateAndBuildMappingRows(schemaName, parsedRows, actorUserId);
 
-        schemeDbRepository.insertVillageMappings(payload.villageRows());
-        schemeDbRepository.insertSubdivisionMappings(payload.subdivisionRows());
+        schemeDbRepository.insertVillageMappings(schemaName, payload.villageRows());
+        schemeDbRepository.insertSubdivisionMappings(schemaName, payload.subdivisionRows());
 
         return SchemeUploadResponseDTO.builder()
                 .message("Scheme mappings uploaded successfully")
@@ -152,11 +181,11 @@ public class SchemeServiceImpl implements SchemeService {
         }
     }
 
-    private List<ParsedSchemeRow> parseRows(MultipartFile file, String extension, List<String> requiredHeaders) {
+    private List<ParsedSchemeRow> parseRows(MultipartFile file, String extension, List<List<String>> allowedHeaderVariants) {
         try {
             return "csv".equals(extension)
-                    ? parseCsv(file, requiredHeaders)
-                    : parseXlsx(file, requiredHeaders);
+                    ? parseCsv(file, allowedHeaderVariants)
+                    : parseXlsx(file, allowedHeaderVariants);
         } catch (IOException ex) {
             throw new FileValidationException(
                     "Failed to read uploaded file",
@@ -165,7 +194,7 @@ public class SchemeServiceImpl implements SchemeService {
         }
     }
 
-    private List<ParsedSchemeRow> parseCsv(MultipartFile file, List<String> requiredHeaders) throws IOException {
+    private List<ParsedSchemeRow> parseCsv(MultipartFile file, List<List<String>> allowedHeaderVariants) throws IOException {
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(file.getInputStream(), StandardCharsets.UTF_8));
              CSVParser parser = CSVFormat.DEFAULT.builder().setTrim(true).setIgnoreSurroundingSpaces(true).build().parse(reader)) {
 
@@ -179,21 +208,21 @@ public class SchemeServiceImpl implements SchemeService {
 
             List<String> headers = new ArrayList<>();
             records.getFirst().forEach(headers::add);
-            validateHeaders(headers, requiredHeaders);
+            List<String> activeHeaders = resolveHeaderVariant(headers, allowedHeaderVariants);
 
             List<ParsedSchemeRow> rows = new ArrayList<>();
             for (int i = 1; i < records.size(); i++) {
                 CSVRecord record = records.get(i);
                 rows.add(new ParsedSchemeRow(
                         (int) record.getRecordNumber(),
-                        rowAsMap(indexedValues(record, requiredHeaders), requiredHeaders)
+                        rowAsMap(indexedValues(record, activeHeaders), activeHeaders)
                 ));
             }
             return rows;
         }
     }
 
-    private List<ParsedSchemeRow> parseXlsx(MultipartFile file, List<String> requiredHeaders) throws IOException {
+    private List<ParsedSchemeRow> parseXlsx(MultipartFile file, List<List<String>> allowedHeaderVariants) throws IOException {
         try (Workbook workbook = WorkbookFactory.create(file.getInputStream())) {
             Sheet sheet = workbook.getSheetAt(0);
             if (sheet == null) {
@@ -212,19 +241,19 @@ public class SchemeServiceImpl implements SchemeService {
                 );
             }
 
-            validateHeaders(readExcelHeaders(headerRow, requiredHeaders), requiredHeaders);
+            List<String> activeHeaders = resolveHeaderVariant(readExcelHeaders(headerRow), allowedHeaderVariants);
 
             List<ParsedSchemeRow> rows = new ArrayList<>();
             for (int i = firstRowIndex + 1; i <= sheet.getLastRowNum(); i++) {
                 Row row = sheet.getRow(i);
-                rows.add(new ParsedSchemeRow(i + 1, rowAsMap(indexedValues(row, requiredHeaders), requiredHeaders)));
+                rows.add(new ParsedSchemeRow(i + 1, rowAsMap(indexedValues(row, activeHeaders), activeHeaders)));
             }
             return rows;
         }
     }
 
-    private List<String> readExcelHeaders(Row headerRow, List<String> requiredHeaders) {
-        int size = Math.max(headerRow.getLastCellNum(), (short) requiredHeaders.size());
+    private List<String> readExcelHeaders(Row headerRow) {
+        int size = Math.max(headerRow.getLastCellNum(), (short) 0);
         List<String> headers = new ArrayList<>();
         for (int i = 0; i < size; i++) {
             headers.add(getExcelValue(headerRow, i));
@@ -232,26 +261,26 @@ public class SchemeServiceImpl implements SchemeService {
         return headers;
     }
 
-    private List<String> indexedValues(CSVRecord record, List<String> requiredHeaders) {
+    private List<String> indexedValues(CSVRecord record, List<String> headers) {
         List<String> values = new ArrayList<>();
-        for (int i = 0; i < requiredHeaders.size(); i++) {
+        for (int i = 0; i < headers.size(); i++) {
             values.add(i < record.size() ? normalize(record.get(i)) : "");
         }
         return values;
     }
 
-    private List<String> indexedValues(Row row, List<String> requiredHeaders) {
+    private List<String> indexedValues(Row row, List<String> headers) {
         List<String> values = new ArrayList<>();
-        for (int i = 0; i < requiredHeaders.size(); i++) {
+        for (int i = 0; i < headers.size(); i++) {
             values.add(getExcelValue(row, i));
         }
         return values;
     }
 
-    private Map<String, String> rowAsMap(List<String> values, List<String> requiredHeaders) {
+    private Map<String, String> rowAsMap(List<String> values, List<String> headers) {
         Map<String, String> map = new LinkedHashMap<>();
-        for (int i = 0; i < requiredHeaders.size(); i++) {
-            map.put(requiredHeaders.get(i), normalize(values.get(i)));
+        for (int i = 0; i < headers.size(); i++) {
+            map.put(headers.get(i), normalize(values.get(i)));
         }
         return map;
     }
@@ -263,17 +292,26 @@ public class SchemeServiceImpl implements SchemeService {
         return normalize(DATA_FORMATTER.formatCellValue(row.getCell(index)));
     }
 
-    private void validateHeaders(List<String> headers, List<String> requiredHeaders) {
-        List<String> normalized = headers.stream().map(this::normalize).toList();
-        if (!normalized.equals(requiredHeaders)) {
-            throw new FileValidationException(
-                    "Invalid headers",
-                    List.of(error(1, "header", "Header row must be exactly: " + String.join(",", requiredHeaders)))
-            );
+    private List<String> resolveHeaderVariant(List<String> rawHeaders, List<List<String>> allowedHeaderVariants) {
+        List<String> normalized = rawHeaders.stream().map(this::normalize).toList();
+        for (List<String> variant : allowedHeaderVariants) {
+            if (normalized.equals(variant)) {
+                return variant;
+            }
         }
+
+        String expected = allowedHeaderVariants.stream()
+                .map(v -> String.join(",", v))
+                .reduce((a, b) -> a + " OR " + b)
+                .orElse("");
+
+        throw new FileValidationException(
+                "Invalid headers",
+                List.of(error(1, "header", "Header row must be exactly: " + expected))
+        );
     }
 
-    private List<SchemeCreateRecord> validateAndBuildRows(List<ParsedSchemeRow> rows) {
+    private List<SchemeCreateRecord> validateAndBuildRows(List<ParsedSchemeRow> rows, int actorUserId) {
         if (rows.isEmpty()) {
             throw new FileValidationException(
                     "No data rows found in uploaded file",
@@ -298,8 +336,6 @@ public class SchemeServiceImpl implements SchemeService {
             requireField(values, row.rowNumber(), "channel", errors);
             requireField(values, row.rowNumber(), "work_status", errors);
             requireField(values, row.rowNumber(), "operating_status", errors);
-            requireField(values, row.rowNumber(), "created_by", errors);
-            requireField(values, row.rowNumber(), "updated_by", errors);
 
             Integer fhtcCount = parseInteger(values.get("fhtc_count"), row.rowNumber(), "fhtc_count", errors);
             Integer plannedFhtc = parseInteger(values.get("planned_fhtc"), row.rowNumber(), "planned_fhtc", errors);
@@ -309,8 +345,6 @@ public class SchemeServiceImpl implements SchemeService {
             Integer channel = parseEnum(values.get("channel"), row.rowNumber(), "channel", CHANNEL_MAP, "Bfm/Electric or 1/2", errors);
             Integer workStatus = parseEnum(values.get("work_status"), row.rowNumber(), "work_status", WORK_STATUS_MAP, "Ongoing, Completed, Not Started, Handed Over or 1/2/3/4", errors);
             Integer operatingStatus = parseEnum(values.get("operating_status"), row.rowNumber(), "operating_status", OPERATING_STATUS_MAP, "Operative, Non-Operative, Partially Operative or 1/2/3", errors);
-            Integer createdBy = parseInteger(values.get("created_by"), row.rowNumber(), "created_by", errors);
-            Integer updatedBy = parseInteger(values.get("updated_by"), row.rowNumber(), "updated_by", errors);
 
             if (hasErrorsForRow(errors, row.rowNumber())) {
                 continue;
@@ -329,8 +363,8 @@ public class SchemeServiceImpl implements SchemeService {
                     channel,
                     workStatus,
                     operatingStatus,
-                    createdBy,
-                    updatedBy
+                    actorUserId,
+                    actorUserId
             ));
         }
 
@@ -341,7 +375,7 @@ public class SchemeServiceImpl implements SchemeService {
         return insertRows;
     }
 
-    private MappingUploadPayload validateAndBuildMappingRows(List<ParsedSchemeRow> rows) {
+    private MappingUploadPayload validateAndBuildMappingRows(String schemaName, List<ParsedSchemeRow> rows, int actorUserId) {
         if (rows.isEmpty()) {
             throw new FileValidationException(
                     "No data rows found in uploaded file",
@@ -359,20 +393,16 @@ public class SchemeServiceImpl implements SchemeService {
             requireField(values, row.rowNumber(), "scheme_id", errors);
             requireField(values, row.rowNumber(), "village_id", errors);
             requireField(values, row.rowNumber(), "subdivision_id", errors);
-            requireField(values, row.rowNumber(), "created_by", errors);
-            requireField(values, row.rowNumber(), "updated_by", errors);
 
             Integer schemeId = parseInteger(values.get("scheme_id"), row.rowNumber(), "scheme_id", errors);
             Integer villageId = parseInteger(values.get("village_id"), row.rowNumber(), "village_id", errors);
             Integer subdivisionId = parseInteger(values.get("subdivision_id"), row.rowNumber(), "subdivision_id", errors);
-            Integer createdBy = parseInteger(values.get("created_by"), row.rowNumber(), "created_by", errors);
-            Integer updatedBy = parseInteger(values.get("updated_by"), row.rowNumber(), "updated_by", errors);
 
             if (hasErrorsForRow(errors, row.rowNumber())) {
                 continue;
             }
 
-            if (!schemeDbRepository.existsSchemeById(schemeId)) {
+            if (!schemeDbRepository.existsSchemeById(schemaName, schemeId)) {
                 errors.add(error(row.rowNumber(), "scheme_id", "scheme_id does not exist"));
                 continue;
             }
@@ -381,15 +411,15 @@ public class SchemeServiceImpl implements SchemeService {
                     schemeId,
                     villageId,
                     VILLAGE_LEVEL,
-                    createdBy,
-                    updatedBy
+                    actorUserId,
+                    actorUserId
             ));
             subdivisionRows.add(new SchemeSubdivisionMappingCreateRecord(
                     schemeId,
                     subdivisionId,
                     SUBDIVISION_LEVEL,
-                    createdBy,
-                    updatedBy
+                    actorUserId,
+                    actorUserId
             ));
         }
 
@@ -398,6 +428,17 @@ public class SchemeServiceImpl implements SchemeService {
         }
 
         return new MappingUploadPayload(villageRows, subdivisionRows);
+    }
+
+    private String requireTenantSchema() {
+        String schemaName = TenantContext.getSchema();
+        if (schemaName == null || schemaName.isBlank()) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Tenant could not be resolved. Ensure X-Tenant-Code header is set."
+            );
+        }
+        return schemaName;
     }
 
     private boolean hasErrorsForRow(List<SchemeUploadErrorDTO> errors, int rowNumber) {

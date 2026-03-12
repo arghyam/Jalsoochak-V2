@@ -11,6 +11,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -34,15 +35,21 @@ public class SchemeController {
     }
 
     @PostMapping(value = "/schemes/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity<SchemeUploadResponseDTO> uploadSchemes(@RequestParam("file") MultipartFile file) {
+    public ResponseEntity<SchemeUploadResponseDTO> uploadSchemes(
+            @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
+            @RequestParam("file") MultipartFile file
+    ) {
         log.info("POST /api/schemes/upload called with file: {}", file.getOriginalFilename());
-        return ResponseEntity.ok(schemeService.uploadSchemes(file));
+        return ResponseEntity.ok(schemeService.uploadSchemes(file, authorizationHeader));
     }
 
     @PostMapping(value = "/schemes/mappings/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity<SchemeUploadResponseDTO> uploadSchemeMappings(@RequestParam("file") MultipartFile file) {
+    public ResponseEntity<SchemeUploadResponseDTO> uploadSchemeMappings(
+            @RequestHeader(value = "Authorization", required = false) String authorizationHeader,
+            @RequestParam("file") MultipartFile file
+    ) {
         log.info("POST /api/schemes/mappings/upload called with file: {}", file.getOriginalFilename());
-        return ResponseEntity.ok(schemeService.uploadSchemeMappings(file));
+        return ResponseEntity.ok(schemeService.uploadSchemeMappings(file, authorizationHeader));
     }
 
     @PostMapping("/publish")

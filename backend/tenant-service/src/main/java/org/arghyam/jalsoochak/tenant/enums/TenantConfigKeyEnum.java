@@ -3,7 +3,7 @@ package org.arghyam.jalsoochak.tenant.enums;
 import org.arghyam.jalsoochak.tenant.dto.internal.ChannelListConfigDTO;
 import org.arghyam.jalsoochak.tenant.dto.internal.ConfigValueDTO;
 import org.arghyam.jalsoochak.tenant.dto.internal.DateFormatConfigDTO;
-
+import org.arghyam.jalsoochak.tenant.dto.internal.GlificMessagesConfigDTO;
 import org.arghyam.jalsoochak.tenant.dto.internal.MessageBrokerConfigDTO;
 import org.arghyam.jalsoochak.tenant.dto.internal.LanguageListConfigDTO;
 import org.arghyam.jalsoochak.tenant.dto.internal.LocationConfigDTO;
@@ -71,10 +71,12 @@ public enum TenantConfigKeyEnum implements ConfigKey {
     LOCATION_CHECK_REQUIRED(ConfigType.GENERIC, SimpleConfigValueDTO.class),
 
     /**
-     * Glific WhatsApp messages and prompts configuration.
-     * Customizable messages for specific cases (e.g., data upload/modification).
+     * Glific WhatsApp message templates configuration.
+     * Defines all screens, prompts, options, messages, and reasons for the conversation flow.
+     * Includes multilingual support (all Indian official languages).
+     * Provides a hierarchical and maintainable structure for all Glific conversation templates.
      */
-    GLIFIC_WHATSAPP_MESSAGES_AND_PROMPTS(ConfigType.GENERIC, SimpleConfigValueDTO.class),
+    GLIFIC_MESSAGE_TEMPLATES(ConfigType.GENERIC, GlificMessagesConfigDTO.class),
 
     /**
      * Glific Connection Settings.
