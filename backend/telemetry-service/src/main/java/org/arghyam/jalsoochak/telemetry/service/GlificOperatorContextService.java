@@ -28,6 +28,10 @@ public class GlificOperatorContextService {
                 .findPreferredTenantIdByContactId(contactId)
                 .orElse(null);
 
+        return resolveOperatorWithSchema(contactId, preferredTenantId);
+    }
+
+    public TelemetryOperatorWithSchema resolveOperatorWithSchema(String contactId, Integer preferredTenantId) {
         return telemetryTenantRepository
                 .findOperatorByPhoneAcrossTenants(contactId, preferredTenantId)
                 .orElseThrow(() -> new IllegalStateException("No operator found for contactId " + contactId));

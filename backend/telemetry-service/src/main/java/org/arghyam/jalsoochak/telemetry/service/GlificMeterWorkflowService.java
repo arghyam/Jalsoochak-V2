@@ -745,7 +745,8 @@ public class GlificMeterWorkflowService {
 
     public CreateReadingResponse locationReadingMessage(LocationReadingRequest request) {
         try {
-            if (request.getContactId() == null || request.getContactId().isBlank()) {
+            String contactId = request != null ? request.resolveContactId() : null;
+            if (contactId == null || contactId.isBlank()) {
                 throw new IllegalStateException("contactId is required");
             }
             if (request.getLatitude() == null) {
@@ -764,7 +765,11 @@ public class GlificMeterWorkflowService {
                 throw new IllegalStateException("longitude must be between -180 and 180");
             }
 
-            TelemetryOperatorWithSchema operatorWithSchema = operatorContextService.resolveOperatorWithSchema(request.getContactId());
+            // Glific supplies organization_id; use it as a tenant hint when resolving operator across tenants.
+            TelemetryOperatorWithSchema operatorWithSchema = operatorContextService.resolveOperatorWithSchema(
+                    contactId,
+                    request.getOrganizationId()
+            );
             Long operatorId = operatorWithSchema.operator().id();
 
             Long schemeId = telemetryTenantRepository
@@ -813,14 +818,15 @@ public class GlificMeterWorkflowService {
                     .qualityStatus("CONFIRMED")
                     .build();
         } catch (Exception e) {
-            log.error("Error processing location for contactId {}: {}", request.getContactId(), e.getMessage(), e);
-            String languageKey = localizationService.resolveLanguageKeyForContact(request.getContactId());
+            String safeContactId = request != null ? request.resolveContactId() : null;
+            log.error("Error processing location for contactId {}: {}", safeContactId, e.getMessage(), e);
+            String languageKey = localizationService.resolveLanguageKeyForContact(safeContactId);
             String descriptiveMessage = localizationService.resolveUserFacingErrorMessage(e, "Location could not be saved.", languageKey);
             return CreateReadingResponse.builder()
                     .success(false)
                     .message(descriptiveMessage)
                     .qualityStatus("REJECTED")
-                    .correlationId(request.getContactId())
+                    .correlationId(safeContactId)
                     .build();
         }
     }

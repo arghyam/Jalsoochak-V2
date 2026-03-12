@@ -67,7 +67,7 @@ class GlificWebhookControllerUnitTest {
 
         ResponseEntity<CreateReadingResponse> response = controller.location(
                 LocationReadingRequest.builder()
-                        .contactId("919999999999")
+                        .contact(LocationReadingRequest.Contact.builder().phone("919999999999").build())
                         .latitude(BigDecimal.valueOf(12.34))
                         .longitude(BigDecimal.valueOf(56.78))
                         .build()
