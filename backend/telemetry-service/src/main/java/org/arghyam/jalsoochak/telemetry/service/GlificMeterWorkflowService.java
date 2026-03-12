@@ -3,6 +3,7 @@ package org.arghyam.jalsoochak.telemetry.service;
 import lombok.extern.slf4j.Slf4j;
 import org.arghyam.jalsoochak.telemetry.dto.requests.IntroRequest;
 import org.arghyam.jalsoochak.telemetry.dto.requests.IssueReportRequest;
+import org.arghyam.jalsoochak.telemetry.dto.requests.LocationReadingRequest;
 import org.arghyam.jalsoochak.telemetry.dto.requests.ManualReadingRequest;
 import org.arghyam.jalsoochak.telemetry.dto.requests.MeterChangeRequest;
 import org.arghyam.jalsoochak.telemetry.dto.requests.UpdatedPreviousReadingRequest;
@@ -733,6 +734,88 @@ public class GlificMeterWorkflowService {
             log.error("Error processing manual reading for contactId {}: {}", request.getContactId(), e.getMessage(), e);
             String languageKey = localizationService.resolveLanguageKeyForContact(request.getContactId());
             String descriptiveMessage = localizationService.resolveUserFacingErrorMessage(e, "Manual reading could not be saved.", languageKey);
+            return CreateReadingResponse.builder()
+                    .success(false)
+                    .message(descriptiveMessage)
+                    .qualityStatus("REJECTED")
+                    .correlationId(request.getContactId())
+                    .build();
+        }
+    }
+
+    public CreateReadingResponse locationReadingMessage(LocationReadingRequest request) {
+        try {
+            if (request.getContactId() == null || request.getContactId().isBlank()) {
+                throw new IllegalStateException("contactId is required");
+            }
+            if (request.getLatitude() == null) {
+                throw new IllegalStateException("latitude is required");
+            }
+            if (request.getLongitude() == null) {
+                throw new IllegalStateException("longitude is required");
+            }
+
+            BigDecimal latitude = request.getLatitude();
+            BigDecimal longitude = request.getLongitude();
+            if (latitude.compareTo(BigDecimal.valueOf(-90)) < 0 || latitude.compareTo(BigDecimal.valueOf(90)) > 0) {
+                throw new IllegalStateException("latitude must be between -90 and 90");
+            }
+            if (longitude.compareTo(BigDecimal.valueOf(-180)) < 0 || longitude.compareTo(BigDecimal.valueOf(180)) > 0) {
+                throw new IllegalStateException("longitude must be between -180 and 180");
+            }
+
+            TelemetryOperatorWithSchema operatorWithSchema = operatorContextService.resolveOperatorWithSchema(request.getContactId());
+            Long operatorId = operatorWithSchema.operator().id();
+
+            Long schemeId = telemetryTenantRepository
+                    .findFirstSchemeForUser(operatorWithSchema.schemaName(), operatorId)
+                    .orElseThrow(() -> new IllegalStateException("Operator is not mapped to any scheme"));
+
+            String correlationId = null;
+            Long readingId = null;
+            Optional<TelemetryFlowReadingDetails> today = telemetryTenantRepository.findLatestFlowReadingForDate(
+                    operatorWithSchema.schemaName(),
+                    schemeId,
+                    operatorId,
+                    LocalDate.now()
+            );
+            if (today.isPresent()) {
+                readingId = today.get().id();
+                correlationId = today.get().correlationId();
+            }
+
+            if (readingId == null) {
+                correlationId = "location-" + UUID.randomUUID();
+                readingId = telemetryTenantRepository.createFlowReading(
+                        operatorWithSchema.schemaName(),
+                        schemeId,
+                        operatorId,
+                        LocalDateTime.now(),
+                        BigDecimal.ZERO,
+                        BigDecimal.ZERO,
+                        correlationId,
+                        "",
+                        null
+                );
+            }
+
+            telemetryTenantRepository.updateReadingLocation(
+                    operatorWithSchema.schemaName(),
+                    readingId,
+                    latitude,
+                    longitude,
+                    operatorId
+            );
+
+            return CreateReadingResponse.builder()
+                    .success(true)
+                    .message("Location saved successfully.")
+                    .qualityStatus("CONFIRMED")
+                    .build();
+        } catch (Exception e) {
+            log.error("Error processing location for contactId {}: {}", request.getContactId(), e.getMessage(), e);
+            String languageKey = localizationService.resolveLanguageKeyForContact(request.getContactId());
+            String descriptiveMessage = localizationService.resolveUserFacingErrorMessage(e, "Location could not be saved.", languageKey);
             return CreateReadingResponse.builder()
                     .success(false)
                     .message(descriptiveMessage)

@@ -16,6 +16,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.Optional;
 import java.util.UUID;
@@ -202,23 +203,48 @@ public class BfmReadingService {
                     .build();
         }
 
-        Long readingId = telemetryTenantRepository.createFlowReading(
+        Long readingId = null;
+        Optional<Long> placeholderIdOpt = telemetryTenantRepository.findLatestPlaceholderFlowReadingIdForDate(
                 schemaName,
                 request.getSchemeId(),
                 operatorInRequest.id(),
-                readingAt,
-                extractedReading,
-                confirmedReading,
-                correlationId,
-                request.getReadingUrl(),
-                request.getMeterChangeReason()
+                LocalDate.from(readingAt)
         );
+        if (placeholderIdOpt.isPresent()) {
+            readingId = placeholderIdOpt.get();
+            telemetryTenantRepository.updateFlowReadingFromIngestion(
+                    schemaName,
+                    readingId,
+                    readingAt,
+                    extractedReading,
+                    confirmedReading,
+                    correlationId,
+                    request.getReadingUrl(),
+                    request.getMeterChangeReason(),
+                    operatorInRequest.id()
+            );
+        } else {
+            readingId = telemetryTenantRepository.createFlowReading(
+                    schemaName,
+                    request.getSchemeId(),
+                    operatorInRequest.id(),
+                    readingAt,
+                    extractedReading,
+                    confirmedReading,
+                    correlationId,
+                    request.getReadingUrl(),
+                    request.getMeterChangeReason()
+            );
+        }
 
         BigDecimal lastConfirmedReading = previousSnapshotOpt
                 .map(TelemetryConfirmedReadingSnapshot::confirmedReading)
-                .orElseGet(() -> telemetryTenantRepository
-                        .findLastConfirmedReading(schemaName, request.getSchemeId(), readingId)
-                        .orElse(null));
+                .orElse(null);
+        if (lastConfirmedReading == null) {
+            lastConfirmedReading = telemetryTenantRepository
+                    .findLastConfirmedReading(schemaName, request.getSchemeId(), readingId)
+                    .orElse(null);
+        }
 
         String finalMessage;
         String readingText = finalReading != null ? finalReading.stripTrailingZeros().toPlainString() : null;

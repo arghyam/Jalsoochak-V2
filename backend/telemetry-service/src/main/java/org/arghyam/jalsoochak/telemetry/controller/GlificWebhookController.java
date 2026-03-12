@@ -8,6 +8,7 @@ import org.arghyam.jalsoochak.telemetry.dto.requests.ClosingRequest;
 import org.arghyam.jalsoochak.telemetry.dto.requests.GlificWebhookRequest;
 import org.arghyam.jalsoochak.telemetry.dto.requests.IntroRequest;
 import org.arghyam.jalsoochak.telemetry.dto.requests.IssueReportRequest;
+import org.arghyam.jalsoochak.telemetry.dto.requests.LocationReadingRequest;
 import org.arghyam.jalsoochak.telemetry.dto.requests.ManualReadingRequest;
 import org.arghyam.jalsoochak.telemetry.dto.requests.MeterChangeRequest;
 import org.arghyam.jalsoochak.telemetry.dto.requests.SelectedChannelRequest;
@@ -331,6 +332,24 @@ public class GlificWebhookController {
                     CreateReadingResponse.builder()
                             .success(false)
                             .message("Manual reading could not be saved.")
+                            .qualityStatus("REJECTED")
+                            .correlationId(request.getContactId())
+                            .build()
+            );
+        }
+    }
+
+    @PostMapping("/location")
+    public ResponseEntity<CreateReadingResponse> location(@RequestBody @Valid LocationReadingRequest request) {
+        try {
+            CreateReadingResponse response = glificWebhookService.locationReadingMessage(request);
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            log.error("Error saving location for contactId {}: {}", request.getContactId(), e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(
+                    CreateReadingResponse.builder()
+                            .success(false)
+                            .message("Location could not be saved.")
                             .qualityStatus("REJECTED")
                             .correlationId(request.getContactId())
                             .build()
