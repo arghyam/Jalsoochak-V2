@@ -14,12 +14,15 @@ import org.arghyam.jalsoochak.user.auth.UploadAuthService;
 import org.arghyam.jalsoochak.user.config.TenantContext;
 import org.arghyam.jalsoochak.user.dto.response.PumpOperatorUploadResponseDTO;
 import org.arghyam.jalsoochak.user.dto.response.UploadErrorDTO;
+import org.arghyam.jalsoochak.user.event.UserEventPublisher;
+import org.arghyam.jalsoochak.user.event.UserLanguageUpdatedEvent;
 import org.arghyam.jalsoochak.user.exceptions.BadRequestException;
 import org.arghyam.jalsoochak.user.repository.TenantUserRecord;
 import org.arghyam.jalsoochak.user.repository.UserCommonRepository;
 import org.arghyam.jalsoochak.user.repository.UserSchemeMappingCreateRow;
 import org.arghyam.jalsoochak.user.repository.UserTenantRepository;
 import org.arghyam.jalsoochak.user.repository.UserUploadRepository;
+import org.arghyam.jalsoochak.user.service.GlificPreferredLanguageService;
 import org.arghyam.jalsoochak.user.service.PumpOperatorUploadService;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -32,6 +35,7 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -48,7 +52,18 @@ public class PumpOperatorUploadServiceImpl implements PumpOperatorUploadService 
     private static final String REQUIRED_TARGET_USER_TYPE = "pump_operator";
 
     // Strict header contract (order and spelling must match exactly).
-    private static final List<String> EXPECTED_HEADERS = List.of(
+    // We accept both legacy `person_type_id` and newer `person_type` for compatibility.
+    private static final List<String> EXPECTED_HEADERS_V2 = List.of(
+            "first_name",
+            "last_name",
+            "full_name",
+            "phone_number",
+            "alternate_number",
+            "person_type",
+            "state_scheme_id",
+            "center_scheme_id"
+    );
+    private static final List<String> EXPECTED_HEADERS_V1 = List.of(
             "first_name",
             "last_name",
             "full_name",
@@ -58,6 +73,7 @@ public class PumpOperatorUploadServiceImpl implements PumpOperatorUploadService 
             "state_scheme_id",
             "center_scheme_id"
     );
+    private static final List<List<String>> ALLOWED_HEADER_VARIANTS = List.of(EXPECTED_HEADERS_V2, EXPECTED_HEADERS_V1);
 
     private static final DataFormatter DATA_FORMATTER = new DataFormatter(Locale.ROOT);
 
@@ -65,6 +81,8 @@ public class PumpOperatorUploadServiceImpl implements PumpOperatorUploadService 
     private final UserTenantRepository userTenantRepository;
     private final UserUploadRepository userUploadRepository;
     private final UserCommonRepository userCommonRepository;
+    private final GlificPreferredLanguageService preferredLanguageService;
+    private final UserEventPublisher userEventPublisher;
 
     @Override
     @Transactional
@@ -75,6 +93,7 @@ public class PumpOperatorUploadServiceImpl implements PumpOperatorUploadService 
 
         TenantUserRecord actor = userTenantRepository.findUserById(schemaName, (long) actorUserId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "User not found for token"));
+        int preferredLanguageId = preferredLanguageService.resolvePreferredLanguageId(actor.tenantId());
 
         Integer pumpOperatorTypeId = userCommonRepository.findUserTypeIdByName("PUMP_OPERATOR")
                 .orElseThrow(() -> new ResponseStatusException(
@@ -85,8 +104,9 @@ public class PumpOperatorUploadServiceImpl implements PumpOperatorUploadService 
         String extension = extractExtension(file.getOriginalFilename());
         List<ParsedRow> parsedRows = parseRows(file, extension);
 
-        ValidationResult result = validateAndBuildMappings(schemaName, parsedRows, actor, pumpOperatorTypeId);
+        ValidationResult result = validateAndBuildMappings(schemaName, parsedRows, actor, pumpOperatorTypeId, preferredLanguageId);
         userUploadRepository.insertUserSchemeMappings(schemaName, result.rowsToInsert(), actorUserId);
+        userEventPublisher.publishUserLanguageUpdatedAfterCommit(result.eventsToPublish());
 
         return PumpOperatorUploadResponseDTO.builder()
                 .message("Pump operator upload processed successfully")
@@ -133,21 +153,22 @@ public class PumpOperatorUploadServiceImpl implements PumpOperatorUploadService 
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(file.getInputStream(), StandardCharsets.UTF_8));
              CSVParser parser = CSVFormat.DEFAULT.builder().setTrim(true).setIgnoreSurroundingSpaces(true).build().parse(reader)) {
 
-            List<CSVRecord> records = parser.getRecords();
-            if (records.isEmpty()) {
+            // Stream records instead of materializing the full file into memory.
+            var it = parser.iterator();
+            if (!it.hasNext()) {
                 throw new BadRequestException("Uploaded file is empty", List.of(
                         UploadErrorDTO.builder().row(0).field("file").message("Header row is missing").build()
                 ));
             }
 
             List<String> rawHeaders = new ArrayList<>();
-            records.getFirst().forEach(rawHeaders::add);
-            requireExactHeaders(1, rawHeaders);
-            List<String> activeHeaders = EXPECTED_HEADERS;
+            CSVRecord header = it.next();
+            header.forEach(rawHeaders::add);
+            List<String> activeHeaders = resolveHeaderVariant(1, rawHeaders);
 
             List<ParsedRow> rows = new ArrayList<>();
-            for (int i = 1; i < records.size(); i++) {
-                CSVRecord record = records.get(i);
+            while (it.hasNext()) {
+                CSVRecord record = it.next();
                 List<String> values = new ArrayList<>();
                 for (int c = 0; c < activeHeaders.size(); c++) {
                     values.add(c < record.size() ? normalizeValue(record.get(c)) : "");
@@ -184,8 +205,7 @@ public class PumpOperatorUploadServiceImpl implements PumpOperatorUploadService 
             for (int i = 0; i < headerSize; i++) {
                 rawHeaders.add(DATA_FORMATTER.formatCellValue(headerRow.getCell(i)));
             }
-            requireExactHeaders(firstRowIndex + 1, rawHeaders);
-            List<String> activeHeaders = EXPECTED_HEADERS;
+            List<String> activeHeaders = resolveHeaderVariant(firstRowIndex + 1, rawHeaders);
 
             List<ParsedRow> rows = new ArrayList<>();
             for (int i = firstRowIndex + 1; i <= sheet.getLastRowNum(); i++) {
@@ -214,7 +234,8 @@ public class PumpOperatorUploadServiceImpl implements PumpOperatorUploadService 
             String schemaName,
             List<ParsedRow> rows,
             TenantUserRecord actor,
-            int pumpOperatorTypeId
+            int pumpOperatorTypeId,
+            int preferredLanguageId
     ) {
         if (rows.isEmpty()) {
             throw new BadRequestException("No data rows found in uploaded file", List.of(
@@ -224,8 +245,10 @@ public class PumpOperatorUploadServiceImpl implements PumpOperatorUploadService 
 
         List<UploadErrorDTO> errors = new ArrayList<>();
         List<UserSchemeMappingCreateRow> insertRows = new ArrayList<>();
+        List<UserLanguageUpdatedEvent> events = new ArrayList<>();
         int skipped = 0;
         Set<String> seenPhones = new HashSet<>();
+        Map<String, Integer> schemeIdCache = new HashMap<>();
 
         for (ParsedRow row : rows) {
             Map<String, String> v = row.values();
@@ -235,7 +258,8 @@ public class PumpOperatorUploadServiceImpl implements PumpOperatorUploadService 
             String fullName = normalizeValue(v.get("full_name"));
             String phone = normalizeValue(v.get("phone_number"));
             String alternateNumber = normalizeValue(v.get("alternate_number"));
-            String personTypeInFile = normalizeHeader(v.get("person_type_id"));
+            String personTypeField = v.containsKey("person_type") ? "person_type" : "person_type_id";
+            String personTypeInFile = normalizeHeader(safe(v.get(personTypeField)));
             String stateSchemeId = normalizeValue(v.get("state_scheme_id"));
             String centreSchemeId = normalizeValue(v.get("center_scheme_id"));
 
@@ -280,11 +304,11 @@ public class PumpOperatorUploadServiceImpl implements PumpOperatorUploadService 
             }
 
             if (personTypeInFile.isBlank()) {
-                errors.add(err(row.rowNumber(), "person_type_id", "person_type_id is required"));
+                errors.add(err(row.rowNumber(), personTypeField, personTypeField + " is required"));
                 continue;
             }
             if (!REQUIRED_TARGET_USER_TYPE.equals(personTypeInFile)) {
-                errors.add(err(row.rowNumber(), "person_type_id", "person_type_id must be " + REQUIRED_TARGET_USER_TYPE));
+                errors.add(err(row.rowNumber(), personTypeField, personTypeField + " must be " + REQUIRED_TARGET_USER_TYPE));
                 continue;
             }
 
@@ -297,6 +321,20 @@ public class PumpOperatorUploadServiceImpl implements PumpOperatorUploadService 
                 continue;
             }
 
+            // Validate scheme before any writes. This avoids expensive user creation work
+            // for rows that are going to fail validation anyway.
+            String schemeKey = stateSchemeId + "|" + centreSchemeId;
+            Integer schemeId = schemeIdCache.get(schemeKey);
+            if (schemeId == null) {
+                Integer found = userUploadRepository.findSchemeId(schemaName, blankToNull(stateSchemeId), blankToNull(centreSchemeId));
+                schemeId = found != null ? found : -1;
+                schemeIdCache.put(schemeKey, schemeId);
+            }
+            if (schemeId < 0) {
+                errors.add(err(row.rowNumber(), "scheme", "Invalid state_scheme_id/center_scheme_id (scheme not found)"));
+                continue;
+            }
+
             // Phone must not exist previously in DB.
             TenantUserRecord existing = userTenantRepository.findUserByPhone(schemaName, phone).orElse(null);
             if (existing != null) {
@@ -304,7 +342,7 @@ public class PumpOperatorUploadServiceImpl implements PumpOperatorUploadService 
                 continue;
             }
 
-            CreatedUser created = createPumpOperatorUser(schemaName, actor, pumpOperatorTypeId, phone, fullName, firstName, lastName);
+            CreatedUser created = createPumpOperatorUser(schemaName, actor, pumpOperatorTypeId, phone, fullName, firstName, lastName, preferredLanguageId);
             TenantUserRecord user = new TenantUserRecord(
                     created.userId(),
                     actor.tenantId(),
@@ -314,17 +352,15 @@ public class PumpOperatorUploadServiceImpl implements PumpOperatorUploadService 
                     "PUMP_OPERATOR",
                     created.title()
             );
+            events.add(UserLanguageUpdatedEvent.builder()
+                    .eventType("USER_LANGUAGE_UPDATED")
+                    .tenantId(actor.tenantId())
+                    .userId(user.id())
+                    .phoneNumber(phone)
+                    .languageId(preferredLanguageId)
+                    .source("CSV_ONBOARDED")
+                    .build());
 
-            Integer schemeId = userUploadRepository.findSchemeId(schemaName, blankToNull(stateSchemeId), blankToNull(centreSchemeId));
-            if (schemeId == null) {
-                errors.add(err(row.rowNumber(), "scheme", "Invalid state_scheme_id/center_scheme_id (scheme not found)"));
-                continue;
-            }
-
-            if (userUploadRepository.existsUserSchemeMapping(schemaName, user.id(), schemeId)) {
-                skipped++;
-                continue;
-            }
             insertRows.add(new UserSchemeMappingCreateRow(user.id(), schemeId));
         }
 
@@ -332,7 +368,7 @@ public class PumpOperatorUploadServiceImpl implements PumpOperatorUploadService 
             throw new BadRequestException("Validation failed for uploaded file", errors);
         }
 
-        return new ValidationResult(insertRows, skipped);
+        return new ValidationResult(insertRows, skipped, events);
     }
 
     private CreatedUser createPumpOperatorUser(
@@ -342,7 +378,8 @@ public class PumpOperatorUploadServiceImpl implements PumpOperatorUploadService 
             String phone,
             String fullName,
             String firstName,
-            String lastName
+            String lastName,
+            int preferredLanguageId
     ) {
         if (actor == null || actor.tenantId() == null) {
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Unable to resolve tenant_id for uploader");
@@ -378,6 +415,7 @@ public class PumpOperatorUploadServiceImpl implements PumpOperatorUploadService 
         if (createdId == null) {
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to create pump operator user");
         }
+        userTenantRepository.updateUserLanguageId(schemaName, createdId, preferredLanguageId);
         return new CreatedUser(createdId, email, title);
     }
 
@@ -427,33 +465,29 @@ public class PumpOperatorUploadServiceImpl implements PumpOperatorUploadService 
         return map;
     }
 
-    private void requireExactHeaders(int rowNum, List<String> rawHeaders) {
+    private List<String> resolveHeaderVariant(int rowNum, List<String> rawHeaders) {
         List<String> actual = rawHeaders.stream()
                 .map(v -> v == null ? "" : v.trim())
                 .toList();
 
-        String expected = String.join(",", EXPECTED_HEADERS);
-        if (actual.size() != EXPECTED_HEADERS.size()) {
-            throw new BadRequestException("Invalid headers", List.of(
-                    UploadErrorDTO.builder()
-                            .row(rowNum)
-                            .field("header")
-                            .message("Header row must be exactly: " + expected)
-                            .build()
-            ));
-        }
-
-        for (int i = 0; i < EXPECTED_HEADERS.size(); i++) {
-            if (!EXPECTED_HEADERS.get(i).equals(actual.get(i))) {
-                throw new BadRequestException("Invalid headers", List.of(
-                        UploadErrorDTO.builder()
-                                .row(rowNum)
-                                .field("header")
-                                .message("Header row must be exactly: " + expected)
-                                .build()
-                ));
+        for (List<String> variant : ALLOWED_HEADER_VARIANTS) {
+            if (actual.equals(variant)) {
+                return variant;
             }
         }
+
+        String expected = ALLOWED_HEADER_VARIANTS.stream()
+                .map(v -> String.join(",", v))
+                .reduce((a, b) -> a + " OR " + b)
+                .orElse("");
+
+        throw new BadRequestException("Invalid headers", List.of(
+                UploadErrorDTO.builder()
+                        .row(rowNum)
+                        .field("header")
+                        .message("Header row must be exactly: " + expected)
+                        .build()
+        ));
     }
 
     private String extractExtension(String filename) {
@@ -482,6 +516,7 @@ public class PumpOperatorUploadServiceImpl implements PumpOperatorUploadService 
     private record ParsedRow(int rowNumber, Map<String, String> values) {
     }
 
-    private record ValidationResult(List<UserSchemeMappingCreateRow> rowsToInsert, int skippedRows) {
+    private record ValidationResult(List<UserSchemeMappingCreateRow> rowsToInsert, int skippedRows,
+                                    List<UserLanguageUpdatedEvent> eventsToPublish) {
     }
 }

@@ -19,8 +19,8 @@ import org.arghyam.jalsoochak.scheme.exception.FileValidationException;
 import org.arghyam.jalsoochak.scheme.exception.UnsupportedFileTypeException;
 import org.arghyam.jalsoochak.scheme.repository.SchemeCreateRecord;
 import org.arghyam.jalsoochak.scheme.repository.SchemeDbRepository;
+import org.arghyam.jalsoochak.scheme.repository.SchemeLgdMappingCreateRecord;
 import org.arghyam.jalsoochak.scheme.repository.SchemeSubdivisionMappingCreateRecord;
-import org.arghyam.jalsoochak.scheme.repository.SchemeVillageMappingCreateRecord;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -74,18 +74,16 @@ public class SchemeServiceImpl implements SchemeService {
 
     private static final List<String> MAPPING_HEADERS_V2 = List.of(
             "scheme_id",
-            "village_id",
-            "subdivision_id"
+            "parent_lgd_id",
+            "parent_lgd_level"
     );
-    private static final List<String> MAPPING_HEADERS_V1 = List.of(
+    private static final List<String> MAPPING_HEADERS_V3 = List.of(
             "scheme_id",
-            "village_id",
-            "subdivision_id",
-            "created_by",
-            "updated_by"
+            "parent_lgd_id",
+            "parent_lgd_level",
+            "parent_department_id",
+            "parent_department_level"
     );
-    private static final String VILLAGE_LEVEL = "Village";
-    private static final String SUBDIVISION_LEVEL = "Sub-division";
 
     private static final Map<String, Integer> CHANNEL_MAP = Map.of(
             "1", 1,
@@ -154,16 +152,18 @@ public class SchemeServiceImpl implements SchemeService {
         validateFile(file);
 
         String extension = extractExtension(file.getOriginalFilename());
-        List<ParsedSchemeRow> parsedRows = parseRows(file, extension, List.of(MAPPING_HEADERS_V2, MAPPING_HEADERS_V1));
-        MappingUploadPayload payload = validateAndBuildMappingRows(schemaName, parsedRows, actorUserId);
+        List<ParsedSchemeRow> parsedRows = parseRows(file, extension, List.of(MAPPING_HEADERS_V3, MAPPING_HEADERS_V2));
+        MappingValidationResult result = validateAndBuildMappingRows(schemaName, parsedRows, actorUserId);
 
-        schemeDbRepository.insertVillageMappings(schemaName, payload.villageRows());
-        schemeDbRepository.insertSubdivisionMappings(schemaName, payload.subdivisionRows());
+        schemeDbRepository.insertLgdMappings(schemaName, result.lgdRowsToInsert());
+        if (!result.departmentRowsToInsert().isEmpty()) {
+            schemeDbRepository.insertSubdivisionMappings(schemaName, result.departmentRowsToInsert());
+        }
 
         return SchemeUploadResponseDTO.builder()
                 .message("Scheme mappings uploaded successfully")
                 .totalRows(parsedRows.size())
-                .uploadedRows(payload.villageRows().size())
+                .uploadedRows(result.lgdRowsToInsert().size())
                 .build();
     }
 
@@ -375,7 +375,7 @@ public class SchemeServiceImpl implements SchemeService {
         return insertRows;
     }
 
-    private MappingUploadPayload validateAndBuildMappingRows(String schemaName, List<ParsedSchemeRow> rows, int actorUserId) {
+    private MappingValidationResult validateAndBuildMappingRows(String schemaName, List<ParsedSchemeRow> rows, int actorUserId) {
         if (rows.isEmpty()) {
             throw new FileValidationException(
                     "No data rows found in uploaded file",
@@ -383,20 +383,29 @@ public class SchemeServiceImpl implements SchemeService {
             );
         }
 
+        boolean includeDepartmentMapping = rows.getFirst().values().containsKey("parent_department_id");
         List<SchemeUploadErrorDTO> errors = new ArrayList<>();
-        List<SchemeVillageMappingCreateRecord> villageRows = new ArrayList<>();
-        List<SchemeSubdivisionMappingCreateRecord> subdivisionRows = new ArrayList<>();
+        List<SchemeLgdMappingCreateRecord> insertRows = new ArrayList<>();
+        List<SchemeSubdivisionMappingCreateRecord> insertDepartmentRows = new ArrayList<>();
 
         for (ParsedSchemeRow row : rows) {
             Map<String, String> values = row.values();
 
             requireField(values, row.rowNumber(), "scheme_id", errors);
-            requireField(values, row.rowNumber(), "village_id", errors);
-            requireField(values, row.rowNumber(), "subdivision_id", errors);
+            requireField(values, row.rowNumber(), "parent_lgd_id", errors);
+            requireField(values, row.rowNumber(), "parent_lgd_level", errors);
+            if (includeDepartmentMapping) {
+                requireField(values, row.rowNumber(), "parent_department_id", errors);
+                requireField(values, row.rowNumber(), "parent_department_level", errors);
+            }
 
             Integer schemeId = parseInteger(values.get("scheme_id"), row.rowNumber(), "scheme_id", errors);
-            Integer villageId = parseInteger(values.get("village_id"), row.rowNumber(), "village_id", errors);
-            Integer subdivisionId = parseInteger(values.get("subdivision_id"), row.rowNumber(), "subdivision_id", errors);
+            Integer parentLgdId = parseInteger(values.get("parent_lgd_id"), row.rowNumber(), "parent_lgd_id", errors);
+            Integer parentLgdLevel = parseInteger(values.get("parent_lgd_level"), row.rowNumber(), "parent_lgd_level", errors);
+            Integer parentDepartmentId = includeDepartmentMapping
+                    ? parseInteger(values.get("parent_department_id"), row.rowNumber(), "parent_department_id", errors)
+                    : null;
+            String parentDepartmentLevel = includeDepartmentMapping ? normalize(values.get("parent_department_level")) : "";
 
             if (hasErrorsForRow(errors, row.rowNumber())) {
                 continue;
@@ -407,27 +416,49 @@ public class SchemeServiceImpl implements SchemeService {
                 continue;
             }
 
-            villageRows.add(new SchemeVillageMappingCreateRecord(
+            if (!schemeDbRepository.existsLgdLocationById(schemaName, parentLgdId)) {
+                errors.add(error(row.rowNumber(), "parent_lgd_id", "parent_lgd_id does not exist"));
+                continue;
+            }
+
+            if (parentLgdLevel < 1 || parentLgdLevel > 6) {
+                errors.add(error(row.rowNumber(), "parent_lgd_level", "parent_lgd_level must be between 1 and 6"));
+                continue;
+            }
+
+            insertRows.add(new SchemeLgdMappingCreateRecord(
                     schemeId,
-                    villageId,
-                    VILLAGE_LEVEL,
+                    parentLgdId,
+                    parentLgdLevel,
                     actorUserId,
                     actorUserId
             ));
-            subdivisionRows.add(new SchemeSubdivisionMappingCreateRecord(
-                    schemeId,
-                    subdivisionId,
-                    SUBDIVISION_LEVEL,
-                    actorUserId,
-                    actorUserId
-            ));
+
+            if (includeDepartmentMapping) {
+                if (!schemeDbRepository.existsDepartmentLocationById(schemaName, parentDepartmentId)) {
+                    errors.add(error(row.rowNumber(), "parent_department_id", "parent_department_id does not exist"));
+                    continue;
+                }
+                if (parentDepartmentLevel.isBlank()) {
+                    errors.add(error(row.rowNumber(), "parent_department_level", "parent_department_level is required"));
+                    continue;
+                }
+
+                insertDepartmentRows.add(new SchemeSubdivisionMappingCreateRecord(
+                        schemeId,
+                        parentDepartmentId,
+                        parentDepartmentLevel,
+                        actorUserId,
+                        actorUserId
+                ));
+            }
         }
 
         if (!errors.isEmpty()) {
             throw new FileValidationException("Validation failed for uploaded file", errors);
         }
 
-        return new MappingUploadPayload(villageRows, subdivisionRows);
+        return new MappingValidationResult(insertRows, insertDepartmentRows);
     }
 
     private String requireTenantSchema() {
@@ -519,9 +550,9 @@ public class SchemeServiceImpl implements SchemeService {
     private record ParsedSchemeRow(int rowNumber, Map<String, String> values) {
     }
 
-    private record MappingUploadPayload(
-            List<SchemeVillageMappingCreateRecord> villageRows,
-            List<SchemeSubdivisionMappingCreateRecord> subdivisionRows
+    private record MappingValidationResult(
+            List<SchemeLgdMappingCreateRecord> lgdRowsToInsert,
+            List<SchemeSubdivisionMappingCreateRecord> departmentRowsToInsert
     ) {
     }
 }

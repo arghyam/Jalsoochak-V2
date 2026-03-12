@@ -57,6 +57,26 @@ public class SchemeDbRepository {
         return Boolean.TRUE.equals(exists);
     }
 
+    public boolean existsLgdLocationById(String schemaName, Integer lgdId) {
+        validateSchemaName(schemaName);
+        String sql = String.format(
+                "SELECT EXISTS (SELECT 1 FROM %s.lgd_location_master_table WHERE id = ? AND deleted_at IS NULL)",
+                schemaName
+        );
+        Boolean exists = jdbcTemplate.queryForObject(sql, Boolean.class, lgdId);
+        return Boolean.TRUE.equals(exists);
+    }
+
+    public boolean existsDepartmentLocationById(String schemaName, Integer departmentId) {
+        validateSchemaName(schemaName);
+        String sql = String.format(
+                "SELECT EXISTS (SELECT 1 FROM %s.department_location_master_table WHERE id = ? AND deleted_at IS NULL)",
+                schemaName
+        );
+        Boolean exists = jdbcTemplate.queryForObject(sql, Boolean.class, departmentId);
+        return Boolean.TRUE.equals(exists);
+    }
+
     public Integer findUserIdByEmail(String schemaName, String email) {
         validateSchemaName(schemaName);
         if (email == null || email.isBlank()) {
@@ -139,7 +159,7 @@ public class SchemeDbRepository {
         });
     }
 
-    public void insertVillageMappings(String schemaName, List<SchemeVillageMappingCreateRecord> rows) {
+    public void insertLgdMappings(String schemaName, List<SchemeLgdMappingCreateRecord> rows) {
         validateSchemaName(schemaName);
         String sql = String.format("""
                 INSERT INTO %s.scheme_lgd_mapping_table
@@ -150,10 +170,10 @@ public class SchemeDbRepository {
         jdbcTemplate.batchUpdate(sql, new BatchPreparedStatementSetter() {
             @Override
             public void setValues(PreparedStatement ps, int i) throws SQLException {
-                SchemeVillageMappingCreateRecord row = rows.get(i);
+                SchemeLgdMappingCreateRecord row = rows.get(i);
                 ps.setInt(1, row.schemeId());
                 ps.setInt(2, row.parentLgdId());
-                ps.setString(3, row.parentLgdLevel());
+                ps.setString(3, String.valueOf(row.parentLgdLevel()));
                 ps.setInt(4, row.createdBy());
                 ps.setInt(5, row.updatedBy());
             }
