@@ -12,9 +12,7 @@ import lombok.NoArgsConstructor;
 public class UserLanguageUpdatedEvent {
     private String eventType;   // USER_LANGUAGE_UPDATED
     private Integer tenantId;
-    private Long userId;
     private String phoneNumber;
     private Integer languageId;
     private String source;      // e.g. CSV_ONBOARDED
 }
-

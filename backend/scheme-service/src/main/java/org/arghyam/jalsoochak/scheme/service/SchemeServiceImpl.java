@@ -21,11 +21,10 @@ import org.arghyam.jalsoochak.scheme.repository.SchemeCreateRecord;
 import org.arghyam.jalsoochak.scheme.repository.SchemeDbRepository;
 import org.arghyam.jalsoochak.scheme.repository.SchemeLgdMappingCreateRecord;
 import org.arghyam.jalsoochak.scheme.repository.SchemeSubdivisionMappingCreateRecord;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
-import org.springframework.http.HttpStatus;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -42,6 +41,9 @@ import java.util.UUID;
 @Slf4j
 @RequiredArgsConstructor
 public class SchemeServiceImpl implements SchemeService {
+
+    private static final int MAX_VALIDATION_ERRORS = 1000;
+    private static final int CHUNK_SIZE = 1000;
 
     private static final List<String> SCHEME_HEADERS_V2 = List.of(
             "state_scheme_id",
@@ -117,6 +119,7 @@ public class SchemeServiceImpl implements SchemeService {
 
     private final SchemeDbRepository schemeDbRepository;
     private final UploadAuthService uploadAuthService;
+    private final SchemeUploadChunkProcessor chunkProcessor;
 
     @Override
     public List<SchemeDTO> getAllSchemes() {
@@ -125,45 +128,41 @@ public class SchemeServiceImpl implements SchemeService {
     }
 
     @Override
-    @Transactional
     public SchemeUploadResponseDTO uploadSchemes(MultipartFile file, String authorizationHeader) {
         String schemaName = requireTenantSchema();
         int actorUserId = uploadAuthService.requireStateAdminUserId(schemaName, authorizationHeader);
         validateFile(file);
 
         String extension = extractExtension(file.getOriginalFilename());
-        List<ParsedSchemeRow> parsedRows = parseRows(file, extension, List.of(SCHEME_HEADERS_V2, SCHEME_HEADERS_V1));
-        List<SchemeCreateRecord> rowsToInsert = validateAndBuildRows(parsedRows, actorUserId);
+        List<String> activeHeaders = resolveHeaders(file, extension, List.of(SCHEME_HEADERS_V2, SCHEME_HEADERS_V1));
 
-        schemeDbRepository.insertSchemes(schemaName, rowsToInsert);
+        int totalRows = validateSchemes(file, extension, activeHeaders);
+        int uploadedRows = processSchemes(schemaName, file, extension, activeHeaders, actorUserId);
 
         return SchemeUploadResponseDTO.builder()
                 .message("Schemes uploaded successfully")
-                .totalRows(parsedRows.size())
-                .uploadedRows(rowsToInsert.size())
+                .totalRows(totalRows)
+                .uploadedRows(uploadedRows)
                 .build();
     }
 
     @Override
-    @Transactional
     public SchemeUploadResponseDTO uploadSchemeMappings(MultipartFile file, String authorizationHeader) {
         String schemaName = requireTenantSchema();
         int actorUserId = uploadAuthService.requireStateAdminUserId(schemaName, authorizationHeader);
         validateFile(file);
 
         String extension = extractExtension(file.getOriginalFilename());
-        List<ParsedSchemeRow> parsedRows = parseRows(file, extension, List.of(MAPPING_HEADERS_V3, MAPPING_HEADERS_V2));
-        MappingValidationResult result = validateAndBuildMappingRows(schemaName, parsedRows, actorUserId);
+        List<String> activeHeaders = resolveHeaders(file, extension, List.of(MAPPING_HEADERS_V3, MAPPING_HEADERS_V2));
+        boolean includeDepartment = activeHeaders.contains("parent_department_id");
 
-        schemeDbRepository.insertLgdMappings(schemaName, result.lgdRowsToInsert());
-        if (!result.departmentRowsToInsert().isEmpty()) {
-            schemeDbRepository.insertSubdivisionMappings(schemaName, result.departmentRowsToInsert());
-        }
+        int totalRows = validateMappings(schemaName, file, extension, activeHeaders, includeDepartment);
+        int uploadedRows = processMappings(schemaName, file, extension, activeHeaders, includeDepartment, actorUserId);
 
         return SchemeUploadResponseDTO.builder()
                 .message("Scheme mappings uploaded successfully")
-                .totalRows(parsedRows.size())
-                .uploadedRows(result.lgdRowsToInsert().size())
+                .totalRows(totalRows)
+                .uploadedRows(uploadedRows)
                 .build();
     }
 
@@ -181,11 +180,12 @@ public class SchemeServiceImpl implements SchemeService {
         }
     }
 
-    private List<ParsedSchemeRow> parseRows(MultipartFile file, String extension, List<List<String>> allowedHeaderVariants) {
+    private List<String> resolveHeaders(MultipartFile file, String extension, List<List<String>> allowedHeaderVariants) {
         try {
-            return "csv".equals(extension)
-                    ? parseCsv(file, allowedHeaderVariants)
-                    : parseXlsx(file, allowedHeaderVariants);
+            if ("csv".equals(extension)) {
+                return resolveCsvHeaders(file, allowedHeaderVariants);
+            }
+            return resolveXlsxHeaders(file, allowedHeaderVariants);
         } catch (IOException ex) {
             throw new FileValidationException(
                     "Failed to read uploaded file",
@@ -194,12 +194,12 @@ public class SchemeServiceImpl implements SchemeService {
         }
     }
 
-    private List<ParsedSchemeRow> parseCsv(MultipartFile file, List<List<String>> allowedHeaderVariants) throws IOException {
+    private List<String> resolveCsvHeaders(MultipartFile file, List<List<String>> allowedHeaderVariants) throws IOException {
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(file.getInputStream(), StandardCharsets.UTF_8));
              CSVParser parser = CSVFormat.DEFAULT.builder().setTrim(true).setIgnoreSurroundingSpaces(true).build().parse(reader)) {
 
-            List<CSVRecord> records = parser.getRecords();
-            if (records.isEmpty()) {
+            var it = parser.iterator();
+            if (!it.hasNext()) {
                 throw new FileValidationException(
                         "Uploaded file is empty",
                         List.of(error(0, "file", "Header row is missing"))
@@ -207,22 +207,13 @@ public class SchemeServiceImpl implements SchemeService {
             }
 
             List<String> headers = new ArrayList<>();
-            records.getFirst().forEach(headers::add);
-            List<String> activeHeaders = resolveHeaderVariant(headers, allowedHeaderVariants);
-
-            List<ParsedSchemeRow> rows = new ArrayList<>();
-            for (int i = 1; i < records.size(); i++) {
-                CSVRecord record = records.get(i);
-                rows.add(new ParsedSchemeRow(
-                        (int) record.getRecordNumber(),
-                        rowAsMap(indexedValues(record, activeHeaders), activeHeaders)
-                ));
-            }
-            return rows;
+            CSVRecord header = it.next();
+            header.forEach(headers::add);
+            return resolveHeaderVariant(headers, allowedHeaderVariants);
         }
     }
 
-    private List<ParsedSchemeRow> parseXlsx(MultipartFile file, List<List<String>> allowedHeaderVariants) throws IOException {
+    private List<String> resolveXlsxHeaders(MultipartFile file, List<List<String>> allowedHeaderVariants) throws IOException {
         try (Workbook workbook = WorkbookFactory.create(file.getInputStream())) {
             Sheet sheet = workbook.getSheetAt(0);
             if (sheet == null) {
@@ -241,14 +232,7 @@ public class SchemeServiceImpl implements SchemeService {
                 );
             }
 
-            List<String> activeHeaders = resolveHeaderVariant(readExcelHeaders(headerRow), allowedHeaderVariants);
-
-            List<ParsedSchemeRow> rows = new ArrayList<>();
-            for (int i = firstRowIndex + 1; i <= sheet.getLastRowNum(); i++) {
-                Row row = sheet.getRow(i);
-                rows.add(new ParsedSchemeRow(i + 1, rowAsMap(indexedValues(row, activeHeaders), activeHeaders)));
-            }
-            return rows;
+            return resolveHeaderVariant(readExcelHeaders(headerRow), allowedHeaderVariants);
         }
     }
 
@@ -311,154 +295,313 @@ public class SchemeServiceImpl implements SchemeService {
         );
     }
 
-    private List<SchemeCreateRecord> validateAndBuildRows(List<ParsedSchemeRow> rows, int actorUserId) {
-        if (rows.isEmpty()) {
-            throw new FileValidationException(
-                    "No data rows found in uploaded file",
-                    List.of(error(0, "file", "At least one data row is required"))
-            );
-        }
-
+    private int validateSchemes(MultipartFile file, String extension, List<String> activeHeaders) {
         List<SchemeUploadErrorDTO> errors = new ArrayList<>();
-        List<SchemeCreateRecord> insertRows = new ArrayList<>();
+        final int[] total = {0};
 
-        for (ParsedSchemeRow row : rows) {
-            Map<String, String> values = row.values();
+        try {
+            streamRows(file, extension, activeHeaders, (rowNumber, values) -> {
+                if (isAllBlank(values)) {
+                    return;
+                }
+                total[0]++;
 
-            requireField(values, row.rowNumber(), "state_scheme_id", errors);
-            requireField(values, row.rowNumber(), "centre_scheme_id", errors);
-            requireField(values, row.rowNumber(), "scheme_name", errors);
-            requireField(values, row.rowNumber(), "fhtc_count", errors);
-            requireField(values, row.rowNumber(), "planned_fhtc", errors);
-            requireField(values, row.rowNumber(), "house_hold_count", errors);
-            requireField(values, row.rowNumber(), "latitude", errors);
-            requireField(values, row.rowNumber(), "longitude", errors);
-            requireField(values, row.rowNumber(), "channel", errors);
-            requireField(values, row.rowNumber(), "work_status", errors);
-            requireField(values, row.rowNumber(), "operating_status", errors);
+                int before = errors.size();
 
-            Integer fhtcCount = parseInteger(values.get("fhtc_count"), row.rowNumber(), "fhtc_count", errors);
-            Integer plannedFhtc = parseInteger(values.get("planned_fhtc"), row.rowNumber(), "planned_fhtc", errors);
-            Integer houseHoldCount = parseInteger(values.get("house_hold_count"), row.rowNumber(), "house_hold_count", errors);
-            Double latitude = parseDouble(values.get("latitude"), row.rowNumber(), "latitude", errors);
-            Double longitude = parseDouble(values.get("longitude"), row.rowNumber(), "longitude", errors);
-            Integer channel = parseEnum(values.get("channel"), row.rowNumber(), "channel", CHANNEL_MAP, "Bfm/Electric or 1/2", errors);
-            Integer workStatus = parseEnum(values.get("work_status"), row.rowNumber(), "work_status", WORK_STATUS_MAP, "Ongoing, Completed, Not Started, Handed Over or 1/2/3/4", errors);
-            Integer operatingStatus = parseEnum(values.get("operating_status"), row.rowNumber(), "operating_status", OPERATING_STATUS_MAP, "Operative, Non-Operative, Partially Operative or 1/2/3", errors);
+                requireField(values, rowNumber, "state_scheme_id", errors);
+                requireField(values, rowNumber, "centre_scheme_id", errors);
+                requireField(values, rowNumber, "scheme_name", errors);
+                requireField(values, rowNumber, "fhtc_count", errors);
+                requireField(values, rowNumber, "planned_fhtc", errors);
+                requireField(values, rowNumber, "house_hold_count", errors);
+                requireField(values, rowNumber, "latitude", errors);
+                requireField(values, rowNumber, "longitude", errors);
+                requireField(values, rowNumber, "channel", errors);
+                requireField(values, rowNumber, "work_status", errors);
+                requireField(values, rowNumber, "operating_status", errors);
 
-            if (hasErrorsForRow(errors, row.rowNumber())) {
-                continue;
-            }
+                parseInteger(values.get("fhtc_count"), rowNumber, "fhtc_count", errors);
+                parseInteger(values.get("planned_fhtc"), rowNumber, "planned_fhtc", errors);
+                parseInteger(values.get("house_hold_count"), rowNumber, "house_hold_count", errors);
+                parseDouble(values.get("latitude"), rowNumber, "latitude", errors);
+                parseDouble(values.get("longitude"), rowNumber, "longitude", errors);
+                parseEnum(values.get("channel"), rowNumber, "channel", CHANNEL_MAP, "Bfm/Electric or 1/2", errors);
+                parseEnum(values.get("work_status"), rowNumber, "work_status", WORK_STATUS_MAP, "Ongoing, Completed, Not Started, Handed Over or 1/2/3/4", errors);
+                parseEnum(values.get("operating_status"), rowNumber, "operating_status", OPERATING_STATUS_MAP, "Operative, Non-Operative, Partially Operative or 1/2/3", errors);
 
-            insertRows.add(new SchemeCreateRecord(
-                    UUID.randomUUID().toString(),
-                    values.get("state_scheme_id"),
-                    values.get("centre_scheme_id"),
-                    values.get("scheme_name"),
-                    fhtcCount,
-                    plannedFhtc,
-                    houseHoldCount,
-                    latitude,
-                    longitude,
-                    channel,
-                    workStatus,
-                    operatingStatus,
-                    actorUserId,
-                    actorUserId
-            ));
+                if (errors.size() > before && errors.size() >= MAX_VALIDATION_ERRORS) {
+                    errors.add(error(rowNumber, "file", "Too many validation errors; showing first " + MAX_VALIDATION_ERRORS));
+                    throw new TooManyErrorsException();
+                }
+            });
+        } catch (TooManyErrorsException ignored) {
+            // stop early (errors already captured)
+        } catch (IOException ex) {
+            throw new FileValidationException(
+                    "Failed to read uploaded file",
+                    List.of(error(0, "file", "Unable to read file content"))
+            );
         }
 
         if (!errors.isEmpty()) {
             throw new FileValidationException("Validation failed for uploaded file", errors);
         }
-
-        return insertRows;
-    }
-
-    private MappingValidationResult validateAndBuildMappingRows(String schemaName, List<ParsedSchemeRow> rows, int actorUserId) {
-        if (rows.isEmpty()) {
+        if (total[0] == 0) {
             throw new FileValidationException(
                     "No data rows found in uploaded file",
                     List.of(error(0, "file", "At least one data row is required"))
             );
         }
+        return total[0];
+    }
 
-        boolean includeDepartmentMapping = rows.getFirst().values().containsKey("parent_department_id");
+    private int processSchemes(String schemaName, MultipartFile file, String extension, List<String> activeHeaders, int actorUserId) {
+        List<SchemeCreateRecord> chunk = new ArrayList<>(CHUNK_SIZE);
+        final int[] uploaded = {0};
+
+        try {
+            streamRows(file, extension, activeHeaders, (rowNumber, values) -> {
+                if (isAllBlank(values)) {
+                    return;
+                }
+
+                // Validation already ran. Keep processing tight and avoid allocating error objects.
+                Integer fhtcCount = Integer.parseInt(normalize(values.get("fhtc_count")));
+                Integer plannedFhtc = Integer.parseInt(normalize(values.get("planned_fhtc")));
+                Integer houseHoldCount = Integer.parseInt(normalize(values.get("house_hold_count")));
+                Double latitude = Double.parseDouble(normalize(values.get("latitude")));
+                Double longitude = Double.parseDouble(normalize(values.get("longitude")));
+                Integer channel = CHANNEL_MAP.get(normalize(values.get("channel")).toLowerCase());
+                Integer workStatus = WORK_STATUS_MAP.get(normalize(values.get("work_status")).toLowerCase());
+                Integer operatingStatus = OPERATING_STATUS_MAP.get(normalize(values.get("operating_status")).toLowerCase());
+
+                chunk.add(new SchemeCreateRecord(
+                        UUID.randomUUID().toString(),
+                        normalize(values.get("state_scheme_id")),
+                        normalize(values.get("centre_scheme_id")),
+                        normalize(values.get("scheme_name")),
+                        fhtcCount,
+                        plannedFhtc,
+                        houseHoldCount,
+                        latitude,
+                        longitude,
+                        channel,
+                        workStatus,
+                        operatingStatus,
+                        actorUserId,
+                        actorUserId
+                ));
+
+                if (chunk.size() >= CHUNK_SIZE) {
+                    // Insert and clear.
+                    // Use a copy so the chunk processor can safely retain the list if needed.
+                    uploaded[0] += chunkProcessor.insertSchemesChunk(schemaName, new ArrayList<>(chunk));
+                    chunk.clear();
+                }
+            });
+        } catch (IOException ex) {
+            throw new FileValidationException(
+                    "Failed to read uploaded file",
+                    List.of(error(0, "file", "Unable to read file content"))
+            );
+        }
+
+        if (!chunk.isEmpty()) {
+            uploaded[0] += chunkProcessor.insertSchemesChunk(schemaName, chunk);
+        }
+        return uploaded[0];
+    }
+
+    private int validateMappings(String schemaName, MultipartFile file, String extension, List<String> activeHeaders, boolean includeDepartment) {
         List<SchemeUploadErrorDTO> errors = new ArrayList<>();
-        List<SchemeLgdMappingCreateRecord> insertRows = new ArrayList<>();
-        List<SchemeSubdivisionMappingCreateRecord> insertDepartmentRows = new ArrayList<>();
+        List<MappingRow> chunk = new ArrayList<>(CHUNK_SIZE);
+        final int[] total = {0};
 
-        for (ParsedSchemeRow row : rows) {
-            Map<String, String> values = row.values();
+        try {
+            streamRows(file, extension, activeHeaders, (rowNumber, values) -> {
+                if (isAllBlank(values)) {
+                    return;
+                }
+                total[0]++;
 
-            requireField(values, row.rowNumber(), "scheme_id", errors);
-            requireField(values, row.rowNumber(), "parent_lgd_id", errors);
-            requireField(values, row.rowNumber(), "parent_lgd_level", errors);
-            if (includeDepartmentMapping) {
-                requireField(values, row.rowNumber(), "parent_department_id", errors);
-                requireField(values, row.rowNumber(), "parent_department_level", errors);
+                int before = errors.size();
+
+                requireField(values, rowNumber, "scheme_id", errors);
+                requireField(values, rowNumber, "parent_lgd_id", errors);
+                requireField(values, rowNumber, "parent_lgd_level", errors);
+                if (includeDepartment) {
+                    requireField(values, rowNumber, "parent_department_id", errors);
+                    requireField(values, rowNumber, "parent_department_level", errors);
+                }
+
+                Integer schemeId = parseInteger(values.get("scheme_id"), rowNumber, "scheme_id", errors);
+                Integer parentLgdId = parseInteger(values.get("parent_lgd_id"), rowNumber, "parent_lgd_id", errors);
+                Integer parentLgdLevel = parseInteger(values.get("parent_lgd_level"), rowNumber, "parent_lgd_level", errors);
+                Integer parentDepartmentId = includeDepartment
+                        ? parseInteger(values.get("parent_department_id"), rowNumber, "parent_department_id", errors)
+                        : null;
+                String parentDepartmentLevel = includeDepartment ? normalize(values.get("parent_department_level")) : "";
+
+                boolean rowHasErrors = errors.size() != before;
+                if (!rowHasErrors) {
+                    if (parentLgdLevel == null || parentLgdLevel < 1 || parentLgdLevel > 6) {
+                        errors.add(error(rowNumber, "parent_lgd_level", "parent_lgd_level must be between 1 and 6"));
+                        rowHasErrors = true;
+                    }
+                    if (includeDepartment && parentDepartmentLevel.isBlank()) {
+                        errors.add(error(rowNumber, "parent_department_level", "parent_department_level is required"));
+                        rowHasErrors = true;
+                    }
+                }
+
+                if (!rowHasErrors) {
+                    chunk.add(new MappingRow(rowNumber, schemeId, parentLgdId, parentLgdLevel, parentDepartmentId, parentDepartmentLevel));
+                }
+
+                if (chunk.size() >= CHUNK_SIZE) {
+                    validateMappingChunk(schemaName, chunk, includeDepartment, errors);
+                    chunk.clear();
+                }
+
+                if (errors.size() > before && errors.size() >= MAX_VALIDATION_ERRORS) {
+                    errors.add(error(rowNumber, "file", "Too many validation errors; showing first " + MAX_VALIDATION_ERRORS));
+                    throw new TooManyErrorsException();
+                }
+            });
+        } catch (TooManyErrorsException ignored) {
+            // stop early (errors already captured)
+        } catch (IOException ex) {
+            throw new FileValidationException(
+                    "Failed to read uploaded file",
+                    List.of(error(0, "file", "Unable to read file content"))
+            );
+        }
+
+        if (!chunk.isEmpty()) {
+            validateMappingChunk(schemaName, chunk, includeDepartment, errors);
+        }
+
+        if (!errors.isEmpty()) {
+            throw new FileValidationException("Validation failed for uploaded file", errors);
+        }
+        if (total[0] == 0) {
+            throw new FileValidationException(
+                    "No data rows found in uploaded file",
+                    List.of(error(0, "file", "At least one data row is required"))
+            );
+        }
+        return total[0];
+    }
+
+    private void validateMappingChunk(
+            String schemaName,
+            List<MappingRow> rows,
+            boolean includeDepartment,
+            List<SchemeUploadErrorDTO> errors
+    ) {
+        List<Integer> schemeIds = new ArrayList<>(rows.size());
+        List<Integer> lgdIds = new ArrayList<>(rows.size());
+        List<Integer> deptIds = includeDepartment ? new ArrayList<>(rows.size()) : List.of();
+
+        for (MappingRow r : rows) {
+            schemeIds.add(r.schemeId());
+            lgdIds.add(r.parentLgdId());
+            if (includeDepartment) {
+                deptIds.add(r.parentDepartmentId());
             }
+        }
 
-            Integer schemeId = parseInteger(values.get("scheme_id"), row.rowNumber(), "scheme_id", errors);
-            Integer parentLgdId = parseInteger(values.get("parent_lgd_id"), row.rowNumber(), "parent_lgd_id", errors);
-            Integer parentLgdLevel = parseInteger(values.get("parent_lgd_level"), row.rowNumber(), "parent_lgd_level", errors);
-            Integer parentDepartmentId = includeDepartmentMapping
-                    ? parseInteger(values.get("parent_department_id"), row.rowNumber(), "parent_department_id", errors)
-                    : null;
-            String parentDepartmentLevel = includeDepartmentMapping ? normalize(values.get("parent_department_level")) : "";
+        Set<Integer> existingSchemes = schemeDbRepository.findExistingSchemeIds(schemaName, schemeIds);
+        Set<Integer> existingLgds = schemeDbRepository.findExistingLgdLocationIds(schemaName, lgdIds);
+        Set<Integer> existingDepts = includeDepartment
+                ? schemeDbRepository.findExistingDepartmentLocationIds(schemaName, deptIds)
+                : Set.of();
 
-            if (hasErrorsForRow(errors, row.rowNumber())) {
+        for (MappingRow r : rows) {
+            if (!existingSchemes.contains(r.schemeId())) {
+                errors.add(error(r.rowNumber(), "scheme_id", "scheme_id does not exist"));
                 continue;
             }
-
-            if (!schemeDbRepository.existsSchemeById(schemaName, schemeId)) {
-                errors.add(error(row.rowNumber(), "scheme_id", "scheme_id does not exist"));
+            if (!existingLgds.contains(r.parentLgdId())) {
+                errors.add(error(r.rowNumber(), "parent_lgd_id", "parent_lgd_id does not exist"));
                 continue;
             }
-
-            if (!schemeDbRepository.existsLgdLocationById(schemaName, parentLgdId)) {
-                errors.add(error(row.rowNumber(), "parent_lgd_id", "parent_lgd_id does not exist"));
-                continue;
+            if (includeDepartment && (r.parentDepartmentId() == null || !existingDepts.contains(r.parentDepartmentId()))) {
+                errors.add(error(r.rowNumber(), "parent_department_id", "parent_department_id does not exist"));
             }
+        }
+    }
 
-            if (parentLgdLevel < 1 || parentLgdLevel > 6) {
-                errors.add(error(row.rowNumber(), "parent_lgd_level", "parent_lgd_level must be between 1 and 6"));
-                continue;
-            }
+    private int processMappings(
+            String schemaName,
+            MultipartFile file,
+            String extension,
+            List<String> activeHeaders,
+            boolean includeDepartment,
+            int actorUserId
+    ) {
+        List<MappingRow> chunk = new ArrayList<>(CHUNK_SIZE);
+        final int[] uploaded = {0};
 
-            insertRows.add(new SchemeLgdMappingCreateRecord(
-                    schemeId,
-                    parentLgdId,
-                    parentLgdLevel,
+        try {
+            streamRows(file, extension, activeHeaders, (rowNumber, values) -> {
+                if (isAllBlank(values)) {
+                    return;
+                }
+
+                Integer schemeId = Integer.parseInt(normalize(values.get("scheme_id")));
+                Integer parentLgdId = Integer.parseInt(normalize(values.get("parent_lgd_id")));
+                Integer parentLgdLevel = Integer.parseInt(normalize(values.get("parent_lgd_level")));
+                Integer parentDepartmentId = includeDepartment
+                        ? Integer.parseInt(normalize(values.get("parent_department_id")))
+                        : null;
+                String parentDepartmentLevel = includeDepartment ? normalize(values.get("parent_department_level")) : "";
+
+                chunk.add(new MappingRow(rowNumber, schemeId, parentLgdId, parentLgdLevel, parentDepartmentId, parentDepartmentLevel));
+                if (chunk.size() >= CHUNK_SIZE) {
+                    insertMappingChunk(schemaName, chunk, includeDepartment, actorUserId);
+                    uploaded[0] += chunk.size();
+                    chunk.clear();
+                }
+            });
+        } catch (IOException ex) {
+            throw new FileValidationException(
+                    "Failed to read uploaded file",
+                    List.of(error(0, "file", "Unable to read file content"))
+            );
+        }
+
+        if (!chunk.isEmpty()) {
+            insertMappingChunk(schemaName, chunk, includeDepartment, actorUserId);
+            uploaded[0] += chunk.size();
+        }
+        return uploaded[0];
+    }
+
+    private void insertMappingChunk(String schemaName, List<MappingRow> rows, boolean includeDepartment, int actorUserId) {
+        List<SchemeLgdMappingCreateRecord> lgd = new ArrayList<>(rows.size());
+        List<SchemeSubdivisionMappingCreateRecord> dept = includeDepartment ? new ArrayList<>(rows.size()) : List.of();
+
+        for (MappingRow r : rows) {
+            lgd.add(new SchemeLgdMappingCreateRecord(
+                    r.schemeId(),
+                    r.parentLgdId(),
+                    r.parentLgdLevel(),
                     actorUserId,
                     actorUserId
             ));
-
-            if (includeDepartmentMapping) {
-                if (!schemeDbRepository.existsDepartmentLocationById(schemaName, parentDepartmentId)) {
-                    errors.add(error(row.rowNumber(), "parent_department_id", "parent_department_id does not exist"));
-                    continue;
-                }
-                if (parentDepartmentLevel.isBlank()) {
-                    errors.add(error(row.rowNumber(), "parent_department_level", "parent_department_level is required"));
-                    continue;
-                }
-
-                insertDepartmentRows.add(new SchemeSubdivisionMappingCreateRecord(
-                        schemeId,
-                        parentDepartmentId,
-                        parentDepartmentLevel,
+            if (includeDepartment) {
+                dept.add(new SchemeSubdivisionMappingCreateRecord(
+                        r.schemeId(),
+                        r.parentDepartmentId(),
+                        r.parentDepartmentLevel(),
                         actorUserId,
                         actorUserId
                 ));
             }
         }
 
-        if (!errors.isEmpty()) {
-            throw new FileValidationException("Validation failed for uploaded file", errors);
-        }
-
-        return new MappingValidationResult(insertRows, insertDepartmentRows);
+        chunkProcessor.insertMappingsChunk(schemaName, lgd, dept);
     }
 
     private String requireTenantSchema() {
@@ -470,10 +613,6 @@ public class SchemeServiceImpl implements SchemeService {
             );
         }
         return schemaName;
-    }
-
-    private boolean hasErrorsForRow(List<SchemeUploadErrorDTO> errors, int rowNumber) {
-        return errors.stream().anyMatch(error -> rowNumber == error.getRowNumber());
     }
 
     private void requireField(Map<String, String> values, int rowNumber, String field, List<SchemeUploadErrorDTO> errors) {
@@ -547,12 +686,72 @@ public class SchemeServiceImpl implements SchemeService {
         return value == null ? "" : value.trim();
     }
 
-    private record ParsedSchemeRow(int rowNumber, Map<String, String> values) {
+    private boolean isAllBlank(Map<String, String> values) {
+        for (String v : values.values()) {
+            if (v != null && !v.isBlank()) {
+                return false;
+            }
+        }
+        return true;
     }
 
-    private record MappingValidationResult(
-            List<SchemeLgdMappingCreateRecord> lgdRowsToInsert,
-            List<SchemeSubdivisionMappingCreateRecord> departmentRowsToInsert
+    private void streamRows(MultipartFile file, String extension, List<String> activeHeaders, RowConsumer consumer) throws IOException {
+        if ("csv".equals(extension)) {
+            streamCsv(file, activeHeaders, consumer);
+            return;
+        }
+        streamXlsx(file, activeHeaders, consumer);
+    }
+
+    private void streamCsv(MultipartFile file, List<String> activeHeaders, RowConsumer consumer) throws IOException {
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(file.getInputStream(), StandardCharsets.UTF_8));
+             CSVParser parser = CSVFormat.DEFAULT.builder().setTrim(true).setIgnoreSurroundingSpaces(true).build().parse(reader)) {
+
+            var it = parser.iterator();
+            if (!it.hasNext()) {
+                return;
+            }
+            it.next(); // header
+
+            while (it.hasNext()) {
+                CSVRecord record = it.next();
+                Map<String, String> values = rowAsMap(indexedValues(record, activeHeaders), activeHeaders);
+                consumer.accept((int) record.getRecordNumber(), values);
+            }
+        }
+    }
+
+    private void streamXlsx(MultipartFile file, List<String> activeHeaders, RowConsumer consumer) throws IOException {
+        try (Workbook workbook = WorkbookFactory.create(file.getInputStream())) {
+            Sheet sheet = workbook.getSheetAt(0);
+            if (sheet == null) {
+                return;
+            }
+
+            int firstRowIndex = sheet.getFirstRowNum();
+            for (int i = firstRowIndex + 1; i <= sheet.getLastRowNum(); i++) {
+                Row row = sheet.getRow(i);
+                Map<String, String> values = rowAsMap(indexedValues(row, activeHeaders), activeHeaders);
+                consumer.accept(i + 1, values);
+            }
+        }
+    }
+
+    private record MappingRow(
+            int rowNumber,
+            Integer schemeId,
+            Integer parentLgdId,
+            Integer parentLgdLevel,
+            Integer parentDepartmentId,
+            String parentDepartmentLevel
     ) {
+    }
+
+    @FunctionalInterface
+    private interface RowConsumer {
+        void accept(int rowNumber, Map<String, String> values);
+    }
+
+    private static final class TooManyErrorsException extends RuntimeException {
     }
 }

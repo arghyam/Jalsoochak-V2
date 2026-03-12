@@ -7,7 +7,6 @@ import org.arghyam.jalsoochak.user.event.UserEventPublisher;
 import org.arghyam.jalsoochak.user.exceptions.BadRequestException;
 import org.arghyam.jalsoochak.user.repository.TenantUserRecord;
 import org.arghyam.jalsoochak.user.repository.UserCommonRepository;
-import org.arghyam.jalsoochak.user.repository.UserSchemeMappingCreateRow;
 import org.arghyam.jalsoochak.user.repository.UserTenantRepository;
 import org.arghyam.jalsoochak.user.repository.UserUploadRepository;
 import org.arghyam.jalsoochak.user.service.GlificPreferredLanguageService;
@@ -32,9 +31,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyList;
-import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -61,11 +60,14 @@ class PumpOperatorUploadServiceImplTest {
     @Mock
     private UserEventPublisher userEventPublisher;
 
+    @Mock
+    private PumpOperatorUploadChunkProcessor chunkProcessor;
+
     @InjectMocks
     private PumpOperatorUploadServiceImpl service;
 
     @Captor
-    private ArgumentCaptor<List<UserSchemeMappingCreateRow>> listCaptor;
+    private ArgumentCaptor<List<PumpOperatorUploadChunkProcessor.UploadRow>> uploadRowsCaptor;
 
     @AfterEach
     void cleanupTenant() {
@@ -73,7 +75,7 @@ class PumpOperatorUploadServiceImplTest {
     }
 
     @Test
-    void upload_shouldFailValidation_whenUserTypeIsNotPumpOperator() {
+    void upload_shouldSkipRow_whenPhoneBelongsToNonPumpOperator() {
         TenantContext.setSchema("tenant_ka");
         when(uploadAuthService.requireStateAdminUserId(eq("tenant_ka"), anyString())).thenReturn(10);
         when(userTenantRepository.findUserById(eq("tenant_ka"), eq(10L)))
@@ -89,16 +91,15 @@ class PumpOperatorUploadServiceImplTest {
                  "Ram,Kumar,Ram Kumar,9999999999,,pump_operator,SS-1,CS-1\n").getBytes(StandardCharsets.UTF_8)
         );
 
-        when(userTenantRepository.findUserByPhone(eq("tenant_ka"), eq("9999999999")))
-                .thenReturn(Optional.of(new TenantUserRecord(1L, 1, "9999999999", "u@example.com", 2L, "STATE_ADMIN", "User")));
+        // Service validation passes; actual skipping happens in the chunk processor.
+        when(userUploadRepository.findSchemeId(eq("tenant_ka"), eq("SS-1"), eq("CS-1"))).thenReturn(100);
+        when(chunkProcessor.processChunk(eq("tenant_ka"), eq("KA"), any(), anyInt(), anyInt(), anyInt(), anyList(), any()))
+                .thenReturn(new PumpOperatorUploadChunkProcessor.ChunkResult(0, 1));
 
-        BadRequestException ex = assertThrows(
-                BadRequestException.class,
-                () -> service.uploadPumpOperatorMappings(file, "Bearer token")
-        );
-
-        assertThat(ex.getMessage()).containsIgnoringCase("validation failed");
-        verify(userUploadRepository, never()).insertUserSchemeMappings(anyString(), anyList(), anyInt());
+        PumpOperatorUploadResponseDTO res = service.uploadPumpOperatorMappings(file, "Bearer token");
+        assertThat(res.totalRows()).isEqualTo(1);
+        assertThat(res.uploadedRows()).isEqualTo(0);
+        assertThat(res.skippedRows()).isEqualTo(1);
     }
 
     @Test
@@ -125,6 +126,8 @@ class PumpOperatorUploadServiceImplTest {
         when(userTenantRepository.createUser(eq("tenant_ka"), anyString(), eq(1), anyString(), anyString(), eq(2), eq("9999999999"), anyString(), eq(10L)))
                 .thenReturn(55L);
         when(userUploadRepository.findSchemeId(eq("tenant_ka"), eq("SS-1"), eq("CS-1"))).thenReturn(100);
+        when(chunkProcessor.processChunk(eq("tenant_ka"), eq("KA"), any(), anyInt(), anyInt(), anyInt(), anyList(), any()))
+                .thenReturn(new PumpOperatorUploadChunkProcessor.ChunkResult(1, 0));
 
         PumpOperatorUploadResponseDTO res = service.uploadPumpOperatorMappings(file, "Bearer token");
 
@@ -132,13 +135,8 @@ class PumpOperatorUploadServiceImplTest {
         assertThat(res.uploadedRows()).isEqualTo(1);
         assertThat(res.skippedRows()).isEqualTo(0);
 
-        verify(userUploadRepository).insertUserSchemeMappings(eq("tenant_ka"), listCaptor.capture(), eq(10));
-        assertThat(listCaptor.getValue()).hasSize(1);
-        assertThat(listCaptor.getValue().getFirst().userId()).isEqualTo(55L);
-        assertThat(listCaptor.getValue().getFirst().schemeId()).isEqualTo(100);
-
-        verify(userTenantRepository).updateUserLanguageId(eq("tenant_ka"), eq(55L), eq(1));
-        verify(userEventPublisher).publishUserLanguageUpdatedAfterCommit(anyList());
+        verify(chunkProcessor).processChunk(eq("tenant_ka"), eq("KA"), any(), eq(2), eq(1), eq(10), uploadRowsCaptor.capture(), any());
+        assertThat(uploadRowsCaptor.getValue()).hasSize(1);
     }
 
     @Test
@@ -158,20 +156,14 @@ class PumpOperatorUploadServiceImplTest {
                  "Ram,Kumar,Ram Kumar,9999999999,,pump_operator,SS-1,CS-1\n").getBytes(StandardCharsets.UTF_8)
         );
 
-        when(userTenantRepository.findUserByPhone(eq("tenant_ka"), eq("9999999999")))
-                .thenReturn(Optional.empty());
-        when(userTenantRepository.findUserByEmail(eq("tenant_ka"), anyString())).thenReturn(Optional.empty());
-        when(userTenantRepository.createUser(eq("tenant_ka"), anyString(), eq(1), anyString(), anyString(), eq(2), eq("9999999999"), anyString(), eq(10L)))
-                .thenReturn(55L);
-
         when(userUploadRepository.findSchemeId(eq("tenant_ka"), eq("SS-1"), eq("CS-1"))).thenReturn(100);
+        when(chunkProcessor.processChunk(eq("tenant_ka"), eq("KA"), any(), anyInt(), anyInt(), anyInt(), anyList(), any()))
+                .thenReturn(new PumpOperatorUploadChunkProcessor.ChunkResult(1, 0));
 
         PumpOperatorUploadResponseDTO res = service.uploadPumpOperatorMappings(file, "Bearer token");
 
         assertThat(res.uploadedRows()).isEqualTo(1);
-        verify(userTenantRepository).createUser(eq("tenant_ka"), anyString(), eq(1), anyString(), anyString(), eq(2), eq("9999999999"), anyString(), eq(10L));
-        verify(userTenantRepository).updateUserLanguageId(eq("tenant_ka"), eq(55L), eq(1));
-        verify(userEventPublisher).publishUserLanguageUpdatedAfterCommit(anyList());
+        verify(chunkProcessor).processChunk(eq("tenant_ka"), eq("KA"), any(), eq(2), eq(1), eq(10), anyList(), any());
     }
 
     @Test
@@ -199,7 +191,6 @@ class PumpOperatorUploadServiceImplTest {
         );
         assertThat(ex.getMessage()).containsIgnoringCase("validation failed");
 
-        verify(userTenantRepository, never()).createUser(anyString(), anyString(), anyInt(), anyString(), anyString(), anyInt(), anyString(), anyString(), anyLong());
-        verify(userUploadRepository, never()).insertUserSchemeMappings(anyString(), anyList(), anyInt());
+        verify(chunkProcessor, never()).processChunk(anyString(), anyString(), any(), anyInt(), anyInt(), anyInt(), anyList(), any());
     }
 }
