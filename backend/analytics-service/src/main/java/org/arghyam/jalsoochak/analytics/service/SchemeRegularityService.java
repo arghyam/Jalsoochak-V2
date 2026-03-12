@@ -4,6 +4,7 @@ import org.arghyam.jalsoochak.analytics.dto.response.AverageSchemeRegularityResp
 import org.arghyam.jalsoochak.analytics.dto.response.AverageWaterSupplyResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.OutageReasonSchemeCountResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.PeriodicWaterQuantityResponse;
+import org.arghyam.jalsoochak.analytics.dto.response.RegionWiseWaterQuantityResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.ReadingSubmissionRateResponse;
 import org.arghyam.jalsoochak.analytics.enums.PeriodScale;
 
@@ -11,10 +12,10 @@ import java.time.LocalDate;
 import java.util.Map;
 public interface SchemeRegularityService {
 
-    AverageSchemeRegularityResponse getAverageSchemeRegularity(Integer lgdId, LocalDate startDate, LocalDate endDate);
+    AverageSchemeRegularityResponse getAverageSchemeRegularity(Integer parentLgdId, LocalDate startDate, LocalDate endDate);
 
     AverageSchemeRegularityResponse getAverageSchemeRegularityForChildRegions(
-            Integer lgdId, LocalDate startDate, LocalDate endDate);
+            Integer parentLgdId, LocalDate startDate, LocalDate endDate);
 
     ReadingSubmissionRateResponse getReadingSubmissionRateByLgd(Integer parentLgdId, LocalDate startDate, LocalDate endDate);
 
@@ -33,17 +34,23 @@ public interface SchemeRegularityService {
     ReadingSubmissionRateResponse getReadingSubmissionRateByDepartmentForChildRegions(
             Integer parentDepartmentId, LocalDate startDate, LocalDate endDate);
 
-    AverageWaterSupplyResponse getAverageWaterSupplyPerScheme(
+    AverageWaterSupplyResponse getAverageWaterSupplyPerCurrentRegion(
             Integer tenantId, LocalDate startDate, LocalDate endDate);
 
     AverageWaterSupplyResponse getAverageWaterSupplyPerNation(
             LocalDate startDate, LocalDate endDate);
 
-    AverageWaterSupplyResponse getAverageWaterSupplyPerSchemeByLgd(
+    AverageWaterSupplyResponse getAverageWaterSupplyPerCurrentRegionByLgd(
             Integer tenantId, Integer lgdId, LocalDate startDate, LocalDate endDate);
 
-    AverageWaterSupplyResponse getAverageWaterSupplyPerSchemeByDepartment(
+    AverageWaterSupplyResponse getAverageWaterSupplyPerCurrentRegionByDepartment(
             Integer tenantId, Integer parentDepartmentId, LocalDate startDate, LocalDate endDate);
+
+    RegionWiseWaterQuantityResponse getRegionWiseWaterQuantityByLgd(
+            Integer parentLgdId, LocalDate startDate, LocalDate endDate);
+
+    RegionWiseWaterQuantityResponse getRegionWiseWaterQuantityByDepartment(
+            Integer parentDepartmentId, LocalDate startDate, LocalDate endDate);
 
     PeriodicWaterQuantityResponse getPeriodicWaterQuantityByLgdId(
             Integer lgdId, LocalDate startDate, LocalDate endDate, PeriodScale scale);
