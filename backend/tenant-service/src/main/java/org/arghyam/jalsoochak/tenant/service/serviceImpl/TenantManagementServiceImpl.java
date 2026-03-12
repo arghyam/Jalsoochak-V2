@@ -44,6 +44,8 @@ import org.arghyam.jalsoochak.tenant.util.SecurityUtils;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -276,10 +278,24 @@ public class TenantManagementServiceImpl implements TenantManagementService {
             }
         }
 
-        // Trigger live reschedule so new cron times take effect without restart.
-        // rescheduleForTenant is idempotent: safe to call even if only non-schedule
-        // keys (e.g. SUPPORTED_LANGUAGES) were updated.
-        schedulerManager.rescheduleForTenant(tenantId, tenant.getStateCode());
+        // Only reschedule when a schedule-bearing key was actually updated, and defer
+        // the call to after the transaction commits so a bad schedule config cannot
+        // roll back an otherwise-valid config write (e.g. SUPPORTED_LANGUAGES).
+        Set<TenantConfigKeyEnum> scheduleKeys = EnumSet.of(
+                TenantConfigKeyEnum.PUMP_OPERATOR_REMINDER_NUDGE_TIME,
+                TenantConfigKeyEnum.FIELD_STAFF_ESCALATION_RULES);
+        boolean hasScheduleKey = request.getConfigs().keySet().stream()
+                .anyMatch(scheduleKeys::contains);
+        if (hasScheduleKey) {
+            final int finalTenantId = tenantId;
+            final String finalStateCode = tenant.getStateCode();
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    schedulerManager.rescheduleForTenant(finalTenantId, finalStateCode);
+                }
+            });
+        }
 
         return TenantConfigResponseDTO.builder()
                 .tenantId(tenantId)

@@ -187,8 +187,8 @@ public class NotificationEventRouter {
         long officerId = root.path("officerId").asLong(0);
         long storedId = root.path("officerWhatsappConnectionId").asLong(0);
 
-        if (officerPhone.isBlank()) {
-            log.warn("[Router/ESCALATION] officerPhone is blank, skipping");
+        if (storedId <= 0 && officerPhone.isBlank()) {
+            log.warn("[Router/ESCALATION] officerPhone and officerWhatsappConnectionId are both missing, skipping");
             return;
         }
 
