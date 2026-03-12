@@ -345,13 +345,14 @@ public class GlificWebhookController {
             CreateReadingResponse response = glificWebhookService.locationReadingMessage(request);
             return ResponseEntity.ok(response);
         } catch (Exception e) {
-            log.error("Error saving location for contactId {}: {}", request.getContactId(), e.getMessage(), e);
+            String safeContactId = request != null ? request.resolveContactId() : null;
+            log.error("Error saving location for contactId {}: {}", safeContactId, e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(
                     CreateReadingResponse.builder()
                             .success(false)
                             .message("Location could not be saved.")
                             .qualityStatus("REJECTED")
-                            .correlationId(request.getContactId())
+                            .correlationId(safeContactId)
                             .build()
             );
         }
