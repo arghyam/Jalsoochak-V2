@@ -73,6 +73,7 @@ public class NotificationEventRouter {
             switch (eventType.toUpperCase()) {
                 case "NUDGE" -> handleNudge(root);
                 case "ESCALATION" -> handleEscalation(root);
+                case "STAFF_SYNC_COMPLETED" -> handleStaffSyncCompleted(root);
                 default -> log.warn("[Router] Unknown eventType '{}', ignoring message", eventType);
             }
         } catch (Exception e) {
@@ -112,6 +113,38 @@ public class NotificationEventRouter {
             }
         log.info("[Router/NUDGE] → FLOW INITIATED");
         log.debug("[Router/NUDGE] phone={} → FLOW INITIATED", phone);
+    }
+
+    private void handleStaffSyncCompleted(JsonNode root) {
+        JsonNode phonesNode = root.path("pumpOperatorPhones");
+        int glificLanguageId = root.path("glificLanguageId").asInt(0);
+
+        if (!phonesNode.isArray() || phonesNode.isEmpty()) {
+            log.warn("[Router/STAFF_SYNC] pumpOperatorPhones is empty, skipping");
+            return;
+        }
+        if (glificLanguageId == 0) {
+            log.warn("[Router/STAFF_SYNC] glificLanguageId missing or zero, skipping");
+            return;
+        }
+
+        int success = 0, failed = 0;
+        for (JsonNode phoneNode : phonesNode) {
+            String phone = phoneNode.asText("");
+            if (phone.isBlank()) continue;
+            try {
+                whatsAppChannel.onboardOperator(phone, glificLanguageId);
+                success++;
+            } catch (Exception e) {
+                failed++;
+                log.error("[Router/STAFF_SYNC] Failed to onboard operator: {}", e.getMessage(), e);
+            }
+        }
+        log.info("[Router/STAFF_SYNC] Onboarding complete — success={} failed={}", success, failed);
+
+        if (failed > 0 && success == 0) {
+            throw new IllegalStateException("[Router/STAFF_SYNC] All operator onboardings failed");
+        }
     }
 
     private void handleEscalation(JsonNode root) throws Exception {

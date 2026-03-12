@@ -97,6 +97,21 @@ public class WhatsAppChannel implements NotificationChannel {
     }
 
     /**
+     * Opts a pump operator into Glific and sets their preferred language.
+     * Called during staff-sync onboarding.
+     *
+     * @param phone            operator phone number (E.164 format)
+     * @param glificLanguageId Glific-side language ID
+     */
+    public void onboardOperator(String phone, int glificLanguageId) {
+        Long contactId = glificWhatsAppService.optIn(phone);
+        glificWhatsAppService.updateContactLanguage(contactId, glificLanguageId);
+        glificWhatsAppService.startWelcomeFlow(contactId);
+        log.info("[WHATSAPP] Operator onboarded to Glific");
+        log.debug("[WHATSAPP] Operator onboarded phone={} languageId={}", phone, glificLanguageId);
+    }
+
+    /**
      * Sends the escalation PDF (document HSM) to the officer via Glific.
      *
      * @param toPhone     recipient WhatsApp phone number (E.164 format)
