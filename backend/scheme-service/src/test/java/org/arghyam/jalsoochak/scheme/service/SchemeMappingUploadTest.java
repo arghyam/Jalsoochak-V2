@@ -19,6 +19,7 @@ import org.springframework.mock.web.MockMultipartFile;
 
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -36,6 +37,9 @@ class SchemeMappingUploadTest {
 
     @Mock
     UploadAuthService uploadAuthService;
+
+    @Mock
+    SchemeUploadChunkProcessor chunkProcessor;
 
     @InjectMocks
     SchemeServiceImpl schemeService;
@@ -67,8 +71,9 @@ class SchemeMappingUploadTest {
                 csv.getBytes(StandardCharsets.UTF_8)
         );
 
-        when(schemeDbRepository.existsSchemeById("tenant_ka", 1)).thenReturn(true);
-        when(schemeDbRepository.existsLgdLocationById("tenant_ka", 501)).thenReturn(true);
+        // Existence checks are now performed in batch to avoid N queries for large uploads.
+        when(schemeDbRepository.findExistingSchemeIds(eq("tenant_ka"), anyList())).thenReturn(Set.of(1));
+        when(schemeDbRepository.findExistingLgdLocationIds(eq("tenant_ka"), anyList())).thenReturn(Set.of(501));
 
         SchemeUploadResponseDTO res = schemeService.uploadSchemeMappings(file, "Bearer token");
 
@@ -76,7 +81,7 @@ class SchemeMappingUploadTest {
         assertThat(res.getTotalRows()).isEqualTo(1);
         assertThat(res.getUploadedRows()).isEqualTo(1);
 
-        verify(schemeDbRepository).insertLgdMappings(eq("tenant_ka"), rowsCaptor.capture());
+        verify(chunkProcessor).insertMappingsChunk(eq("tenant_ka"), rowsCaptor.capture(), eq(List.of()));
         List<SchemeLgdMappingCreateRecord> rows = rowsCaptor.getValue();
         assertThat(rows).hasSize(1);
         assertThat(rows.getFirst().schemeId()).isEqualTo(1);
@@ -119,9 +124,6 @@ class SchemeMappingUploadTest {
                 csv.getBytes(StandardCharsets.UTF_8)
         );
 
-        when(schemeDbRepository.existsSchemeById("tenant_ka", 1)).thenReturn(true);
-        when(schemeDbRepository.existsLgdLocationById("tenant_ka", 501)).thenReturn(true);
-
         assertThatThrownBy(() -> schemeService.uploadSchemeMappings(file, "Bearer token"))
                 .isInstanceOf(FileValidationException.class)
                 .hasMessage("Validation failed for uploaded file")
@@ -134,8 +136,7 @@ class SchemeMappingUploadTest {
                             });
                 });
 
-        verify(schemeDbRepository).existsSchemeById("tenant_ka", 1);
-        verify(schemeDbRepository).existsLgdLocationById("tenant_ka", 501);
-        verify(schemeDbRepository, org.mockito.Mockito.never()).insertLgdMappings(eq("tenant_ka"), anyList());
+        // Row-level validation fails before DB existence checks run.
+        verifyNoInteractions(schemeDbRepository);
     }
 }
