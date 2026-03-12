@@ -10,7 +10,8 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 public class WhatsAppContactRegisteredEvent {
-    private String eventType;   // always "WHATSAPP_CONTACT_REGISTERED"
+    @Builder.Default
+    private String eventType = "WHATSAPP_CONTACT_REGISTERED";   // always "WHATSAPP_CONTACT_REGISTERED"
     private String tenantSchema;
     private Long userId;
     private Long contactId;

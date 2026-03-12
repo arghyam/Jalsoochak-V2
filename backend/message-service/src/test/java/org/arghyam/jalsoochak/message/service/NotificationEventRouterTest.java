@@ -338,16 +338,18 @@ class NotificationEventRouterTest {
     }
 
     @Test
-    void route_doesNotThrow_whenPartialStaffSyncOnboardingFails() {
+    void route_rethrowsException_whenPartialStaffSyncOnboardingFails() {
         doThrow(new RuntimeException("Glific error"))
                 .when(whatsAppChannel).onboardOperator(eq("919876543210"), anyInt());
         when(whatsAppChannel.onboardOperator(eq("919123456789"), anyInt())).thenReturn(43L);
 
-        router.route("""
+        assertThatThrownBy(() -> router.route("""
                 {"eventType":"STAFF_SYNC_COMPLETED","tenantCode":"MP","tenantId":1,
                  "glificLanguageId":"2","tenantSchema":"tenant_mp",
                  "pumpOperators":[{"userId":10,"phone":"919876543210"},{"userId":11,"phone":"919123456789"}]}
-                """);
+                """))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessageContaining("Notification event processing failed");
 
         verify(whatsAppChannel).onboardOperator("919876543210", 2);
         verify(whatsAppChannel).onboardOperator("919123456789", 2);

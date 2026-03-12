@@ -61,6 +61,19 @@ class KafkaConsumerTest {
     }
 
     @Test
+    void consume_skips_whenSchemaIsMissing() {
+        String json = """
+                {"eventType":"WHATSAPP_CONTACT_REGISTERED",
+                 "userId":42,"contactId":7}
+                """;
+
+        consumer.consume(json, ack);
+
+        verify(nudgeRepository, never()).updateWhatsAppConnectionId(anyString(), anyLong(), anyLong());
+        verify(ack).acknowledge();
+    }
+
+    @Test
     void consume_skips_whenUserIdIsZero() {
         String json = """
                 {"eventType":"WHATSAPP_CONTACT_REGISTERED","tenantSchema":"tenant_mp",

@@ -110,7 +110,7 @@ public class NudgeRepository {
                 FROM %s.user_scheme_mapping_table usm
                 JOIN %s.user_table u ON u.id = usm.user_id
                 JOIN common_schema.user_type_master_table ut ON ut.id = u.user_type
-                WHERE usm.scheme_id = ? AND ut.c_name = ? AND usm.status = 1
+                WHERE usm.scheme_id = ? AND UPPER(ut.c_name) = UPPER(?) AND usm.status = 1
                 LIMIT 1
                 """, schema, schema);
         List<Map<String, Object>> rows = jdbcTemplate.queryForList(sql, schemeId, userTypeName);
@@ -121,9 +121,9 @@ public class NudgeRepository {
      * Persists the Glific contact ID for the given user.
      * Called by the Kafka consumer when a {@code WHATSAPP_CONTACT_REGISTERED} event arrives.
      */
-    public void updateWhatsAppConnectionId(String schema, long userId, long contactId) {
+    public int updateWhatsAppConnectionId(String schema, long userId, long contactId) {
         validateSchemaName(schema);
-        jdbcTemplate.update(
+        return jdbcTemplate.update(
                 "UPDATE " + schema + ".user_table SET whatsapp_connection_id = ? WHERE id = ?",
                 contactId, userId);
     }

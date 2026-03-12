@@ -39,6 +39,7 @@ import org.arghyam.jalsoochak.tenant.exception.ResourceNotFoundException;
 import org.arghyam.jalsoochak.tenant.repository.TenantCommonRepository;
 import org.arghyam.jalsoochak.tenant.repository.TenantSchemaRepository;
 import org.arghyam.jalsoochak.tenant.service.TenantManagementService;
+import org.arghyam.jalsoochak.tenant.service.TenantSchedulerManager;
 import org.arghyam.jalsoochak.tenant.util.SecurityUtils;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
@@ -61,6 +62,7 @@ public class TenantManagementServiceImpl implements TenantManagementService {
     private final ObjectMapper objectMapper;
     private final TenantDefaultsProperties tenantDefaults;
     private final ApplicationEventPublisher eventPublisher;
+    private final TenantSchedulerManager schedulerManager;
 
     @Override
     @Transactional
@@ -273,6 +275,11 @@ public class TenantManagementServiceImpl implements TenantManagementService {
                 results.put(key, dto);
             }
         }
+
+        // Trigger live reschedule so new cron times take effect without restart.
+        // rescheduleForTenant is idempotent: safe to call even if only non-schedule
+        // keys (e.g. SUPPORTED_LANGUAGES) were updated.
+        schedulerManager.rescheduleForTenant(tenantId, tenant.getStateCode());
 
         return TenantConfigResponseDTO.builder()
                 .tenantId(tenantId)

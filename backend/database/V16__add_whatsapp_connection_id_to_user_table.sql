@@ -30,9 +30,18 @@ BEGIN
     patched_definition := fn_definition;
 
     IF position('whatsapp_connection_id' IN patched_definition) = 0 THEN
-        patched_definition := replace(patched_definition,
-            E'            language_id                 INTEGER,\n            created_by',
-            E'            language_id                 INTEGER,\n            whatsapp_connection_id      BIGINT,\n            created_by');
+        patched_definition := regexp_replace(
+            patched_definition,
+            '(language_id\s+INTEGER\s*,\s*)(created_by)',
+            E'\\1whatsapp_connection_id      BIGINT,\n            \\2',
+            'g'
+        );
+
+        IF position('whatsapp_connection_id' IN patched_definition) = 0 THEN
+            RAISE EXCEPTION 'V16 patch failed: could not inject whatsapp_connection_id into create_tenant_schema(). '
+                'The function body does not contain the expected anchor "language_id INTEGER, ... created_by". '
+                'Inspect pg_get_functiondef(''create_tenant_schema(text)''::regprocedure) and update this migration.';
+        END IF;
     END IF;
 
     IF patched_definition <> fn_definition THEN

@@ -100,8 +100,8 @@ public class NotificationEventRouter {
         long userId = root.path("userId").asLong(0);
         long storedId = root.path("whatsappConnectionId").asLong(0);
 
-        if (phone.isBlank()) {
-            log.warn("[Router/NUDGE] recipientPhone is blank, skipping");
+        if (storedId <= 0 && phone.isBlank()) {
+            log.warn("[Router/NUDGE] recipientPhone and whatsappConnectionId are both missing, skipping");
             return;
         }
 
@@ -167,10 +167,13 @@ public class NotificationEventRouter {
                 log.error("[Router/STAFF_SYNC] Failed to onboard operator: {}", e.getMessage(), e);
             }
         }
-        log.info("[Router/STAFF_SYNC] Onboarding complete — success={} failed={}", success, failed);
+        log.info("[Router/STAFF_SYNC] Onboarding complete — success={} failed={} tenantSchema={}",
+                success, failed, tenantSchema);
 
-        if (failed > 0 && success == 0) {
-            throw new IllegalStateException("[Router/STAFF_SYNC] All operator onboardings failed");
+        if (failed > 0) {
+            throw new IllegalStateException(
+                    "[Router/STAFF_SYNC] " + failed + " operator onboarding(s) failed"
+                    + " (success=" + success + ", tenantSchema=" + tenantSchema + ")");
         }
     }
 

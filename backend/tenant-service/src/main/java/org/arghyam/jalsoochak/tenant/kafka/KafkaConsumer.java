@@ -38,7 +38,8 @@ public class KafkaConsumer {
             }
         } catch (Exception e) {
             log.error("[tenant-service] Failed to handle Kafka message: {}", e.getMessage(), e);
-            // best-effort — acknowledge anyway; optIn will re-run on next nudge/escalation
+            // best-effort — acknowledge anyway to avoid redelivery loops;
+            // failed contact ID updates will result in nudges using phone number instead
         }
         ack.acknowledge();
     }

@@ -105,7 +105,10 @@ public class WhatsAppChannel implements NotificationChannel {
         glificWhatsAppService.updateContactLanguage(contactId, glificLanguageId);
         glificWhatsAppService.startWelcomeFlow(contactId);
         log.info("[WHATSAPP] Operator onboarded to Glific");
-        log.debug("[WHATSAPP] Operator onboarded phone={} languageId={}", phone, glificLanguageId);
+        String phoneSuffix = phone != null && phone.length() >= 4
+                ? phone.substring(phone.length() - 4)
+                : "unknown";
+        log.debug("[WHATSAPP] Operator onboarded phoneSuffix={} languageId={}", phoneSuffix, glificLanguageId);
         return contactId;
     }
 
