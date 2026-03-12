@@ -174,8 +174,9 @@ public class NotificationEventRouter {
         log.info("[Router/STAFF_SYNC] Onboarding complete — success={} failed={} tenantSchema={}",
                 success, failed, tenantSchema);
         if (failed > 0) {
-            log.warn("[Router/STAFF_SYNC] {} operator onboarding(s) failed (success={}, tenantSchema={})",
-                    failed, success, tenantSchema);
+            throw new IllegalStateException(
+                    "[Router/STAFF_SYNC] " + failed + " operator onboarding(s) failed"
+                    + " (success=" + success + ", tenantSchema=" + tenantSchema + ")");
         }
     }
 
