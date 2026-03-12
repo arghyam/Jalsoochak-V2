@@ -81,6 +81,40 @@ public class UserTenantRepository {
         return rows.stream().findFirst();
     }
 
+    public Optional<TenantUserRecord> findUserByPhone(String schemaName, String phoneNumber) {
+        validateSchemaName(schemaName);
+        if (phoneNumber == null || phoneNumber.isBlank()) {
+            return Optional.empty();
+        }
+
+        String sql = String.format("""
+        SELECT u.id,
+               u.tenant_id,
+               u.phone_number,
+               u.email,
+               u.user_type,
+               u.title,
+               ut.c_name
+        FROM %s.user_table u
+        LEFT JOIN common_schema.user_type_master_table ut
+               ON ut.id = u.user_type
+        WHERE u.phone_number = ?
+        """, schemaName);
+
+        List<TenantUserRecord> rows = jdbcTemplate.query(sql, (rs, n) ->
+                new TenantUserRecord(
+                        toLong(rs.getObject("id")),
+                        toInteger(rs.getObject("tenant_id")),
+                        rs.getString("phone_number"),
+                        rs.getString("email"),
+                        toLong(rs.getObject("user_type")),
+                        rs.getString("c_name"),
+                        rs.getString("title")
+                ), phoneNumber.trim());
+
+        return rows.stream().findFirst();
+    }
+
     public Long createUser(String schemaName,
                            String uuid,
                            Integer tenantId,
