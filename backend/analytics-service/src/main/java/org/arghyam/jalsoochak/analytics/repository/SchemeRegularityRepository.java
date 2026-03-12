@@ -18,10 +18,10 @@ public class SchemeRegularityRepository {
 
     private final JdbcTemplate jdbcTemplate;
 
-    public SchemeRegularityMetrics getSchemeRegularityMetrics(Integer lgdId, LocalDate startDate, LocalDate endDate) {
-        Integer lgdLevel = getLgdLevel(lgdId);
+    public SchemeRegularityMetrics getSchemeRegularityMetrics(Integer parentLgdId, LocalDate startDate, LocalDate endDate) {
+        Integer lgdLevel = getLgdLevel(parentLgdId);
         if (lgdLevel == null) {
-            throw new IllegalArgumentException("lgd_id not found in dim_lgd_location_table: " + lgdId);
+            throw new IllegalArgumentException("parent_lgd_id not found in dim_lgd_location_table: " + parentLgdId);
         }
         String schemeLgdColumn = resolveSchemeLgdColumn(lgdLevel);
 
@@ -45,7 +45,7 @@ public class SchemeRegularityRepository {
                     COALESCE((SELECT SUM(supply_days)::int FROM scheme_supply_days), 0) AS total_supply_days
                 """, schemeLgdColumn);
 
-        Map<String, Object> result = jdbcTemplate.queryForMap(sql, lgdId, startDate, endDate);
+        Map<String, Object> result = jdbcTemplate.queryForMap(sql, parentLgdId, startDate, endDate);
         int schemeCount = result.get("scheme_count") instanceof Number value ? value.intValue() : 0;
         int totalSupplyDays = result.get("total_supply_days") instanceof Number value ? value.intValue() : 0;
 
@@ -326,13 +326,13 @@ public class SchemeRegularityRepository {
     }
 
     public List<ChildRegionSchemeRegularityMetrics> getChildSchemeRegularityMetricsByLgd(
-            Integer lgdId, LocalDate startDate, LocalDate endDate) {
-        Integer lgdLevel = getLgdLevel(lgdId);
+            Integer parentLgdId, LocalDate startDate, LocalDate endDate) {
+        Integer lgdLevel = getLgdLevel(parentLgdId);
         if (lgdLevel == null) {
-            throw new IllegalArgumentException("lgd_id not found in dim_lgd_location_table: " + lgdId);
+            throw new IllegalArgumentException("parent_lgd_id not found in dim_lgd_location_table: " + parentLgdId);
         }
         if (lgdLevel >= 6) {
-            throw new IllegalArgumentException("No child LGD level available for parent_lgd_id: " + lgdId);
+            throw new IllegalArgumentException("No child LGD level available for parent_lgd_id: " + parentLgdId);
         }
         int childLevel = lgdLevel + 1;
         long daysInRange = ChronoUnit.DAYS.between(startDate, endDate) + 1;
@@ -402,8 +402,8 @@ public class SchemeRegularityRepository {
                             averageRegularity);
                 },
                 childLevel,
-                lgdId,
-                lgdId,
+                parentLgdId,
+                parentLgdId,
                 startDate,
                 endDate);
     }
@@ -758,7 +758,7 @@ public class SchemeRegularityRepository {
         return new SchemeStatusCount(activeSchemeCount, inactiveSchemeCount);
     }
 
-    public List<SchemeWaterSupplyMetrics> getAverageWaterSupplyPerScheme(
+    public List<SchemeWaterSupplyMetrics> getAverageWaterSupplyPerCurrentRegion(
             Integer tenantId, LocalDate startDate, LocalDate endDate) {
         long daysInRange = ChronoUnit.DAYS.between(startDate, endDate) + 1;
         if (daysInRange <= 0) {
@@ -862,7 +862,7 @@ public class SchemeRegularityRepository {
                 endDate);
     }
 
-    public List<ChildRegionWaterSupplyMetrics> getAverageWaterSupplyPerSchemeByLgd(
+    public List<ChildRegionWaterSupplyMetrics> getAverageWaterSupplyPerCurrentRegionByLgd(
             Integer tenantId, Integer lgdId, LocalDate startDate, LocalDate endDate) {
         Integer lgdLevel = getLgdLevel(lgdId);
         if (lgdLevel == null) {
@@ -948,7 +948,7 @@ public class SchemeRegularityRepository {
                 endDate);
     }
 
-    public List<ChildRegionWaterSupplyMetrics> getAverageWaterSupplyPerSchemeByDepartment(
+    public List<ChildRegionWaterSupplyMetrics> getAverageWaterSupplyPerCurrentRegionByDepartment(
             Integer tenantId, Integer parentDepartmentId, LocalDate startDate, LocalDate endDate) {
         Integer departmentLevel = getDepartmentLevel(parentDepartmentId);
         if (departmentLevel == null) {
@@ -1031,6 +1031,145 @@ public class SchemeRegularityRepository {
                 tenantId,
                 parentDepartmentId,
                 tenantId,
+                startDate,
+                endDate);
+    }
+
+    public List<ChildRegionWaterQuantityMetrics> getRegionWiseWaterQuantityByLgd(
+            Integer parentLgdId, LocalDate startDate, LocalDate endDate) {
+        Integer parentLgdLevel = getLgdLevel(parentLgdId);
+        if (parentLgdLevel == null) {
+            throw new IllegalArgumentException("parent_lgd_id not found in dim_lgd_location_table: " + parentLgdId);
+        }
+        if (parentLgdLevel >= 6) {
+            throw new IllegalArgumentException("No child LGD level available for parent_lgd_id: " + parentLgdId);
+        }
+
+        int childLevel = parentLgdLevel + 1;
+        String parentSchemeLgdColumn = resolveSchemeLgdColumn(parentLgdLevel);
+        String childSchemeLgdColumn = resolveSchemeLgdColumn(childLevel);
+        String childRegionParentLgdColumn = resolveChildRegionLgdParentColumn(parentLgdLevel);
+
+        String sql = String.format("""
+                WITH child_regions AS (
+                    SELECT
+                        l.lgd_id AS child_lgd_id,
+                        l.title
+                    FROM analytics_schema.dim_lgd_location_table l
+                    WHERE l.lgd_level = ?
+                      AND l.%1$s = ?
+                ),
+                schemes_in_scope AS (
+                    SELECT
+                        s.scheme_id,
+                        s.%2$s AS child_lgd_id,
+                        COALESCE(s.house_hold_count, 0) AS house_hold_count
+                    FROM analytics_schema.dim_scheme_table s
+                    WHERE s.%3$s = ?
+                ),
+                ewater_by_scheme AS (
+                    SELECT
+                        f.scheme_id,
+                        COALESCE(SUM(f.water_quantity), 0)::bigint AS total_ewater_quantity
+                    FROM analytics_schema.fact_water_quantity_table f
+                    WHERE f.date BETWEEN ? AND ?
+                    GROUP BY f.scheme_id
+                )
+                SELECT
+                    c.child_lgd_id AS lgd_id,
+                    c.title,
+                    COALESCE(SUM(s.house_hold_count), 0)::int AS household_count,
+                    COALESCE(SUM(w.total_ewater_quantity), 0)::bigint AS ewater_quantity
+                FROM child_regions c
+                LEFT JOIN schemes_in_scope s
+                    ON s.child_lgd_id = c.child_lgd_id
+                LEFT JOIN ewater_by_scheme w
+                    ON w.scheme_id = s.scheme_id
+                GROUP BY c.child_lgd_id, c.title
+                ORDER BY c.child_lgd_id
+                """, childRegionParentLgdColumn, childSchemeLgdColumn, parentSchemeLgdColumn);
+
+        return jdbcTemplate.query(
+                sql,
+                (rs, rowNum) -> new ChildRegionWaterQuantityMetrics(
+                        rs.getInt("lgd_id"),
+                        null,
+                        rs.getString("title"),
+                        rs.getLong("ewater_quantity"),
+                        rs.getInt("household_count")),
+                childLevel,
+                parentLgdId,
+                parentLgdId,
+                startDate,
+                endDate);
+    }
+
+    public List<ChildRegionWaterQuantityMetrics> getRegionWiseWaterQuantityByDepartment(
+            Integer parentDepartmentId, LocalDate startDate, LocalDate endDate) {
+        Integer parentDepartmentLevel = getDepartmentLevel(parentDepartmentId);
+        if (parentDepartmentLevel == null) {
+            throw new IllegalArgumentException(
+                    "parent_department_id not found in dim_department_location_table: " + parentDepartmentId);
+        }
+        if (parentDepartmentLevel >= 6) {
+            throw new IllegalArgumentException("No child department level available for parent_department_id: " + parentDepartmentId);
+        }
+
+        int childLevel = parentDepartmentLevel + 1;
+        String parentSchemeDepartmentColumn = resolveSchemeDepartmentColumn(parentDepartmentLevel);
+        String childSchemeDepartmentColumn = resolveSchemeDepartmentColumn(childLevel);
+        String childRegionParentDepartmentColumn = resolveChildRegionDepartmentParentColumn(parentDepartmentLevel);
+
+        String sql = String.format("""
+                WITH child_regions AS (
+                    SELECT
+                        d.department_id AS child_department_id,
+                        d.title
+                    FROM analytics_schema.dim_department_location_table d
+                    WHERE d.department_level = ?
+                      AND d.%1$s = ?
+                ),
+                schemes_in_scope AS (
+                    SELECT
+                        s.scheme_id,
+                        s.%2$s AS child_department_id,
+                        COALESCE(s.house_hold_count, 0) AS house_hold_count
+                    FROM analytics_schema.dim_scheme_table s
+                    WHERE s.%3$s = ?
+                ),
+                ewater_by_scheme AS (
+                    SELECT
+                        f.scheme_id,
+                        COALESCE(SUM(f.water_quantity), 0)::bigint AS total_ewater_quantity
+                    FROM analytics_schema.fact_water_quantity_table f
+                    WHERE f.date BETWEEN ? AND ?
+                    GROUP BY f.scheme_id
+                )
+                SELECT
+                    c.child_department_id AS department_id,
+                    c.title,
+                    COALESCE(SUM(s.house_hold_count), 0)::int AS household_count,
+                    COALESCE(SUM(w.total_ewater_quantity), 0)::bigint AS ewater_quantity
+                FROM child_regions c
+                LEFT JOIN schemes_in_scope s
+                    ON s.child_department_id = c.child_department_id
+                LEFT JOIN ewater_by_scheme w
+                    ON w.scheme_id = s.scheme_id
+                GROUP BY c.child_department_id, c.title
+                ORDER BY c.child_department_id
+                """, childRegionParentDepartmentColumn, childSchemeDepartmentColumn, parentSchemeDepartmentColumn);
+
+        return jdbcTemplate.query(
+                sql,
+                (rs, rowNum) -> new ChildRegionWaterQuantityMetrics(
+                        null,
+                        rs.getInt("department_id"),
+                        rs.getString("title"),
+                        rs.getLong("ewater_quantity"),
+                        rs.getInt("household_count")),
+                childLevel,
+                parentDepartmentId,
+                parentDepartmentId,
                 startDate,
                 endDate);
     }
@@ -1241,6 +1380,14 @@ public class SchemeRegularityRepository {
             Long totalWaterSuppliedLiters,
             Integer schemeCount,
             BigDecimal avgWaterSupplyPerScheme) {
+    }
+
+    public record ChildRegionWaterQuantityMetrics(
+            Integer lgdId,
+            Integer departmentId,
+            String title,
+            Long eWaterQuantity,
+            Integer householdCount) {
     }
 
     public record ChildRegionSchemeRegularityMetrics(

@@ -4,6 +4,7 @@ import org.arghyam.jalsoochak.analytics.dto.response.AverageSchemeRegularityResp
 import org.arghyam.jalsoochak.analytics.dto.response.AverageWaterSupplyResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.OutageReasonSchemeCountResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.PeriodicWaterQuantityResponse;
+import org.arghyam.jalsoochak.analytics.dto.response.RegionWiseWaterQuantityResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.ReadingSubmissionRateResponse;
 import org.arghyam.jalsoochak.analytics.enums.OutageReason;
 import org.arghyam.jalsoochak.analytics.enums.PeriodScale;
@@ -48,19 +49,19 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
     private final ObjectMapper objectMapper;
 
     @Override
-    public AverageSchemeRegularityResponse getAverageSchemeRegularity(Integer lgdId, LocalDate startDate, LocalDate endDate) {
-        validateLgdInput(lgdId);
+    public AverageSchemeRegularityResponse getAverageSchemeRegularity(Integer parentLgdId, LocalDate startDate, LocalDate endDate) {
+        validateLgdInput(parentLgdId);
         validateDateRange(startDate, endDate);
         // #region agent log
         appendDebugLog(
                 "H1",
                 "SchemeRegularityServiceImpl:getAverageSchemeRegularity:entry",
                 "Regularity request entry",
-                Map.of("lgdId", lgdId, "startDate", String.valueOf(startDate), "endDate", String.valueOf(endDate)));
+                Map.of("parentLgdId", parentLgdId, "startDate", String.valueOf(startDate), "endDate", String.valueOf(endDate)));
         // #endregion
 
         String cacheKey = SCHEME_REGULARITY_CACHE_PREFIX
-                + ":lgd:" + lgdId
+                + ":lgd:" + parentLgdId
                 + ":start:" + startDate
                 + ":end:" + endDate;
         AverageSchemeRegularityResponse cached = readFromCache(cacheKey, AverageSchemeRegularityResponse.class);
@@ -71,7 +72,7 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
         int daysInRange = (int) ChronoUnit.DAYS.between(startDate, endDate) + 1;
         SchemeRegularityRepository.SchemeRegularityMetrics metrics;
         try {
-            metrics = schemeRegularityRepository.getSchemeRegularityMetrics(lgdId, startDate, endDate);
+            metrics = schemeRegularityRepository.getSchemeRegularityMetrics(parentLgdId, startDate, endDate);
         } catch (Exception ex) {
             // #region agent log
             appendDebugLog(
@@ -98,7 +99,7 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
         }
 
         AverageSchemeRegularityResponse response = AverageSchemeRegularityResponse.builder()
-                .lgdId(lgdId)
+                .lgdId(parentLgdId)
                 .parentDepartmentId(null)
                 .parentLgdLevel(null)
                 .parentDepartmentLevel(null)
@@ -234,12 +235,12 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
 
     @Override
     public AverageSchemeRegularityResponse getAverageSchemeRegularityForChildRegions(
-            Integer lgdId, LocalDate startDate, LocalDate endDate) {
-        validateLgdInput(lgdId);
+            Integer parentLgdId, LocalDate startDate, LocalDate endDate) {
+        validateLgdInput(parentLgdId);
         validateDateRange(startDate, endDate);
 
         String cacheKey = SCHEME_REGULARITY_CACHE_PREFIX
-                + ":lgd:" + lgdId
+                + ":lgd:" + parentLgdId
                 + ":scope:child"
                 + ":start:" + startDate
                 + ":end:" + endDate;
@@ -248,17 +249,17 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
             return cached;
         }
 
-        Integer parentLgdLevel = schemeRegularityRepository.getLgdLevel(lgdId);
+        Integer parentLgdLevel = schemeRegularityRepository.getLgdLevel(parentLgdId);
         if (parentLgdLevel == null) {
-            throw new IllegalArgumentException("lgd_id not found in dim_lgd_location_table: " + lgdId);
+            throw new IllegalArgumentException("parent_lgd_id not found in dim_lgd_location_table: " + parentLgdId);
         }
         if (parentLgdLevel >= 6) {
-            throw new IllegalArgumentException("No child LGD level available for parent_lgd_id: " + lgdId);
+            throw new IllegalArgumentException("No child LGD level available for parent_lgd_id: " + parentLgdId);
         }
 
         int daysInRange = (int) ChronoUnit.DAYS.between(startDate, endDate) + 1;
         List<SchemeRegularityRepository.ChildRegionSchemeRegularityMetrics> metrics =
-                schemeRegularityRepository.getChildSchemeRegularityMetricsByLgd(lgdId, startDate, endDate);
+                schemeRegularityRepository.getChildSchemeRegularityMetricsByLgd(parentLgdId, startDate, endDate);
 
         List<AverageSchemeRegularityResponse.ChildRegionRegularity> childRegions = metrics.stream()
                 .map(m -> AverageSchemeRegularityResponse.ChildRegionRegularity.builder()
@@ -286,7 +287,7 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
         }
 
         AverageSchemeRegularityResponse response = AverageSchemeRegularityResponse.builder()
-                .lgdId(lgdId)
+                .lgdId(parentLgdId)
                 .parentDepartmentId(null)
                 .parentLgdLevel(parentLgdLevel)
                 .parentDepartmentLevel(null)
@@ -573,7 +574,7 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
     }
 
     @Override
-    public AverageWaterSupplyResponse getAverageWaterSupplyPerScheme(
+    public AverageWaterSupplyResponse getAverageWaterSupplyPerCurrentRegion(
             Integer tenantId, LocalDate startDate, LocalDate endDate) {
         validateTenantInput(tenantId);
         validateDateRange(startDate, endDate);
@@ -589,7 +590,7 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
 
         int daysInRange = (int) ChronoUnit.DAYS.between(startDate, endDate) + 1;
         List<SchemeRegularityRepository.SchemeWaterSupplyMetrics> metrics =
-                schemeRegularityRepository.getAverageWaterSupplyPerScheme(tenantId, startDate, endDate);
+                schemeRegularityRepository.getAverageWaterSupplyPerCurrentRegion(tenantId, startDate, endDate);
 
         List<AverageWaterSupplyResponse.SchemeWaterSupply> schemes = metrics.stream()
                 .map(m -> AverageWaterSupplyResponse.SchemeWaterSupply.builder()
@@ -667,7 +668,7 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
     }
 
     @Override
-    public AverageWaterSupplyResponse getAverageWaterSupplyPerSchemeByLgd(
+    public AverageWaterSupplyResponse getAverageWaterSupplyPerCurrentRegionByLgd(
             Integer tenantId, Integer lgdId, LocalDate startDate, LocalDate endDate) {
         validateTenantInput(tenantId);
         validateLgdInput(lgdId);
@@ -702,7 +703,7 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
         int daysInRange = (int) ChronoUnit.DAYS.between(startDate, endDate) + 1;
         List<SchemeRegularityRepository.ChildRegionWaterSupplyMetrics> metrics;
         try {
-            metrics = schemeRegularityRepository.getAverageWaterSupplyPerSchemeByLgd(tenantId, lgdId, startDate, endDate);
+            metrics = schemeRegularityRepository.getAverageWaterSupplyPerCurrentRegionByLgd(tenantId, lgdId, startDate, endDate);
         } catch (Exception ex) {
             // #region agent log
             appendDebugLog(
@@ -751,7 +752,7 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
     }
 
     @Override
-    public AverageWaterSupplyResponse getAverageWaterSupplyPerSchemeByDepartment(
+    public AverageWaterSupplyResponse getAverageWaterSupplyPerCurrentRegionByDepartment(
             Integer tenantId, Integer parentDepartmentId, LocalDate startDate, LocalDate endDate) {
         validateTenantInput(tenantId);
         validateDepartmentInput(parentDepartmentId);
@@ -787,7 +788,7 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
         int daysInRange = (int) ChronoUnit.DAYS.between(startDate, endDate) + 1;
         List<SchemeRegularityRepository.ChildRegionWaterSupplyMetrics> metrics;
         try {
-            metrics = schemeRegularityRepository.getAverageWaterSupplyPerSchemeByDepartment(tenantId, parentDepartmentId, startDate, endDate);
+            metrics = schemeRegularityRepository.getAverageWaterSupplyPerCurrentRegionByDepartment(tenantId, parentDepartmentId, startDate, endDate);
         } catch (Exception ex) {
             // #region agent log
             appendDebugLog(
@@ -833,6 +834,79 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
                 .build();
         writeToCache(cacheKey, response);
         return response;
+    }
+
+    @Override
+    public RegionWiseWaterQuantityResponse getRegionWiseWaterQuantityByLgd(
+            Integer parentLgdId, LocalDate startDate, LocalDate endDate) {
+        validateLgdInput(parentLgdId);
+        validateDateRange(startDate, endDate);
+
+        Integer parentLgdLevel = schemeRegularityRepository.getLgdLevel(parentLgdId);
+        if (parentLgdLevel == null) {
+            throw new IllegalArgumentException("parent_lgd_id not found in dim_lgd_location_table: " + parentLgdId);
+        }
+
+        List<SchemeRegularityRepository.ChildRegionWaterQuantityMetrics> metrics =
+                schemeRegularityRepository.getRegionWiseWaterQuantityByLgd(parentLgdId, startDate, endDate);
+
+        List<RegionWiseWaterQuantityResponse.ChildRegionWaterQuantity> childRegions = metrics.stream()
+                .map(metric -> RegionWiseWaterQuantityResponse.ChildRegionWaterQuantity.builder()
+                        .lgdId(metric.lgdId())
+                        .departmentId(null)
+                        .title(metric.title())
+                        .eWaterQuantity(metric.eWaterQuantity())
+                        .householdCount(metric.householdCount())
+                        .build())
+                .toList();
+
+        return RegionWiseWaterQuantityResponse.builder()
+                .parentLgdId(parentLgdId)
+                .parentDepartmentId(null)
+                .parentLgdLevel(parentLgdLevel)
+                .parentDepartmentLevel(null)
+                .startDate(startDate)
+                .endDate(endDate)
+                .childRegionCount(childRegions.size())
+                .childRegions(childRegions)
+                .build();
+    }
+
+    @Override
+    public RegionWiseWaterQuantityResponse getRegionWiseWaterQuantityByDepartment(
+            Integer parentDepartmentId, LocalDate startDate, LocalDate endDate) {
+        validateDepartmentInput(parentDepartmentId);
+        validateDateRange(startDate, endDate);
+
+        Integer parentDepartmentLevel = schemeRegularityRepository.getDepartmentLevel(parentDepartmentId);
+        if (parentDepartmentLevel == null) {
+            throw new IllegalArgumentException(
+                    "parent_department_id not found in dim_department_location_table: " + parentDepartmentId);
+        }
+
+        List<SchemeRegularityRepository.ChildRegionWaterQuantityMetrics> metrics =
+                schemeRegularityRepository.getRegionWiseWaterQuantityByDepartment(parentDepartmentId, startDate, endDate);
+
+        List<RegionWiseWaterQuantityResponse.ChildRegionWaterQuantity> childRegions = metrics.stream()
+                .map(metric -> RegionWiseWaterQuantityResponse.ChildRegionWaterQuantity.builder()
+                        .lgdId(null)
+                        .departmentId(metric.departmentId())
+                        .title(metric.title())
+                        .eWaterQuantity(metric.eWaterQuantity())
+                        .householdCount(metric.householdCount())
+                        .build())
+                .toList();
+
+        return RegionWiseWaterQuantityResponse.builder()
+                .parentLgdId(null)
+                .parentDepartmentId(parentDepartmentId)
+                .parentLgdLevel(null)
+                .parentDepartmentLevel(parentDepartmentLevel)
+                .startDate(startDate)
+                .endDate(endDate)
+                .childRegionCount(childRegions.size())
+                .childRegions(childRegions)
+                .build();
     }
 
     @Override
