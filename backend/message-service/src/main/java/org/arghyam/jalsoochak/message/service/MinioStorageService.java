@@ -25,8 +25,14 @@ public class MinioStorageService {
 
     public MinioStorageService(
             @Value("${minio.endpoint:http://localhost:9000}") String endpoint,
-            @Value("${minio.access-key:minioadmin}") String accessKey,
-            @Value("${minio.secret-key:minioadmin}") String secretKey) {
+            @Value("${minio.access-key}") String accessKey,
+            @Value("${minio.secret-key}") String secretKey) {
+        if (accessKey == null || accessKey.isBlank()) {
+            throw new IllegalStateException("minio.access-key must be configured (set MINIO_ACCESS_KEY env var)");
+        }
+        if (secretKey == null || secretKey.isBlank()) {
+            throw new IllegalStateException("minio.secret-key must be configured (set MINIO_SECRET_KEY env var)");
+        }
         this.minioClient = MinioClient.builder()
                 .endpoint(endpoint)
                 .credentials(accessKey, secretKey)

@@ -55,14 +55,16 @@ public class GlificMessageService {
                     .resolveScreenMessage(tenantId, "INTRO_MESSAGE", languageKey)
                     .orElseGet(() -> resolveLegacyIntroMessage(tenantId, selectedLanguageOpt, languageKey));
 
-            log.info("Resolved intro message config for contactId {} with language key '{}'", introRequest.getContactId(), languageKey);
+            log.info("Resolved intro message config with language key '{}'", languageKey);
+            log.debug("Resolved intro message config for contactId {} with language key '{}'", introRequest.getContactId(), languageKey);
 
             return IntroResponse.builder()
                     .success(true)
                     .message(template.replace("{name}", name))
                     .build();
         } catch (Exception e) {
-            log.error("Error sending intro message for contactId {}: {}", introRequest.getContactId(), e.getMessage(), e);
+            log.error("Error sending intro message: {}", e.getMessage(), e);
+            log.debug("Error sending intro message for contactId {}: {}", introRequest.getContactId(), e.getMessage());
             return IntroResponse.builder()
                     .success(false)
                     .message("Something went wrong. Please try again.")
@@ -91,14 +93,16 @@ public class GlificMessageService {
                     .resolveScreenMessage(tenantId, "CLOSING_MESSAGE", languageKey)
                     .orElseGet(() -> resolveLegacyClosingMessage(tenantId, selectedLanguageOpt, languageKey));
 
-            log.info("Resolved closing message config for contactId {} with language key '{}'", closingRequest.getContactId(), languageKey);
+            log.info("Resolved closing message config with language key '{}'", languageKey);
+            log.debug("Resolved closing message config for contactId {} with language key '{}'", closingRequest.getContactId(), languageKey);
 
             return ClosingResponse.builder()
                     .success(true)
                     .message(template)
                     .build();
         } catch (Exception e) {
-            log.error("Error sending closing message for contactId {}: {}", closingRequest.getContactId(), e.getMessage(), e);
+            log.error("Error sending closing message: {}", e.getMessage(), e);
+            log.debug("Error sending closing message for contactId {}: {}", closingRequest.getContactId(), e.getMessage());
             return ClosingResponse.builder()
                     .success(false)
                     .message("Something went wrong. Please try again.")
