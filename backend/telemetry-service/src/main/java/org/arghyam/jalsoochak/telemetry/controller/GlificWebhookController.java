@@ -46,11 +46,12 @@ public class GlificWebhookController {
             CreateReadingResponse response = glificWebhookService.processImage(glificWebhookRequest);
             return ResponseEntity.ok(response);
         } catch (Exception e) {
+            String safeContactId = glificWebhookRequest != null ? glificWebhookRequest.getContactId() : null;
             log.error("Error processing webhook: {}", e.getMessage(), e);
-            log.debug("Error processing webhook for contactId {}: {}", glificWebhookRequest.getContactId(), e.getMessage());
+            log.debug("Error processing webhook for contactId {}: {}", safeContactId, e.getMessage());
 
             CreateReadingResponse errorResponse = CreateReadingResponse.builder()
-                    .correlationId(glificWebhookRequest.getContactId())
+                    .correlationId(safeContactId)
                     .meterReading(null)
                     .qualityStatus("REJECTED")
                     .qualityConfidence(null)
