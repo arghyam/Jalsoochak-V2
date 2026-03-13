@@ -594,6 +594,38 @@ public class SchemeRegularityRepository {
                 endDate);
     }
 
+    public List<DailyOutageReasonSchemeCount> getDailyOutageReasonSchemeCountByUser(
+            Integer userId, LocalDate startDate, LocalDate endDate) {
+        String sql = """
+                WITH user_schemes AS (
+                    SELECT DISTINCT usm.scheme_id
+                    FROM analytics_schema.dim_user_scheme_mapping_table usm
+                    WHERE usm.user_id = ?
+                )
+                SELECT
+                    f.date,
+                    f.outage_reason,
+                    COUNT(DISTINCT f.scheme_id)::int AS scheme_count
+                FROM analytics_schema.fact_water_quantity_table f
+                JOIN user_schemes us
+                    ON us.scheme_id = f.scheme_id
+                WHERE f.outage_reason IS NOT NULL
+                  AND f.date BETWEEN ? AND ?
+                GROUP BY f.date, f.outage_reason
+                ORDER BY f.date, f.outage_reason
+                """;
+
+        return jdbcTemplate.query(
+                sql,
+                (rs, rowNum) -> new DailyOutageReasonSchemeCount(
+                        rs.getObject("date", LocalDate.class),
+                        (Integer) rs.getObject("outage_reason"),
+                        rs.getInt("scheme_count")),
+                userId,
+                startDate,
+                endDate);
+    }
+
     public Integer getSchemeCountByUser(Integer userId) {
         String sql = """
                 SELECT COALESCE(COUNT(DISTINCT usm.scheme_id), 0)::int AS scheme_count
@@ -602,6 +634,69 @@ public class SchemeRegularityRepository {
                 """;
 
         return jdbcTemplate.queryForObject(sql, Integer.class, userId);
+    }
+
+    public SubmissionStatusCount getSubmissionStatusCountByUser(
+            Integer userId, LocalDate startDate, LocalDate endDate) {
+        String sql = """
+                SELECT
+                    COALESCE(
+                        COUNT(*) FILTER (
+                            WHERE m.extracted_reading IS NOT NULL
+                              AND m.extracted_reading = m.confirmed_reading
+                        ),
+                        0
+                    )::int AS compliant_submission_count,
+                    COALESCE(
+                        COUNT(*) FILTER (
+                            WHERE m.extracted_reading IS NOT NULL
+                              AND m.extracted_reading IS DISTINCT FROM m.confirmed_reading
+                        ),
+                        0
+                    )::int AS anomalous_submission_count
+                FROM analytics_schema.fact_meter_reading_table m
+                WHERE m.user_id = ?
+                  AND m.reading_date BETWEEN ? AND ?
+                """;
+
+        Map<String, Object> result = jdbcTemplate.queryForMap(sql, userId, startDate, endDate);
+        int compliantSubmissionCount =
+                result.get("compliant_submission_count") instanceof Number value ? value.intValue() : 0;
+        int anomalousSubmissionCount =
+                result.get("anomalous_submission_count") instanceof Number value ? value.intValue() : 0;
+        return new SubmissionStatusCount(compliantSubmissionCount, anomalousSubmissionCount);
+    }
+
+    public List<DailySubmissionSchemeCount> getDailySubmissionSchemeCountByUser(
+            Integer userId, LocalDate startDate, LocalDate endDate) {
+        String sql = """
+                WITH user_schemes AS (
+                    SELECT DISTINCT usm.scheme_id
+                    FROM analytics_schema.dim_user_scheme_mapping_table usm
+                    WHERE usm.user_id = ?
+                )
+                SELECT
+                    m.reading_date AS date,
+                    COUNT(DISTINCT m.scheme_id)::int AS submitted_scheme_count
+                FROM analytics_schema.fact_meter_reading_table m
+                JOIN user_schemes us
+                    ON us.scheme_id = m.scheme_id
+                WHERE m.user_id = ?
+                  AND m.extracted_reading IS NOT NULL
+                  AND m.reading_date BETWEEN ? AND ?
+                GROUP BY m.reading_date
+                ORDER BY m.reading_date
+                """;
+
+        return jdbcTemplate.query(
+                sql,
+                (rs, rowNum) -> new DailySubmissionSchemeCount(
+                        rs.getObject("date", LocalDate.class),
+                        rs.getInt("submitted_scheme_count")),
+                userId,
+                userId,
+                startDate,
+                endDate);
     }
 
     public List<ChildRegionRef> getChildRegionsByLgd(Integer lgdId) {
@@ -1469,6 +1564,20 @@ public class SchemeRegularityRepository {
     }
 
     public record SchemeStatusCount(Integer activeSchemeCount, Integer inactiveSchemeCount) {
+    }
+
+    public record SubmissionStatusCount(Integer compliantSubmissionCount, Integer anomalousSubmissionCount) {
+    }
+
+    public record DailyOutageReasonSchemeCount(
+            LocalDate date,
+            Integer outageReason,
+            Integer schemeCount) {
+    }
+
+    public record DailySubmissionSchemeCount(
+            LocalDate date,
+            Integer submittedSchemeCount) {
     }
 
     public record PeriodicWaterQuantityMetrics(

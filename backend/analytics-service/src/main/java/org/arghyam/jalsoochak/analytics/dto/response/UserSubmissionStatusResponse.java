@@ -7,26 +7,26 @@ import lombok.NoArgsConstructor;
 
 import java.time.LocalDate;
 import java.util.List;
-import java.util.Map;
 
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class UserOutageReasonSchemeCountResponse {
+public class UserSubmissionStatusResponse {
     private Integer userId;
     private LocalDate startDate;
     private LocalDate endDate;
     private Integer schemeCount;
-    private Map<String, Integer> outageReasonSchemeCount;
-    private List<DailyOutageReasonDistribution> dailyOutageReasonDistribution;
+    private Integer compliantSubmissionCount;
+    private Integer anomalousSubmissionCount;
+    private List<DailySubmissionSchemeDistribution> dailySubmissionSchemeDistribution;
 
     @Data
     @Builder
     @NoArgsConstructor
     @AllArgsConstructor
-    public static class DailyOutageReasonDistribution {
+    public static class DailySubmissionSchemeDistribution {
         private LocalDate date;
-        private Map<String, Integer> outageReasonSchemeCount;
+        private Integer submittedSchemeCount;
     }
 }

@@ -300,9 +300,12 @@ class SchemeRegularityRepositoryIntegrationTest {
 
         List<SchemeRegularityRepository.OutageReasonSchemeCount> userCounts =
                 repository.getOutageReasonSchemeCountByUser(11, D1, D10);
+        List<SchemeRegularityRepository.DailyOutageReasonSchemeCount> dailyUserCounts =
+                repository.getDailyOutageReasonSchemeCountByUser(11, D1, D10);
         Integer schemeCount = repository.getSchemeCountByUser(11);
 
         assertThat(userCounts).hasSize(2);
+        assertThat(dailyUserCounts).hasSize(3);
         assertThat(schemeCount).isEqualTo(3);
         assertThat(userCounts)
                 .anySatisfy(r -> {
@@ -312,6 +315,60 @@ class SchemeRegularityRepositoryIntegrationTest {
                 .anySatisfy(r -> {
                     assertThat(r.outageReason()).isEqualTo(2);
                     assertThat(r.schemeCount()).isEqualTo(2);
+                });
+        assertThat(dailyUserCounts)
+                .anySatisfy(r -> {
+                    assertThat(r.date()).isEqualTo(D1);
+                    assertThat(r.outageReason()).isEqualTo(1);
+                    assertThat(r.schemeCount()).isEqualTo(1);
+                })
+                .anySatisfy(r -> {
+                    assertThat(r.date()).isEqualTo(D1);
+                    assertThat(r.outageReason()).isEqualTo(2);
+                    assertThat(r.schemeCount()).isEqualTo(1);
+                })
+                .anySatisfy(r -> {
+                    assertThat(r.date()).isEqualTo(D8);
+                    assertThat(r.outageReason()).isEqualTo(2);
+                    assertThat(r.schemeCount()).isEqualTo(2);
+                });
+    }
+
+    @Test
+    void submissionStatusCountByUser_returnsCompliantAndAnomalousCounts() {
+        jdbcTemplate.update("""
+                INSERT INTO analytics_schema.fact_meter_reading_table
+                (tenant_id, scheme_id, user_id, extracted_reading, confirmed_reading, confidence, image_url, reading_at, channel,
+                 reading_date, created_at, submission_status, reading_type)
+                VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), ?, ?, NOW(), ?, ?)
+                """, 1, 1, 11, 9, 10, 90, "x", 1, D2, 1, 0);
+        jdbcTemplate.update("""
+                INSERT INTO analytics_schema.fact_meter_reading_table
+                (tenant_id, scheme_id, user_id, extracted_reading, confirmed_reading, confidence, image_url, reading_at, channel,
+                 reading_date, created_at, submission_status, reading_type)
+                VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), ?, ?, NOW(), ?, ?)
+                """, 1, 2, 11, null, 7, 90, "x", 1, D3, 1, 0);
+
+        SchemeRegularityRepository.SubmissionStatusCount statusCount =
+                repository.getSubmissionStatusCountByUser(11, D1, D3);
+        List<SchemeRegularityRepository.DailySubmissionSchemeCount> dailyCounts =
+                repository.getDailySubmissionSchemeCountByUser(11, D1, D3);
+
+        assertThat(statusCount.compliantSubmissionCount()).isEqualTo(3);
+        assertThat(statusCount.anomalousSubmissionCount()).isEqualTo(1);
+        assertThat(dailyCounts).hasSize(3);
+        assertThat(dailyCounts)
+                .anySatisfy(r -> {
+                    assertThat(r.date()).isEqualTo(D1);
+                    assertThat(r.submittedSchemeCount()).isEqualTo(1);
+                })
+                .anySatisfy(r -> {
+                    assertThat(r.date()).isEqualTo(D2);
+                    assertThat(r.submittedSchemeCount()).isEqualTo(1);
+                })
+                .anySatisfy(r -> {
+                    assertThat(r.date()).isEqualTo(D3);
+                    assertThat(r.submittedSchemeCount()).isEqualTo(1);
                 });
     }
 

@@ -8,6 +8,7 @@ import org.arghyam.jalsoochak.analytics.dto.response.ReadingSubmissionRateRespon
 import org.arghyam.jalsoochak.analytics.dto.response.RegionWiseWaterQuantityResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.TenantDetailsResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.UserOutageReasonSchemeCountResponse;
+import org.arghyam.jalsoochak.analytics.dto.response.UserSubmissionStatusResponse;
 import org.arghyam.jalsoochak.analytics.enums.PeriodScale;
 import org.arghyam.jalsoochak.analytics.exception.GlobalExceptionHandler;
 import org.arghyam.jalsoochak.analytics.repository.DimSchemeRepository;
@@ -361,6 +362,20 @@ class AnalyticsControllerInputCombinationTest {
                 .andExpect(status().isOk());
 
         verify(schemeRegularityService, times(1)).getOutageReasonSchemeCountByUser(11, START, END);
+    }
+
+    @Test
+    void getSubmissionStatusByUser_validRequest_routesToUserService() throws Exception {
+        when(schemeRegularityService.getSubmissionStatusByUser(11, START, END))
+                .thenReturn(userSubmissionStatusResponse());
+
+        mockMvc.perform(get(BASE + "/submission-status/user")
+                        .param("user_id", "11")
+                        .param("start_date", START.toString())
+                        .param("end_date", END.toString()))
+                .andExpect(status().isOk());
+
+        verify(schemeRegularityService, times(1)).getSubmissionStatusByUser(11, START, END);
     }
 
     @ParameterizedTest
@@ -754,6 +769,29 @@ class AnalyticsControllerInputCombinationTest {
                 .endDate(END)
                 .schemeCount(2)
                 .outageReasonSchemeCount(Map.of("draught", 1))
+                .dailyOutageReasonDistribution(List.of(
+                        UserOutageReasonSchemeCountResponse.DailyOutageReasonDistribution.builder()
+                                .date(START)
+                                .outageReasonSchemeCount(Map.of("draught", 1, "no_electricity", 0, "motor_burnt", 0))
+                                .build()
+                ))
+                .build();
+    }
+
+    private static UserSubmissionStatusResponse userSubmissionStatusResponse() {
+        return UserSubmissionStatusResponse.builder()
+                .userId(11)
+                .startDate(START)
+                .endDate(END)
+                .schemeCount(2)
+                .compliantSubmissionCount(4)
+                .anomalousSubmissionCount(1)
+                .dailySubmissionSchemeDistribution(List.of(
+                        UserSubmissionStatusResponse.DailySubmissionSchemeDistribution.builder()
+                                .date(START)
+                                .submittedSchemeCount(1)
+                                .build()
+                ))
                 .build();
     }
 

@@ -13,6 +13,7 @@ import org.arghyam.jalsoochak.analytics.dto.response.RegionWiseWaterQuantityResp
 import org.arghyam.jalsoochak.analytics.dto.response.ReadingSubmissionRateResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.TenantDetailsResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.UserOutageReasonSchemeCountResponse;
+import org.arghyam.jalsoochak.analytics.dto.response.UserSubmissionStatusResponse;
 import org.arghyam.jalsoochak.analytics.enums.PeriodScale;
 import org.arghyam.jalsoochak.analytics.enums.RegularityScope;
 import org.arghyam.jalsoochak.analytics.enums.WaterSupplyScope;
@@ -212,6 +213,16 @@ public class AnalyticsController {
             @RequestParam(name = "end_date") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
         return ResponseEntity.ok(
                 schemeRegularityService.getOutageReasonSchemeCountByUser(userId, startDate, endDate));
+    }
+
+    @GetMapping("/submission-status/user")
+    @Operation(summary = "Get submission status counts for a user")
+    public ResponseEntity<UserSubmissionStatusResponse> getSubmissionStatusByUser(
+            @RequestParam(name = "user_id") Integer userId,
+            @RequestParam(name = "start_date") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam(name = "end_date") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
+        return ResponseEntity.ok(
+                schemeRegularityService.getSubmissionStatusByUser(userId, startDate, endDate));
     }
 
     @GetMapping("/schemes/status-count")

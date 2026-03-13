@@ -7,6 +7,7 @@ import org.arghyam.jalsoochak.analytics.dto.response.PeriodicWaterQuantityRespon
 import org.arghyam.jalsoochak.analytics.dto.response.RegionWiseWaterQuantityResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.ReadingSubmissionRateResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.UserOutageReasonSchemeCountResponse;
+import org.arghyam.jalsoochak.analytics.dto.response.UserSubmissionStatusResponse;
 import org.arghyam.jalsoochak.analytics.enums.OutageReason;
 import org.arghyam.jalsoochak.analytics.enums.PeriodScale;
 import org.arghyam.jalsoochak.analytics.enums.RegularityScope;
@@ -1013,7 +1014,25 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
 
         List<SchemeRegularityRepository.OutageReasonSchemeCount> rows =
                 schemeRegularityRepository.getOutageReasonSchemeCountByUser(userId, startDate, endDate);
+        List<SchemeRegularityRepository.DailyOutageReasonSchemeCount> dailyRows =
+                schemeRegularityRepository.getDailyOutageReasonSchemeCountByUser(userId, startDate, endDate);
         Integer schemeCount = schemeRegularityRepository.getSchemeCountByUser(userId);
+
+        Map<LocalDate, Map<String, Integer>> dailyReasonCountMap = new LinkedHashMap<>();
+        LocalDate currentDate = startDate;
+        while (!currentDate.isAfter(endDate)) {
+            dailyReasonCountMap.put(currentDate, initReasonCountMap());
+            currentDate = currentDate.plusDays(1);
+        }
+        for (SchemeRegularityRepository.DailyOutageReasonSchemeCount row : dailyRows) {
+            Map<String, Integer> reasonCount = dailyReasonCountMap.get(row.date());
+            if (reasonCount == null) {
+                continue;
+            }
+            reasonCount.put(
+                    OutageReason.getKeyForCode(row.outageReason()),
+                    row.schemeCount() == null ? 0 : row.schemeCount());
+        }
 
         return UserOutageReasonSchemeCountResponse.builder()
                 .userId(userId)
@@ -1021,6 +1040,60 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
                 .endDate(endDate)
                 .schemeCount(schemeCount == null ? 0 : schemeCount)
                 .outageReasonSchemeCount(buildReasonCountMap(rows))
+                .dailyOutageReasonDistribution(dailyReasonCountMap.entrySet().stream()
+                        .map(entry -> UserOutageReasonSchemeCountResponse.DailyOutageReasonDistribution.builder()
+                                .date(entry.getKey())
+                                .outageReasonSchemeCount(entry.getValue())
+                                .build())
+                        .toList())
+                .build();
+    }
+
+    @Override
+    public UserSubmissionStatusResponse getSubmissionStatusByUser(
+            Integer userId, LocalDate startDate, LocalDate endDate) {
+        validateUserInput(userId);
+        validateDateRange(startDate, endDate);
+
+        Integer schemeCount = schemeRegularityRepository.getSchemeCountByUser(userId);
+        SchemeRegularityRepository.SubmissionStatusCount submissionStatusCount =
+                schemeRegularityRepository.getSubmissionStatusCountByUser(userId, startDate, endDate);
+        List<SchemeRegularityRepository.DailySubmissionSchemeCount> dailyRows =
+                schemeRegularityRepository.getDailySubmissionSchemeCountByUser(userId, startDate, endDate);
+
+        int totalSchemeCount = schemeCount == null ? 0 : schemeCount;
+        Map<LocalDate, Integer> dailySubmittedSchemeCountMap = new LinkedHashMap<>();
+        LocalDate currentDate = startDate;
+        while (!currentDate.isAfter(endDate)) {
+            dailySubmittedSchemeCountMap.put(currentDate, 0);
+            currentDate = currentDate.plusDays(1);
+        }
+        for (SchemeRegularityRepository.DailySubmissionSchemeCount row : dailyRows) {
+            if (!dailySubmittedSchemeCountMap.containsKey(row.date())) {
+                continue;
+            }
+            dailySubmittedSchemeCountMap.put(row.date(), row.submittedSchemeCount() == null ? 0 : row.submittedSchemeCount());
+        }
+
+        return UserSubmissionStatusResponse.builder()
+                .userId(userId)
+                .startDate(startDate)
+                .endDate(endDate)
+                .schemeCount(totalSchemeCount)
+                .compliantSubmissionCount(
+                        submissionStatusCount.compliantSubmissionCount() == null
+                                ? 0
+                                : submissionStatusCount.compliantSubmissionCount())
+                .anomalousSubmissionCount(
+                        submissionStatusCount.anomalousSubmissionCount() == null
+                                ? 0
+                                : submissionStatusCount.anomalousSubmissionCount())
+                .dailySubmissionSchemeDistribution(dailySubmittedSchemeCountMap.entrySet().stream()
+                        .map(entry -> UserSubmissionStatusResponse.DailySubmissionSchemeDistribution.builder()
+                                .date(entry.getKey())
+                                .submittedSchemeCount(entry.getValue())
+                                .build())
+                        .toList())
                 .build();
     }
 

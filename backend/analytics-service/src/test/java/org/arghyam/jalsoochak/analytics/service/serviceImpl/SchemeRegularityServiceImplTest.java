@@ -7,6 +7,7 @@ import org.arghyam.jalsoochak.analytics.dto.response.OutageReasonSchemeCountResp
 import org.arghyam.jalsoochak.analytics.dto.response.PeriodicWaterQuantityResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.ReadingSubmissionRateResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.UserOutageReasonSchemeCountResponse;
+import org.arghyam.jalsoochak.analytics.dto.response.UserSubmissionStatusResponse;
 import org.arghyam.jalsoochak.analytics.entity.DimTenant;
 import org.arghyam.jalsoochak.analytics.enums.PeriodScale;
 import org.arghyam.jalsoochak.analytics.repository.DimTenantRepository;
@@ -520,6 +521,11 @@ class SchemeRegularityServiceImplTest {
     void getOutageReasonSchemeCountByUser_returnsReasonCountsWithMissingKeysAsZero() {
         when(schemeRegularityRepository.getOutageReasonSchemeCountByUser(11, START, END))
                 .thenReturn(List.of(new SchemeRegularityRepository.OutageReasonSchemeCount(3, 2)));
+        when(schemeRegularityRepository.getDailyOutageReasonSchemeCountByUser(11, START, END))
+                .thenReturn(List.of(
+                        new SchemeRegularityRepository.DailyOutageReasonSchemeCount(START, 2, 1),
+                        new SchemeRegularityRepository.DailyOutageReasonSchemeCount(START.plusDays(1), 3, 2)
+                ));
         when(schemeRegularityRepository.getSchemeCountByUser(11)).thenReturn(2);
 
         UserOutageReasonSchemeCountResponse response =
@@ -531,6 +537,38 @@ class SchemeRegularityServiceImplTest {
                 .containsEntry("draught", 0)
                 .containsEntry("no_electricity", 0)
                 .containsEntry("motor_burnt", 2);
+        assertThat(response.getDailyOutageReasonDistribution()).hasSize(3);
+        assertThat(response.getDailyOutageReasonDistribution().get(0).getOutageReasonSchemeCount())
+                .containsEntry("no_electricity", 1);
+        assertThat(response.getDailyOutageReasonDistribution().get(1).getOutageReasonSchemeCount())
+                .containsEntry("motor_burnt", 2);
+        assertThat(response.getDailyOutageReasonDistribution().get(2).getOutageReasonSchemeCount())
+                .containsEntry("draught", 0)
+                .containsEntry("no_electricity", 0)
+                .containsEntry("motor_burnt", 0);
+    }
+
+    @Test
+    void getSubmissionStatusByUser_returnsCompliantAndAnomalousCounts() {
+        when(schemeRegularityRepository.getSchemeCountByUser(11)).thenReturn(2);
+        when(schemeRegularityRepository.getSubmissionStatusCountByUser(11, START, END))
+                .thenReturn(new SchemeRegularityRepository.SubmissionStatusCount(4, 1));
+        when(schemeRegularityRepository.getDailySubmissionSchemeCountByUser(11, START, END))
+                .thenReturn(List.of(
+                        new SchemeRegularityRepository.DailySubmissionSchemeCount(START, 1),
+                        new SchemeRegularityRepository.DailySubmissionSchemeCount(START.plusDays(2), 2)
+                ));
+
+        UserSubmissionStatusResponse response = service.getSubmissionStatusByUser(11, START, END);
+
+        assertThat(response.getUserId()).isEqualTo(11);
+        assertThat(response.getSchemeCount()).isEqualTo(2);
+        assertThat(response.getCompliantSubmissionCount()).isEqualTo(4);
+        assertThat(response.getAnomalousSubmissionCount()).isEqualTo(1);
+        assertThat(response.getDailySubmissionSchemeDistribution()).hasSize(3);
+        assertThat(response.getDailySubmissionSchemeDistribution().get(0).getSubmittedSchemeCount()).isEqualTo(1);
+        assertThat(response.getDailySubmissionSchemeDistribution().get(1).getSubmittedSchemeCount()).isEqualTo(0);
+        assertThat(response.getDailySubmissionSchemeDistribution().get(2).getSubmittedSchemeCount()).isEqualTo(2);
     }
 
     @Test
