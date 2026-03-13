@@ -6,5 +6,6 @@ public record TenantUserRecord(
         String phoneNumber,
         String email,
         Long userTypeId,
-        String cName
+        String cName,
+        String title
 ) {}

@@ -1,89 +1,120 @@
 package org.arghyam.jalsoochak.user.exceptions;
 
+import org.slf4j.MDC;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingRequestHeaderException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.server.ResponseStatusException;
-import lombok.extern.slf4j.Slf4j;
-import org.slf4j.MDC;
 
 import java.time.OffsetDateTime;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 @RestControllerAdvice
-@Slf4j
 public class GlobalExceptionHandler {
-    private static final String REQUEST_ID_KEY = "requestId";
 
-    private void putRequestIdIfPresent(Map<String, Object> body) {
-        String requestId = MDC.get(REQUEST_ID_KEY);
-        if (requestId != null && !requestId.isBlank()) {
-            body.put("requestId", requestId);
-        }
+    @ExceptionHandler(BadRequestException.class)
+    public ResponseEntity<Map<String, Object>> handleBadRequest(BadRequestException ex) {
+        return build(HttpStatus.BAD_REQUEST, ex.getMessage(), ex.getErrors());
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<Map<String, Object>> handleValidation(MethodArgumentNotValidException ex) {
-        Map<String, String> errors = new LinkedHashMap<>();
-        for (FieldError fieldError : ex.getBindingResult().getFieldErrors()) {
-            errors.put(fieldError.getField(), fieldError.getDefaultMessage());
+        List<Map<String, Object>> errors = new ArrayList<>();
+        for (FieldError fe : ex.getBindingResult().getFieldErrors()) {
+            Map<String, Object> e = new LinkedHashMap<>();
+            e.put("field", fe.getField());
+            e.put("message", fe.getDefaultMessage());
+            errors.add(e);
         }
+        String message = "Validation failed";
+        return build(HttpStatus.BAD_REQUEST, message, errors.isEmpty() ? null : errors);
+    }
 
-        Map<String, Object> body = new LinkedHashMap<>();
-        body.put("timestamp", OffsetDateTime.now().toString());
-        body.put("status", HttpStatus.BAD_REQUEST.value());
-        body.put("error", "Validation Failed");
-        body.put("message", "Request validation failed");
-        body.put("errors", errors);
-        putRequestIdIfPresent(body);
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<Map<String, Object>> handleMalformedJson(HttpMessageNotReadableException ex) {
+        return build(HttpStatus.BAD_REQUEST, "Malformed JSON request", null);
+    }
 
-        return ResponseEntity.badRequest().body(body);
+    @ExceptionHandler(MissingRequestHeaderException.class)
+    public ResponseEntity<Map<String, Object>> handleMissingHeader(MissingRequestHeaderException ex) {
+        String message = "X-Tenant-Code".equals(ex.getHeaderName())
+                ? "Tenant code is required"
+                : ex.getMessage();
+        return build(HttpStatus.BAD_REQUEST, message, null);
+    }
+
+    @ExceptionHandler(InvalidCredentialsException.class)
+    public ResponseEntity<Map<String, Object>> handleInvalidCredentials(InvalidCredentialsException ex) {
+        return build(HttpStatus.UNAUTHORIZED, ex.getMessage(), null);
+    }
+
+    @ExceptionHandler(AccountDeactivatedException.class)
+    public ResponseEntity<Map<String, Object>> handleDeactivated(AccountDeactivatedException ex) {
+        return build(HttpStatus.FORBIDDEN, ex.getMessage(), null);
+    }
+
+    @ExceptionHandler(ForbiddenAccessException.class)
+    public ResponseEntity<Map<String, Object>> handleForbidden(ForbiddenAccessException ex) {
+        return build(HttpStatus.FORBIDDEN, ex.getMessage(), null);
+    }
+
+    @ExceptionHandler(ResourceNotFoundException.class)
+    public ResponseEntity<Map<String, Object>> handleNotFound(ResourceNotFoundException ex) {
+        return build(HttpStatus.NOT_FOUND, ex.getMessage(), null);
+    }
+
+    @ExceptionHandler(UserAlreadyExistsException.class)
+    public ResponseEntity<Map<String, Object>> handleConflict(UserAlreadyExistsException ex) {
+        return build(HttpStatus.CONFLICT, ex.getMessage(), null);
+    }
+
+    @ExceptionHandler(InsufficientActiveUsersException.class)
+    public ResponseEntity<Map<String, Object>> handleInsufficientUsers(InsufficientActiveUsersException ex) {
+        return build(HttpStatus.CONFLICT, ex.getMessage(), null);
+    }
+
+    @ExceptionHandler(TokenAlreadyUsedException.class)
+    public ResponseEntity<Map<String, Object>> handleTokenUsed(TokenAlreadyUsedException ex) {
+        return build(HttpStatus.BAD_REQUEST, ex.getMessage(), null);
     }
 
     @ExceptionHandler(ResponseStatusException.class)
     public ResponseEntity<Map<String, Object>> handleResponseStatus(ResponseStatusException ex) {
-        HttpStatusCode statusCode = ex.getStatusCode();
-        HttpStatus resolvedStatus = HttpStatus.resolve(statusCode.value());
-        Map<String, Object> body = new LinkedHashMap<>();
-        body.put("timestamp", OffsetDateTime.now().toString());
-        body.put("status", statusCode.value());
-        body.put("error", resolvedStatus != null ? resolvedStatus.getReasonPhrase() : "HTTP " + statusCode.value());
-        body.put("message", ex.getReason() != null ? ex.getReason() : "Request failed");
-        putRequestIdIfPresent(body);
-
-        return ResponseEntity.status(statusCode).body(body);
-    }
-
-    @ExceptionHandler(BadRequestException.class)
-    public ResponseEntity<Map<String, Object>> handleBadRequest(BadRequestException ex) {
-        Map<String, Object> body = new LinkedHashMap<>();
-        body.put("timestamp", OffsetDateTime.now().toString());
-        body.put("status", HttpStatus.BAD_REQUEST.value());
-        body.put("error", HttpStatus.BAD_REQUEST.getReasonPhrase());
-        body.put("message", ex.getMessage());
-        if (ex.getErrors() != null) {
-            body.put("errors", ex.getErrors());
-        }
-        putRequestIdIfPresent(body);
-
-        return ResponseEntity.badRequest().body(body);
+        HttpStatus status = HttpStatus.valueOf(ex.getStatusCode().value());
+        String message = ex.getReason() != null && !ex.getReason().isBlank()
+                ? ex.getReason()
+                : ex.getMessage();
+        return build(status, message, null);
     }
 
     @ExceptionHandler(Exception.class)
     public ResponseEntity<Map<String, Object>> handleUnexpected(Exception ex) {
-        log.error("Unhandled exception", ex);
+        return build(HttpStatus.INTERNAL_SERVER_ERROR, "Internal server error", null);
+    }
+
+    private ResponseEntity<Map<String, Object>> build(HttpStatus status, String message, Object errors) {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("timestamp", OffsetDateTime.now().toString());
-        body.put("status", HttpStatus.INTERNAL_SERVER_ERROR.value());
-        body.put("error", HttpStatus.INTERNAL_SERVER_ERROR.getReasonPhrase());
-        body.put("message", "Unexpected server error");
-        putRequestIdIfPresent(body);
+        body.put("status", status.value());
+        body.put("error", status.getReasonPhrase());
+        body.put("message", message);
 
-        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(body);
+        String requestId = MDC.get("requestId");
+        if (requestId != null && !requestId.isBlank()) {
+            body.put("requestId", requestId);
+        }
+        if (errors != null) {
+            body.put("errors", errors);
+        }
+
+        return ResponseEntity.status(status).body(body);
     }
 }

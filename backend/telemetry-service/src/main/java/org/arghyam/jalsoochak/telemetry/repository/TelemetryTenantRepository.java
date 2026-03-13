@@ -576,6 +576,32 @@ public class TelemetryTenantRepository {
         return rows.stream().findFirst();
     }
 
+    public Optional<TelemetryFlowReadingDetails> findLatestFlowReadingForDate(String schemaName,
+                                                                              Long schemeId,
+                                                                              Long operatorId,
+                                                                              LocalDate readingDate) {
+        validateSchemaName(schemaName);
+        String sql = String.format("""
+                SELECT id, correlation_id, created_by, extracted_reading, confirmed_reading
+                FROM %s.flow_reading_table
+                WHERE scheme_id = ?
+                  AND created_by = ?
+                  AND reading_date = ?
+                  AND deleted_at IS NULL
+                ORDER BY reading_at DESC, id DESC
+                LIMIT 1
+                """, schemaName);
+        List<TelemetryFlowReadingDetails> rows = jdbcTemplate.query(sql, (rs, n) ->
+                new TelemetryFlowReadingDetails(
+                        toLong(rs.getObject("id")),
+                        rs.getString("correlation_id"),
+                        toLong(rs.getObject("created_by")),
+                        rs.getBigDecimal("extracted_reading"),
+                        rs.getBigDecimal("confirmed_reading")
+                ), schemeId, operatorId, readingDate);
+        return rows.stream().findFirst();
+    }
+
     public Optional<TelemetryReadingRecord> findLatestCompletedReadingForToday(String schemaName,
                                                                                 Long schemeId,
                                                                                 Long operatorId) {
@@ -647,6 +673,91 @@ public class TelemetryTenantRepository {
                 WHERE id = ?
                 """, schemaName);
         jdbcTemplate.update(sql, confirmedReading, updatedBy, readingId);
+    }
+
+    public void updateReadingLocation(String schemaName,
+                                      Long readingId,
+                                      BigDecimal latitude,
+                                      BigDecimal longitude,
+                                      Long updatedBy) {
+        validateSchemaName(schemaName);
+        if (!columnExists(schemaName, "flow_reading_table", "latitude")) {
+            throw new IllegalStateException("Missing required column " + schemaName + ".flow_reading_table.latitude");
+        }
+        if (!columnExists(schemaName, "flow_reading_table", "longitude")) {
+            throw new IllegalStateException("Missing required column " + schemaName + ".flow_reading_table.longitude");
+        }
+
+        String sql = String.format("""
+                UPDATE %s.flow_reading_table
+                SET latitude = ?,
+                    longitude = ?,
+                    updated_by = ?,
+                    updated_at = NOW()
+                WHERE id = ?
+                """, schemaName);
+        jdbcTemplate.update(sql, latitude, longitude, updatedBy, readingId);
+    }
+
+    public Optional<Long> findLatestPlaceholderFlowReadingIdForDate(String schemaName,
+                                                                    Long schemeId,
+                                                                    Long operatorId,
+                                                                    LocalDate readingDate) {
+        validateSchemaName(schemaName);
+        String sql = String.format("""
+                SELECT id
+                FROM %s.flow_reading_table
+                WHERE scheme_id = ?
+                  AND created_by = ?
+                  AND reading_date = ?
+                  AND deleted_at IS NULL
+                  AND COALESCE(extracted_reading, 0) = 0
+                  AND COALESCE(confirmed_reading, 0) = 0
+                  AND meter_change_reason IS NULL
+                  AND issue_report_reason IS NULL
+                  AND COALESCE(image_url, '') = ''
+                ORDER BY reading_at DESC, id DESC
+                LIMIT 1
+                """, schemaName);
+        List<Long> rows = jdbcTemplate.query(sql, (rs, n) -> toLong(rs.getObject("id")), schemeId, operatorId, readingDate);
+        return rows.stream().findFirst();
+    }
+
+    public void updateFlowReadingFromIngestion(String schemaName,
+                                               Long readingId,
+                                               LocalDateTime readingAt,
+                                               BigDecimal extractedReading,
+                                               BigDecimal confirmedReading,
+                                               String correlationId,
+                                               String imageUrl,
+                                               String meterChangeReason,
+                                               Long updatedBy) {
+        validateSchemaName(schemaName);
+        String sql = String.format("""
+                UPDATE %s.flow_reading_table
+                SET reading_at = ?,
+                    reading_date = ?,
+                    extracted_reading = ?,
+                    confirmed_reading = ?,
+                    correlation_id = ?,
+                    image_url = ?,
+                    meter_change_reason = ?,
+                    updated_by = ?,
+                    updated_at = NOW()
+                WHERE id = ?
+                """, schemaName);
+        jdbcTemplate.update(
+                sql,
+                readingAt,
+                LocalDate.from(readingAt),
+                extractedReading,
+                confirmedReading,
+                correlationId,
+                imageUrl != null ? imageUrl : "",
+                meterChangeReason,
+                updatedBy,
+                readingId
+        );
     }
 
     private Optional<TelemetryOperator> findOperatorByPhone(String schemaName, String rawPhoneNumber, String normalizedPhone) {

@@ -1,5 +1,5 @@
 server:
-  port: 8085
+  port: 8088
 
 spring:
   config:
@@ -37,6 +37,12 @@ minio:
 glific:
   api-token: ${GLIFIC_API_TOKEN:}
   media-base-url: ${GLIFIC_MEDIA_BASE_URL:https://api.glific.org/v1/media}
+  sync:
+    enabled: ${GLIFIC_SYNC_ENABLED:false}
+    base-url: ${GLIFIC_SYNC_BASE_URL:https://api.arghyam.glific.com}
+    user:
+      phone: ${GLIFIC_SYNC_USER_PHONE:}
+      password: ${GLIFIC_SYNC_USER_PASSWORD:}
 
 flowvision:
   url: ${FLOWVISION_URL:https://jalsoochak.beehyv.com/flowvision/v1/extract-reading}

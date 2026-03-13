@@ -1,6 +1,8 @@
 package org.arghyam.jalsoochak.message.channel;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -52,6 +54,22 @@ public class GlificWhatsAppService {
               }
             }""";
 
+    private static final String START_CONTACT_FLOW_MUTATION = """
+            mutation startContactFlow($flowId: ID!, $contactId: ID!, $defaultResults: Json!) {
+              startContactFlow(flowId: $flowId, contactId: $contactId, defaultResults: $defaultResults) {
+                success
+                errors { key message }
+              }
+            }""";
+
+    private static final String UPDATE_CONTACT_MUTATION = """
+            mutation updateContact($id: ID!, $input: ContactInput!) {
+              updateContact(id: $id, input: $input) {
+                contact { id language { id } }
+                errors { key message }
+              }
+            }""";
+
     private static final String CREATE_AND_SEND_MESSAGE_MUTATION = """
     mutation createAndSendMessage($input: MessageInput!) {
       createAndSendMessage(input: $input) {
@@ -69,6 +87,7 @@ public class GlificWhatsAppService {
     """;
 
     private final GlificGraphQLClient client;
+    private final ObjectMapper objectMapper;
 
     @Value("${glific.template.nudge-id:}")
     private String nudgeTemplateId;
@@ -76,11 +95,19 @@ public class GlificWhatsAppService {
     @Value("${glific.template.escalation-id:}")
     private String escalationTemplateId;
 
+    @Value("${glific.flow.nudge-id:}")
+    private String nudgeFlowId;
+
+    @Value("${glific.flow.welcome-id:}")
+    private String welcomeFlowId;
+
     @PostConstruct
     void validateTemplates() {
-        if (nudgeTemplateId == null || nudgeTemplateId.isBlank()
-                || escalationTemplateId == null || escalationTemplateId.isBlank()) {
-            throw new IllegalStateException("glific.template.nudge-id and glific.template.escalation-id must be configured");
+        if (nudgeFlowId == null || nudgeFlowId.isBlank()
+                || escalationTemplateId == null || escalationTemplateId.isBlank()
+                || welcomeFlowId == null || welcomeFlowId.isBlank()) {
+            throw new IllegalStateException(
+                    "glific.flow.nudge-id, glific.template.escalation-id and glific.flow.welcome-id must be configured");
         }
     }
 
@@ -169,6 +196,87 @@ public class GlificWhatsAppService {
         checkErrors(response, "createAndSendMessage");
 
         log.debug("[Glific] Escalation HSM sent to contactId={}", contactId);
+    }
+
+    /**
+     * Initiates a Glific flow for the nudge contact via the {@code startContactFlow} mutation.
+     *
+     * <p>Instead of sending a plain HSM message, this triggers the interactive nudge flow
+     * configured in Glific (identified by {@code glific.flow.nudge-id}). The flow sends
+     * an HSM template with clickable buttons and continues the conversation based on
+     * the operator's button response.</p>
+     *
+     * <p>Operator name and date are passed as {@code defaultResults} using template variable
+     * keys {@code "1"} and {@code "2"} respectively, matching the HSM template parameter order.</p>
+     *
+     * <p>{@code glific.flow.nudge-id} is a required configuration — startup fails fast
+     * if it is absent (see {@code @PostConstruct} validation).</p>
+     *
+     * @param contactId    Glific contact ID obtained from {@link #optIn}
+     * @param operatorName operator name; mapped to HSM template variable {@code {{1}}}
+     * @param date         today's date string; mapped to HSM template variable {@code {{2}}}
+     * @throws IllegalStateException if {@code glific.flow.nudge-id} is blank
+     * @throws RuntimeException      if Glific returns GraphQL errors or {@code success=false}
+     */
+    public void startNudgeFlow(Long contactId, String operatorName, String date) {
+        if (nudgeFlowId == null || nudgeFlowId.isBlank()) {
+            throw new IllegalStateException("glific.flow.nudge-id is not configured");
+        }
+
+        String defaultResults;
+        try {
+            defaultResults = objectMapper.writeValueAsString(
+                    Map.of("1", operatorName, "2", date));
+        } catch (JsonProcessingException e) {
+            throw new RuntimeException("Failed to serialize flow defaultResults", e);
+        }
+
+        JsonNode response = client.execute(START_CONTACT_FLOW_MUTATION, Map.of(
+                "flowId", nudgeFlowId,
+                "contactId", contactId,
+                "defaultResults", defaultResults));
+
+        checkErrors(response, "startContactFlow");
+        JsonNode flowNode = response.path("startContactFlow");
+
+        boolean success = flowNode.path("success").asBoolean(false);
+        if (!success) {
+            throw new RuntimeException("Glific startContactFlow returned success=false for contactId=" + contactId);
+        }
+        log.debug("[Glific] Nudge flow started for contactId={}", contactId);
+    }
+
+    /**
+     * Initiates the Glific welcome flow for a newly onboarded operator.
+     *
+     * @param contactId Glific contact ID obtained from {@link #optIn}
+     * @throws RuntimeException if Glific returns GraphQL errors or {@code success=false}
+     */
+    public void startWelcomeFlow(Long contactId) {
+        JsonNode response = client.execute(START_CONTACT_FLOW_MUTATION, Map.of(
+                "flowId", welcomeFlowId,
+                "contactId", contactId,
+                "defaultResults", "{}"));
+        checkErrors(response, "startContactFlow");
+        boolean success = response.path("startContactFlow").path("success").asBoolean(false);
+        if (!success) {
+            throw new RuntimeException("Glific startContactFlow returned success=false for contactId=" + contactId);
+        }
+        log.debug("[Glific] Welcome flow started for contactId={}", contactId);
+    }
+
+    /**
+     * Updates the language of a Glific contact.
+     *
+     * @param contactId        Glific contact ID
+     * @param glificLanguageId Glific-side language ID
+     */
+    public void updateContactLanguage(Long contactId, int glificLanguageId) {
+        JsonNode response = client.execute(UPDATE_CONTACT_MUTATION, Map.of(
+                "id", contactId,
+                "input", Map.of("language_id", glificLanguageId)));
+        checkErrors(response, "updateContact");
+        log.debug("[Glific] Contact language updated contactId={} languageId={}", contactId, glificLanguageId);
     }
 
     private void checkErrors(JsonNode response, String mutationKey) {

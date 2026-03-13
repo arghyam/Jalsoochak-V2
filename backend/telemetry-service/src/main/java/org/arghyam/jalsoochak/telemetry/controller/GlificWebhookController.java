@@ -8,6 +8,7 @@ import org.arghyam.jalsoochak.telemetry.dto.requests.ClosingRequest;
 import org.arghyam.jalsoochak.telemetry.dto.requests.GlificWebhookRequest;
 import org.arghyam.jalsoochak.telemetry.dto.requests.IntroRequest;
 import org.arghyam.jalsoochak.telemetry.dto.requests.IssueReportRequest;
+import org.arghyam.jalsoochak.telemetry.dto.requests.LocationReadingRequest;
 import org.arghyam.jalsoochak.telemetry.dto.requests.ManualReadingRequest;
 import org.arghyam.jalsoochak.telemetry.dto.requests.MeterChangeRequest;
 import org.arghyam.jalsoochak.telemetry.dto.requests.SelectedChannelRequest;
@@ -45,11 +46,12 @@ public class GlificWebhookController {
             CreateReadingResponse response = glificWebhookService.processImage(glificWebhookRequest);
             return ResponseEntity.ok(response);
         } catch (Exception e) {
-            log.error("Error processing webhook for contactId {}: {}",
-                    glificWebhookRequest.getContactId(), e.getMessage(), e);
+            String safeContactId = glificWebhookRequest != null ? glificWebhookRequest.getContactId() : null;
+            log.error("Error processing webhook: {}", e.getMessage(), e);
+            log.debug("Error processing webhook for contactId {}: {}", safeContactId, e.getMessage());
 
             CreateReadingResponse errorResponse = CreateReadingResponse.builder()
-                    .correlationId(glificWebhookRequest.getContactId())
+                    .correlationId(safeContactId)
                     .meterReading(null)
                     .qualityStatus("REJECTED")
                     .qualityConfidence(null)
@@ -67,7 +69,8 @@ public class GlificWebhookController {
             IntroResponse response = glificWebhookService.introMessage(introRequest);
             return ResponseEntity.ok(response);
         } catch (Exception e) {
-            log.error("Error sending intro message for contactId {}: {}", introRequest.getContactId(), e.getMessage(), e);
+            log.error("Error sending intro message: {}", e.getMessage(), e);
+            log.debug("Error sending intro message for contactId {}: {}", introRequest.getContactId(), e.getMessage());
 
             IntroResponse fallbackResponse = IntroResponse.builder()
                     .success(false)
@@ -84,7 +87,8 @@ public class GlificWebhookController {
             ClosingResponse response = glificWebhookService.closingMessage(closingRequest);
             return ResponseEntity.ok(response);
         } catch (Exception e) {
-            log.error("Error sending closing message for contactId {}: {}", closingRequest.getContactId(), e.getMessage(), e);
+            log.error("Error sending closing message: {}", e.getMessage(), e);
+            log.debug("Error sending closing message for contactId {}: {}", closingRequest.getContactId(), e.getMessage());
 
             ClosingResponse fallbackResponse = ClosingResponse.builder()
                     .success(false)
@@ -101,7 +105,8 @@ public class GlificWebhookController {
             IntroResponse response = glificWebhookService.languageSelectionMessage(request);
             return ResponseEntity.ok(response);
         } catch (Exception e) {
-            log.error("Error preparing language selection for contactId {}: {}", request.getContactId(), e.getMessage(), e);
+            log.error("Error preparing language selection: {}", e.getMessage(), e);
+            log.debug("Error preparing language selection for contactId {}: {}", request.getContactId(), e.getMessage());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(
                     IntroResponse.builder()
                             .success(false)
@@ -117,7 +122,8 @@ public class GlificWebhookController {
             IntroResponse response = glificWebhookService.selectedLanguageMessage(request);
             return ResponseEntity.ok(response);
         } catch (Exception e) {
-            log.error("Error processing selected language for contactId {}: {}", request.getContactId(), e.getMessage(), e);
+            log.error("Error processing selected language: {}", e.getMessage(), e);
+            log.debug("Error processing selected language for contactId {}: {}", request.getContactId(), e.getMessage());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(
                     IntroResponse.builder()
                             .success(false)
@@ -133,7 +139,8 @@ public class GlificWebhookController {
             IntroResponse response = glificWebhookService.channelSelectionMessage(request);
             return ResponseEntity.ok(response);
         } catch (Exception e) {
-            log.error("Error preparing channel selection for contactId {}: {}", request.getContactId(), e.getMessage(), e);
+            log.error("Error preparing channel selection: {}", e.getMessage(), e);
+            log.debug("Error preparing channel selection for contactId {}: {}", request.getContactId(), e.getMessage());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(
                     IntroResponse.builder()
                             .success(false)
@@ -149,7 +156,8 @@ public class GlificWebhookController {
             IntroResponse response = glificWebhookService.selectedChannelMessage(request);
             return ResponseEntity.ok(response);
         } catch (Exception e) {
-            log.error("Error processing selected channel for contactId {}: {}", request.getContactId(), e.getMessage(), e);
+            log.error("Error processing selected channel: {}", e.getMessage(), e);
+            log.debug("Error processing selected channel for contactId {}: {}", request.getContactId(), e.getMessage());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(
                     IntroResponse.builder()
                             .success(false)
@@ -165,7 +173,8 @@ public class GlificWebhookController {
             IntroResponse response = glificWebhookService.itemSelectionMessage(request);
             return ResponseEntity.ok(response);
         } catch (Exception e) {
-            log.error("Error preparing item selection for contactId {}: {}", request.getContactId(), e.getMessage(), e);
+            log.error("Error preparing item selection: {}", e.getMessage(), e);
+            log.debug("Error preparing item selection for contactId {}: {}", request.getContactId(), e.getMessage());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(
                     IntroResponse.builder()
                             .success(false)
@@ -181,7 +190,8 @@ public class GlificWebhookController {
             SelectionResponse response = glificWebhookService.selectedItemMessage(request);
             return ResponseEntity.ok(response);
         } catch (Exception e) {
-            log.error("Error processing selected item for contactId {}: {}", request.getContactId(), e.getMessage(), e);
+            log.error("Error processing selected item: {}", e.getMessage(), e);
+            log.debug("Error processing selected item for contactId {}: {}", request.getContactId(), e.getMessage());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(
                     SelectionResponse.builder()
                             .success(false)
@@ -198,7 +208,8 @@ public class GlificWebhookController {
             IntroResponse response = glificWebhookService.meterChangeMessage(request);
             return ResponseEntity.ok(response);
         } catch (Exception e) {
-            log.error("Error preparing meter change reasons for contactId {}: {}", request.getContactId(), e.getMessage(), e);
+            log.error("Error preparing meter change reasons: {}", e.getMessage(), e);
+            log.debug("Error preparing meter change reasons for contactId {}: {}", request.getContactId(), e.getMessage());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(
                     IntroResponse.builder()
                             .success(false)
@@ -214,7 +225,8 @@ public class GlificWebhookController {
             IntroResponse response = glificWebhookService.issueReportPromptMessage(request);
             return ResponseEntity.ok(response);
         } catch (Exception e) {
-            log.error("Error preparing issue report prompt for contactId {}: {}", request.getContactId(), e.getMessage(), e);
+            log.error("Error preparing issue report prompt: {}", e.getMessage(), e);
+            log.debug("Error preparing issue report prompt for contactId {}: {}", request.getContactId(), e.getMessage());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(
                     IntroResponse.builder()
                             .success(false)
@@ -230,7 +242,42 @@ public class GlificWebhookController {
             IntroResponse response = glificWebhookService.issueReportSubmitMessage(request);
             return ResponseEntity.ok(response);
         } catch (Exception e) {
-            log.error("Error saving issue report for contactId {}: {}", request.getContactId(), e.getMessage(), e);
+            log.error("Error saving issue report: {}", e.getMessage(), e);
+            log.debug("Error saving issue report for contactId {}: {}", request.getContactId(), e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(
+                    IntroResponse.builder()
+                            .success(false)
+                            .message("Issue report could not be saved.")
+                            .build()
+            );
+        }
+    }
+
+    @PostMapping("/issueReport/telemetry")
+    public ResponseEntity<IntroResponse> issueReportTelemetryPrompt(@RequestBody @Valid IntroRequest request) {
+        try {
+            IntroResponse response = glificWebhookService.issueReportTelemetryPromptMessage(request);
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            log.error("Error preparing telemetry issue report prompt: {}", e.getMessage(), e);
+            log.debug("Error preparing telemetry issue report prompt for contactId {}: {}", request.getContactId(), e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(
+                    IntroResponse.builder()
+                            .success(false)
+                            .message("Issue report prompt could not be prepared.")
+                            .build()
+            );
+        }
+    }
+
+    @PostMapping("/issueReport/telemetry/submit")
+    public ResponseEntity<IntroResponse> issueReportTelemetrySubmit(@RequestBody @Valid IssueReportRequest request) {
+        try {
+            IntroResponse response = glificWebhookService.issueReportTelemetrySubmitMessage(request);
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            log.error("Error saving telemetry issue report: {}", e.getMessage(), e);
+            log.debug("Error saving telemetry issue report for contactId {}: {}", request.getContactId(), e.getMessage());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(
                     IntroResponse.builder()
                             .success(false)
@@ -246,7 +293,8 @@ public class GlificWebhookController {
             IntroResponse response = glificWebhookService.othersPromptMessage(request);
             return ResponseEntity.ok(response);
         } catch (Exception e) {
-            log.error("Error preparing others prompt for contactId {}: {}", request.getContactId(), e.getMessage(), e);
+            log.error("Error preparing others prompt: {}", e.getMessage(), e);
+            log.debug("Error preparing others prompt for contactId {}: {}", request.getContactId(), e.getMessage());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(
                     IntroResponse.builder()
                             .success(false)
@@ -262,7 +310,8 @@ public class GlificWebhookController {
             IntroResponse response = glificWebhookService.othersSubmittedMessage(request);
             return ResponseEntity.ok(response);
         } catch (Exception e) {
-            log.error("Error saving others issue report for contactId {}: {}", request.getContactId(), e.getMessage(), e);
+            log.error("Error saving others issue report: {}", e.getMessage(), e);
+            log.debug("Error saving others issue report for contactId {}: {}", request.getContactId(), e.getMessage());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(
                     IntroResponse.builder()
                             .success(false)
@@ -278,7 +327,8 @@ public class GlificWebhookController {
             IntroResponse response = glificWebhookService.takeMeterReadingMessage(request);
             return ResponseEntity.ok(response);
         } catch (Exception e) {
-            log.error("Error preparing take meter reading prompt for contactId {}: {}", request.getContactId(), e.getMessage(), e);
+            log.error("Error preparing take meter reading prompt: {}", e.getMessage(), e);
+            log.debug("Error preparing take meter reading prompt for contactId {}: {}", request.getContactId(), e.getMessage());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(
                     IntroResponse.builder()
                             .success(false)
@@ -294,7 +344,8 @@ public class GlificWebhookController {
             CreateReadingResponse response = glificWebhookService.manualReadingMessage(request);
             return ResponseEntity.ok(response);
         } catch (Exception e) {
-            log.error("Error saving manual reading for contactId {}: {}", request.getContactId(), e.getMessage(), e);
+            log.error("Error saving manual reading: {}", e.getMessage(), e);
+            log.debug("Error saving manual reading for contactId {}: {}", request.getContactId(), e.getMessage());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(
                     CreateReadingResponse.builder()
                             .success(false)
@@ -306,13 +357,34 @@ public class GlificWebhookController {
         }
     }
 
+    @PostMapping("/location")
+    public ResponseEntity<CreateReadingResponse> location(@RequestBody @Valid LocationReadingRequest request) {
+        try {
+            CreateReadingResponse response = glificWebhookService.locationReadingMessage(request);
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            String safeContactId = request != null ? request.resolveContactId() : null;
+            log.error("Error saving location: {}", e.getMessage(), e);
+            log.debug("Error saving location for contactId {}: {}", safeContactId, e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(
+                    CreateReadingResponse.builder()
+                            .success(false)
+                            .message("Location could not be saved.")
+                            .qualityStatus("REJECTED")
+                            .correlationId(safeContactId)
+                            .build()
+            );
+        }
+    }
+
     @PostMapping("/updatedPreviousReading")
     public ResponseEntity<CreateReadingResponse> updatedPreviousReading(@RequestBody @Valid UpdatedPreviousReadingRequest request) {
         try {
             CreateReadingResponse response = glificWebhookService.updatePreviousReadingMessage(request);
             return ResponseEntity.ok(response);
         } catch (Exception e) {
-            log.error("Error updating previous day reading for contactId {}: {}", request.getContactId(), e.getMessage(), e);
+            log.error("Error updating previous day reading: {}", e.getMessage(), e);
+            log.debug("Error updating previous day reading for contactId {}: {}", request.getContactId(), e.getMessage());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(
                     CreateReadingResponse.builder()
                             .success(false)

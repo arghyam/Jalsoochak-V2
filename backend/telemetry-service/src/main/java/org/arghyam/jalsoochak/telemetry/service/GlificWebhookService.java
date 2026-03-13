@@ -4,6 +4,7 @@ import org.arghyam.jalsoochak.telemetry.dto.requests.ClosingRequest;
 import org.arghyam.jalsoochak.telemetry.dto.requests.GlificWebhookRequest;
 import org.arghyam.jalsoochak.telemetry.dto.requests.IntroRequest;
 import org.arghyam.jalsoochak.telemetry.dto.requests.IssueReportRequest;
+import org.arghyam.jalsoochak.telemetry.dto.requests.LocationReadingRequest;
 import org.arghyam.jalsoochak.telemetry.dto.requests.ManualReadingRequest;
 import org.arghyam.jalsoochak.telemetry.dto.requests.MeterChangeRequest;
 import org.arghyam.jalsoochak.telemetry.dto.requests.SelectedChannelRequest;
@@ -90,6 +91,14 @@ public class GlificWebhookService {
         return meterWorkflowService.issueReportSubmitMessage(request);
     }
 
+    public IntroResponse issueReportTelemetryPromptMessage(IntroRequest request) {
+        return meterWorkflowService.issueReportTelemetryPromptMessage(request);
+    }
+
+    public IntroResponse issueReportTelemetrySubmitMessage(IssueReportRequest request) {
+        return meterWorkflowService.issueReportTelemetrySubmitMessage(request);
+    }
+
     public IntroResponse othersPromptMessage(IntroRequest request) {
         return meterWorkflowService.othersPromptMessage(request);
     }
@@ -100,6 +109,10 @@ public class GlificWebhookService {
 
     public CreateReadingResponse manualReadingMessage(ManualReadingRequest request) {
         return meterWorkflowService.manualReadingMessage(request);
+    }
+
+    public CreateReadingResponse locationReadingMessage(LocationReadingRequest request) {
+        return meterWorkflowService.locationReadingMessage(request);
     }
 
     public CreateReadingResponse updatePreviousReadingMessage(UpdatedPreviousReadingRequest request) {

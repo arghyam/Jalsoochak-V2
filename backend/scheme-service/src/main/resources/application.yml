@@ -1,14 +1,17 @@
 server:
-  port: 8086
+  port: 8087
 
 spring:
+  config:
+    import: optional:file:./scheme-service/.env[.properties],optional:file:.env[.properties]
+
   application:
     name: scheme-service
 
   datasource:
-    url: jdbc:postgresql://localhost:5432/shared_db
-    username: YOUR_USERNAME
-    password: YOUR_PASSWORD
+    url: ${SPRING_DATASOURCE_URL}
+    username: ${SPRING_DATASOURCE_USERNAME}
+    password: ${SPRING_DATASOURCE_PASSWORD}
 
   jpa:
     hibernate:

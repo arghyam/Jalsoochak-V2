@@ -3,6 +3,7 @@ package org.arghyam.jalsoochak.telemetry.service;
 import lombok.extern.slf4j.Slf4j;
 import org.arghyam.jalsoochak.telemetry.dto.requests.IntroRequest;
 import org.arghyam.jalsoochak.telemetry.dto.requests.IssueReportRequest;
+import org.arghyam.jalsoochak.telemetry.dto.requests.LocationReadingRequest;
 import org.arghyam.jalsoochak.telemetry.dto.requests.ManualReadingRequest;
 import org.arghyam.jalsoochak.telemetry.dto.requests.MeterChangeRequest;
 import org.arghyam.jalsoochak.telemetry.dto.requests.UpdatedPreviousReadingRequest;
@@ -10,6 +11,7 @@ import org.arghyam.jalsoochak.telemetry.dto.response.CreateReadingResponse;
 import org.arghyam.jalsoochak.telemetry.dto.response.IntroResponse;
 import org.arghyam.jalsoochak.telemetry.repository.TenantConfigRepository;
 import org.arghyam.jalsoochak.telemetry.repository.TelemetryConfirmedReadingSnapshot;
+import org.arghyam.jalsoochak.telemetry.repository.TelemetryFlowReadingDetails;
 import org.arghyam.jalsoochak.telemetry.repository.TelemetryOperatorWithSchema;
 import org.arghyam.jalsoochak.telemetry.repository.TelemetryPendingMeterChangeRecord;
 import org.arghyam.jalsoochak.telemetry.repository.TelemetryReadingRecord;
@@ -62,19 +64,40 @@ public class GlificMeterWorkflowService {
             "incorrectReadingEnteredPreviously",
             "others"
     );
+    private static final List<String> TELEMETRY_ISSUE_REASONS = List.of(
+            "Meter Replaced",
+            "Meter not working",
+            "Meter Damaged",
+            "Others"
+    );
+    private static final List<String> TELEMETRY_ISSUE_REASONS_HINDI = List.of(
+            "मीटर बदला गया",
+            "मीटर काम नहीं कर रहा",
+            "मीटर खराब है",
+            "अन्य"
+    );
+    private static final List<String> TELEMETRY_ISSUE_REASON_SELECTION_KEYS = List.of(
+            "meterReplaced",
+            "meterNotWorking",
+            "meterDamaged",
+            "others"
+    );
 
     private final GlificOperatorContextService operatorContextService;
     private final GlificLocalizationService localizationService;
     private final TenantConfigRepository tenantConfigRepository;
+    private final GlificMessageTemplatesService templatesService;
     private final TelemetryTenantRepository telemetryTenantRepository;
 
     public GlificMeterWorkflowService(GlificOperatorContextService operatorContextService,
                                       GlificLocalizationService localizationService,
                                       TenantConfigRepository tenantConfigRepository,
+                                      GlificMessageTemplatesService templatesService,
                                       TelemetryTenantRepository telemetryTenantRepository) {
         this.operatorContextService = operatorContextService;
         this.localizationService = localizationService;
         this.tenantConfigRepository = tenantConfigRepository;
+        this.templatesService = templatesService;
         this.telemetryTenantRepository = telemetryTenantRepository;
     }
 
@@ -199,15 +222,28 @@ public class GlificMeterWorkflowService {
 
             String defaultPrompt = "hindi".equals(languageKey) ? DEFAULT_ISSUE_PROMPT_HINDI : DEFAULT_ISSUE_PROMPT_ENGLISH;
 
-            String prompt = tenantConfigRepository.findIssueReportPrompt(tenantId, languageKey)
-                    .map(String::trim)
-                    .filter(p -> !p.equalsIgnoreCase(LEGACY_ISSUE_PROMPT_ENGLISH)
-                            && !p.equals(LEGACY_ISSUE_PROMPT_HINDI))
-                    .orElse(defaultPrompt);
+            Optional<String> promptFromTemplate = templatesService.resolveScreenPrompt(tenantId, "ISSUE_REPORT", languageKey);
+            String prompt;
+            if (promptFromTemplate.isPresent()) {
+                prompt = promptFromTemplate.get().trim();
+            } else {
+                prompt = tenantConfigRepository.findIssueReportPrompt(tenantId, languageKey)
+                        .map(String::trim)
+                        .filter(p -> !p.equalsIgnoreCase(LEGACY_ISSUE_PROMPT_ENGLISH)
+                                && !p.equals(LEGACY_ISSUE_PROMPT_HINDI))
+                        .orElse(defaultPrompt);
+            }
 
-            List<String> reasons = tenantConfigRepository.findIssueReportReasons(tenantId, languageKey);
-            if (reasons.isEmpty()) {
-                reasons = "hindi".equals(languageKey) ? DEFAULT_ISSUE_REASONS_HINDI : DEFAULT_ISSUE_REASONS;
+            List<GlificMessageTemplatesService.TemplateOption> templateReasons =
+                    templatesService.resolveScreenReasons(tenantId, "ISSUE_REPORT");
+            List<String> reasons;
+            if (!templateReasons.isEmpty()) {
+                reasons = templateReasons.stream().map(r -> r.labelForLanguageKey(languageKey)).toList();
+            } else {
+                reasons = tenantConfigRepository.findIssueReportReasons(tenantId, languageKey);
+                if (reasons.isEmpty()) {
+                    reasons = "hindi".equals(languageKey) ? DEFAULT_ISSUE_REASONS_HINDI : DEFAULT_ISSUE_REASONS;
+                }
             }
 
             StringBuilder message = new StringBuilder(prompt.trim());
@@ -250,13 +286,20 @@ public class GlificMeterWorkflowService {
                     operatorContextService.resolveOperatorLanguage(operatorWithSchema, tenantId)
             );
 
-            List<String> reasons = tenantConfigRepository.findIssueReportReasons(tenantId, languageKey);
-            if (reasons.isEmpty()) {
-                reasons = "hindi".equals(languageKey) ? DEFAULT_ISSUE_REASONS_HINDI : DEFAULT_ISSUE_REASONS;
+            List<GlificMessageTemplatesService.TemplateOption> templateReasons =
+                    templatesService.resolveScreenReasons(tenantId, "ISSUE_REPORT");
+            List<String> reasons;
+            if (!templateReasons.isEmpty()) {
+                reasons = templateReasons.stream().map(r -> r.labelForLanguageKey(languageKey)).toList();
+            } else {
+                reasons = tenantConfigRepository.findIssueReportReasons(tenantId, languageKey);
+                if (reasons.isEmpty()) {
+                    reasons = "hindi".equals(languageKey) ? DEFAULT_ISSUE_REASONS_HINDI : DEFAULT_ISSUE_REASONS;
+                }
             }
             String rawIssueReason = request.getIssueReason().trim();
             String resolvedIssueReason = resolveSelection(rawIssueReason, reasons).orElse(rawIssueReason);
-            String selectedKey = resolveIssueSelectionKey(rawIssueReason, resolvedIssueReason, reasons);
+            String selectedKey = resolveIssueSelectionKey(rawIssueReason, resolvedIssueReason, reasons, DEFAULT_ISSUE_REASON_SELECTION_KEYS);
 
             Long schemeId = telemetryTenantRepository
                     .findFirstSchemeForUser(operatorWithSchema.schemaName(), operatorWithSchema.operator().id())
@@ -278,7 +321,9 @@ public class GlificMeterWorkflowService {
                 fallbackMessage = "समस्या रिपोर्ट हो गई है। धन्यवाद।";
             }
 
-            String message = tenantConfigRepository.findIssueReportConfirmationTemplate(tenantId, languageKey)
+            String message = templatesService
+                    .resolveScreenConfirmationTemplate(tenantId, "ISSUE_REPORT", languageKey)
+                    .or(() -> tenantConfigRepository.findIssueReportConfirmationTemplate(tenantId, languageKey))
                     .orElse(fallbackMessage);
 
             return IntroResponse.builder()
@@ -326,6 +371,111 @@ public class GlificMeterWorkflowService {
         }
     }
 
+    public IntroResponse issueReportTelemetryPromptMessage(IntroRequest request) {
+        try {
+            if (request.getContactId() == null || request.getContactId().isBlank()) {
+                throw new IllegalStateException("contactId is required");
+            }
+
+            TelemetryOperatorWithSchema operatorWithSchema = operatorContextService.resolveOperatorWithSchema(request.getContactId());
+            Integer tenantId = operatorWithSchema.operator().tenantId();
+            if (tenantId == null) {
+                throw new IllegalStateException("Operator tenant could not be resolved");
+            }
+
+            String languageKey = localizationService.normalizeLanguageKey(
+                    operatorContextService.resolveOperatorLanguage(operatorWithSchema, tenantId)
+            );
+
+            String prompt = "hindi".equals(languageKey) ? DEFAULT_ISSUE_PROMPT_HINDI : DEFAULT_ISSUE_PROMPT_ENGLISH;
+            List<String> reasons = "hindi".equals(languageKey) ? TELEMETRY_ISSUE_REASONS_HINDI : TELEMETRY_ISSUE_REASONS;
+
+            StringBuilder message = new StringBuilder(prompt.trim());
+            for (int i = 0; i < reasons.size(); i++) {
+                message.append("\n")
+                        .append(i + 1)
+                        .append(". ")
+                        .append(reasons.get(i));
+            }
+
+            return IntroResponse.builder()
+                    .success(true)
+                    .message(message.toString())
+                    .build();
+        } catch (Exception e) {
+            log.error("Error preparing telemetry issue report prompt for contactId {}: {}", request.getContactId(), e.getMessage(), e);
+            return IntroResponse.builder()
+                    .success(false)
+                    .message("Issue report prompt could not be prepared.")
+                    .build();
+        }
+    }
+
+    public IntroResponse issueReportTelemetrySubmitMessage(IssueReportRequest request) {
+        try {
+            if (request.getContactId() == null || request.getContactId().isBlank()) {
+                throw new IllegalStateException("contactId is required");
+            }
+            if (request.getIssueReason() == null || request.getIssueReason().isBlank()) {
+                throw new IllegalStateException("issueReason is required");
+            }
+
+            TelemetryOperatorWithSchema operatorWithSchema = operatorContextService.resolveOperatorWithSchema(request.getContactId());
+            Integer tenantId = operatorWithSchema.operator().tenantId();
+            if (tenantId == null) {
+                throw new IllegalStateException("Operator tenant could not be resolved");
+            }
+            String languageKey = localizationService.normalizeLanguageKey(
+                    operatorContextService.resolveOperatorLanguage(operatorWithSchema, tenantId)
+            );
+
+            List<String> reasons = "hindi".equals(languageKey) ? TELEMETRY_ISSUE_REASONS_HINDI : TELEMETRY_ISSUE_REASONS;
+            String rawIssueReason = request.getIssueReason().trim();
+            String resolvedIssueReason = resolveSelection(rawIssueReason, reasons).orElse(rawIssueReason);
+            String selectedKey = resolveIssueSelectionKey(
+                    rawIssueReason,
+                    resolvedIssueReason,
+                    reasons,
+                    TELEMETRY_ISSUE_REASON_SELECTION_KEYS
+            );
+
+            Long schemeId = telemetryTenantRepository
+                    .findFirstSchemeForUser(operatorWithSchema.schemaName(), operatorWithSchema.operator().id())
+                    .orElseThrow(() -> new IllegalStateException("Operator is not mapped to any scheme"));
+
+            String correlationId = "issue-report-" + UUID.randomUUID();
+            telemetryTenantRepository.createIssueReportRecord(
+                    operatorWithSchema.schemaName(),
+                    schemeId,
+                    operatorWithSchema.operator().id(),
+                    LocalDateTime.now(),
+                    correlationId,
+                    resolvedIssueReason
+            );
+
+            String fallbackMessage = "Issue reported. Thank you.";
+            if ("hindi".equals(languageKey)) {
+                fallbackMessage = "समस्या रिपोर्ट हो गई है। धन्यवाद।";
+            }
+
+            String message = tenantConfigRepository.findIssueReportConfirmationTemplate(tenantId, languageKey)
+                    .orElse(fallbackMessage);
+
+            return IntroResponse.builder()
+                    .success(true)
+                    .message(message)
+                    .correlationId(correlationId)
+                    .selected(selectedKey)
+                    .build();
+        } catch (Exception e) {
+            log.error("Error saving telemetry issue report for contactId {}: {}", request.getContactId(), e.getMessage(), e);
+            return IntroResponse.builder()
+                    .success(false)
+                    .message("Issue report could not be saved.")
+                    .build();
+        }
+    }
+
     public IntroResponse othersSubmittedMessage(IssueReportRequest request) {
         try {
             if (request.getContactId() == null || request.getContactId().isBlank()) {
@@ -364,7 +514,9 @@ public class GlificMeterWorkflowService {
             if ("hindi".equals(languageKey)) {
                 fallbackMessage = "समस्या रिपोर्ट हो गई है। धन्यवाद।";
             }
-            String message = tenantConfigRepository.findIssueReportConfirmationTemplate(tenantId, languageKey)
+            String message = templatesService
+                    .resolveScreenConfirmationTemplate(tenantId, "ISSUE_REPORT", languageKey)
+                    .or(() -> tenantConfigRepository.findIssueReportConfirmationTemplate(tenantId, languageKey))
                     .orElse(fallbackMessage);
 
             return IntroResponse.builder()
@@ -412,19 +564,14 @@ public class GlificMeterWorkflowService {
                     .findFirstSchemeForUser(operatorWithSchema.schemaName(), operatorWithSchema.operator().id())
                     .orElseThrow(() -> new IllegalStateException("Operator is not mapped to any scheme"));
 
-            Optional<TelemetryPendingMeterChangeRecord> pendingOpt = Optional.empty();
+            Optional<TelemetryPendingMeterChangeRecord> pendingOpt = telemetryTenantRepository.findLatestPendingMeterChangeRecord(
+                    operatorWithSchema.schemaName(),
+                    schemeId,
+                    operatorWithSchema.operator().id()
+            );
             String correlationId = (request.getCorrelationId() != null && !request.getCorrelationId().isBlank())
                     ? request.getCorrelationId().trim()
                     : "manual-" + UUID.randomUUID();
-
-            if (request.getCorrelationId() != null && !request.getCorrelationId().isBlank()) {
-                pendingOpt = telemetryTenantRepository.findPendingMeterChangeRecordByCorrelation(
-                        operatorWithSchema.schemaName(),
-                        schemeId,
-                        operatorWithSchema.operator().id(),
-                        correlationId
-                );
-            }
 
             Optional<TelemetryConfirmedReadingSnapshot> previousSnapshotOpt = telemetryTenantRepository
                     .findLatestConfirmedReadingSnapshot(operatorWithSchema.schemaName(), schemeId, null);
@@ -472,22 +619,34 @@ public class GlificMeterWorkflowService {
                 );
                 correlationId = pendingOpt.get().correlationId();
             } else {
-                Optional<TelemetryReadingRecord> todaysReadingOpt =
-                        telemetryTenantRepository.findLatestCompletedReadingForToday(
+                Optional<TelemetryFlowReadingDetails> todaysFlowOpt = telemetryTenantRepository.findLatestFlowReadingForDate(
+                        operatorWithSchema.schemaName(),
+                        schemeId,
+                        operatorWithSchema.operator().id(),
+                        LocalDate.now()
+                );
+
+                if (todaysFlowOpt.isPresent()) {
+                    TelemetryFlowReadingDetails todaysFlow = todaysFlowOpt.get();
+                    BigDecimal extracted = todaysFlow.extractedReading();
+                    if (extracted == null || extracted.compareTo(BigDecimal.ZERO) <= 0) {
+                        telemetryTenantRepository.updateReadingValues(
                                 operatorWithSchema.schemaName(),
-                                schemeId,
+                                todaysFlow.id(),
+                                manualReadingValue,
                                 operatorWithSchema.operator().id()
                         );
-                if (todaysReadingOpt.isPresent()) {
-                    telemetryTenantRepository.updateConfirmedReading(
-                            operatorWithSchema.schemaName(),
-                            todaysReadingOpt.get().id(),
-                            manualReadingValue,
-                            operatorWithSchema.operator().id()
-                    );
-                    if (todaysReadingOpt.get().correlationId() != null
-                            && !todaysReadingOpt.get().correlationId().isBlank()) {
-                        correlationId = todaysReadingOpt.get().correlationId();
+                    } else {
+                        telemetryTenantRepository.updateConfirmedReading(
+                                operatorWithSchema.schemaName(),
+                                todaysFlow.id(),
+                                manualReadingValue,
+                                operatorWithSchema.operator().id()
+                        );
+                    }
+
+                    if (todaysFlow.correlationId() != null && !todaysFlow.correlationId().isBlank()) {
+                        correlationId = todaysFlow.correlationId();
                     }
                 } else {
                     telemetryTenantRepository.createFlowReading(
@@ -584,6 +743,94 @@ public class GlificMeterWorkflowService {
         }
     }
 
+    public CreateReadingResponse locationReadingMessage(LocationReadingRequest request) {
+        try {
+            String contactId = request != null ? request.resolveContactId() : null;
+            if (contactId == null || contactId.isBlank()) {
+                throw new IllegalStateException("contactId is required");
+            }
+            if (request.getLatitude() == null) {
+                throw new IllegalStateException("latitude is required");
+            }
+            if (request.getLongitude() == null) {
+                throw new IllegalStateException("longitude is required");
+            }
+
+            BigDecimal latitude = request.getLatitude();
+            BigDecimal longitude = request.getLongitude();
+            if (latitude.compareTo(BigDecimal.valueOf(-90)) < 0 || latitude.compareTo(BigDecimal.valueOf(90)) > 0) {
+                throw new IllegalStateException("latitude must be between -90 and 90");
+            }
+            if (longitude.compareTo(BigDecimal.valueOf(-180)) < 0 || longitude.compareTo(BigDecimal.valueOf(180)) > 0) {
+                throw new IllegalStateException("longitude must be between -180 and 180");
+            }
+
+            // Glific supplies organization_id; use it as a tenant hint when resolving operator across tenants.
+            TelemetryOperatorWithSchema operatorWithSchema = operatorContextService.resolveOperatorWithSchema(
+                    contactId,
+                    request.getOrganizationId()
+            );
+            Long operatorId = operatorWithSchema.operator().id();
+
+            Long schemeId = telemetryTenantRepository
+                    .findFirstSchemeForUser(operatorWithSchema.schemaName(), operatorId)
+                    .orElseThrow(() -> new IllegalStateException("Operator is not mapped to any scheme"));
+
+            String correlationId = null;
+            Long readingId = null;
+            Optional<TelemetryFlowReadingDetails> today = telemetryTenantRepository.findLatestFlowReadingForDate(
+                    operatorWithSchema.schemaName(),
+                    schemeId,
+                    operatorId,
+                    LocalDate.now()
+            );
+            if (today.isPresent()) {
+                readingId = today.get().id();
+                correlationId = today.get().correlationId();
+            }
+
+            if (readingId == null) {
+                correlationId = "location-" + UUID.randomUUID();
+                readingId = telemetryTenantRepository.createFlowReading(
+                        operatorWithSchema.schemaName(),
+                        schemeId,
+                        operatorId,
+                        LocalDateTime.now(),
+                        BigDecimal.ZERO,
+                        BigDecimal.ZERO,
+                        correlationId,
+                        "",
+                        null
+                );
+            }
+
+            telemetryTenantRepository.updateReadingLocation(
+                    operatorWithSchema.schemaName(),
+                    readingId,
+                    latitude,
+                    longitude,
+                    operatorId
+            );
+
+            return CreateReadingResponse.builder()
+                    .success(true)
+                    .message("Location saved successfully.")
+                    .qualityStatus("CONFIRMED")
+                    .build();
+        } catch (Exception e) {
+            String safeContactId = request != null ? request.resolveContactId() : null;
+            log.error("Error processing location for contactId {}: {}", safeContactId, e.getMessage(), e);
+            String languageKey = localizationService.resolveLanguageKeyForContact(safeContactId);
+            String descriptiveMessage = localizationService.resolveUserFacingErrorMessage(e, "Location could not be saved.", languageKey);
+            return CreateReadingResponse.builder()
+                    .success(false)
+                    .message(descriptiveMessage)
+                    .qualityStatus("REJECTED")
+                    .correlationId(safeContactId)
+                    .build();
+        }
+    }
+
     public CreateReadingResponse updatePreviousReadingMessage(UpdatedPreviousReadingRequest request) {
         try {
             if (request.getContactId() == null || request.getContactId().isBlank()) {
@@ -652,12 +899,15 @@ public class GlificMeterWorkflowService {
         return options.stream().filter(v -> v.equalsIgnoreCase(value)).findFirst();
     }
 
-    private String resolveIssueSelectionKey(String rawIssueReason, String resolvedIssueReason, List<String> reasons) {
+    private String resolveIssueSelectionKey(String rawIssueReason,
+                                            String resolvedIssueReason,
+                                            List<String> reasons,
+                                            List<String> selectionKeys) {
         String raw = rawIssueReason == null ? "" : rawIssueReason.trim();
         Integer index = parseSelectionIndex(raw, reasons.size());
         if (index != null) {
-            if (index >= 0 && index < DEFAULT_ISSUE_REASON_SELECTION_KEYS.size()) {
-                return DEFAULT_ISSUE_REASON_SELECTION_KEYS.get(index);
+            if (index >= 0 && index < selectionKeys.size()) {
+                return selectionKeys.get(index);
             }
             if (index >= 0 && index < reasons.size()) {
                 return toLowerCamelToken(reasons.get(index));
@@ -666,8 +916,8 @@ public class GlificMeterWorkflowService {
 
         for (int i = 0; i < reasons.size(); i++) {
             if (reasons.get(i).equalsIgnoreCase(resolvedIssueReason)) {
-                if (i < DEFAULT_ISSUE_REASON_SELECTION_KEYS.size()) {
-                    return DEFAULT_ISSUE_REASON_SELECTION_KEYS.get(i);
+                if (i < selectionKeys.size()) {
+                    return selectionKeys.get(i);
                 }
                 return toLowerCamelToken(resolvedIssueReason);
             }

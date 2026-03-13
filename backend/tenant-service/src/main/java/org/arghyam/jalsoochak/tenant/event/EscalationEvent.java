@@ -19,4 +19,7 @@ public class EscalationEvent {
     private List<OperatorEscalationDetail> operators;
     private Integer tenantId;
     private Integer officerLanguageId;
+    private Long officerId;
+    private Long officerWhatsappConnectionId;
+    private String tenantSchema;
 }

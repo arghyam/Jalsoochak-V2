@@ -6,6 +6,8 @@ spring:
     import: "optional:file:.env[.properties],optional:file:user-service/.env[.properties]"
   application:
     name: user-service
+  flyway:
+    enabled: false
   security:
     oauth2:
       resourceserver:
@@ -34,9 +36,9 @@ spring:
           debug: ${env.SPRING_MAIL_DEBUG:false}
 
   datasource:
-    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/jalsoochak_db}?stringtype=unspecified
-    username: ${SPRING_DATASOURCE_USERNAME:postgres}
-    password: ${SPRING_DATASOURCE_PASSWORD:Zaqwsx@1123}
+    url: ${SPRING_DATASOURCE_URL}
+    username: ${SPRING_DATASOURCE_USERNAME}
+    password: ${SPRING_DATASOURCE_PASSWORD}
     driver-class-name: org.postgresql.Driver
     hikari:
       maximum-pool-size: 10
@@ -89,8 +91,27 @@ mail:
     email: ${MAIL_FROM_EMAIL:no-reply@example.com}
     name: ${MAIL_FROM_NAME:Jalsoochak}
 
+invite:
+  expiry-hours: 24
+
+password-reset:
+  expiry-minutes: ${PASSWORD_RESET_EXPIRY_MINUTES:30}
+
 frontend:
-  base-url: https://jalsoochak.beehyv.com/createpassword
+  base-url: ${FRONTEND_BASE_URL:http://localhost:3000}
+  invite-path: /createpassword
+  reset-path: /resetpassword
+
+cors:
+  allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000}
+
+cookie:
+  secure: ${COOKIE_SECURE:false}  # set to true in production (HTTPS)
+  same-site: Strict
+
+http-client:
+  connect-timeout-ms: ${HTTP_CONNECT_TIMEOUT_MS:5000}
+  read-timeout-ms: ${HTTP_READ_TIMEOUT_MS:10000}
 
 eureka:
   client:

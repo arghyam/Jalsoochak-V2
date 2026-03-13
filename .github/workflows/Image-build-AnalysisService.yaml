@@ -16,6 +16,7 @@ permissions:
   contents: read
   id-token: write
   pull-requests: write
+  security-events: write
 
 jobs:
   Docker-Image-Build:
@@ -65,6 +66,34 @@ jobs:
         run: |
           docker build --build-arg WORK_DIR="backend/analytics-service" -t $ECR_REGISTRY/analytics-service:$IMAGE_TAG -f build/maven/Dockerfile .
           docker push $ECR_REGISTRY/analytics-service:$IMAGE_TAG
+
+      - name: Cache Trivy DB
+        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev'
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/trivy
+          key: ${{ runner.os }}-trivy-db
+
+      - name: Run Trivy vulnerability scanner
+        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev'
+        continue-on-error: true
+        uses: aquasecurity/trivy-action@master
+        with:
+          # Image to scan (use commit SHA for traceability)
+          image-ref: ${{ steps.ecr-login.outputs.registry }}/analytics-service:${{ github.sha }}
+          # Output format for GitHub Security tab integration
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          severity: 'HIGH,CRITICAL'
+          ignore-unfixed: true
+
+      - name: Upload Trivy scan results
+        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev'
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: 'trivy-results.sarif'
+
+
       - name: Build and Push Docker image for analytics_DB
         if: (github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/main') && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
         run: |
@@ -75,7 +104,7 @@ jobs:
   Deployment:
     needs: Docker-Image-Build
     if: github.ref == 'refs/heads/dev'
-    uses: arghyam/JalsoochakV2-Devops/.github/workflows/deploy.yaml@dev
+    uses: arghyam/JalSoochak-DevOps/.github/workflows/deploy.yaml@dev
     with:
       service_name: analytics-service
       image_tag: ${{ github.sha }}

@@ -63,27 +63,32 @@ public class TenantSchedulerManager {
 
     /**
      * Called after a tenant's config is persisted to reschedule its jobs with the new cron times.
+     * Validates the new config before cancelling existing futures so that a bad config value
+     * cannot leave a tenant with no scheduled jobs.
      */
     public void rescheduleForTenant(int tenantId, String stateCode) {
         Object lock = tenantLocks.computeIfAbsent(tenantId, k -> new Object());
         synchronized (lock) {
+            // Validate first — throws before touching existing futures if config is invalid.
+            NudgeScheduleConfig nudgeCfg = tenantConfigService.getNudgeConfig(tenantId);
+            EscalationScheduleConfig escalCfg = tenantConfigService.getEscalationConfig(tenantId);
+            validateScheduleConfig(nudgeCfg, escalCfg, tenantId);
+
             cancelFutures(tenantId);
-            scheduleForTenant(tenantId, stateCode);
+            scheduleForTenant(tenantId, stateCode, nudgeCfg, escalCfg);
         }
     }
 
     private void scheduleForTenant(int tenantId, String stateCode) {
-        String schema = "tenant_" + stateCode.toLowerCase(java.util.Locale.ROOT);
-
         NudgeScheduleConfig nudgeCfg = tenantConfigService.getNudgeConfig(tenantId);
         EscalationScheduleConfig escalCfg = tenantConfigService.getEscalationConfig(tenantId);
+        validateScheduleConfig(nudgeCfg, escalCfg, tenantId);
+        scheduleForTenant(tenantId, stateCode, nudgeCfg, escalCfg);
+    }
 
-        if (nudgeCfg.getHour() < 0 || nudgeCfg.getHour() > 23 || nudgeCfg.getMinute() < 0 || nudgeCfg.getMinute() > 59) {
-                throw new IllegalArgumentException("Invalid nudge schedule for tenantId=" + tenantId);
-            }
-        if (escalCfg.getHour() < 0 || escalCfg.getHour() > 23 || escalCfg.getMinute() < 0 || escalCfg.getMinute() > 59) {
-                throw new IllegalArgumentException("Invalid escalation schedule for tenantId=" + tenantId);
-            }
+    private void scheduleForTenant(int tenantId, String stateCode,
+            NudgeScheduleConfig nudgeCfg, EscalationScheduleConfig escalCfg) {
+        String schema = "tenant_" + stateCode.toLowerCase(java.util.Locale.ROOT);
 
         String nudgeCron = String.format("0 %d %d * * ?", nudgeCfg.getMinute(), nudgeCfg.getHour());
         String escalCron = String.format("0 %d %d * * ?", escalCfg.getMinute(), escalCfg.getHour());
@@ -111,6 +116,15 @@ public class TenantSchedulerManager {
                         new CronTrigger(escalCron)));
 
         log.info("[Scheduler] Tenant {} ({}): nudge={}, escalation={}", tenantId, stateCode, nudgeCron, escalCron);
+    }
+
+    private void validateScheduleConfig(NudgeScheduleConfig nudgeCfg, EscalationScheduleConfig escalCfg, int tenantId) {
+        if (nudgeCfg.getHour() < 0 || nudgeCfg.getHour() > 23 || nudgeCfg.getMinute() < 0 || nudgeCfg.getMinute() > 59) {
+            throw new IllegalArgumentException("Invalid nudge schedule for tenantId=" + tenantId);
+        }
+        if (escalCfg.getHour() < 0 || escalCfg.getHour() > 23 || escalCfg.getMinute() < 0 || escalCfg.getMinute() > 59) {
+            throw new IllegalArgumentException("Invalid escalation schedule for tenantId=" + tenantId);
+        }
     }
 
     private void cancelFutures(int tenantId) {

@@ -44,7 +44,10 @@ class GlificWhatsAppServiceTest {
 
     @BeforeEach
     void setUp() {
+        ReflectionTestUtils.setField(service, "objectMapper", mapper);
         ReflectionTestUtils.setField(service, "nudgeTemplateId", "nudge-tmpl-1");
+        ReflectionTestUtils.setField(service, "nudgeFlowId", "flow-123");
+        ReflectionTestUtils.setField(service, "welcomeFlowId", "welcome-flow-456");
         ReflectionTestUtils.setField(service, "escalationTemplateId", "2");   // must be numeric for Integer.parseInt
         ReflectionTestUtils.setField(service, "escalationCaption", "Escalations");
         ReflectionTestUtils.setField(service, "escalationThumbnail", "");
@@ -202,6 +205,76 @@ class GlificWhatsAppServiceTest {
         assertThat((List<?>) input.get("params")).isEmpty();
     }
 
+    // ──────────────────────── startNudgeFlow ───────────────────────────────────
+
+    @Test
+    void startNudgeFlow_callsStartContactFlowMutation_withFlowIdAndContactId() throws Exception {
+        JsonNode response = mapper.readTree("""
+                {"startContactFlow":{"success":true,"errors":[]}}
+                """);
+        when(client.execute(contains("startContactFlow"), anyMap())).thenReturn(response);
+
+        service.startNudgeFlow(42L, "Ramesh", "06 March 2026");
+
+        ArgumentCaptor<Map<String, Object>> varsCaptor = varsCaptor();
+        verify(client).execute(contains("startContactFlow"), varsCaptor.capture());
+
+        Map<String, Object> vars = varsCaptor.getValue();
+        assertThat(vars.get("flowId")).isEqualTo("flow-123");
+        assertThat(vars.get("contactId")).isEqualTo(42L);
+    }
+
+    @Test
+    void startNudgeFlow_passesDefaultResults_withOperatorNameAndDate() throws Exception {
+        JsonNode response = mapper.readTree("""
+                {"startContactFlow":{"success":true,"errors":[]}}
+                """);
+        when(client.execute(contains("startContactFlow"), anyMap())).thenReturn(response);
+
+        service.startNudgeFlow(42L, "Ramesh", "06 March 2026");
+
+        ArgumentCaptor<Map<String, Object>> varsCaptor = varsCaptor();
+        verify(client).execute(contains("startContactFlow"), varsCaptor.capture());
+
+        String defaultResults = (String) varsCaptor.getValue().get("defaultResults");
+        JsonNode parsed = mapper.readTree(defaultResults);
+        assertThat(parsed.get("1").asText()).isEqualTo("Ramesh");
+        assertThat(parsed.get("2").asText()).isEqualTo("06 March 2026");
+    }
+
+    @Test
+    void startNudgeFlow_throwsIllegalState_whenFlowIdNotConfigured() {
+        ReflectionTestUtils.setField(service, "nudgeFlowId", "");
+
+        assertThatThrownBy(() -> service.startNudgeFlow(42L, "Ramesh", "06 March 2026"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("glific.flow.nudge-id");
+    }
+
+    @Test
+    void startNudgeFlow_throwsException_whenGlificReturnsErrors() throws Exception {
+        JsonNode response = mapper.readTree("""
+                {"startContactFlow":{"success":false,"errors":[{"key":"flow","message":"not found"}]}}
+                """);
+        when(client.execute(contains("startContactFlow"), anyMap())).thenReturn(response);
+
+        assertThatThrownBy(() -> service.startNudgeFlow(42L, "Ramesh", "06 March 2026"))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessageContaining("startContactFlow");
+    }
+
+    @Test
+    void startNudgeFlow_throwsException_whenSuccessIsFalse() throws Exception {
+        JsonNode response = mapper.readTree("""
+                {"startContactFlow":{"success":false,"errors":[]}}
+                """);
+        when(client.execute(contains("startContactFlow"), anyMap())).thenReturn(response);
+
+        assertThatThrownBy(() -> service.startNudgeFlow(42L, "Ramesh", "06 March 2026"))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessageContaining("success=false");
+    }
+
     // ──────────────────────── GraphQL error handling ────────────────────────────
 
     @Test
@@ -255,6 +328,82 @@ class GlificWhatsAppServiceTest {
                 service.sendEscalationHsm(22L, "https://minio.example.com/r.pdf"))
                 .isInstanceOf(RuntimeException.class)
                 .hasMessageContaining("createAndSendMessage");
+    }
+
+    // ──────────────────────── startWelcomeFlow ─────────────────────────────────
+
+    @Test
+    void startWelcomeFlow_callsStartContactFlowMutation_withWelcomeFlowId() throws Exception {
+        JsonNode response = mapper.readTree("""
+                {"startContactFlow":{"success":true,"errors":[]}}
+                """);
+        when(client.execute(contains("startContactFlow"), anyMap())).thenReturn(response);
+
+        service.startWelcomeFlow(55L);
+
+        ArgumentCaptor<Map<String, Object>> varsCaptor = varsCaptor();
+        verify(client).execute(contains("startContactFlow"), varsCaptor.capture());
+
+        Map<String, Object> vars = varsCaptor.getValue();
+        assertThat(vars.get("flowId")).isEqualTo("welcome-flow-456");
+        assertThat(vars.get("contactId")).isEqualTo(55L);
+    }
+
+    @Test
+    void startWelcomeFlow_throwsException_whenGlificReturnsErrors() throws Exception {
+        JsonNode response = mapper.readTree("""
+                {"startContactFlow":{"success":false,"errors":[{"key":"flow","message":"not found"}]}}
+                """);
+        when(client.execute(contains("startContactFlow"), anyMap())).thenReturn(response);
+
+        assertThatThrownBy(() -> service.startWelcomeFlow(55L))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessageContaining("startContactFlow");
+    }
+
+    @Test
+    void startWelcomeFlow_throwsException_whenSuccessIsFalse() throws Exception {
+        JsonNode response = mapper.readTree("""
+                {"startContactFlow":{"success":false,"errors":[]}}
+                """);
+        when(client.execute(contains("startContactFlow"), anyMap())).thenReturn(response);
+
+        assertThatThrownBy(() -> service.startWelcomeFlow(55L))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessageContaining("success=false");
+    }
+
+    // ──────────────────────── updateContactLanguage ────────────────────────────
+
+    @Test
+    void updateContactLanguage_callsUpdateContactMutation_withCorrectIdAndLanguageId() throws Exception {
+        JsonNode response = mapper.readTree("""
+                {"updateContact":{"contact":{"id":42,"language":{"id":2}},"errors":[]}}
+                """);
+        when(client.execute(contains("updateContact"), anyMap())).thenReturn(response);
+
+        service.updateContactLanguage(42L, 2);
+
+        ArgumentCaptor<Map<String, Object>> varsCaptor = varsCaptor();
+        verify(client).execute(contains("updateContact"), varsCaptor.capture());
+
+        Map<String, Object> vars = varsCaptor.getValue();
+        assertThat(vars.get("id")).isEqualTo(42L);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> input = (Map<String, Object>) vars.get("input");
+        assertThat(input.get("language_id")).isEqualTo(2);
+    }
+
+    @Test
+    void updateContactLanguage_throwsException_whenGraphQLErrorsReturned() throws Exception {
+        JsonNode response = mapper.readTree("""
+                {"updateContact":{"contact":null,"errors":[{"key":"id","message":"not found"}]}}
+                """);
+        when(client.execute(contains("updateContact"), anyMap())).thenReturn(response);
+
+        assertThatThrownBy(() -> service.updateContactLanguage(99L, 3))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessageContaining("updateContact");
     }
 
     // ────────────────────────────── helpers ────────────────────────────────────

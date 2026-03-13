@@ -1,12 +1,16 @@
 package org.arghyam.jalsoochak.telemetry.controller;
 
 import org.arghyam.jalsoochak.telemetry.dto.requests.IntroRequest;
+import org.arghyam.jalsoochak.telemetry.dto.requests.LocationReadingRequest;
 import org.arghyam.jalsoochak.telemetry.dto.requests.SelectedChannelRequest;
+import org.arghyam.jalsoochak.telemetry.dto.response.CreateReadingResponse;
 import org.arghyam.jalsoochak.telemetry.dto.response.IntroResponse;
 import org.arghyam.jalsoochak.telemetry.service.GlificWebhookService;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+
+import java.math.BigDecimal;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -56,6 +60,25 @@ class GlificWebhookControllerUnitTest {
         assertEquals(false, response.getBody().isSuccess());
     }
 
+    @Test
+    void locationReturnsOkWhenServiceSucceeds() {
+        GlificWebhookService service = new StubGlificWebhookService(false, false);
+        GlificWebhookController controller = new GlificWebhookController(service);
+
+        ResponseEntity<CreateReadingResponse> response = controller.location(
+                LocationReadingRequest.builder()
+                        .contact(LocationReadingRequest.Contact.builder().phone("919999999999").build())
+                        .latitude(BigDecimal.valueOf(12.34))
+                        .longitude(BigDecimal.valueOf(56.78))
+                        .build()
+        );
+
+        assertEquals(HttpStatus.OK, response.getStatusCode());
+        assertNotNull(response.getBody());
+        assertEquals(true, response.getBody().isSuccess());
+        assertEquals("location-ok", response.getBody().getMessage());
+    }
+
     private static final class StubGlificWebhookService extends GlificWebhookService {
         private final boolean throwLanguageSelection;
         private final boolean throwSelectedChannel;
@@ -80,6 +103,14 @@ class GlificWebhookControllerUnitTest {
                 throw new IllegalStateException("boom");
             }
             return IntroResponse.builder().success(true).message("channel-ok").build();
+        }
+
+        @Override
+        public CreateReadingResponse locationReadingMessage(LocationReadingRequest request) {
+            return CreateReadingResponse.builder()
+                    .success(true)
+                    .message("location-ok")
+                    .build();
         }
     }
 }

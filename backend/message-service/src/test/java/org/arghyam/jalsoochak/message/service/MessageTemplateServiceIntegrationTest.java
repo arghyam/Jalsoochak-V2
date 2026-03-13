@@ -1,6 +1,7 @@
 package org.arghyam.jalsoochak.message.service;
 
 import org.arghyam.jalsoochak.message.channel.GlificAuthService;
+import org.arghyam.jalsoochak.message.channel.GlificWhatsAppService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -46,6 +47,10 @@ class MessageTemplateServiceIntegrationTest {
     // Suppress GlificAuthService @PostConstruct login
     @MockBean
     private GlificAuthService glificAuthService;
+
+    // Suppress GlificWhatsAppService @PostConstruct validateTemplates
+    @MockBean
+    private GlificWhatsAppService glificWhatsAppService;
 
     @Autowired
     private MessageTemplateService messageTemplateService;
