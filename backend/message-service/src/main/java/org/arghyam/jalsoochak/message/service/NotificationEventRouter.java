@@ -11,6 +11,7 @@ import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
 import java.nio.file.Files;
@@ -48,6 +49,7 @@ public class NotificationEventRouter {
     private final EscalationPdfService escalationPdfService;
     private final MinioStorageService minioStorageService;
     private final MessageTemplateService messageTemplateService;
+    private final JdbcTemplate jdbcTemplate;
 
     @Value("${escalation.report.dir:/tmp/escalation-reports/}")
     private String reportDir;
@@ -84,6 +86,8 @@ public class NotificationEventRouter {
                 case "NUDGE" -> handleNudge(root);
                 case "ESCALATION" -> handleEscalation(root);
                 case "STAFF_SYNC_COMPLETED" -> handleStaffSyncCompleted(root);
+                case "UPDATE_USER_LANGUAGE" -> handleUpdateUserLanguage(root);
+                case "SEND_WELCOME_MESSAGE" -> handleSendWelcomeMessage(root);
                 default -> log.warn("[Router] Unknown eventType '{}', ignoring message", eventType);
             }
         } catch (Exception e) {
@@ -178,6 +182,100 @@ public class NotificationEventRouter {
                     "[Router/STAFF_SYNC] " + failed + " operator onboarding(s) failed"
                     + " (success=" + success + ", tenantSchema=" + tenantSchema + ")");
         }
+    }
+
+    private void handleUpdateUserLanguage(JsonNode root) {
+        String tenantCode = root.path("tenantCode").asText("").toLowerCase();
+        int glificLanguageId = root.path("glificLanguageId").asInt(0);
+        JsonNode phonesNode = root.path("pumpOperatorPhones");
+
+        if (tenantCode.isBlank() || !tenantCode.matches("[a-z0-9_]+")) {
+            log.warn("[Router/UPDATE_LANGUAGE] Invalid or missing tenantCode, skipping");
+            return;
+        }
+        if (glificLanguageId <= 0) {
+            log.warn("[Router/UPDATE_LANGUAGE] Missing glificLanguageId, skipping");
+            return;
+        }
+        if (!phonesNode.isArray() || phonesNode.isEmpty()) {
+            log.warn("[Router/UPDATE_LANGUAGE] pumpOperatorPhones is empty, skipping");
+            return;
+        }
+
+        String tenantSchema = "tenant_" + tenantCode;
+        int success = 0, failed = 0;
+        for (JsonNode phoneNode : phonesNode) {
+            String phone = phoneNode.asText("");
+            if (phone.isBlank()) continue;
+            try {
+                Long contactId = fetchWhatsappConnectionId(tenantSchema, phone);
+                if (contactId == null || contactId <= 0) {
+                    log.warn("[Router/UPDATE_LANGUAGE] No whatsapp_connection_id found in schema={}", tenantSchema);
+                    failed++;
+                    continue;
+                }
+                glificWhatsAppService.updateContactLanguage(contactId, glificLanguageId);
+                success++;
+            } catch (Exception e) {
+                failed++;
+                log.error("[Router/UPDATE_LANGUAGE] Failed to update language: {}", e.getMessage(), e);
+            }
+        }
+        log.info("[Router/UPDATE_LANGUAGE] complete — success={} failed={} schema={}", success, failed, tenantSchema);
+        if (failed > 0) {
+            throw new IllegalStateException(
+                    "[Router/UPDATE_LANGUAGE] " + failed + " update(s) failed (success=" + success + ")");
+        }
+    }
+
+    private void handleSendWelcomeMessage(JsonNode root) {
+        String tenantCode = root.path("tenantCode").asText("").toLowerCase();
+        JsonNode phonesNode = root.path("pumpOperatorPhones");
+
+        if (tenantCode.isBlank() || !tenantCode.matches("[a-z0-9_]+")) {
+            log.warn("[Router/WELCOME] Invalid or missing tenantCode, skipping");
+            return;
+        }
+        if (!phonesNode.isArray() || phonesNode.isEmpty()) {
+            log.warn("[Router/WELCOME] pumpOperatorPhones is empty, skipping");
+            return;
+        }
+
+        String tenantSchema = "tenant_" + tenantCode;
+        int success = 0, failed = 0;
+        for (JsonNode phoneNode : phonesNode) {
+            String phone = phoneNode.asText("");
+            if (phone.isBlank()) continue;
+            try {
+                Long contactId = fetchWhatsappConnectionId(tenantSchema, phone);
+                if (contactId == null || contactId <= 0) {
+                    log.warn("[Router/WELCOME] No whatsapp_connection_id found in schema={}", tenantSchema);
+                    failed++;
+                    continue;
+                }
+                glificWhatsAppService.startWelcomeFlow(contactId);
+                success++;
+            } catch (Exception e) {
+                failed++;
+                log.error("[Router/WELCOME] Failed to send welcome message: {}", e.getMessage(), e);
+            }
+        }
+        log.info("[Router/WELCOME] complete — success={} failed={} schema={}", success, failed, tenantSchema);
+        if (failed > 0) {
+            throw new IllegalStateException(
+                    "[Router/WELCOME] " + failed + " welcome message(s) failed (success=" + success + ")");
+        }
+    }
+
+    /**
+     * Looks up the Glific contact ID stored for a given phone number in the tenant's user_table.
+     * tenantSchema is pre-validated to match {@code [a-z0-9_]+} before this call.
+     */
+    private Long fetchWhatsappConnectionId(String tenantSchema, String phone) {
+        String sql = "SELECT whatsapp_connection_id FROM " + tenantSchema
+                + ".user_table WHERE phone_number = ? LIMIT 1";
+        List<Long> rows = jdbcTemplate.query(sql, (rs, n) -> rs.getLong("whatsapp_connection_id"), phone);
+        return rows.isEmpty() ? null : rows.get(0);
     }
 
     private void handleEscalation(JsonNode root) throws Exception {
