@@ -65,7 +65,8 @@ public class GlificContactSyncService {
             try {
                 syncContactLanguage(phone, languageId);
             } catch (Exception e) {
-                log.error("Failed to sync Glific language for phone {} and languageId {}", phone, languageId, e);
+                log.error("Failed to sync Glific language for languageId {}", languageId, e);
+                log.debug("Failed to sync Glific language for phone {} and languageId {}", phone, languageId);
             }
         });
     }

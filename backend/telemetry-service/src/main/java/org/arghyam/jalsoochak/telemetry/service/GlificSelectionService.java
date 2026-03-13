@@ -102,7 +102,8 @@ public class GlificSelectionService {
                     .correlationId(toWords(languageOptions.size()))
                     .build();
         } catch (Exception e) {
-            log.error("Error building language selection message for contactId {}: {}", request.getContactId(), e.getMessage(), e);
+            log.error("Error building language selection message: {}", e.getMessage(), e);
+            log.debug("Error building language selection message for contactId {}: {}", request.getContactId(), e.getMessage());
             return IntroResponse.builder()
                     .success(false)
                     .message("Language selection could not be prepared.")
@@ -180,7 +181,8 @@ public class GlificSelectionService {
                     .message(localizedConfirmation)
                     .build();
         } catch (Exception e) {
-            log.error("Error saving selected language for contactId {}: {}", request.getContactId(), e.getMessage(), e);
+            log.error("Error saving selected language: {}", e.getMessage(), e);
+            log.debug("Error saving selected language for contactId {}: {}", request.getContactId(), e.getMessage());
             String languageKey = localizationService.resolveLanguageKeyForContact(request.getContactId());
             return IntroResponse.builder()
                     .success(false)
@@ -240,7 +242,8 @@ public class GlificSelectionService {
                     .isBfmOrIsElectric(isBfmOrIsElectricValue)
                     .build();
         } catch (Exception e) {
-            log.error("Error building channel selection message for contactId {}: {}", request.getContactId(), e.getMessage(), e);
+            log.error("Error building channel selection message: {}", e.getMessage(), e);
+            log.debug("Error building channel selection message for contactId {}: {}", request.getContactId(), e.getMessage());
             return IntroResponse.builder()
                     .success(false)
                     .message("Channel selection could not be prepared.")
@@ -307,7 +310,8 @@ public class GlificSelectionService {
                     .isElectrical(isElectrical)
                     .build();
         } catch (Exception e) {
-            log.error("Error saving selected channel for contactId {}: {}", request.getContactId(), e.getMessage(), e);
+            log.error("Error saving selected channel: {}", e.getMessage(), e);
+            log.debug("Error saving selected channel for contactId {}: {}", request.getContactId(), e.getMessage());
             String languageKey = localizationService.resolveLanguageKeyForContact(request.getContactId());
             return IntroResponse.builder()
                     .success(false)
@@ -360,7 +364,8 @@ public class GlificSelectionService {
                     .message(message.toString())
                     .build();
         } catch (Exception e) {
-            log.error("Error building item selection message for contactId {}: {}", request.getContactId(), e.getMessage(), e);
+            log.error("Error building item selection message: {}", e.getMessage(), e);
+            log.debug("Error building item selection message for contactId {}: {}", request.getContactId(), e.getMessage());
             return IntroResponse.builder()
                     .success(false)
                     .message("Item selection could not be prepared.")
@@ -423,7 +428,8 @@ public class GlificSelectionService {
                     .message(message)
                     .build();
         } catch (Exception e) {
-            log.error("Error processing selected item for contactId {}: {}", request.getContactId(), e.getMessage(), e);
+            log.error("Error processing selected item: {}", e.getMessage(), e);
+            log.debug("Error processing selected item for contactId {}: {}", request.getContactId(), e.getMessage());
             String languageKey = localizationService.resolveLanguageKeyForContact(request.getContactId());
             return SelectionResponse.builder()
                     .success(false)
