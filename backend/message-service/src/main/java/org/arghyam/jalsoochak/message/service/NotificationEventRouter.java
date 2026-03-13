@@ -16,10 +16,14 @@ import org.springframework.stereotype.Service;
 
 import java.nio.file.Files;
 import java.nio.file.Paths;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 
 /**
  * Routes incoming Kafka JSON messages to the appropriate notification handler
@@ -41,6 +45,7 @@ import java.util.List;
 public class NotificationEventRouter {
 
     private static final String COMMON_TOPIC = "common-topic";
+    private static final String WELCOME_DLT_TOPIC = "welcome-message-dlt";
 
     private final ObjectMapper objectMapper;
     private final WhatsAppChannel whatsAppChannel;
@@ -210,7 +215,7 @@ public class NotificationEventRouter {
             try {
                 Long contactId = fetchWhatsappConnectionId(tenantSchema, phone);
                 if (contactId == null || contactId <= 0) {
-                    log.warn("[Router/UPDATE_LANGUAGE] No whatsapp_connection_id found in schema={}", tenantSchema);
+                    log.warn("[Router/UPDATE_LANGUAGE] No whatsapp_connection_id found for phone={} in schema={}", phone, tenantSchema);
                     failed++;
                     continue;
                 }
@@ -249,22 +254,33 @@ public class NotificationEventRouter {
             try {
                 Long contactId = fetchWhatsappConnectionId(tenantSchema, phone);
                 if (contactId == null || contactId <= 0) {
-                    log.warn("[Router/WELCOME] No whatsapp_connection_id found in schema={}", tenantSchema);
+                    log.warn("[Router/WELCOME] No whatsapp_connection_id found for phone={} in schema={}", phone, tenantSchema);
+                    publishWelcomeDlt(tenantSchema, phone, "no_whatsapp_connection_id");
                     failed++;
                     continue;
                 }
                 glificWhatsAppService.startWelcomeFlow(contactId);
                 success++;
             } catch (Exception e) {
-                failed++;
                 log.error("[Router/WELCOME] Failed to send welcome message: {}", e.getMessage(), e);
+                publishWelcomeDlt(tenantSchema, phone, e.getMessage());
+                failed++;
             }
         }
         log.info("[Router/WELCOME] complete — success={} failed={} schema={}", success, failed, tenantSchema);
-        if (failed > 0) {
-            throw new IllegalStateException(
-                    "[Router/WELCOME] " + failed + " welcome message(s) failed (success=" + success + ")");
-        }
+    }
+
+    private void publishWelcomeDlt(String tenantSchema, String phone, String errorMessage) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("retryId", UUID.randomUUID().toString());
+        payload.put("eventType", "SEND_WELCOME_MESSAGE_RETRY");
+        payload.put("tenantSchema", tenantSchema);
+        payload.put("failedAt", Instant.now().toString());
+        payload.put("errorMessage", errorMessage);
+        // phone is PII — included so downstream can reprocess, but must not surface in INFO logs
+        payload.put("phone", phone);
+        log.debug("[Router/WELCOME] Publishing to DLT for schema={}", tenantSchema);
+        kafkaProducer.publishJson(WELCOME_DLT_TOPIC, payload);
     }
 
     /**
@@ -274,7 +290,7 @@ public class NotificationEventRouter {
     private Long fetchWhatsappConnectionId(String tenantSchema, String phone) {
         String sql = "SELECT whatsapp_connection_id FROM " + tenantSchema
                 + ".user_table WHERE phone_number = ? LIMIT 1";
-        List<Long> rows = jdbcTemplate.query(sql, (rs, n) -> rs.getLong("whatsapp_connection_id"), phone);
+        List<Long> rows = jdbcTemplate.query(sql, (rs, n) -> rs.getObject("whatsapp_connection_id", Long.class), phone);
         return rows.isEmpty() ? null : rows.get(0);
     }
 
