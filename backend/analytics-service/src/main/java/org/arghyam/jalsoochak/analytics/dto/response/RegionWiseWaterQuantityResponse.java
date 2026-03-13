@@ -31,7 +31,7 @@ public class RegionWiseWaterQuantityResponse {
         private Integer lgdId;
         private Integer departmentId;
         private String title;
-        private Long eWaterQuantity;
+        private Long waterQuantity;
         private Integer householdCount;
     }
 }

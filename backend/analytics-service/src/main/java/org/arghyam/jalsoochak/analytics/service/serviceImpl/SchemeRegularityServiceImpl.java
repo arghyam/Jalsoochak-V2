@@ -857,7 +857,7 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
                         .lgdId(metric.lgdId())
                         .departmentId(null)
                         .title(metric.title())
-                        .eWaterQuantity(metric.eWaterQuantity())
+                        .waterQuantity(metric.waterQuantity())
                         .householdCount(metric.householdCount())
                         .build())
                 .toList();
@@ -894,7 +894,7 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
                         .lgdId(null)
                         .departmentId(metric.departmentId())
                         .title(metric.title())
-                        .eWaterQuantity(metric.eWaterQuantity())
+                        .waterQuantity(metric.waterQuantity())
                         .householdCount(metric.householdCount())
                         .build())
                 .toList();

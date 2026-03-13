@@ -461,7 +461,7 @@ class SchemeRegularityServiceImplTest {
 
         assertThat(response.getParentLgdId()).isEqualTo(101);
         assertThat(response.getChildRegionCount()).isEqualTo(1);
-        assertThat(response.getChildRegions().getFirst().getEWaterQuantity()).isEqualTo(120L);
+        assertThat(response.getChildRegions().getFirst().getWaterQuantity()).isEqualTo(120L);
     }
 
     @Test

@@ -1521,7 +1521,7 @@ public class SchemeRegularityRepository {
             Integer lgdId,
             Integer departmentId,
             String title,
-            Long eWaterQuantity,
+            Long waterQuantity,
             Integer householdCount) {
     }
 

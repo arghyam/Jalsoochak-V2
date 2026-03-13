@@ -423,16 +423,16 @@ class SchemeRegularityRepositoryIntegrationTest {
         assertThat(byLgd).hasSize(2);
         assertThat(byLgd.get(0).lgdId()).isEqualTo(101);
         assertThat(byLgd.get(0).householdCount()).isEqualTo(10);
-        assertThat(byLgd.get(0).eWaterQuantity()).isEqualTo(600L);
+        assertThat(byLgd.get(0).waterQuantity()).isEqualTo(600L);
         assertThat(byLgd.get(1).lgdId()).isEqualTo(102);
         assertThat(byLgd.get(1).householdCount()).isEqualTo(20);
-        assertThat(byLgd.get(1).eWaterQuantity()).isEqualTo(120L);
+        assertThat(byLgd.get(1).waterQuantity()).isEqualTo(120L);
 
         assertThat(byDept).hasSize(2);
         assertThat(byDept.get(0).departmentId()).isEqualTo(201);
-        assertThat(byDept.get(0).eWaterQuantity()).isEqualTo(600L);
+        assertThat(byDept.get(0).waterQuantity()).isEqualTo(600L);
         assertThat(byDept.get(1).departmentId()).isEqualTo(202);
-        assertThat(byDept.get(1).eWaterQuantity()).isEqualTo(120L);
+        assertThat(byDept.get(1).waterQuantity()).isEqualTo(120L);
     }
 
     private void truncateAll() {
