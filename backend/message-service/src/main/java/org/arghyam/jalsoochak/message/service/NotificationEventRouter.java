@@ -14,6 +14,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.time.Instant;
@@ -227,11 +228,16 @@ public class NotificationEventRouter {
         int success = 0, failed = 0;
         for (JsonNode phoneNode : phonesNode) {
             String phone = phoneNode.asText("");
-            if (phone.isBlank()) continue;
+            if (phone.isBlank()) {
+                log.warn("[Router/UPDATE_LANGUAGE] Blank or null phone entry in pumpOperatorPhones (node={}), skipping", phoneNode);
+                failed++;
+                continue;
+            }
             try {
                 Long contactId = fetchWhatsappConnectionId(tenantSchema, phone);
                 if (contactId == null || contactId <= 0) {
-                    log.warn("[Router/UPDATE_LANGUAGE] No whatsapp_connection_id found for phone={} in schema={}", phone, tenantSchema);
+                    log.warn("[Router/UPDATE_LANGUAGE] No whatsapp_connection_id found in schema={}", tenantSchema);
+                    log.debug("[Router/UPDATE_LANGUAGE] No whatsapp_connection_id for phone={} in schema={}", phone, tenantSchema);
                     failed++;
                     continue;
                 }
@@ -271,11 +277,17 @@ public class NotificationEventRouter {
         int success = 0, failed = 0;
         for (JsonNode phoneNode : phonesNode) {
             String phone = phoneNode.asText("");
-            if (phone.isBlank()) continue;
+            if (phone.isBlank()) {
+                log.warn("[Router/WELCOME] Blank or null phone entry in pumpOperatorPhones (node={}), skipping", phoneNode);
+                publishWelcomeDlt(tenantSchema, phoneNode.toString(), "blank_phone");
+                failed++;
+                continue;
+            }
             try {
                 Long contactId = fetchWhatsappConnectionId(tenantSchema, phone);
                 if (contactId == null || contactId <= 0) {
-                    log.warn("[Router/WELCOME] No whatsapp_connection_id found for phone={} in schema={}", phone, tenantSchema);
+                    log.warn("[Router/WELCOME] No whatsapp_connection_id found in schema={}", tenantSchema);
+                    log.debug("[Router/WELCOME] No whatsapp_connection_id for phone={} in schema={}", phone, tenantSchema);
                     publishWelcomeDlt(tenantSchema, phone, "no_whatsapp_connection_id");
                     failed++;
                     continue;
@@ -292,8 +304,17 @@ public class NotificationEventRouter {
     }
 
     private void publishWelcomeDlt(String tenantSchema, String phone, String errorMessage) {
+        // Derive a stable dedupe key from the business identity so that if this
+        // method is called again for the same phone (e.g. Kafka consumer retry),
+        // downstream processors receive a record with the same retryId and can
+        // safely deduplicate. UUID.nameUUIDFromBytes produces a deterministic
+        // UUID v3 for a given input; no upstream eventId is available in this payload.
+        String retryId = UUID.nameUUIDFromBytes(
+                ("SEND_WELCOME_MESSAGE_RETRY:" + tenantSchema + ":" + phone)
+                        .getBytes(StandardCharsets.UTF_8))
+                .toString();
         Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("retryId", UUID.randomUUID().toString());
+        payload.put("retryId", retryId);
         payload.put("eventType", "SEND_WELCOME_MESSAGE_RETRY");
         payload.put("tenantSchema", tenantSchema);
         payload.put("failedAt", Instant.now().toString());
