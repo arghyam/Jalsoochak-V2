@@ -2,7 +2,7 @@
 -- Migration: V17 - Add language_master_table to common_schema
 -- ============================================================
 
-CREATE TABLE common_schema.language_master_table (
+CREATE TABLE IF NOT EXISTS common_schema.language_master_table (
     id           SERIAL          PRIMARY KEY,
     uuid         VARCHAR(36)     NOT NULL UNIQUE DEFAULT gen_random_uuid()::TEXT,
     label        VARCHAR(255)    NOT NULL UNIQUE,  -- e.g. Hindi, English, Marathi
@@ -25,8 +25,8 @@ CREATE TABLE common_schema.language_master_table (
         FOREIGN KEY (deleted_by) REFERENCES common_schema.tenant_admin_user_master_table(id)
 );
 
-CREATE INDEX idx_language_master_locale    ON common_schema.language_master_table(locale);
-CREATE INDEX idx_language_master_is_active ON common_schema.language_master_table(is_active);
+CREATE INDEX IF NOT EXISTS idx_language_master_locale    ON common_schema.language_master_table(locale);
+CREATE INDEX IF NOT EXISTS idx_language_master_is_active ON common_schema.language_master_table(is_active);
 
 -- Seed languages (explicit IDs preserved to match upstream reference data)
 INSERT INTO common_schema.language_master_table (id, label, label_locale, locale, localized, is_active)
@@ -45,7 +45,8 @@ VALUES
     (11, 'Punjabi',   'ਪੰਜਾਬੀ',       'pa',  false, true),
     (12, 'Marathi',   'मराठी',        'mr',  false, true),
     (13, 'Urdu',      'اردو',         'ur',  false, true),
-    (21, 'Gondi',     'Koitur',       'gon', false, true);
+    (21, 'Gondi',     'Koitur',       'gon', false, true)
+ON CONFLICT DO NOTHING;
 
 -- Advance sequence past the highest explicit ID
 SELECT setval(
