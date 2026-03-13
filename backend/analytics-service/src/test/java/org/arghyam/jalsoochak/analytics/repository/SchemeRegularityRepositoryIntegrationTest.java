@@ -1,0 +1,526 @@
+package org.arghyam.jalsoochak.analytics.repository;
+
+import org.arghyam.jalsoochak.analytics.enums.PeriodScale;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
+import org.springframework.boot.test.autoconfigure.jdbc.JdbcTest;
+import org.springframework.context.annotation.Import;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
+import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.junit.jupiter.Container;
+import org.testcontainers.junit.jupiter.Testcontainers;
+import org.testcontainers.utility.DockerImageName;
+
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.util.List;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+@JdbcTest
+@Testcontainers
+@AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
+@Import(SchemeRegularityRepository.class)
+class SchemeRegularityRepositoryIntegrationTest {
+
+    @Container
+    static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>(
+            DockerImageName.parse("postgis/postgis:16-3.4").asCompatibleSubstituteFor("postgres"))
+            .withDatabaseName("analytics_test")
+            .withUsername("postgres")
+            .withPassword("postgres");
+
+    @DynamicPropertySource
+    static void configure(DynamicPropertyRegistry registry) {
+        registry.add("spring.datasource.url", postgres::getJdbcUrl);
+        registry.add("spring.datasource.username", postgres::getUsername);
+        registry.add("spring.datasource.password", postgres::getPassword);
+        registry.add("spring.flyway.enabled", () -> "true");
+        registry.add("spring.flyway.locations", () -> "classpath:db/migration");
+        registry.add("spring.flyway.schemas", () -> "analytics_schema");
+    }
+
+    @Autowired
+    private SchemeRegularityRepository repository;
+
+    @Autowired
+    private org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
+
+    private static final LocalDate D1 = LocalDate.of(2026, 1, 1);
+    private static final LocalDate D2 = LocalDate.of(2026, 1, 2);
+    private static final LocalDate D3 = LocalDate.of(2026, 1, 3);
+    private static final LocalDate D8 = LocalDate.of(2026, 1, 8);
+    private static final LocalDate D10 = LocalDate.of(2026, 1, 10);
+
+    @BeforeEach
+    void setUp() {
+        truncateAll();
+        seedDimensions();
+        seedMeterReadings();
+        seedWaterQuantity();
+    }
+
+    @Test
+    void getLgdAndDepartmentLevels_returnsExpectedValues() {
+        assertThat(repository.getLgdLevel(100)).isEqualTo(1);
+        assertThat(repository.getLgdLevel(101)).isEqualTo(2);
+        assertThat(repository.getDepartmentLevel(200)).isEqualTo(1);
+        assertThat(repository.getDepartmentLevel(201)).isEqualTo(2);
+    }
+
+    @Test
+    void getSchemeRegularityMetricsByLgd_countsOnlyPositiveConfirmedReadingDays() {
+        SchemeRegularityRepository.SchemeRegularityMetrics metrics =
+                repository.getSchemeRegularityMetrics(100, D1, D3);
+
+        assertThat(metrics.schemeCount()).isEqualTo(2);
+        assertThat(metrics.totalSupplyDays()).isEqualTo(2);
+    }
+
+    @Test
+    void getReadingSubmissionRateMetricsByLgd_countsNonNegativeReadingDays() {
+        SchemeRegularityRepository.SchemeRegularityMetrics metrics =
+                repository.getReadingSubmissionRateMetricsByLgd(100, D1, D3);
+
+        assertThat(metrics.schemeCount()).isEqualTo(2);
+        assertThat(metrics.totalSupplyDays()).isEqualTo(4);
+    }
+
+    @Test
+    void getSchemeRegularityAndSubmissionByDepartment_matchExpectedCounts() {
+        SchemeRegularityRepository.SchemeRegularityMetrics regularity =
+                repository.getSchemeRegularityMetricsByDepartment(200, D1, D3);
+        SchemeRegularityRepository.SchemeRegularityMetrics submission =
+                repository.getReadingSubmissionRateMetricsByDepartment(200, D1, D3);
+
+        assertThat(regularity.schemeCount()).isEqualTo(2);
+        assertThat(regularity.totalSupplyDays()).isEqualTo(2);
+        assertThat(submission.schemeCount()).isEqualTo(2);
+        assertThat(submission.totalSupplyDays()).isEqualTo(4);
+    }
+
+    @Test
+    void childReadingSubmissionQueries_returnExpectedRows_forLgdAndDepartment() {
+        List<SchemeRegularityRepository.ChildRegionReadingSubmissionMetrics> byLgd =
+                repository.getChildReadingSubmissionRateMetricsByLgd(100, D1, D3);
+        List<SchemeRegularityRepository.ChildRegionReadingSubmissionMetrics> byDept =
+                repository.getChildReadingSubmissionRateMetricsByDepartment(200, D1, D3);
+
+        assertThat(byLgd).hasSize(2);
+        assertThat(byLgd.get(0).lgdId()).isEqualTo(101);
+        assertThat(byLgd.get(0).schemeCount()).isEqualTo(1);
+        assertThat(byLgd.get(0).totalSubmissionDays()).isEqualTo(3);
+        assertThat(byLgd.get(0).readingSubmissionRate()).isEqualByComparingTo("1.0000");
+        assertThat(byLgd.get(1).lgdId()).isEqualTo(102);
+        assertThat(byLgd.get(1).totalSubmissionDays()).isEqualTo(1);
+        assertThat(byLgd.get(1).readingSubmissionRate()).isEqualByComparingTo("0.3333");
+
+        assertThat(byDept).hasSize(2);
+        assertThat(byDept.get(0).departmentId()).isEqualTo(201);
+        assertThat(byDept.get(0).totalSubmissionDays()).isEqualTo(3);
+        assertThat(byDept.get(1).departmentId()).isEqualTo(202);
+        assertThat(byDept.get(1).totalSubmissionDays()).isEqualTo(1);
+    }
+
+    @Test
+    void childSchemeRegularityQueries_returnExpectedRows_forLgdAndDepartment() {
+        List<SchemeRegularityRepository.ChildRegionSchemeRegularityMetrics> byLgd =
+                repository.getChildSchemeRegularityMetricsByLgd(100, D1, D3);
+        List<SchemeRegularityRepository.ChildRegionSchemeRegularityMetrics> byDept =
+                repository.getChildSchemeRegularityMetricsByDepartment(200, D1, D3);
+
+        assertThat(byLgd).hasSize(2);
+        assertThat(byLgd.get(0).lgdId()).isEqualTo(101);
+        assertThat(byLgd.get(0).totalSupplyDays()).isEqualTo(2);
+        assertThat(byLgd.get(0).averageRegularity()).isEqualByComparingTo("0.6667");
+        assertThat(byLgd.get(1).lgdId()).isEqualTo(102);
+        assertThat(byLgd.get(1).totalSupplyDays()).isEqualTo(0);
+        assertThat(byLgd.get(1).averageRegularity()).isEqualByComparingTo("0.0000");
+
+        assertThat(byDept).hasSize(2);
+        assertThat(byDept.get(0).departmentId()).isEqualTo(201);
+        assertThat(byDept.get(0).totalSupplyDays()).isEqualTo(2);
+        assertThat(byDept.get(1).departmentId()).isEqualTo(202);
+        assertThat(byDept.get(1).totalSupplyDays()).isEqualTo(0);
+    }
+
+    @Test
+    void getSchemeStatusCountByLgd_countsActiveAndInactiveSchemes() {
+        SchemeRegularityRepository.SchemeStatusCount count = repository.getSchemeStatusCountByLgd(100);
+
+        assertThat(count.activeSchemeCount()).isEqualTo(1);
+        assertThat(count.inactiveSchemeCount()).isEqualTo(1);
+    }
+
+    @Test
+    void getSchemeStatusCountByDepartment_countsActiveAndInactiveSchemes() {
+        SchemeRegularityRepository.SchemeStatusCount count = repository.getSchemeStatusCountByDepartment(200);
+
+        assertThat(count.activeSchemeCount()).isEqualTo(1);
+        assertThat(count.inactiveSchemeCount()).isEqualTo(1);
+    }
+
+    @Test
+    void getPeriodicWaterQuantityByLgdId_weekScale_returnsExpectedRowsAndAverages() {
+        List<SchemeRegularityRepository.PeriodicWaterQuantityMetrics> rows =
+                repository.getPeriodicWaterQuantityByLgdId(100, D1, D10, PeriodScale.WEEK);
+
+        assertThat(rows).hasSize(2);
+
+        SchemeRegularityRepository.PeriodicWaterQuantityMetrics weekOne = rows.get(0);
+        SchemeRegularityRepository.PeriodicWaterQuantityMetrics weekTwo = rows.get(1);
+
+        assertThat(weekOne.periodStartDate()).isEqualTo(LocalDate.of(2025, 12, 29));
+        assertThat(weekOne.periodEndDate()).isEqualTo(LocalDate.of(2026, 1, 4));
+        assertThat(weekOne.averageWaterQuantity()).isEqualByComparingTo(new BigDecimal("116.6667"));
+        assertThat(weekOne.householdCount()).isEqualTo(30);
+
+        assertThat(weekTwo.periodStartDate()).isEqualTo(LocalDate.of(2026, 1, 5));
+        assertThat(weekTwo.periodEndDate()).isEqualTo(LocalDate.of(2026, 1, 11));
+        assertThat(weekTwo.averageWaterQuantity()).isEqualByComparingTo(new BigDecimal("185.0000"));
+        assertThat(weekTwo.householdCount()).isEqualTo(30);
+    }
+
+    @Test
+    void getPeriodicWaterQuantityByDepartment_monthScale_returnsSingleMonthMetric() {
+        List<SchemeRegularityRepository.PeriodicWaterQuantityMetrics> rows =
+                repository.getPeriodicWaterQuantityByDepartment(200, D1, D10, PeriodScale.MONTH);
+
+        assertThat(rows).hasSize(1);
+        assertThat(rows.get(0).periodStartDate()).isEqualTo(LocalDate.of(2026, 1, 1));
+        assertThat(rows.get(0).averageWaterQuantity()).isEqualByComparingTo("144.0000");
+        assertThat(rows.get(0).householdCount()).isEqualTo(30);
+    }
+
+    @Test
+    void outageQueriesByLgd_returnParentAndChildAggregations() {
+        List<SchemeRegularityRepository.OutageReasonSchemeCount> parent =
+                repository.getOutageReasonSchemeCountByLgd(100, D1, D10);
+        List<SchemeRegularityRepository.ChildRegionRef> children = repository.getChildRegionsByLgd(100);
+        List<SchemeRegularityRepository.ChildRegionOutageReasonSchemeCount> childCounts =
+                repository.getChildOutageReasonSchemeCountByLgd(100, D1, D10);
+
+        assertThat(parent).hasSize(2);
+        assertThat(parent)
+                .anySatisfy(r -> {
+                    assertThat(r.outageReason()).isEqualTo(1);
+                    assertThat(r.schemeCount()).isEqualTo(1);
+                })
+                .anySatisfy(r -> {
+                    assertThat(r.outageReason()).isEqualTo(2);
+                    assertThat(r.schemeCount()).isEqualTo(2);
+                });
+
+        assertThat(children).hasSize(2);
+        assertThat(children.get(0).lgdId()).isEqualTo(101);
+        assertThat(children.get(1).lgdId()).isEqualTo(102);
+
+        assertThat(childCounts).hasSize(3);
+        assertThat(childCounts)
+                .anySatisfy(r -> {
+                    assertThat(r.lgdId()).isEqualTo(101);
+                    assertThat(r.outageReason()).isEqualTo(1);
+                    assertThat(r.schemeCount()).isEqualTo(1);
+                })
+                .anySatisfy(r -> {
+                    assertThat(r.lgdId()).isEqualTo(101);
+                    assertThat(r.outageReason()).isEqualTo(2);
+                    assertThat(r.schemeCount()).isEqualTo(1);
+                })
+                .anySatisfy(r -> {
+                    assertThat(r.lgdId()).isEqualTo(102);
+                    assertThat(r.outageReason()).isEqualTo(2);
+                    assertThat(r.schemeCount()).isEqualTo(1);
+                });
+    }
+
+    @Test
+    void outageQueriesByDepartment_returnParentAndChildAggregations() {
+        List<SchemeRegularityRepository.OutageReasonSchemeCount> parent =
+                repository.getOutageReasonSchemeCountByDepartment(200, D1, D10);
+        List<SchemeRegularityRepository.ChildRegionRef> children = repository.getChildRegionsByDepartment(200);
+        List<SchemeRegularityRepository.ChildRegionOutageReasonSchemeCount> childCounts =
+                repository.getChildOutageReasonSchemeCountByDepartment(200, D1, D10);
+
+        assertThat(parent).hasSize(2);
+        assertThat(parent)
+                .anySatisfy(r -> {
+                    assertThat(r.outageReason()).isEqualTo(1);
+                    assertThat(r.schemeCount()).isEqualTo(1);
+                })
+                .anySatisfy(r -> {
+                    assertThat(r.outageReason()).isEqualTo(2);
+                    assertThat(r.schemeCount()).isEqualTo(2);
+                });
+
+        assertThat(children).hasSize(2);
+        assertThat(children.get(0).departmentId()).isEqualTo(201);
+        assertThat(children.get(1).departmentId()).isEqualTo(202);
+
+        assertThat(childCounts).hasSize(3);
+        assertThat(childCounts)
+                .anySatisfy(r -> {
+                    assertThat(r.departmentId()).isEqualTo(201);
+                    assertThat(r.outageReason()).isEqualTo(1);
+                    assertThat(r.schemeCount()).isEqualTo(1);
+                })
+                .anySatisfy(r -> {
+                    assertThat(r.departmentId()).isEqualTo(201);
+                    assertThat(r.outageReason()).isEqualTo(2);
+                    assertThat(r.schemeCount()).isEqualTo(1);
+                })
+                .anySatisfy(r -> {
+                    assertThat(r.departmentId()).isEqualTo(202);
+                    assertThat(r.outageReason()).isEqualTo(2);
+                    assertThat(r.schemeCount()).isEqualTo(1);
+                });
+    }
+
+    @Test
+    void waterSupplyQueries_returnExpectedAggregatesAcrossScopes() {
+        List<SchemeRegularityRepository.SchemeWaterSupplyMetrics> current =
+                repository.getAverageWaterSupplyPerCurrentRegion(1, D1, D3);
+        List<SchemeRegularityRepository.ChildRegionWaterSupplyMetrics> nation =
+                repository.getAverageWaterSupplyPerNation(D1, D3);
+        List<SchemeRegularityRepository.ChildRegionWaterSupplyMetrics> byLgd =
+                repository.getAverageWaterSupplyPerCurrentRegionByLgd(1, 100, D1, D3);
+        List<SchemeRegularityRepository.ChildRegionWaterSupplyMetrics> byDept =
+                repository.getAverageWaterSupplyPerCurrentRegionByDepartment(1, 200, D1, D3);
+
+        assertThat(current).hasSize(2);
+        assertThat(current.get(0).schemeId()).isEqualTo(1);
+        assertThat(current.get(0).totalWaterSuppliedLiters()).isEqualTo(15L);
+        assertThat(current.get(0).supplyDays()).isEqualTo(2);
+        assertThat(current.get(0).averageLitersPerHousehold()).isEqualByComparingTo("0.5000");
+        assertThat(current.get(1).schemeId()).isEqualTo(2);
+        assertThat(current.get(1).totalWaterSuppliedLiters()).isEqualTo(0L);
+        assertThat(current.get(1).averageLitersPerHousehold()).isEqualByComparingTo("0.0000");
+
+        assertThat(nation).hasSize(1);
+        assertThat(nation.get(0).tenantId()).isEqualTo(1);
+        assertThat(nation.get(0).schemeCount()).isEqualTo(2);
+        assertThat(nation.get(0).totalHouseholdCount()).isEqualTo(30);
+        assertThat(nation.get(0).totalWaterSuppliedLiters()).isEqualTo(15L);
+        assertThat(nation.get(0).avgWaterSupplyPerScheme()).isEqualByComparingTo("7.5000");
+
+        assertThat(byLgd).hasSize(2);
+        assertThat(byLgd.get(0).lgdId()).isEqualTo(101);
+        assertThat(byLgd.get(0).totalWaterSuppliedLiters()).isEqualTo(15L);
+        assertThat(byLgd.get(0).avgWaterSupplyPerScheme()).isEqualByComparingTo("15.0000");
+        assertThat(byLgd.get(1).lgdId()).isEqualTo(102);
+        assertThat(byLgd.get(1).totalWaterSuppliedLiters()).isEqualTo(0L);
+
+        assertThat(byDept).hasSize(2);
+        assertThat(byDept.get(0).departmentId()).isEqualTo(201);
+        assertThat(byDept.get(0).totalWaterSuppliedLiters()).isEqualTo(15L);
+        assertThat(byDept.get(1).departmentId()).isEqualTo(202);
+        assertThat(byDept.get(1).totalWaterSuppliedLiters()).isEqualTo(0L);
+    }
+
+    @Test
+    void regionWiseWaterQuantityQueries_returnExpectedRows_forLgdAndDepartment() {
+        List<SchemeRegularityRepository.ChildRegionWaterQuantityMetrics> byLgd =
+                repository.getRegionWiseWaterQuantityByLgd(100, D1, D10);
+        List<SchemeRegularityRepository.ChildRegionWaterQuantityMetrics> byDept =
+                repository.getRegionWiseWaterQuantityByDepartment(200, D1, D10);
+
+        assertThat(byLgd).hasSize(2);
+        assertThat(byLgd.get(0).lgdId()).isEqualTo(101);
+        assertThat(byLgd.get(0).householdCount()).isEqualTo(10);
+        assertThat(byLgd.get(0).eWaterQuantity()).isEqualTo(600L);
+        assertThat(byLgd.get(1).lgdId()).isEqualTo(102);
+        assertThat(byLgd.get(1).householdCount()).isEqualTo(20);
+        assertThat(byLgd.get(1).eWaterQuantity()).isEqualTo(120L);
+
+        assertThat(byDept).hasSize(2);
+        assertThat(byDept.get(0).departmentId()).isEqualTo(201);
+        assertThat(byDept.get(0).eWaterQuantity()).isEqualTo(600L);
+        assertThat(byDept.get(1).departmentId()).isEqualTo(202);
+        assertThat(byDept.get(1).eWaterQuantity()).isEqualTo(120L);
+    }
+
+    private void truncateAll() {
+        jdbcTemplate.execute("""
+                TRUNCATE TABLE
+                    analytics_schema.fact_meter_reading_table,
+                    analytics_schema.fact_water_quantity_table,
+                    analytics_schema.fact_escalation_table,
+                    analytics_schema.fact_scheme_performance_table,
+                    analytics_schema.dim_scheme_table,
+                    analytics_schema.dim_lgd_location_table,
+                    analytics_schema.dim_department_location_table,
+                    analytics_schema.dim_user_table,
+                    analytics_schema.dim_date_table,
+                    analytics_schema.dim_tenant_table
+                RESTART IDENTITY CASCADE
+                """);
+    }
+
+    private void seedDimensions() {
+        jdbcTemplate.update("""
+                INSERT INTO analytics_schema.dim_tenant_table
+                (tenant_id, state_code, title, country_code, status, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, NOW(), NOW())
+                """, 1, "mp", "Madhya Pradesh", "IN", 1);
+
+        jdbcTemplate.update("""
+                INSERT INTO analytics_schema.dim_lgd_location_table
+                (lgd_id, tenant_id, lgd_code, lgd_c_name, title, lgd_level,
+                 level_1_lgd_id, level_2_lgd_id, level_3_lgd_id, level_4_lgd_id, level_5_lgd_id, level_6_lgd_id,
+                 geom, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NOW(), NOW())
+                """, 100, 1, "L100", "Parent", "Parent LGD", 1, 100, null, null, null, null, null);
+
+        jdbcTemplate.update("""
+                INSERT INTO analytics_schema.dim_lgd_location_table
+                (lgd_id, tenant_id, lgd_code, lgd_c_name, title, lgd_level,
+                 level_1_lgd_id, level_2_lgd_id, level_3_lgd_id, level_4_lgd_id, level_5_lgd_id, level_6_lgd_id,
+                 geom, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NOW(), NOW())
+                """, 101, 1, "L101", "ChildA", "Child LGD A", 2, 100, 101, null, null, null, null);
+
+        jdbcTemplate.update("""
+                INSERT INTO analytics_schema.dim_lgd_location_table
+                (lgd_id, tenant_id, lgd_code, lgd_c_name, title, lgd_level,
+                 level_1_lgd_id, level_2_lgd_id, level_3_lgd_id, level_4_lgd_id, level_5_lgd_id, level_6_lgd_id,
+                 geom, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NOW(), NOW())
+                """, 102, 1, "L102", "ChildB", "Child LGD B", 2, 100, 102, null, null, null, null);
+
+        jdbcTemplate.update("""
+                INSERT INTO analytics_schema.dim_department_location_table
+                (department_id, tenant_id, department_c_name, title, department_level,
+                 level_1_dept_id, level_2_dept_id, level_3_dept_id, level_4_dept_id, level_5_dept_id, level_6_dept_id,
+                 created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
+                """, 200, 1, "Parent Dept", "Parent Dept", 1, 200, null, null, null, null, null);
+
+        jdbcTemplate.update("""
+                INSERT INTO analytics_schema.dim_department_location_table
+                (department_id, tenant_id, department_c_name, title, department_level,
+                 level_1_dept_id, level_2_dept_id, level_3_dept_id, level_4_dept_id, level_5_dept_id, level_6_dept_id,
+                 created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
+                """, 201, 1, "Child Dept A", "Child Dept A", 2, 200, 201, null, null, null, null);
+
+        jdbcTemplate.update("""
+                INSERT INTO analytics_schema.dim_department_location_table
+                (department_id, tenant_id, department_c_name, title, department_level,
+                 level_1_dept_id, level_2_dept_id, level_3_dept_id, level_4_dept_id, level_5_dept_id, level_6_dept_id,
+                 created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
+                """, 202, 1, "Child Dept B", "Child Dept B", 2, 200, 202, null, null, null, null);
+
+        jdbcTemplate.update("""
+                INSERT INTO analytics_schema.dim_scheme_table
+                (scheme_id, tenant_id, scheme_name, state_scheme_id, centre_scheme_id, longitude, latitude,
+                 parent_lgd_location_id, level_1_lgd_id, level_2_lgd_id, level_3_lgd_id, level_4_lgd_id, level_5_lgd_id, level_6_lgd_id,
+                 parent_department_location_id, level_1_dept_id, level_2_dept_id, level_3_dept_id, level_4_dept_id, level_5_dept_id, level_6_dept_id,
+                 status, fhtc_count, planned_fhtc, house_hold_count, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
+                """, 1, 1, "Scheme A", 1001, 2001, 0.0, 0.0,
+                100, 100, 101, null, null, null, null,
+                200, 200, 201, null, null, null, null,
+                1, 10, 10, 10);
+
+        jdbcTemplate.update("""
+                INSERT INTO analytics_schema.dim_scheme_table
+                (scheme_id, tenant_id, scheme_name, state_scheme_id, centre_scheme_id, longitude, latitude,
+                 parent_lgd_location_id, level_1_lgd_id, level_2_lgd_id, level_3_lgd_id, level_4_lgd_id, level_5_lgd_id, level_6_lgd_id,
+                 parent_department_location_id, level_1_dept_id, level_2_dept_id, level_3_dept_id, level_4_dept_id, level_5_dept_id, level_6_dept_id,
+                 status, fhtc_count, planned_fhtc, house_hold_count, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
+                """, 2, 1, "Scheme B", 1002, 2002, 0.0, 0.0,
+                100, 100, 102, null, null, null, null,
+                200, 200, 202, null, null, null, null,
+                0, 20, 20, 20);
+
+        insertDate(D1);
+        insertDate(D2);
+        insertDate(D3);
+        insertDate(D8);
+    }
+
+    private void seedMeterReadings() {
+        jdbcTemplate.update("""
+                INSERT INTO analytics_schema.fact_meter_reading_table
+                (tenant_id, scheme_id, user_id, extracted_reading, confirmed_reading, confidence, image_url, reading_at, channel,
+                 reading_date, created_at, submission_status, reading_type)
+                VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), ?, ?, NOW(), ?, ?)
+                """, 1, 1, 11, 10, 10, 90, "x", 1, D1, 1, 0);
+
+        jdbcTemplate.update("""
+                INSERT INTO analytics_schema.fact_meter_reading_table
+                (tenant_id, scheme_id, user_id, extracted_reading, confirmed_reading, confidence, image_url, reading_at, channel,
+                 reading_date, created_at, submission_status, reading_type)
+                VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), ?, ?, NOW(), ?, ?)
+                """, 1, 1, 11, 0, 0, 90, "x", 1, D2, 1, 0);
+
+        jdbcTemplate.update("""
+                INSERT INTO analytics_schema.fact_meter_reading_table
+                (tenant_id, scheme_id, user_id, extracted_reading, confirmed_reading, confidence, image_url, reading_at, channel,
+                 reading_date, created_at, submission_status, reading_type)
+                VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), ?, ?, NOW(), ?, ?)
+                """, 1, 1, 11, 5, 5, 90, "x", 1, D3, 1, 0);
+
+        jdbcTemplate.update("""
+                INSERT INTO analytics_schema.fact_meter_reading_table
+                (tenant_id, scheme_id, user_id, extracted_reading, confirmed_reading, confidence, image_url, reading_at, channel,
+                 reading_date, created_at, submission_status, reading_type)
+                VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), ?, ?, NOW(), ?, ?)
+                """, 1, 2, 12, -1, -1, 90, "x", 1, D1, 1, 0);
+
+        jdbcTemplate.update("""
+                INSERT INTO analytics_schema.fact_meter_reading_table
+                (tenant_id, scheme_id, user_id, extracted_reading, confirmed_reading, confidence, image_url, reading_at, channel,
+                 reading_date, created_at, submission_status, reading_type)
+                VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), ?, ?, NOW(), ?, ?)
+                """, 1, 2, 12, 0, 0, 90, "x", 1, D2, 1, 0);
+    }
+
+    private void seedWaterQuantity() {
+        jdbcTemplate.update("""
+                INSERT INTO analytics_schema.fact_water_quantity_table
+                (tenant_id, scheme_id, user_id, water_quantity, date, created_at, updated_at, submission_status, outage_reason)
+                VALUES (?, ?, ?, ?, ?, NOW(), NOW(), ?, ?)
+                """, 1, 1, 11, 100, D1, 1, 1);
+
+        jdbcTemplate.update("""
+                INSERT INTO analytics_schema.fact_water_quantity_table
+                (tenant_id, scheme_id, user_id, water_quantity, date, created_at, updated_at, submission_status, outage_reason)
+                VALUES (?, ?, ?, ?, ?, NOW(), NOW(), ?, ?)
+                """, 1, 1, 11, 200, D2, 1, null);
+
+        jdbcTemplate.update("""
+                INSERT INTO analytics_schema.fact_water_quantity_table
+                (tenant_id, scheme_id, user_id, water_quantity, date, created_at, updated_at, submission_status, outage_reason)
+                VALUES (?, ?, ?, ?, ?, NOW(), NOW(), ?, ?)
+                """, 1, 1, 11, 300, D8, 1, 2);
+
+        jdbcTemplate.update("""
+                INSERT INTO analytics_schema.fact_water_quantity_table
+                (tenant_id, scheme_id, user_id, water_quantity, date, created_at, updated_at, submission_status, outage_reason)
+                VALUES (?, ?, ?, ?, ?, NOW(), NOW(), ?, ?)
+                """, 1, 2, 12, 50, D1, 1, 2);
+
+        jdbcTemplate.update("""
+                INSERT INTO analytics_schema.fact_water_quantity_table
+                (tenant_id, scheme_id, user_id, water_quantity, date, created_at, updated_at, submission_status, outage_reason)
+                VALUES (?, ?, ?, ?, ?, NOW(), NOW(), ?, ?)
+                """, 1, 2, 12, 70, D8, 1, 2);
+    }
+
+    private void insertDate(LocalDate date) {
+        int dateKey = Integer.parseInt(date.toString().replace("-", ""));
+        jdbcTemplate.update("""
+                INSERT INTO analytics_schema.dim_date_table
+                (date_key, full_date, day, month, month_name, quarter, year, week, is_weekend, fiscal_year)
+                VALUES (?, ?, EXTRACT(DAY FROM ?::date), EXTRACT(MONTH FROM ?::date), TO_CHAR(?::date, 'FMMonth'),
+                        EXTRACT(QUARTER FROM ?::date), EXTRACT(YEAR FROM ?::date), EXTRACT(WEEK FROM ?::date),
+                        EXTRACT(ISODOW FROM ?::date) IN (6,7), EXTRACT(YEAR FROM ?::date))
+                """, dateKey, date, date, date, date, date, date, date, date, date);
+    }
+}

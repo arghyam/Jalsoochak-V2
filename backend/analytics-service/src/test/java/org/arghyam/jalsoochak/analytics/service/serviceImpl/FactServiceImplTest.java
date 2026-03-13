@@ -1,0 +1,121 @@
+package org.arghyam.jalsoochak.analytics.service.serviceImpl;
+
+import org.arghyam.jalsoochak.analytics.dto.event.EscalationEvent;
+import org.arghyam.jalsoochak.analytics.dto.event.MeterReadingEvent;
+import org.arghyam.jalsoochak.analytics.dto.event.SchemePerformanceEvent;
+import org.arghyam.jalsoochak.analytics.dto.event.WaterQuantityEvent;
+import org.arghyam.jalsoochak.analytics.entity.FactEscalation;
+import org.arghyam.jalsoochak.analytics.entity.FactMeterReading;
+import org.arghyam.jalsoochak.analytics.entity.FactSchemePerformance;
+import org.arghyam.jalsoochak.analytics.entity.FactWaterQuantity;
+import org.arghyam.jalsoochak.analytics.repository.FactEscalationRepository;
+import org.arghyam.jalsoochak.analytics.repository.FactMeterReadingRepository;
+import org.arghyam.jalsoochak.analytics.repository.FactSchemePerformanceRepository;
+import org.arghyam.jalsoochak.analytics.repository.FactWaterQuantityRepository;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+
+@ExtendWith(MockitoExtension.class)
+class FactServiceImplTest {
+
+    @Mock
+    private FactMeterReadingRepository meterReadingRepository;
+    @Mock
+    private FactWaterQuantityRepository waterQuantityRepository;
+    @Mock
+    private FactEscalationRepository escalationRepository;
+    @Mock
+    private FactSchemePerformanceRepository schemePerformanceRepository;
+
+    @InjectMocks
+    private FactServiceImpl service;
+
+    @Test
+    void ingestMeterReading_mapsAndSavesFactEntity() {
+        MeterReadingEvent event = new MeterReadingEvent();
+        event.setTenantId(1);
+        event.setSchemeId(11);
+        event.setUserId(21);
+        event.setExtractedReading(100);
+        event.setConfirmedReading(95);
+        event.setConfidence(90);
+        event.setImageUrl("img");
+        event.setReadingAt("2026-01-01T10:15:00");
+        event.setChannel(2);
+        event.setReadingDate("2026-01-01");
+
+        service.ingestMeterReading(event);
+
+        ArgumentCaptor<FactMeterReading> captor = ArgumentCaptor.forClass(FactMeterReading.class);
+        verify(meterReadingRepository, times(1)).save(captor.capture());
+        assertThat(captor.getValue().getTenantId()).isEqualTo(1);
+        assertThat(captor.getValue().getSchemeId()).isEqualTo(11);
+        assertThat(captor.getValue().getReadingAt()).isEqualTo(LocalDateTime.parse("2026-01-01T10:15:00"));
+        assertThat(captor.getValue().getReadingDate()).isEqualTo(LocalDate.of(2026, 1, 1));
+    }
+
+    @Test
+    void ingestWaterQuantity_whenInvalidDate_fallsBackToToday() {
+        WaterQuantityEvent event = new WaterQuantityEvent();
+        event.setTenantId(1);
+        event.setSchemeId(11);
+        event.setUserId(21);
+        event.setWaterQuantity(120);
+        event.setSubmissionStatus(1);
+        event.setOutageReason(2);
+        event.setDate("invalid-date");
+
+        service.ingestWaterQuantity(event);
+
+        ArgumentCaptor<FactWaterQuantity> captor = ArgumentCaptor.forClass(FactWaterQuantity.class);
+        verify(waterQuantityRepository, times(1)).save(captor.capture());
+        assertThat(captor.getValue().getDate()).isEqualTo(LocalDate.now());
+        assertThat(captor.getValue().getOutageReason()).isEqualTo(2);
+    }
+
+    @Test
+    void ingestEscalation_mapsAndSavesFactEntity() {
+        EscalationEvent event = new EscalationEvent();
+        event.setTenantId(1);
+        event.setSchemeId(11);
+        event.setEscalationType(3);
+        event.setMessage("msg");
+        event.setUserId(21);
+        event.setResolutionStatus(0);
+        event.setRemark("remark");
+
+        service.ingestEscalation(event);
+
+        ArgumentCaptor<FactEscalation> captor = ArgumentCaptor.forClass(FactEscalation.class);
+        verify(escalationRepository, times(1)).save(captor.capture());
+        assertThat(captor.getValue().getEscalationType()).isEqualTo(3);
+        assertThat(captor.getValue().getResolutionStatus()).isEqualTo(0);
+    }
+
+    @Test
+    void ingestSchemePerformance_whenBlankDate_fallsBackToToday() {
+        SchemePerformanceEvent event = new SchemePerformanceEvent();
+        event.setTenantId(1);
+        event.setSchemeId(11);
+        event.setPerformanceScore(88);
+        event.setLastWaterSupplyDate("");
+
+        service.ingestSchemePerformance(event);
+
+        ArgumentCaptor<FactSchemePerformance> captor = ArgumentCaptor.forClass(FactSchemePerformance.class);
+        verify(schemePerformanceRepository, times(1)).save(captor.capture());
+        assertThat(captor.getValue().getPerformanceScore()).isEqualTo(88);
+        assertThat(captor.getValue().getLastWaterSupplyDate()).isEqualTo(LocalDate.now());
+    }
+}
