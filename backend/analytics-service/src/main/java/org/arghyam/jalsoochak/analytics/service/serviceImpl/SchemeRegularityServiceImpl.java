@@ -6,6 +6,7 @@ import org.arghyam.jalsoochak.analytics.dto.response.OutageReasonSchemeCountResp
 import org.arghyam.jalsoochak.analytics.dto.response.PeriodicWaterQuantityResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.RegionWiseWaterQuantityResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.ReadingSubmissionRateResponse;
+import org.arghyam.jalsoochak.analytics.dto.response.UserOutageReasonSchemeCountResponse;
 import org.arghyam.jalsoochak.analytics.enums.OutageReason;
 import org.arghyam.jalsoochak.analytics.enums.PeriodScale;
 import org.arghyam.jalsoochak.analytics.enums.RegularityScope;
@@ -1005,6 +1006,25 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
     }
 
     @Override
+    public UserOutageReasonSchemeCountResponse getOutageReasonSchemeCountByUser(
+            Integer userId, LocalDate startDate, LocalDate endDate) {
+        validateUserInput(userId);
+        validateDateRange(startDate, endDate);
+
+        List<SchemeRegularityRepository.OutageReasonSchemeCount> rows =
+                schemeRegularityRepository.getOutageReasonSchemeCountByUser(userId, startDate, endDate);
+        Integer schemeCount = schemeRegularityRepository.getSchemeCountByUser(userId);
+
+        return UserOutageReasonSchemeCountResponse.builder()
+                .userId(userId)
+                .startDate(startDate)
+                .endDate(endDate)
+                .schemeCount(schemeCount == null ? 0 : schemeCount)
+                .outageReasonSchemeCount(buildReasonCountMap(rows))
+                .build();
+    }
+
+    @Override
     public Map<String, Integer> getSchemeStatusCountByLgd(Integer lgdId) {
         validateLgdInput(lgdId);
         SchemeRegularityRepository.SchemeStatusCount count =
@@ -1037,6 +1057,12 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
     private void validateTenantInput(Integer tenantId) {
         if (tenantId == null || tenantId <= 0) {
             throw new IllegalArgumentException("tenant_id must be a positive integer");
+        }
+    }
+
+    private void validateUserInput(Integer userId) {
+        if (userId == null || userId <= 0) {
+            throw new IllegalArgumentException("user_id must be a positive integer");
         }
     }
 

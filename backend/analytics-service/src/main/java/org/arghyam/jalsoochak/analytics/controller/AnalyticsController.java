@@ -12,6 +12,7 @@ import org.arghyam.jalsoochak.analytics.dto.response.PeriodicWaterQuantityRespon
 import org.arghyam.jalsoochak.analytics.dto.response.RegionWiseWaterQuantityResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.ReadingSubmissionRateResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.TenantDetailsResponse;
+import org.arghyam.jalsoochak.analytics.dto.response.UserOutageReasonSchemeCountResponse;
 import org.arghyam.jalsoochak.analytics.enums.PeriodScale;
 import org.arghyam.jalsoochak.analytics.enums.RegularityScope;
 import org.arghyam.jalsoochak.analytics.enums.WaterSupplyScope;
@@ -61,6 +62,7 @@ public class AnalyticsController {
         return ResponseEntity.ok(dimTenantRepository.findAll());
     }
 
+    //------------------------------------
     @GetMapping("/tenant_data")
     @Operation(summary = "Get tenant boundary, filtered by parent_lgd_id or parent_department_id")
     public ResponseEntity<TenantDetailsResponse> getTenantDetails(
@@ -200,6 +202,16 @@ public class AnalyticsController {
         }
         return ResponseEntity.ok(
                 schemeRegularityService.getOutageReasonSchemeCountByDepartment(parentDepartmentId, startDate, endDate));
+    }
+
+    @GetMapping("/outage-reasons/user")
+    @Operation(summary = "Get outage reason wise scheme count for a user")
+    public ResponseEntity<UserOutageReasonSchemeCountResponse> getOutageReasonWiseSchemeCountByUser(
+            @RequestParam(name = "user_id") Integer userId,
+            @RequestParam(name = "start_date") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam(name = "end_date") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
+        return ResponseEntity.ok(
+                schemeRegularityService.getOutageReasonSchemeCountByUser(userId, startDate, endDate));
     }
 
     @GetMapping("/schemes/status-count")

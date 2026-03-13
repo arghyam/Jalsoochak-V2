@@ -280,6 +280,42 @@ class SchemeRegularityRepositoryIntegrationTest {
     }
 
     @Test
+    void outageQueriesByUser_returnMappedSchemeReasonCounts() {
+        jdbcTemplate.update("""
+                INSERT INTO analytics_schema.dim_scheme_table
+                (scheme_id, tenant_id, scheme_name, state_scheme_id, centre_scheme_id, longitude, latitude,
+                 parent_lgd_location_id, level_1_lgd_id, level_2_lgd_id, level_3_lgd_id, level_4_lgd_id, level_5_lgd_id, level_6_lgd_id,
+                 parent_department_location_id, level_1_dept_id, level_2_dept_id, level_3_dept_id, level_4_dept_id, level_5_dept_id, level_6_dept_id,
+                 status, fhtc_count, planned_fhtc, house_hold_count, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
+                """, 3, 1, "Scheme C", 1003, 2003, 0.0, 0.0,
+                100, 100, 101, null, null, null, null,
+                200, 200, 201, null, null, null, null,
+                1, 5, 5, 5);
+        jdbcTemplate.update("""
+                INSERT INTO analytics_schema.dim_user_scheme_mapping_table
+                (uuid, user_id, scheme_id, ai_reading, created_at, updated_at, status)
+                VALUES (?::uuid, ?, ?, ?, NOW(), NOW(), ?)
+                """, "33333333-3333-3333-3333-333333333333", 11, 3, null, 1);
+
+        List<SchemeRegularityRepository.OutageReasonSchemeCount> userCounts =
+                repository.getOutageReasonSchemeCountByUser(11, D1, D10);
+        Integer schemeCount = repository.getSchemeCountByUser(11);
+
+        assertThat(userCounts).hasSize(2);
+        assertThat(schemeCount).isEqualTo(3);
+        assertThat(userCounts)
+                .anySatisfy(r -> {
+                    assertThat(r.outageReason()).isEqualTo(1);
+                    assertThat(r.schemeCount()).isEqualTo(1);
+                })
+                .anySatisfy(r -> {
+                    assertThat(r.outageReason()).isEqualTo(2);
+                    assertThat(r.schemeCount()).isEqualTo(2);
+                });
+    }
+
+    @Test
     void waterSupplyQueries_returnExpectedAggregatesAcrossScopes() {
         List<SchemeRegularityRepository.SchemeWaterSupplyMetrics> current =
                 repository.getAverageWaterSupplyPerCurrentRegion(1, D1, D3);
@@ -349,6 +385,7 @@ class SchemeRegularityRepositoryIntegrationTest {
                     analytics_schema.fact_water_quantity_table,
                     analytics_schema.fact_escalation_table,
                     analytics_schema.fact_scheme_performance_table,
+                    analytics_schema.dim_user_scheme_mapping_table,
                     analytics_schema.dim_scheme_table,
                     analytics_schema.dim_lgd_location_table,
                     analytics_schema.dim_department_location_table,
@@ -365,6 +402,18 @@ class SchemeRegularityRepositoryIntegrationTest {
                 (tenant_id, state_code, title, country_code, status, created_at, updated_at)
                 VALUES (?, ?, ?, ?, ?, NOW(), NOW())
                 """, 1, "mp", "Madhya Pradesh", "IN", 1);
+
+        jdbcTemplate.update("""
+                INSERT INTO analytics_schema.dim_user_table
+                (user_id, tenant_id, email, user_type, created_at, updated_at)
+                VALUES (?, ?, ?, ?, NOW(), NOW())
+                """, 11, 1, "user11@example.com", 1);
+
+        jdbcTemplate.update("""
+                INSERT INTO analytics_schema.dim_user_table
+                (user_id, tenant_id, email, user_type, created_at, updated_at)
+                VALUES (?, ?, ?, ?, NOW(), NOW())
+                """, 12, 1, "user12@example.com", 1);
 
         jdbcTemplate.update("""
                 INSERT INTO analytics_schema.dim_lgd_location_table
@@ -442,6 +491,18 @@ class SchemeRegularityRepositoryIntegrationTest {
         insertDate(D2);
         insertDate(D3);
         insertDate(D8);
+
+        jdbcTemplate.update("""
+                INSERT INTO analytics_schema.dim_user_scheme_mapping_table
+                (uuid, user_id, scheme_id, ai_reading, created_at, updated_at, status)
+                VALUES (?::uuid, ?, ?, ?, NOW(), NOW(), ?)
+                """, "11111111-1111-1111-1111-111111111111", 11, 1, null, 1);
+
+        jdbcTemplate.update("""
+                INSERT INTO analytics_schema.dim_user_scheme_mapping_table
+                (uuid, user_id, scheme_id, ai_reading, created_at, updated_at, status)
+                VALUES (?::uuid, ?, ?, ?, NOW(), NOW(), ?)
+                """, "22222222-2222-2222-2222-222222222222", 11, 2, null, 1);
     }
 
     private void seedMeterReadings() {

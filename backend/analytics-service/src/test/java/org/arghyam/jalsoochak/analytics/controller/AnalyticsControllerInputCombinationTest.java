@@ -7,6 +7,7 @@ import org.arghyam.jalsoochak.analytics.dto.response.PeriodicWaterQuantityRespon
 import org.arghyam.jalsoochak.analytics.dto.response.ReadingSubmissionRateResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.RegionWiseWaterQuantityResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.TenantDetailsResponse;
+import org.arghyam.jalsoochak.analytics.dto.response.UserOutageReasonSchemeCountResponse;
 import org.arghyam.jalsoochak.analytics.enums.PeriodScale;
 import org.arghyam.jalsoochak.analytics.exception.GlobalExceptionHandler;
 import org.arghyam.jalsoochak.analytics.repository.DimSchemeRepository;
@@ -346,6 +347,20 @@ class AnalyticsControllerInputCombinationTest {
                         .param("start_date", START.toString())
                         .param("end_date", END.toString()))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void getOutageReasonsByUser_validRequest_routesToUserService() throws Exception {
+        when(schemeRegularityService.getOutageReasonSchemeCountByUser(11, START, END))
+                .thenReturn(userOutageReasonResponse());
+
+        mockMvc.perform(get(BASE + "/outage-reasons/user")
+                        .param("user_id", "11")
+                        .param("start_date", START.toString())
+                        .param("end_date", END.toString()))
+                .andExpect(status().isOk());
+
+        verify(schemeRegularityService, times(1)).getOutageReasonSchemeCountByUser(11, START, END);
     }
 
     @ParameterizedTest
@@ -729,6 +744,16 @@ class AnalyticsControllerInputCombinationTest {
         return OutageReasonSchemeCountResponse.builder()
                 .childRegionCount(0)
                 .outageReasonSchemeCount(Map.of("power_failure", 0))
+                .build();
+    }
+
+    private static UserOutageReasonSchemeCountResponse userOutageReasonResponse() {
+        return UserOutageReasonSchemeCountResponse.builder()
+                .userId(11)
+                .startDate(START)
+                .endDate(END)
+                .schemeCount(2)
+                .outageReasonSchemeCount(Map.of("draught", 1))
                 .build();
     }
 

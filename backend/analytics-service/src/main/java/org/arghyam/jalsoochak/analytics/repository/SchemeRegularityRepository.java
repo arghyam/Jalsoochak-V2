@@ -564,6 +564,46 @@ public class SchemeRegularityRepository {
                 endDate);
     }
 
+    public List<OutageReasonSchemeCount> getOutageReasonSchemeCountByUser(
+            Integer userId, LocalDate startDate, LocalDate endDate) {
+        String sql = """
+                WITH user_schemes AS (
+                    SELECT DISTINCT usm.scheme_id
+                    FROM analytics_schema.dim_user_scheme_mapping_table usm
+                    WHERE usm.user_id = ?
+                )
+                SELECT
+                    f.outage_reason,
+                    COUNT(DISTINCT f.scheme_id)::int AS scheme_count
+                FROM analytics_schema.fact_water_quantity_table f
+                JOIN user_schemes us
+                    ON us.scheme_id = f.scheme_id
+                WHERE f.outage_reason IS NOT NULL
+                  AND f.date BETWEEN ? AND ?
+                GROUP BY f.outage_reason
+                ORDER BY f.outage_reason
+                """;
+
+        return jdbcTemplate.query(
+                sql,
+                (rs, rowNum) -> new OutageReasonSchemeCount(
+                        (Integer) rs.getObject("outage_reason"),
+                        rs.getInt("scheme_count")),
+                userId,
+                startDate,
+                endDate);
+    }
+
+    public Integer getSchemeCountByUser(Integer userId) {
+        String sql = """
+                SELECT COALESCE(COUNT(DISTINCT usm.scheme_id), 0)::int AS scheme_count
+                FROM analytics_schema.dim_user_scheme_mapping_table usm
+                WHERE usm.user_id = ?
+                """;
+
+        return jdbcTemplate.queryForObject(sql, Integer.class, userId);
+    }
+
     public List<ChildRegionRef> getChildRegionsByLgd(Integer lgdId) {
         Integer lgdLevel = getLgdLevel(lgdId);
         if (lgdLevel == null) {

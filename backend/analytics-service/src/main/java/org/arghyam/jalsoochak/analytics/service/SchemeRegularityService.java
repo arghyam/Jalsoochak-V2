@@ -6,6 +6,7 @@ import org.arghyam.jalsoochak.analytics.dto.response.OutageReasonSchemeCountResp
 import org.arghyam.jalsoochak.analytics.dto.response.PeriodicWaterQuantityResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.RegionWiseWaterQuantityResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.ReadingSubmissionRateResponse;
+import org.arghyam.jalsoochak.analytics.dto.response.UserOutageReasonSchemeCountResponse;
 import org.arghyam.jalsoochak.analytics.enums.PeriodScale;
 
 import java.time.LocalDate;
@@ -63,6 +64,9 @@ public interface SchemeRegularityService {
 
     OutageReasonSchemeCountResponse getOutageReasonSchemeCountByDepartment(
             Integer parentDepartmentId, LocalDate startDate, LocalDate endDate);
+
+    UserOutageReasonSchemeCountResponse getOutageReasonSchemeCountByUser(
+            Integer userId, LocalDate startDate, LocalDate endDate);
 
     Map<String, Integer> getSchemeStatusCountByLgd(Integer lgdId);
 

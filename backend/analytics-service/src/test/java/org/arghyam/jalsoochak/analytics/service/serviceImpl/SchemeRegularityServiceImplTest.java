@@ -6,6 +6,7 @@ import org.arghyam.jalsoochak.analytics.dto.response.AverageWaterSupplyResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.OutageReasonSchemeCountResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.PeriodicWaterQuantityResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.ReadingSubmissionRateResponse;
+import org.arghyam.jalsoochak.analytics.dto.response.UserOutageReasonSchemeCountResponse;
 import org.arghyam.jalsoochak.analytics.entity.DimTenant;
 import org.arghyam.jalsoochak.analytics.enums.PeriodScale;
 import org.arghyam.jalsoochak.analytics.repository.DimTenantRepository;
@@ -513,6 +514,30 @@ class SchemeRegularityServiceImplTest {
         assertThat(response.getOutageReasonSchemeCount()).containsEntry("no_electricity", 0);
         assertThat(response.getChildRegions()).hasSize(1);
         assertThat(response.getChildRegions().getFirst().getOutageReasonSchemeCount()).containsEntry("no_electricity", 4);
+    }
+
+    @Test
+    void getOutageReasonSchemeCountByUser_returnsReasonCountsWithMissingKeysAsZero() {
+        when(schemeRegularityRepository.getOutageReasonSchemeCountByUser(11, START, END))
+                .thenReturn(List.of(new SchemeRegularityRepository.OutageReasonSchemeCount(3, 2)));
+        when(schemeRegularityRepository.getSchemeCountByUser(11)).thenReturn(2);
+
+        UserOutageReasonSchemeCountResponse response =
+                service.getOutageReasonSchemeCountByUser(11, START, END);
+
+        assertThat(response.getUserId()).isEqualTo(11);
+        assertThat(response.getSchemeCount()).isEqualTo(2);
+        assertThat(response.getOutageReasonSchemeCount())
+                .containsEntry("draught", 0)
+                .containsEntry("no_electricity", 0)
+                .containsEntry("motor_burnt", 2);
+    }
+
+    @Test
+    void getOutageReasonSchemeCountByUser_withInvalidUser_throwsBadRequest() {
+        assertThatThrownBy(() -> service.getOutageReasonSchemeCountByUser(0, START, END))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("user_id must be a positive integer");
     }
 
     @Test
