@@ -11,14 +11,20 @@ import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Paths;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 
 /**
  * Routes incoming Kafka JSON messages to the appropriate notification handler
@@ -41,6 +47,23 @@ public class NotificationEventRouter {
 
     private static final String COMMON_TOPIC = "common-topic";
 
+    /**
+     * Dead-letter topic for {@code SEND_WELCOME_MESSAGE} per-phone failures.
+     *
+     * <p>Messages are published here when a single phone cannot be processed
+     * (missing {@code whatsapp_connection_id} or a Glific API error) so that
+     * already-succeeded phones in the same batch are not re-sent by Kafka retry.
+     *
+     * <p>This service intentionally does <em>not</em> consume this topic.
+     * Re-consuming from the same service that produces here would create an
+     * unbounded retry loop. Instead, configure external monitoring/alerting
+     * (e.g. a Kafka consumer lag alert or a separate ops consumer) on
+     * {@code welcome-message-dlt} to detect and replay failed records.
+     * Each dead-lettered record carries a {@code retryId} (UUID) field for
+     * idempotent downstream reprocessing.
+     */
+    private static final String WELCOME_DLT_TOPIC = "welcome-message-dlt";
+
     private final ObjectMapper objectMapper;
     private final WhatsAppChannel whatsAppChannel;
     private final GlificWhatsAppService glificWhatsAppService;
@@ -48,6 +71,7 @@ public class NotificationEventRouter {
     private final EscalationPdfService escalationPdfService;
     private final MinioStorageService minioStorageService;
     private final MessageTemplateService messageTemplateService;
+    private final JdbcTemplate jdbcTemplate;
 
     @Value("${escalation.report.dir:/tmp/escalation-reports/}")
     private String reportDir;
@@ -84,6 +108,8 @@ public class NotificationEventRouter {
                 case "NUDGE" -> handleNudge(root);
                 case "ESCALATION" -> handleEscalation(root);
                 case "STAFF_SYNC_COMPLETED" -> handleStaffSyncCompleted(root);
+                case "UPDATE_USER_LANGUAGE" -> handleUpdateUserLanguage(root);
+                case "SEND_WELCOME_MESSAGE" -> handleSendWelcomeMessage(root);
                 default -> log.warn("[Router] Unknown eventType '{}', ignoring message", eventType);
             }
         } catch (Exception e) {
@@ -178,6 +204,136 @@ public class NotificationEventRouter {
                     "[Router/STAFF_SYNC] " + failed + " operator onboarding(s) failed"
                     + " (success=" + success + ", tenantSchema=" + tenantSchema + ")");
         }
+    }
+
+    private void handleUpdateUserLanguage(JsonNode root) {
+        String tenantCode = root.path("tenantCode").asText("").toLowerCase();
+        int glificLanguageId = root.path("glificLanguageId").asInt(0);
+        JsonNode phonesNode = root.path("pumpOperatorPhones");
+
+        if (tenantCode.isBlank() || !tenantCode.matches("[a-z0-9_]+")) {
+            log.warn("[Router/UPDATE_LANGUAGE] Invalid or missing tenantCode, skipping");
+            return;
+        }
+        if (glificLanguageId <= 0) {
+            log.warn("[Router/UPDATE_LANGUAGE] Missing glificLanguageId, skipping");
+            return;
+        }
+        if (!phonesNode.isArray() || phonesNode.isEmpty()) {
+            log.warn("[Router/UPDATE_LANGUAGE] pumpOperatorPhones is empty, skipping");
+            return;
+        }
+
+        String tenantSchema = "tenant_" + tenantCode;
+        int success = 0, failed = 0;
+        for (JsonNode phoneNode : phonesNode) {
+            String phone = phoneNode.asText("");
+            if (phone.isBlank()) {
+                log.warn("[Router/UPDATE_LANGUAGE] Blank or null phone entry in pumpOperatorPhones (node={}), skipping", phoneNode);
+                failed++;
+                continue;
+            }
+            try {
+                Long contactId = fetchWhatsappConnectionId(tenantSchema, phone);
+                if (contactId == null || contactId <= 0) {
+                    log.warn("[Router/UPDATE_LANGUAGE] No whatsapp_connection_id found in schema={}", tenantSchema);
+                    log.debug("[Router/UPDATE_LANGUAGE] No whatsapp_connection_id for phone={} in schema={}", phone, tenantSchema);
+                    failed++;
+                    continue;
+                }
+                glificWhatsAppService.updateContactLanguage(contactId, glificLanguageId);
+                success++;
+            } catch (Exception e) {
+                failed++;
+                log.error("[Router/UPDATE_LANGUAGE] Failed to update language: {}", e.getMessage(), e);
+            }
+        }
+        log.info("[Router/UPDATE_LANGUAGE] complete — success={} failed={} schema={}", success, failed, tenantSchema);
+        if (failed > 0) {
+            // Intentionally throw to trigger Kafka retry of the whole batch.
+            // updateContactLanguage is idempotent (re-setting the same language ID on a
+            // contact is harmless), so retrying already-succeeded phones is safe.
+            // Contrast with handleSendWelcomeMessage, where retrying would re-send a
+            // one-time onboarding message — that is why the DLT pattern is used there instead.
+            throw new IllegalStateException(
+                    "[Router/UPDATE_LANGUAGE] " + failed + " update(s) failed (success=" + success + ")");
+        }
+    }
+
+    private void handleSendWelcomeMessage(JsonNode root) {
+        String tenantCode = root.path("tenantCode").asText("").toLowerCase();
+        JsonNode phonesNode = root.path("pumpOperatorPhones");
+
+        if (tenantCode.isBlank() || !tenantCode.matches("[a-z0-9_]+")) {
+            log.warn("[Router/WELCOME] Invalid or missing tenantCode, skipping");
+            return;
+        }
+        if (!phonesNode.isArray() || phonesNode.isEmpty()) {
+            log.warn("[Router/WELCOME] pumpOperatorPhones is empty, skipping");
+            return;
+        }
+
+        String tenantSchema = "tenant_" + tenantCode;
+        int success = 0, failed = 0;
+        for (JsonNode phoneNode : phonesNode) {
+            String phone = phoneNode.asText("");
+            if (phone.isBlank()) {
+                log.warn("[Router/WELCOME] Blank or null phone entry in pumpOperatorPhones (node={}), skipping", phoneNode);
+                publishWelcomeDlt(tenantSchema, phoneNode.toString(), "blank_phone");
+                failed++;
+                continue;
+            }
+            try {
+                Long contactId = fetchWhatsappConnectionId(tenantSchema, phone);
+                if (contactId == null || contactId <= 0) {
+                    log.warn("[Router/WELCOME] No whatsapp_connection_id found in schema={}", tenantSchema);
+                    log.debug("[Router/WELCOME] No whatsapp_connection_id for phone={} in schema={}", phone, tenantSchema);
+                    publishWelcomeDlt(tenantSchema, phone, "no_whatsapp_connection_id");
+                    failed++;
+                    continue;
+                }
+                glificWhatsAppService.startWelcomeFlow(contactId);
+                success++;
+            } catch (Exception e) {
+                log.error("[Router/WELCOME] Failed to send welcome message: {}", e.getMessage(), e);
+                publishWelcomeDlt(tenantSchema, phone, e.getMessage());
+                failed++;
+            }
+        }
+        log.info("[Router/WELCOME] complete — success={} failed={} schema={}", success, failed, tenantSchema);
+    }
+
+    private void publishWelcomeDlt(String tenantSchema, String phone, String errorMessage) {
+        // Derive a stable dedupe key from the business identity so that if this
+        // method is called again for the same phone (e.g. Kafka consumer retry),
+        // downstream processors receive a record with the same retryId and can
+        // safely deduplicate. UUID.nameUUIDFromBytes produces a deterministic
+        // UUID v3 for a given input; no upstream eventId is available in this payload.
+        String retryId = UUID.nameUUIDFromBytes(
+                ("SEND_WELCOME_MESSAGE_RETRY:" + tenantSchema + ":" + phone)
+                        .getBytes(StandardCharsets.UTF_8))
+                .toString();
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("retryId", retryId);
+        payload.put("eventType", "SEND_WELCOME_MESSAGE_RETRY");
+        payload.put("tenantSchema", tenantSchema);
+        payload.put("failedAt", Instant.now().toString());
+        payload.put("errorMessage", errorMessage);
+        // phone is PII — included so downstream can reprocess, but must not surface in INFO logs
+        payload.put("phone", phone);
+        log.debug("[Router/WELCOME] Publishing to DLT for schema={}", tenantSchema);
+        kafkaProducer.publishJson(WELCOME_DLT_TOPIC, payload);
+    }
+
+    /**
+     * Looks up the Glific contact ID stored for a given phone number in the tenant's user_table.
+     * tenantSchema is pre-validated to match {@code [a-z0-9_]+} before this call.
+     */
+    private Long fetchWhatsappConnectionId(String tenantSchema, String phone) {
+        String sql = "SELECT whatsapp_connection_id FROM " + tenantSchema
+                + ".user_table WHERE phone_number = ? LIMIT 1";
+        List<Long> rows = jdbcTemplate.query(sql, (rs, n) -> rs.getObject("whatsapp_connection_id", Long.class), phone);
+        return rows.isEmpty() ? null : rows.get(0);
     }
 
     private void handleEscalation(JsonNode root) throws Exception {
