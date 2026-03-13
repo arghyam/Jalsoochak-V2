@@ -45,6 +45,22 @@ import java.util.UUID;
 public class NotificationEventRouter {
 
     private static final String COMMON_TOPIC = "common-topic";
+
+    /**
+     * Dead-letter topic for {@code SEND_WELCOME_MESSAGE} per-phone failures.
+     *
+     * <p>Messages are published here when a single phone cannot be processed
+     * (missing {@code whatsapp_connection_id} or a Glific API error) so that
+     * already-succeeded phones in the same batch are not re-sent by Kafka retry.
+     *
+     * <p>This service intentionally does <em>not</em> consume this topic.
+     * Re-consuming from the same service that produces here would create an
+     * unbounded retry loop. Instead, configure external monitoring/alerting
+     * (e.g. a Kafka consumer lag alert or a separate ops consumer) on
+     * {@code welcome-message-dlt} to detect and replay failed records.
+     * Each dead-lettered record carries a {@code retryId} (UUID) field for
+     * idempotent downstream reprocessing.
+     */
     private static final String WELCOME_DLT_TOPIC = "welcome-message-dlt";
 
     private final ObjectMapper objectMapper;
@@ -228,6 +244,11 @@ public class NotificationEventRouter {
         }
         log.info("[Router/UPDATE_LANGUAGE] complete — success={} failed={} schema={}", success, failed, tenantSchema);
         if (failed > 0) {
+            // Intentionally throw to trigger Kafka retry of the whole batch.
+            // updateContactLanguage is idempotent (re-setting the same language ID on a
+            // contact is harmless), so retrying already-succeeded phones is safe.
+            // Contrast with handleSendWelcomeMessage, where retrying would re-send a
+            // one-time onboarding message — that is why the DLT pattern is used there instead.
             throw new IllegalStateException(
                     "[Router/UPDATE_LANGUAGE] " + failed + " update(s) failed (success=" + success + ")");
         }
