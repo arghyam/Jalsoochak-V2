@@ -5,6 +5,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 import org.arghyam.jalsoochak.tenant.config.TenantContext;
 import org.arghyam.jalsoochak.tenant.config.TenantDefaultsProperties;
@@ -17,6 +18,7 @@ import org.arghyam.jalsoochak.tenant.dto.request.CreateTenantRequestDTO;
 import org.arghyam.jalsoochak.tenant.dto.request.SetTenantConfigRequestDTO;
 import org.arghyam.jalsoochak.tenant.dto.request.UpdateTenantRequestDTO;
 import org.arghyam.jalsoochak.tenant.dto.response.DepartmentResponseDTO;
+import org.arghyam.jalsoochak.tenant.dto.response.LocationHierarchyEditConstraintsResponseDTO;
 import org.arghyam.jalsoochak.tenant.dto.response.TenantConfigResponseDTO;
 import org.arghyam.jalsoochak.tenant.dto.response.TenantResponseDTO;
 import org.arghyam.jalsoochak.tenant.dto.response.LocationResponseDTO;
@@ -35,6 +37,7 @@ import org.arghyam.jalsoochak.tenant.enums.TenantConfigKeyEnum.ConfigType;
 import org.arghyam.jalsoochak.tenant.exception.ConfigurationException;
 import org.arghyam.jalsoochak.tenant.exception.InvalidConfigKeyException;
 import org.arghyam.jalsoochak.tenant.exception.InvalidConfigValueException;
+import org.arghyam.jalsoochak.tenant.exception.LocationHierarchyStructureLockedException;
 import org.arghyam.jalsoochak.tenant.exception.ResourceNotFoundException;
 import org.arghyam.jalsoochak.tenant.repository.TenantCommonRepository;
 import org.arghyam.jalsoochak.tenant.repository.TenantSchemaRepository;
@@ -206,24 +209,6 @@ public class TenantManagementServiceImpl implements TenantManagementService {
             }
         }
 
-        if (effectiveKeys.contains(TenantConfigKeyEnum.LGD_LOCATION_HIERARCHY)) {
-            LocationConfigDTO lgdHierarchy = tenantSchemaRepository.getLocationHierarchy(schemaName, RegionTypeEnum.LGD);
-            List<LocationLevelConfigDTO> levels = lgdHierarchy != null ? lgdHierarchy.getLocationHierarchy() : null;
-            if (levels != null && !levels.isEmpty()) {
-                configMap.put(TenantConfigKeyEnum.LGD_LOCATION_HIERARCHY,
-                        LocationConfigDTO.builder().locationHierarchy(levels).build());
-            }
-        }
-
-        if (effectiveKeys.contains(TenantConfigKeyEnum.DEPT_LOCATION_HIERARCHY)) {
-            LocationConfigDTO deptHierarchy = tenantSchemaRepository.getLocationHierarchy(schemaName, RegionTypeEnum.DEPARTMENT);
-            List<LocationLevelConfigDTO> levels = deptHierarchy != null ? deptHierarchy.getLocationHierarchy() : null;
-            if (levels != null && !levels.isEmpty()) {
-                configMap.put(TenantConfigKeyEnum.DEPT_LOCATION_HIERARCHY,
-                        LocationConfigDTO.builder().locationHierarchy(levels).build());
-            }
-        }
-
         return TenantConfigResponseDTO.builder()
                 .tenantId(tenantId)
                 .configs(configMap)
@@ -318,24 +303,6 @@ public class TenantManagementServiceImpl implements TenantManagementService {
                 }
                 tenantSchemaRepository.setSupportedLanguages(schemaName, langDto.getLanguages(), currentUserId);
             }
-            case LGD_LOCATION_HIERARCHY -> {
-                if (!(dto instanceof LocationConfigDTO locDto)) {
-                    throw new InvalidConfigValueException(
-                            "Expected LocationConfigDTO for LGD_LOCATION_HIERARCHY, got "
-                                    + dto.getClass().getSimpleName());
-                }
-                tenantSchemaRepository.setLocationHierarchy(schemaName, RegionTypeEnum.LGD,
-                        locDto.getLocationHierarchy(), currentUserId);
-            }
-            case DEPT_LOCATION_HIERARCHY -> {
-                if (!(dto instanceof LocationConfigDTO locDto)) {
-                    throw new InvalidConfigValueException(
-                            "Expected LocationConfigDTO for DEPT_LOCATION_HIERARCHY, got "
-                                    + dto.getClass().getSimpleName());
-                }
-                tenantSchemaRepository.setLocationHierarchy(schemaName, RegionTypeEnum.DEPARTMENT,
-                        locDto.getLocationHierarchy(), currentUserId);
-            }
             default -> throw new UnsupportedOperationException("No specialized handler for: " + key);
         }
     }
@@ -404,6 +371,95 @@ public class TenantManagementServiceImpl implements TenantManagementService {
         }
     }
 
+
+    @Override
+    public LocationHierarchyEditConstraintsResponseDTO getLocationHierarchyEditConstraints(
+            Integer tenantId, String hierarchyType) {
+        log.info("Fetching location hierarchy edit constraints [id={}, hierarchyType={}]", tenantId, hierarchyType);
+
+        TenantResponseDTO tenant = tenantCommonRepository.findById(tenantId)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Tenant with tenantId " + tenantId + " does not exist"));
+
+        RegionTypeEnum regionType = resolveRegionType(hierarchyType);
+        String schemaName = "tenant_" + tenant.getStateCode().toLowerCase();
+        long seededCount = tenantSchemaRepository.countSeededLocationData(schemaName, regionType);
+
+        return LocationHierarchyEditConstraintsResponseDTO.builder()
+                .hierarchyType(hierarchyType.toUpperCase())
+                .structuralChangesAllowed(seededCount == 0)
+                .seededRecordCount(seededCount)
+                .build();
+    }
+
+    @Override
+    @Transactional
+    public LocationHierarchyResponseDTO updateLocationHierarchy(
+            Integer tenantId, String hierarchyType, List<LocationLevelConfigDTO> levels) {
+        log.info("Updating location hierarchy [id={}, hierarchyType={}]", tenantId, hierarchyType);
+
+        if (levels == null || levels.isEmpty()) {
+            throw new InvalidConfigValueException("Hierarchy levels cannot be null or empty");
+        }
+
+        TenantResponseDTO tenant = tenantCommonRepository.findById(tenantId)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Tenant with tenantId " + tenantId + " does not exist"));
+
+        RegionTypeEnum regionType = resolveRegionType(hierarchyType);
+        String schemaName = "tenant_" + tenant.getStateCode().toLowerCase();
+        Integer currentUserId = resolveCurrentUserId();
+
+        LocationConfigDTO existing = tenantSchemaRepository.getLocationHierarchy(schemaName, regionType);
+        List<LocationLevelConfigDTO> existingLevels = existing != null ? existing.getLocationHierarchy() : List.of();
+
+        boolean isStructuralChange = isStructuralChange(existingLevels, levels);
+
+        if (isStructuralChange) {
+            long seededCount = tenantSchemaRepository.countSeededLocationData(schemaName, regionType);
+            if (seededCount > 0) {
+                throw new LocationHierarchyStructureLockedException(hierarchyType.toUpperCase(), seededCount);
+            }
+            tenantSchemaRepository.setLocationHierarchy(schemaName, regionType, levels, currentUserId);
+        } else {
+            tenantSchemaRepository.updateLevelNames(schemaName, regionType, levels, currentUserId);
+        }
+
+        log.info("Location hierarchy updated successfully [id={}, hierarchyType={}, structuralChange={}]",
+                tenantId, hierarchyType, isStructuralChange);
+
+        return LocationHierarchyResponseDTO.builder()
+                .hierarchyType(hierarchyType.toUpperCase())
+                .levels(levels)
+                .build();
+    }
+
+    /**
+     * Returns true if the incoming level list differs structurally from the existing one.
+     * A structural change means the number of levels or any level number differs.
+     * Pure name changes within the same level numbers are not structural.
+     */
+    private boolean isStructuralChange(List<LocationLevelConfigDTO> existing, List<LocationLevelConfigDTO> incoming) {
+        if (existing.size() != incoming.size()) {
+            return true;
+        }
+        Set<Integer> existingLevelNumbers = existing.stream()
+                .map(LocationLevelConfigDTO::getLevel)
+                .collect(Collectors.toSet());
+        Set<Integer> incomingLevelNumbers = incoming.stream()
+                .map(LocationLevelConfigDTO::getLevel)
+                .collect(Collectors.toSet());
+        return !existingLevelNumbers.equals(incomingLevelNumbers);
+    }
+
+    private RegionTypeEnum resolveRegionType(String hierarchyType) {
+        try {
+            return RegionTypeEnum.valueOf(hierarchyType.toUpperCase());
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException(
+                    "Invalid hierarchy type: " + hierarchyType + ". Valid values: LGD, DEPARTMENT", e);
+        }
+    }
 
     private Integer resolveCurrentUserId() {
         String uuid = SecurityUtils.getCurrentUserUuid();

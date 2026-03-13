@@ -9,7 +9,9 @@ import org.arghyam.jalsoochak.tenant.dto.response.DepartmentResponseDTO;
 import org.arghyam.jalsoochak.tenant.dto.response.TenantConfigResponseDTO;
 import org.arghyam.jalsoochak.tenant.dto.response.TenantResponseDTO;
 import org.arghyam.jalsoochak.tenant.dto.response.LocationResponseDTO;
+import org.arghyam.jalsoochak.tenant.dto.response.LocationHierarchyEditConstraintsResponseDTO;
 import org.arghyam.jalsoochak.tenant.dto.response.LocationHierarchyResponseDTO;
+import org.arghyam.jalsoochak.tenant.dto.internal.LocationLevelConfigDTO;
 import org.arghyam.jalsoochak.tenant.enums.TenantConfigKeyEnum;
 
 import java.util.List;
@@ -96,11 +98,38 @@ public interface TenantManagementService {
 
     /**
      * Gets child locations by parent ID.
-     * 
+     *
      * @param hierarchyType Type of hierarchy: LGD or DEPARTMENT
      * @param parentId      Parent location ID (null for root-level locations)
      * @return List of child location records.
      */
     List<LocationResponseDTO> getLocationChildren(Integer tenantId, String hierarchyType, Integer parentId);
+
+    /**
+     * Returns edit constraints for the given location hierarchy type.
+     * Tells the caller whether structural changes (add/remove levels) are permitted,
+     * based on whether seeded data exists in the master table.
+     *
+     * @param tenantId      ID of the tenant.
+     * @param hierarchyType LGD or DEPARTMENT
+     * @return Edit constraints response.
+     */
+    LocationHierarchyEditConstraintsResponseDTO getLocationHierarchyEditConstraints(
+            Integer tenantId, String hierarchyType);
+
+    /**
+     * Updates the location hierarchy for the given type.
+     * Internally decides the update strategy:
+     * - If no seeded data exists: full structural update (delete + insert).
+     * - If seeded data exists and only level names changed: updates names in-place.
+     * - If seeded data exists and structure differs: throws LocationHierarchyStructureLockedException (409).
+     *
+     * @param tenantId      ID of the tenant.
+     * @param hierarchyType LGD or DEPARTMENT
+     * @param levels        New hierarchy level definitions.
+     * @return Updated location hierarchy.
+     */
+    LocationHierarchyResponseDTO updateLocationHierarchy(
+            Integer tenantId, String hierarchyType, List<LocationLevelConfigDTO> levels);
 
 }

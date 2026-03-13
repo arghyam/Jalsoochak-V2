@@ -244,6 +244,63 @@ public class TenantSchemaRepository {
         }
 
         /**
+         * Counts seeded records in the location master table for the given hierarchy type.
+         * Used to determine whether structural changes to the hierarchy are permitted.
+         *
+         * @param schemaName Schema name (e.g., "tenant_mp")
+         * @param regionType LGD or DEPARTMENT
+         * @return Total count of records in the corresponding master table
+         */
+        public long countSeededLocationData(String schemaName, RegionTypeEnum regionType) {
+                validateSchemaName(schemaName);
+                String tableName = regionType == RegionTypeEnum.LGD
+                                ? "lgd_location_master_table"
+                                : "department_location_master_table";
+                String sql = String.format("SELECT COUNT(*) FROM %s.%s", schemaName, tableName);
+                Long count = jdbcTemplate.queryForObject(sql, Long.class);
+                return count != null ? count : 0L;
+        }
+
+        /**
+         * Updates only the level_name fields for existing hierarchy levels.
+         * Used when seeded data is present and structural changes are not allowed.
+         * Each level in the incoming list must match an existing level number in the DB.
+         *
+         * @param schemaName   Schema name (e.g., "tenant_mp")
+         * @param regionType   LGD or DEPARTMENT
+         * @param hierarchy    New level definitions (same level numbers, updated names)
+         * @param currentUserId Audit user ID
+         */
+        public void updateLevelNames(String schemaName, RegionTypeEnum regionType,
+                        List<LocationLevelConfigDTO> hierarchy, Integer currentUserId) {
+                validateSchemaName(schemaName);
+                if (hierarchy == null) {
+                        throw new InvalidConfigValueException("Hierarchy cannot be null");
+                }
+                String updateSql = String.format(
+                                """
+                                UPDATE %s.location_config_master_table
+                                SET level_name = ?, updated_by = ?, updated_at = NOW()
+                                WHERE region_type = ? AND level = ?
+                                """,
+                                schemaName);
+                for (LocationLevelConfigDTO config : hierarchy) {
+                        try {
+                                String levelNameJson = objectMapper.writeValueAsString(config.getLevelName());
+                                jdbcTemplate.update(updateSql, ps -> {
+                                        ps.setObject(1, levelNameJson, Types.OTHER);
+                                        ps.setObject(2, currentUserId);
+                                        ps.setObject(3, regionType.getCode());
+                                        ps.setInt(4, config.getLevel());
+                                });
+                        } catch (JsonProcessingException e) {
+                                throw new InvalidConfigValueException(
+                                                "Failed to serialize levelName for level " + config.getLevel(), e);
+                        }
+                }
+        }
+
+        /**
          * Fetches child locations by parent ID from lgd_location_master_table.
          * 
          * @param schemaName Schema name (e.g., "tenant_mp")

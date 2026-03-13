@@ -32,12 +32,14 @@ import org.arghyam.jalsoochak.tenant.dto.request.CreateTenantRequestDTO;
 import org.arghyam.jalsoochak.tenant.dto.request.SetTenantConfigRequestDTO;
 import org.arghyam.jalsoochak.tenant.dto.request.UpdateTenantRequestDTO;
 import org.arghyam.jalsoochak.tenant.dto.response.DepartmentResponseDTO;
+import org.arghyam.jalsoochak.tenant.dto.response.LocationHierarchyEditConstraintsResponseDTO;
 import org.arghyam.jalsoochak.tenant.dto.response.LocationHierarchyResponseDTO;
 import org.arghyam.jalsoochak.tenant.dto.response.LocationResponseDTO;
 import org.arghyam.jalsoochak.tenant.dto.response.TenantConfigResponseDTO;
 import org.arghyam.jalsoochak.tenant.dto.response.TenantResponseDTO;
 import org.arghyam.jalsoochak.tenant.enums.TenantConfigKeyEnum;
 import org.arghyam.jalsoochak.tenant.exception.InvalidConfigKeyException;
+import org.arghyam.jalsoochak.tenant.exception.LocationHierarchyStructureLockedException;
 import org.arghyam.jalsoochak.tenant.exception.ResourceNotFoundException;
 import org.arghyam.jalsoochak.tenant.service.TenantManagementService;
 import org.junit.jupiter.api.DisplayName;
@@ -621,6 +623,149 @@ class TenantControllerTest {
                     .andExpect(status().isBadRequest());
 
             verify(tenantManagementService).getLocationChildren(tenantId, hierarchyType, null);
+        }
+
+        @Test
+        void getLocationHierarchyEditConstraints_StructuralAllowed() throws Exception {
+            Integer tenantId = 1;
+            String hierarchyType = "LGD";
+
+            LocationHierarchyEditConstraintsResponseDTO constraints =
+                    LocationHierarchyEditConstraintsResponseDTO.builder()
+                            .hierarchyType("LGD")
+                            .structuralChangesAllowed(true)
+                            .seededRecordCount(0L)
+                            .build();
+
+            when(tenantManagementService.getLocationHierarchyEditConstraints(tenantId, hierarchyType))
+                    .thenReturn(constraints);
+
+            mockMvc.perform(get("/api/v1/tenants/{tenantId}/location-hierarchy/{hierarchyType}/edit-constraints",
+                            tenantId, hierarchyType))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.status").value(200))
+                    .andExpect(jsonPath("$.data.hierarchyType").value("LGD"))
+                    .andExpect(jsonPath("$.data.structuralChangesAllowed").value(true))
+                    .andExpect(jsonPath("$.data.seededRecordCount").value(0));
+
+            verify(tenantManagementService).getLocationHierarchyEditConstraints(tenantId, hierarchyType);
+        }
+
+        @Test
+        void getLocationHierarchyEditConstraints_StructuralLocked() throws Exception {
+            Integer tenantId = 1;
+            String hierarchyType = "DEPARTMENT";
+
+            LocationHierarchyEditConstraintsResponseDTO constraints =
+                    LocationHierarchyEditConstraintsResponseDTO.builder()
+                            .hierarchyType("DEPARTMENT")
+                            .structuralChangesAllowed(false)
+                            .seededRecordCount(512L)
+                            .build();
+
+            when(tenantManagementService.getLocationHierarchyEditConstraints(tenantId, hierarchyType))
+                    .thenReturn(constraints);
+
+            mockMvc.perform(get("/api/v1/tenants/{tenantId}/location-hierarchy/{hierarchyType}/edit-constraints",
+                            tenantId, hierarchyType))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.structuralChangesAllowed").value(false))
+                    .andExpect(jsonPath("$.data.seededRecordCount").value(512));
+        }
+
+        @Test
+        void getLocationHierarchyEditConstraints_TenantNotFound() throws Exception {
+            Integer tenantId = 999;
+            when(tenantManagementService.getLocationHierarchyEditConstraints(tenantId, "LGD"))
+                    .thenThrow(new ResourceNotFoundException("Tenant not found"));
+
+            mockMvc.perform(get("/api/v1/tenants/{tenantId}/location-hierarchy/{hierarchyType}/edit-constraints",
+                            tenantId, "LGD"))
+                    .andExpect(status().isNotFound());
+        }
+
+        @Test
+        void getLocationHierarchyEditConstraints_InvalidType() throws Exception {
+            Integer tenantId = 1;
+            when(tenantManagementService.getLocationHierarchyEditConstraints(tenantId, "INVALID"))
+                    .thenThrow(new IllegalArgumentException("Invalid hierarchy type: INVALID"));
+
+            mockMvc.perform(get("/api/v1/tenants/{tenantId}/location-hierarchy/{hierarchyType}/edit-constraints",
+                            tenantId, "INVALID"))
+                    .andExpect(status().isBadRequest());
+        }
+
+        @Test
+        void updateLocationHierarchy_Success() throws Exception {
+            Integer tenantId = 1;
+            String hierarchyType = "LGD";
+
+            List<LocationLevelConfigDTO> levels = List.of(
+                    LocationLevelConfigDTO.builder().level(1)
+                            .levelName(List.of(LocationLevelNameDTO.builder().title("Rajya").build())).build(),
+                    LocationLevelConfigDTO.builder().level(2)
+                            .levelName(List.of(LocationLevelNameDTO.builder().title("Zila").build())).build()
+            );
+
+            LocationHierarchyResponseDTO response = LocationHierarchyResponseDTO.builder()
+                    .hierarchyType("LGD")
+                    .levels(levels)
+                    .build();
+
+            when(tenantManagementService.updateLocationHierarchy(eq(tenantId), eq(hierarchyType), any()))
+                    .thenReturn(response);
+
+            mockMvc.perform(put("/api/v1/tenants/{tenantId}/location-hierarchy/{hierarchyType}",
+                            tenantId, hierarchyType)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(levels)))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.status").value(200))
+                    .andExpect(jsonPath("$.data.hierarchyType").value("LGD"))
+                    .andExpect(jsonPath("$.data.levels", hasSize(2)));
+
+            verify(tenantManagementService).updateLocationHierarchy(eq(tenantId), eq(hierarchyType), any());
+        }
+
+        @Test
+        void updateLocationHierarchy_StructureLocked_Returns409() throws Exception {
+            Integer tenantId = 1;
+            String hierarchyType = "LGD";
+
+            List<LocationLevelConfigDTO> levels = List.of(
+                    LocationLevelConfigDTO.builder().level(1)
+                            .levelName(List.of(LocationLevelNameDTO.builder().title("State").build())).build(),
+                    LocationLevelConfigDTO.builder().level(2)
+                            .levelName(List.of(LocationLevelNameDTO.builder().title("District").build())).build()
+            );
+
+            when(tenantManagementService.updateLocationHierarchy(eq(tenantId), eq(hierarchyType), any()))
+                    .thenThrow(new LocationHierarchyStructureLockedException("LGD", 1842L));
+
+            mockMvc.perform(put("/api/v1/tenants/{tenantId}/location-hierarchy/{hierarchyType}",
+                            tenantId, hierarchyType)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(levels)))
+                    .andExpect(status().isConflict())
+                    .andExpect(jsonPath("$.status").value(409));
+        }
+
+        @Test
+        void updateLocationHierarchy_TenantNotFound() throws Exception {
+            Integer tenantId = 999;
+            List<LocationLevelConfigDTO> levels = List.of(
+                    LocationLevelConfigDTO.builder().level(1)
+                            .levelName(List.of(LocationLevelNameDTO.builder().title("State").build())).build()
+            );
+
+            when(tenantManagementService.updateLocationHierarchy(eq(tenantId), eq("LGD"), any()))
+                    .thenThrow(new ResourceNotFoundException("Tenant not found"));
+
+            mockMvc.perform(put("/api/v1/tenants/{tenantId}/location-hierarchy/{hierarchyType}",
+                            tenantId, "LGD")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(levels)))
+                    .andExpect(status().isNotFound());
         }
     }
 }

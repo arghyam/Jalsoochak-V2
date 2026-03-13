@@ -5,11 +5,13 @@ import java.util.Set;
 
 import org.arghyam.jalsoochak.tenant.dto.common.ApiResponseDTO;
 import org.arghyam.jalsoochak.tenant.dto.common.PageResponseDTO;
+import org.arghyam.jalsoochak.tenant.dto.internal.LocationLevelConfigDTO;
 import org.arghyam.jalsoochak.tenant.dto.request.CreateDepartmentRequestDTO;
 import org.arghyam.jalsoochak.tenant.dto.request.CreateTenantRequestDTO;
 import org.arghyam.jalsoochak.tenant.dto.request.SetTenantConfigRequestDTO;
 import org.arghyam.jalsoochak.tenant.dto.request.UpdateTenantRequestDTO;
 import org.arghyam.jalsoochak.tenant.dto.response.DepartmentResponseDTO;
+import org.arghyam.jalsoochak.tenant.dto.response.LocationHierarchyEditConstraintsResponseDTO;
 import org.arghyam.jalsoochak.tenant.dto.response.LocationHierarchyResponseDTO;
 import org.arghyam.jalsoochak.tenant.dto.response.LocationResponseDTO;
 import org.arghyam.jalsoochak.tenant.dto.response.TenantConfigResponseDTO;
@@ -194,7 +196,52 @@ public class TenantController {
         }
 
         /**
-         * 8. Get child locations by parent id and hierarchy type
+         * 8. Get location hierarchy edit constraints
+         */
+        @Operation(summary = "Get location hierarchy edit constraints", description = "Returns whether structural changes (add/remove levels) are permitted for the given hierarchy type. "
+                        + "Structural changes are blocked when seeded location data exists in the master table.")
+        @ApiResponses({
+                        @ApiResponse(responseCode = "200", description = "Edit constraints retrieved successfully"),
+                        @ApiResponse(responseCode = "400", description = "Invalid hierarchy type"),
+                        @ApiResponse(responseCode = "404", description = "Tenant not found"),
+                        @ApiResponse(responseCode = "500", description = "Internal server error")
+        })
+        @GetMapping("/{tenantId}/location-hierarchy/{hierarchyType}/edit-constraints")
+        public ResponseEntity<ApiResponseDTO<LocationHierarchyEditConstraintsResponseDTO>> getLocationHierarchyEditConstraints(
+                        @PathVariable Integer tenantId,
+                        @Parameter(description = "Hierarchy type: LGD or DEPARTMENT", example = "LGD") @PathVariable String hierarchyType) {
+                log.info("GET /api/v1/tenants/{}/location-hierarchy/{}/edit-constraints", tenantId, hierarchyType);
+                LocationHierarchyEditConstraintsResponseDTO constraints = tenantManagementService
+                                .getLocationHierarchyEditConstraints(tenantId, hierarchyType);
+                return ResponseEntity.ok(ApiResponseDTO.of(200, "Edit constraints retrieved successfully", constraints));
+        }
+
+        /**
+         * 9. Update location hierarchy
+         */
+        @Operation(summary = "Update location hierarchy for a tenant", description = "Updates the location hierarchy levels. "
+                        + "If no seeded data exists, full structural changes (add/remove levels) are allowed. "
+                        + "If seeded data exists, only level name changes are permitted; structural changes return 409.")
+        @ApiResponses({
+                        @ApiResponse(responseCode = "200", description = "Location hierarchy updated successfully"),
+                        @ApiResponse(responseCode = "400", description = "Invalid hierarchy type or empty levels"),
+                        @ApiResponse(responseCode = "404", description = "Tenant not found"),
+                        @ApiResponse(responseCode = "409", description = "Structural change blocked — seeded data exists"),
+                        @ApiResponse(responseCode = "500", description = "Internal server error")
+        })
+        @PutMapping("/{tenantId}/location-hierarchy/{hierarchyType}")
+        public ResponseEntity<ApiResponseDTO<LocationHierarchyResponseDTO>> updateLocationHierarchy(
+                        @PathVariable Integer tenantId,
+                        @Parameter(description = "Hierarchy type: LGD or DEPARTMENT", example = "LGD") @PathVariable String hierarchyType,
+                        @RequestBody List<LocationLevelConfigDTO> levels) {
+                log.info("PUT /api/v1/tenants/{}/location-hierarchy/{}", tenantId, hierarchyType);
+                LocationHierarchyResponseDTO updated = tenantManagementService.updateLocationHierarchy(tenantId,
+                                hierarchyType, levels);
+                return ResponseEntity.ok(ApiResponseDTO.of(200, "Location hierarchy updated successfully", updated));
+        }
+
+        /**
+         * 10. Get child locations by parent id and hierarchy type
          */
         @Operation(summary = "Get child locations by parent ID", description = "Fetches all child locations under the specified parent location in the given hierarchy type. "
                         + "Pass parentId as 0 to fetch root-level locations (where parent_id IS NULL).")
@@ -216,7 +263,7 @@ public class TenantController {
         }
 
         /**
-         * 9. Get departments for the current tenant
+         * 11. Get departments for the current tenant
          */
         @Operation(summary = "Get departments for the current tenant", description = "Fetches the department hierarchy from the tenant-specific schema. "
                         + "Requires the X-Tenant-Code header to be set by the API gateway.")
@@ -236,7 +283,7 @@ public class TenantController {
         }
 
         /**
-         * 10. Create a department for the current tenant
+         * 12. Create a department for the current tenant
          */
         @Operation(summary = "Create a department for the current tenant", description = "Inserts a new department into the tenant-specific schema's department_location_master_table. "
                         + "Requires the X-Tenant-Code header to identify the target tenant schema.")

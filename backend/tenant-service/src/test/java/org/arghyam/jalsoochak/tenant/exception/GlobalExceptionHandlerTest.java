@@ -256,6 +256,31 @@ class GlobalExceptionHandlerTest {
     }
 
     @Nested
+    @DisplayName("LocationHierarchyStructureLockedException Handler Tests")
+    class LocationHierarchyStructureLockedHandlerTests {
+
+        @Test
+        @DisplayName("Should handle LocationHierarchyStructureLockedException and return 409 with message")
+        void testHandleLocationHierarchyStructureLocked() {
+            // Arrange
+            LocationHierarchyStructureLockedException ex =
+                    new LocationHierarchyStructureLockedException("LGD", 1842L);
+
+            // Act
+            ResponseEntity<ApiErrorResponseDTO> response =
+                    handler.handleLocationHierarchyStructureLocked(ex);
+
+            // Assert
+            assertEquals(HttpStatus.CONFLICT, response.getStatusCode());
+            assertNotNull(response.getBody());
+            assertEquals(409, response.getBody().getStatus());
+            assertEquals("Conflict", response.getBody().getError());
+            assertTrue(response.getBody().getMessage().contains("LGD"));
+            assertTrue(response.getBody().getMessage().contains("1842"));
+        }
+    }
+
+    @Nested
     @DisplayName("RuntimeException Handler Tests")
     class RuntimeExceptionHandlerTests {
 

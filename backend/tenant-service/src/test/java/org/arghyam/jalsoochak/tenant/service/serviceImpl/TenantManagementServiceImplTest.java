@@ -1,6 +1,7 @@
 package org.arghyam.jalsoochak.tenant.service.serviceImpl;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -36,6 +37,7 @@ import org.arghyam.jalsoochak.tenant.dto.request.CreateTenantRequestDTO;
 import org.arghyam.jalsoochak.tenant.dto.request.SetTenantConfigRequestDTO;
 import org.arghyam.jalsoochak.tenant.dto.request.UpdateTenantRequestDTO;
 import org.arghyam.jalsoochak.tenant.dto.response.DepartmentResponseDTO;
+import org.arghyam.jalsoochak.tenant.dto.response.LocationHierarchyEditConstraintsResponseDTO;
 import org.arghyam.jalsoochak.tenant.dto.response.LocationHierarchyResponseDTO;
 import org.arghyam.jalsoochak.tenant.dto.response.LocationResponseDTO;
 import org.arghyam.jalsoochak.tenant.dto.response.TenantConfigResponseDTO;
@@ -45,6 +47,7 @@ import org.arghyam.jalsoochak.tenant.enums.TenantConfigKeyEnum;
 import org.arghyam.jalsoochak.tenant.event.TenantCreatedEvent;
 import org.arghyam.jalsoochak.tenant.event.TenantDeactivatedEvent;
 import org.arghyam.jalsoochak.tenant.event.TenantUpdatedEvent;
+import org.arghyam.jalsoochak.tenant.exception.LocationHierarchyStructureLockedException;
 import org.arghyam.jalsoochak.tenant.exception.ResourceNotFoundException;
 import org.arghyam.jalsoochak.tenant.repository.TenantCommonRepository;
 import org.arghyam.jalsoochak.tenant.repository.TenantSchemaRepository;
@@ -450,10 +453,6 @@ class TenantManagementServiceImplTest {
 
             when(tenantCommonRepository.findById(tenantId)).thenReturn(Optional.of(tenant));
             when(tenantCommonRepository.findConfigsByTenantId(tenantId)).thenReturn(configsList);
-            when(tenantSchemaRepository.getLocationHierarchy("tenant_tn", RegionTypeEnum.LGD))
-                    .thenReturn(LocationConfigDTO.builder().locationHierarchy(Collections.emptyList()).build());
-            when(tenantSchemaRepository.getLocationHierarchy("tenant_tn", RegionTypeEnum.DEPARTMENT))
-                    .thenReturn(LocationConfigDTO.builder().locationHierarchy(Collections.emptyList()).build());
 
             // Act
             TenantConfigResponseDTO result = tenantManagementService.getTenantConfigs(tenantId, null);
@@ -484,10 +483,6 @@ class TenantManagementServiceImplTest {
             when(tenantCommonRepository.findById(tenantId)).thenReturn(Optional.of(tenant));
             when(tenantCommonRepository.findConfigsByTenantId(tenantId))
                     .thenReturn(configsList);
-            when(tenantSchemaRepository.getLocationHierarchy("tenant_tn", RegionTypeEnum.LGD))
-                    .thenReturn(LocationConfigDTO.builder().locationHierarchy(Collections.emptyList()).build());
-            when(tenantSchemaRepository.getLocationHierarchy("tenant_tn", RegionTypeEnum.DEPARTMENT))
-                    .thenReturn(LocationConfigDTO.builder().locationHierarchy(Collections.emptyList()).build());
 
             // Act
             TenantConfigResponseDTO result = tenantManagementService.getTenantConfigs(tenantId, null);
@@ -519,10 +514,6 @@ class TenantManagementServiceImplTest {
 
             when(tenantCommonRepository.findById(tenantId)).thenReturn(Optional.of(tenant));
             when(tenantCommonRepository.findConfigsByTenantId(tenantId)).thenReturn(Collections.emptyList());
-            when(tenantSchemaRepository.getLocationHierarchy("tenant_tn", RegionTypeEnum.LGD))
-                    .thenReturn(LocationConfigDTO.builder().locationHierarchy(Collections.emptyList()).build());
-            when(tenantSchemaRepository.getLocationHierarchy("tenant_tn", RegionTypeEnum.DEPARTMENT))
-                    .thenReturn(LocationConfigDTO.builder().locationHierarchy(Collections.emptyList()).build());
 
             // Act
             TenantConfigResponseDTO result = tenantManagementService.getTenantConfigs(tenantId, null);
@@ -910,13 +901,205 @@ class TenantManagementServiceImplTest {
             Integer tenantId = 999;
             String hierarchyType = "LGD";
             Integer parentId = 0;
-            
+
             when(tenantCommonRepository.findById(tenantId)).thenReturn(Optional.empty());
-            
+
             // Act & Assert
             assertThrows(ResourceNotFoundException.class,
                     () -> tenantManagementService.getLocationChildren(tenantId, hierarchyType, parentId));
             verify(tenantCommonRepository).findById(tenantId);
+        }
+
+        @Test
+        @DisplayName("Should return edit constraints with structuralChangesAllowed=true when no seeded data")
+        void testGetLocationHierarchyEditConstraints_NoSeededData() {
+            // Arrange
+            Integer tenantId = 1;
+            TenantResponseDTO tenant = TenantResponseDTO.builder().id(tenantId).stateCode("mp").build();
+
+            when(tenantCommonRepository.findById(tenantId)).thenReturn(Optional.of(tenant));
+            when(tenantSchemaRepository.countSeededLocationData("tenant_mp", RegionTypeEnum.LGD)).thenReturn(0L);
+
+            // Act
+            LocationHierarchyEditConstraintsResponseDTO result =
+                    tenantManagementService.getLocationHierarchyEditConstraints(tenantId, "LGD");
+
+            // Assert
+            assertNotNull(result);
+            assertEquals("LGD", result.getHierarchyType());
+            assertTrue(result.isStructuralChangesAllowed());
+            assertEquals(0L, result.getSeededRecordCount());
+        }
+
+        @Test
+        @DisplayName("Should return edit constraints with structuralChangesAllowed=false when seeded data exists")
+        void testGetLocationHierarchyEditConstraints_SeededDataExists() {
+            // Arrange
+            Integer tenantId = 1;
+            TenantResponseDTO tenant = TenantResponseDTO.builder().id(tenantId).stateCode("mp").build();
+
+            when(tenantCommonRepository.findById(tenantId)).thenReturn(Optional.of(tenant));
+            when(tenantSchemaRepository.countSeededLocationData("tenant_mp", RegionTypeEnum.DEPARTMENT))
+                    .thenReturn(342L);
+
+            // Act
+            LocationHierarchyEditConstraintsResponseDTO result =
+                    tenantManagementService.getLocationHierarchyEditConstraints(tenantId, "DEPARTMENT");
+
+            // Assert
+            assertNotNull(result);
+            assertEquals("DEPARTMENT", result.getHierarchyType());
+            assertFalse(result.isStructuralChangesAllowed());
+            assertEquals(342L, result.getSeededRecordCount());
+        }
+
+        @Test
+        @DisplayName("Should throw ResourceNotFoundException when tenant not found for edit constraints")
+        void testGetLocationHierarchyEditConstraints_TenantNotFound() {
+            when(tenantCommonRepository.findById(999)).thenReturn(Optional.empty());
+
+            assertThrows(ResourceNotFoundException.class,
+                    () -> tenantManagementService.getLocationHierarchyEditConstraints(999, "LGD"));
+        }
+
+        @Test
+        @DisplayName("Should throw IllegalArgumentException for invalid hierarchy type in edit constraints")
+        void testGetLocationHierarchyEditConstraints_InvalidType() {
+            Integer tenantId = 1;
+            TenantResponseDTO tenant = TenantResponseDTO.builder().id(tenantId).stateCode("mp").build();
+            when(tenantCommonRepository.findById(tenantId)).thenReturn(Optional.of(tenant));
+
+            assertThrows(IllegalArgumentException.class,
+                    () -> tenantManagementService.getLocationHierarchyEditConstraints(tenantId, "INVALID"));
+        }
+
+        @Test
+        @DisplayName("Should do full structural update (delete+insert) when no seeded data exists")
+        void testUpdateLocationHierarchy_StructuralChange_NoSeededData() {
+            // Arrange
+            Integer tenantId = 1;
+            TenantResponseDTO tenant = TenantResponseDTO.builder().id(tenantId).stateCode("mp").build();
+            List<LocationLevelConfigDTO> existingLevels = List.of(
+                    LocationLevelConfigDTO.builder().level(1)
+                            .levelName(List.of(LocationLevelNameDTO.builder().title("State").build())).build()
+            );
+            List<LocationLevelConfigDTO> newLevels = List.of(
+                    LocationLevelConfigDTO.builder().level(1)
+                            .levelName(List.of(LocationLevelNameDTO.builder().title("State").build())).build(),
+                    LocationLevelConfigDTO.builder().level(2)
+                            .levelName(List.of(LocationLevelNameDTO.builder().title("District").build())).build()
+            );
+
+            when(tenantCommonRepository.findById(tenantId)).thenReturn(Optional.of(tenant));
+            when(SecurityUtils.getCurrentUserUuid()).thenReturn("user-uuid");
+            when(tenantCommonRepository.findUserIdByUuid("user-uuid")).thenReturn(Optional.of(100));
+            when(tenantSchemaRepository.getLocationHierarchy("tenant_mp", RegionTypeEnum.LGD))
+                    .thenReturn(LocationConfigDTO.builder().locationHierarchy(existingLevels).build());
+            when(tenantSchemaRepository.countSeededLocationData("tenant_mp", RegionTypeEnum.LGD)).thenReturn(0L);
+
+            // Act
+            LocationHierarchyResponseDTO result =
+                    tenantManagementService.updateLocationHierarchy(tenantId, "LGD", newLevels);
+
+            // Assert
+            assertNotNull(result);
+            assertEquals("LGD", result.getHierarchyType());
+            assertEquals(2, result.getLevels().size());
+            verify(tenantSchemaRepository).setLocationHierarchy("tenant_mp", RegionTypeEnum.LGD, newLevels, 100);
+            verify(tenantSchemaRepository, never()).updateLevelNames(any(), any(), any(), any());
+        }
+
+        @Test
+        @DisplayName("Should throw LocationHierarchyStructureLockedException when structural change attempted with seeded data")
+        void testUpdateLocationHierarchy_StructuralChange_SeededDataExists() {
+            // Arrange
+            Integer tenantId = 1;
+            TenantResponseDTO tenant = TenantResponseDTO.builder().id(tenantId).stateCode("mp").build();
+            List<LocationLevelConfigDTO> existingLevels = List.of(
+                    LocationLevelConfigDTO.builder().level(1)
+                            .levelName(List.of(LocationLevelNameDTO.builder().title("State").build())).build()
+            );
+            // Incoming adds a level — structural change
+            List<LocationLevelConfigDTO> newLevels = List.of(
+                    LocationLevelConfigDTO.builder().level(1)
+                            .levelName(List.of(LocationLevelNameDTO.builder().title("State").build())).build(),
+                    LocationLevelConfigDTO.builder().level(2)
+                            .levelName(List.of(LocationLevelNameDTO.builder().title("District").build())).build()
+            );
+
+            when(tenantCommonRepository.findById(tenantId)).thenReturn(Optional.of(tenant));
+            when(SecurityUtils.getCurrentUserUuid()).thenReturn("user-uuid");
+            when(tenantCommonRepository.findUserIdByUuid("user-uuid")).thenReturn(Optional.of(100));
+            when(tenantSchemaRepository.getLocationHierarchy("tenant_mp", RegionTypeEnum.LGD))
+                    .thenReturn(LocationConfigDTO.builder().locationHierarchy(existingLevels).build());
+            when(tenantSchemaRepository.countSeededLocationData("tenant_mp", RegionTypeEnum.LGD)).thenReturn(1842L);
+
+            // Act & Assert
+            assertThrows(LocationHierarchyStructureLockedException.class,
+                    () -> tenantManagementService.updateLocationHierarchy(tenantId, "LGD", newLevels));
+
+            verify(tenantSchemaRepository, never()).setLocationHierarchy(any(), any(), any(), any());
+            verify(tenantSchemaRepository, never()).updateLevelNames(any(), any(), any(), any());
+        }
+
+        @Test
+        @DisplayName("Should do name-only update (updateLevelNames) when only level names changed with seeded data")
+        void testUpdateLocationHierarchy_NameOnlyChange_SeededDataExists() {
+            // Arrange
+            Integer tenantId = 1;
+            TenantResponseDTO tenant = TenantResponseDTO.builder().id(tenantId).stateCode("mp").build();
+            List<LocationLevelConfigDTO> existingLevels = List.of(
+                    LocationLevelConfigDTO.builder().level(1)
+                            .levelName(List.of(LocationLevelNameDTO.builder().title("State").build())).build(),
+                    LocationLevelConfigDTO.builder().level(2)
+                            .levelName(List.of(LocationLevelNameDTO.builder().title("District").build())).build()
+            );
+            // Same level numbers (1, 2) but renamed — not a structural change
+            List<LocationLevelConfigDTO> renamedLevels = List.of(
+                    LocationLevelConfigDTO.builder().level(1)
+                            .levelName(List.of(LocationLevelNameDTO.builder().title("Rajya").build())).build(),
+                    LocationLevelConfigDTO.builder().level(2)
+                            .levelName(List.of(LocationLevelNameDTO.builder().title("Zila").build())).build()
+            );
+
+            when(tenantCommonRepository.findById(tenantId)).thenReturn(Optional.of(tenant));
+            when(SecurityUtils.getCurrentUserUuid()).thenReturn("user-uuid");
+            when(tenantCommonRepository.findUserIdByUuid("user-uuid")).thenReturn(Optional.of(100));
+            when(tenantSchemaRepository.getLocationHierarchy("tenant_mp", RegionTypeEnum.LGD))
+                    .thenReturn(LocationConfigDTO.builder().locationHierarchy(existingLevels).build());
+
+            // Act
+            LocationHierarchyResponseDTO result =
+                    tenantManagementService.updateLocationHierarchy(tenantId, "LGD", renamedLevels);
+
+            // Assert
+            assertNotNull(result);
+            assertEquals("LGD", result.getHierarchyType());
+            verify(tenantSchemaRepository).updateLevelNames("tenant_mp", RegionTypeEnum.LGD, renamedLevels, 100);
+            verify(tenantSchemaRepository, never()).setLocationHierarchy(any(), any(), any(), any());
+            verify(tenantSchemaRepository, never()).countSeededLocationData(any(), any());
+        }
+
+        @Test
+        @DisplayName("Should throw ResourceNotFoundException when tenant not found for updateLocationHierarchy")
+        void testUpdateLocationHierarchy_TenantNotFound() {
+            when(tenantCommonRepository.findById(999)).thenReturn(Optional.empty());
+
+            assertThrows(ResourceNotFoundException.class,
+                    () -> tenantManagementService.updateLocationHierarchy(999, "LGD",
+                            List.of(LocationLevelConfigDTO.builder().level(1).levelName(List.of()).build())));
+        }
+
+        @Test
+        @DisplayName("Should throw IllegalArgumentException for invalid hierarchy type in updateLocationHierarchy")
+        void testUpdateLocationHierarchy_InvalidType() {
+            Integer tenantId = 1;
+            TenantResponseDTO tenant = TenantResponseDTO.builder().id(tenantId).stateCode("mp").build();
+            when(tenantCommonRepository.findById(tenantId)).thenReturn(Optional.of(tenant));
+
+            assertThrows(IllegalArgumentException.class,
+                    () -> tenantManagementService.updateLocationHierarchy(tenantId, "INVALID",
+                            List.of(LocationLevelConfigDTO.builder().level(1).levelName(List.of()).build())));
         }
     }
 }
