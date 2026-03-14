@@ -13,6 +13,7 @@ import org.arghyam.jalsoochak.user.dto.request.ForgotPasswordRequestDTO;
 import org.arghyam.jalsoochak.user.dto.request.LoginRequestDTO;
 import org.arghyam.jalsoochak.user.dto.request.ResetPasswordRequestDTO;
 import org.arghyam.jalsoochak.user.dto.response.InviteInfoResponseDTO;
+import org.arghyam.jalsoochak.user.enums.AdminUserStatus;
 import org.arghyam.jalsoochak.user.exceptions.AccountDeactivatedException;
 import org.arghyam.jalsoochak.user.exceptions.BadRequestException;
 import org.arghyam.jalsoochak.user.exceptions.InvalidCredentialsException;
@@ -104,15 +105,15 @@ class AuthServiceImplTest {
     // ── helpers ──────────────────────────────────────────────────────────────────
 
     private AdminUserRow superUserRow() {
-        return new AdminUserRow(1L, "kc-uuid", "user@example.com", "91XXXXXXXXXX", 0, 1, 1, 0, null);
+        return new AdminUserRow(1L, "kc-uuid", "user@example.com", "91XXXXXXXXXX", 0, 1, AdminUserStatus.ACTIVE, 0, null);
     }
 
     private AdminUserRow stateAdminRow() {
-        return new AdminUserRow(2L, "kc-sa", "sa@example.com", "91XXXXXXXXXX", 1, 2, 1, 0, null);
+        return new AdminUserRow(2L, "kc-sa", "sa@example.com", "91XXXXXXXXXX", 1, 2, AdminUserStatus.ACTIVE, 0, null);
     }
 
     private AdminUserRow deactivatedUser() {
-        return new AdminUserRow(1L, "kc-uuid", "user@example.com", "91XXXXXXXXXX", 0, 1, 0, 0, null);
+        return new AdminUserRow(1L, "kc-uuid", "user@example.com", "91XXXXXXXXXX", 0, 1, AdminUserStatus.INACTIVE, 0, null);
     }
 
     private AdminUserTokenRow activeTokenRow(String email, String hash, String type, String metadata) {
@@ -364,7 +365,7 @@ class AuthServiceImplTest {
             AdminUserTokenRow tokenRow = activeTokenRow("user@example.com", hash, "RESET", null);
             when(userCommonRepository.consumeActiveTokenOfType(hash, "RESET")).thenReturn(Optional.of(tokenRow));
 
-            AdminUserRow user = new AdminUserRow(1L, "kc-uuid", "user@example.com", "91XXXXXXXXXX", 0, 1, 1, 0, null);
+            AdminUserRow user = new AdminUserRow(1L, "kc-uuid", "user@example.com", "91XXXXXXXXXX", 0, 1, AdminUserStatus.ACTIVE, 0, null);
             when(userCommonRepository.findAdminUserByEmail("user@example.com")).thenReturn(Optional.of(user));
 
             ResetPasswordRequestDTO req = new ResetPasswordRequestDTO();
@@ -451,7 +452,7 @@ class AuthServiceImplTest {
             when(userCommonRepository.consumeActiveTokenOfType(hash, "INVITE")).thenReturn(Optional.of(
                     activeTokenRow("existing@example.com", hash, "INVITE", "{\"role\":\"SUPER_USER\"}")));
             // activateAccount finds the user record and checks status; status=1 (active) => already registered
-            AdminUserRow activeUser = new AdminUserRow(5L, "kc-dup", "existing@example.com", "91XXXXXXXXXX", 0, 1, 1, 0, null);
+            AdminUserRow activeUser = new AdminUserRow(5L, "kc-dup", "existing@example.com", "91XXXXXXXXXX", 0, 1, AdminUserStatus.ACTIVE, 0, null);
             when(userCommonRepository.findAdminUserByEmail("existing@example.com")).thenReturn(Optional.of(activeUser));
 
             ActivateAccountRequestDTO req = new ActivateAccountRequestDTO();
@@ -473,7 +474,7 @@ class AuthServiceImplTest {
                     activeTokenRow("newsuper@example.com", hash, "INVITE", "{\"role\":\"SUPER_USER\"}")));
 
             // Pending user record (status=2) created at invite time
-            AdminUserRow pendingUser = new AdminUserRow(10L, "pending-uuid", "newsuper@example.com", "", 0, 1, 2, 0, null);
+            AdminUserRow pendingUser = new AdminUserRow(10L, "pending-uuid", "newsuper@example.com", "", 0, 1, AdminUserStatus.PENDING, 0, null);
             when(userCommonRepository.findAdminUserByEmail("newsuper@example.com")).thenReturn(Optional.of(pendingUser));
 
             when(keycloakProvider.getRealm()).thenReturn("test-realm");
@@ -512,7 +513,7 @@ class AuthServiceImplTest {
                     activeTokenRow("newsa@example.com", hash, "INVITE",
                             "{\"role\":\"STATE_ADMIN\",\"tenantCode\":\"MP\"}")));
 
-            AdminUserRow pendingUser = new AdminUserRow(20L, "pending-sa-uuid", "newsa@example.com", "", 1, 2, 2, 0, null);
+            AdminUserRow pendingUser = new AdminUserRow(20L, "pending-sa-uuid", "newsa@example.com", "", 1, 2, AdminUserStatus.PENDING, 0, null);
             when(userCommonRepository.findAdminUserByEmail("newsa@example.com")).thenReturn(Optional.of(pendingUser));
 
             when(keycloakProvider.getRealm()).thenReturn("test-realm");

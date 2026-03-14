@@ -52,7 +52,7 @@ public class KeycloakAdminHelper {
                 .phoneNumber(user.phoneNumber())
                 .role(roleName)
                 .tenantCode(tenantCode)
-                .active(user.status() == 1)
+                .status(user.status().name())
                 .createdAt(user.createdAt())
                 .build();
     }

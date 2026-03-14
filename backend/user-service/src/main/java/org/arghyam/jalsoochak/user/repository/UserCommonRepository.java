@@ -1,6 +1,7 @@
 package org.arghyam.jalsoochak.user.repository;
 
 import lombok.RequiredArgsConstructor;
+import org.arghyam.jalsoochak.user.enums.AdminUserStatus;
 import org.arghyam.jalsoochak.user.repository.records.AdminUserRow;
 import org.arghyam.jalsoochak.user.repository.records.AdminUserTokenRow;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -394,7 +395,7 @@ public class UserCommonRepository {
                 rs.getString("phone_number"),
                 rs.getInt("tenant_id"),
                 rs.getInt("admin_level"),
-                rs.getInt("status"),
+                AdminUserStatus.fromCode(rs.getInt("status")),
                 rs.getInt("created_by"),
                 createdAtTs != null ? createdAtTs.toLocalDateTime() : null
         );

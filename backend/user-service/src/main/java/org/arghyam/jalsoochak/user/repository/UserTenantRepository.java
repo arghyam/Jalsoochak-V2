@@ -4,6 +4,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
+import org.arghyam.jalsoochak.user.enums.TenantUserStatus;
+
 import java.util.List;
 import java.util.Optional;
 
@@ -143,9 +145,9 @@ public class UserTenantRepository {
                     updated_by,
                     updated_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, 1, true, true, ?, NOW(), ?, NOW())
+                VALUES (?, ?, ?, ?, ?, ?, ?, %d, true, true, ?, NOW(), ?, NOW())
                 RETURNING id
-                """, schemaName);
+                """, schemaName, TenantUserStatus.ACTIVE.code);
 
         Number insertedId = jdbcTemplate.queryForObject(
                 sql,

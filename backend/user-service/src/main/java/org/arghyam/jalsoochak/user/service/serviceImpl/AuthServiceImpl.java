@@ -23,6 +23,7 @@ import org.arghyam.jalsoochak.user.exceptions.InvalidCredentialsException;
 import org.arghyam.jalsoochak.user.exceptions.KeycloakOperationException;
 import org.arghyam.jalsoochak.user.exceptions.ResourceNotFoundException;
 import org.arghyam.jalsoochak.user.exceptions.UserAlreadyExistsException;
+import org.arghyam.jalsoochak.user.enums.AdminUserStatus;
 import org.arghyam.jalsoochak.user.repository.TenantUserRecord;
 import org.arghyam.jalsoochak.user.repository.UserCommonRepository;
 import org.arghyam.jalsoochak.user.repository.UserTenantRepository;
@@ -66,10 +67,10 @@ public class AuthServiceImpl implements AuthService {
         AdminUserRow user = userCommonRepository.findAdminUserByEmail(request.getEmail())
                 .orElseThrow(() -> new InvalidCredentialsException("Invalid credentials"));
 
-        if (user.status() == 2) {
+        if (user.status() == AdminUserStatus.PENDING) {
             throw new AccountDeactivatedException("Account is not yet activated. Please check your invite email.");
         }
-        if (user.status() == 0) {
+        if (user.status() == AdminUserStatus.INACTIVE) {
             throw new AccountDeactivatedException("Account is deactivated");
         }
 
@@ -87,10 +88,10 @@ public class AuthServiceImpl implements AuthService {
         AdminUserRow user = userCommonRepository.findAdminUserByUuid(sub)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
 
-        if (user.status() == 2) {
+        if (user.status() == AdminUserStatus.PENDING) {
             throw new AccountDeactivatedException("Account is not yet activated. Please check your invite email.");
         }
-        if (user.status() == 0) {
+        if (user.status() == AdminUserStatus.INACTIVE) {
             throw new AccountDeactivatedException("Account is deactivated");
         }
 
@@ -139,7 +140,7 @@ public class AuthServiceImpl implements AuthService {
         AdminUserRow pendingUser = userCommonRepository.findAdminUserByEmail(email)
                 .orElseThrow(() -> new ResourceNotFoundException("Invited user record not found for: " + email));
 
-        if (pendingUser.status() != 2) {
+        if (pendingUser.status() != AdminUserStatus.PENDING) {
             throw new UserAlreadyExistsException("Account already exists");
         }
 
@@ -219,7 +220,7 @@ public class AuthServiceImpl implements AuthService {
     @Transactional
     public void forgotPassword(ForgotPasswordRequestDTO request) {
         var userOpt = userCommonRepository.findAdminUserByEmail(request.getEmail());
-        if (userOpt.isEmpty() || userOpt.get().status() == 2) {
+        if (userOpt.isEmpty() || userOpt.get().status() == AdminUserStatus.PENDING) {
             return; // OWASP: no email enumeration; also silently skip PENDING users (not yet activated)
         }
         String raw = tokenService.generateRawToken();

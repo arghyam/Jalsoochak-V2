@@ -2,6 +2,7 @@ package org.arghyam.jalsoochak.user.controller;
 
 import org.arghyam.jalsoochak.user.dto.common.PageResponseDTO;
 import org.arghyam.jalsoochak.user.dto.response.AdminUserResponseDTO;
+import org.arghyam.jalsoochak.user.enums.AdminUserStatus;
 import org.arghyam.jalsoochak.user.exceptions.ForbiddenAccessException;
 import org.arghyam.jalsoochak.user.exceptions.InsufficientActiveUsersException;
 import org.arghyam.jalsoochak.user.exceptions.InvalidCredentialsException;
@@ -175,7 +176,7 @@ class UserControllerTest {
         @DisplayName("Should return 200 with profile for authenticated user")
         void getMe_success_returns200() throws Exception {
             AdminUserResponseDTO dto = AdminUserResponseDTO.builder()
-                    .id(1L).email("user@example.com").role("SUPER_USER").active(true).build();
+                    .id(1L).email("user@example.com").role("SUPER_USER").status(AdminUserStatus.ACTIVE.name()).build();
 
             when(userManagementService.getMe(anyString())).thenReturn(dto);
 
@@ -297,7 +298,7 @@ class UserControllerTest {
         @DisplayName("Should return 200 with paginated super users")
         void listSuperUsers_returns200() throws Exception {
             AdminUserResponseDTO dto = AdminUserResponseDTO.builder()
-                    .id(1L).email("su@example.com").role("SUPER_USER").active(true).build();
+                    .id(1L).email("su@example.com").role("SUPER_USER").status(AdminUserStatus.ACTIVE.name()).build();
             PageResponseDTO<AdminUserResponseDTO> page = PageResponseDTO.of(List.of(dto), 1L, 0, 20);
 
             when(userManagementService.listSuperUsers(anyInt(), anyInt())).thenReturn(page);
@@ -321,7 +322,7 @@ class UserControllerTest {
         @DisplayName("Should return 200 with paginated state admins")
         void listStateAdmins_returns200() throws Exception {
             AdminUserResponseDTO dto = AdminUserResponseDTO.builder()
-                    .id(2L).email("admin@mp.com").role("STATE_ADMIN").tenantCode("MP").active(true).build();
+                    .id(2L).email("admin@mp.com").role("STATE_ADMIN").tenantCode("MP").status(AdminUserStatus.ACTIVE.name()).build();
             PageResponseDTO<AdminUserResponseDTO> page = PageResponseDTO.of(List.of(dto), 1L, 0, 20);
 
             when(userManagementService.listStateAdmins(any(), any(), anyInt(), anyInt())).thenReturn(page);
@@ -345,7 +346,7 @@ class UserControllerTest {
         @DisplayName("Should return 200 with user data when user exists")
         void getUserById_returns200() throws Exception {
             AdminUserResponseDTO dto = AdminUserResponseDTO.builder()
-                    .id(5L).email("admin@example.com").role("STATE_ADMIN").active(true).build();
+                    .id(5L).email("admin@example.com").role("STATE_ADMIN").status(AdminUserStatus.ACTIVE.name()).build();
 
             when(userManagementService.getUserById(eq(5L), any())).thenReturn(dto);
 
@@ -440,6 +441,121 @@ class UserControllerTest {
             mockMvc.perform(put("/api/v1/users/5/activate").with(mockJwt()))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.status").value(200));
+        }
+    }
+
+    // ── /{id}/reinvite ────────────────────────────────────────────────────────────
+
+    @Nested
+    @DisplayName("POST /api/v1/users/{id}/reinvite")
+    class ReinviteTests {
+
+        @Test
+        @DisplayName("Should return 200 on successful reinvite")
+        void reinvite_success_returns200() throws Exception {
+            doNothing().when(userManagementService).reinviteUser(anyLong(), any());
+
+            mockMvc.perform(post("/api/v1/users/7/reinvite").with(mockJwt()))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.status").value(200))
+                    .andExpect(jsonPath("$.message").value("Invitation resent successfully"));
+        }
+
+        @Test
+        @DisplayName("Should return 400 when user has already activated their account")
+        void reinvite_alreadyActivated_returns400() throws Exception {
+            doThrow(new org.arghyam.jalsoochak.user.exceptions.BadRequestException("User has already activated their account"))
+                    .when(userManagementService).reinviteUser(anyLong(), any());
+
+            mockMvc.perform(post("/api/v1/users/8/reinvite").with(mockJwt()))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.status").value(400));
+        }
+
+        @Test
+        @DisplayName("Should return 404 when user does not exist")
+        void reinvite_userNotFound_returns404() throws Exception {
+            doThrow(new ResourceNotFoundException("User not found"))
+                    .when(userManagementService).reinviteUser(anyLong(), any());
+
+            mockMvc.perform(post("/api/v1/users/999/reinvite").with(mockJwt()))
+                    .andExpect(status().isNotFound())
+                    .andExpect(jsonPath("$.status").value(404));
+        }
+
+        @Test
+        @DisplayName("Should return 403 when state admin reinvites across state boundary")
+        void reinvite_crossState_returns403() throws Exception {
+            doThrow(new ForbiddenAccessException("State admin can only reinvite within their own state"))
+                    .when(userManagementService).reinviteUser(anyLong(), any());
+
+            mockMvc.perform(post("/api/v1/users/10/reinvite").with(mockJwt()))
+                    .andExpect(status().isForbidden())
+                    .andExpect(jsonPath("$.status").value(403));
+        }
+    }
+
+    // ── /super-users pagination validation ────────────────────────────────────────
+
+    @Nested
+    @DisplayName("GET /api/v1/users/super-users - pagination validation")
+    class ListSuperUsersPaginationTests {
+
+        @Test
+        @DisplayName("Should return 400 when page is negative")
+        void listSuperUsers_negativePage_returns400() throws Exception {
+            mockMvc.perform(get("/api/v1/users/super-users")
+                            .param("page", "-1")
+                            .with(mockJwt()))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.status").value(400));
+        }
+
+        @Test
+        @DisplayName("Should return 400 when limit is zero")
+        void listSuperUsers_zeroLimit_returns400() throws Exception {
+            mockMvc.perform(get("/api/v1/users/super-users")
+                            .param("limit", "0")
+                            .with(mockJwt()))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.status").value(400));
+        }
+
+        @Test
+        @DisplayName("Should return 400 when limit exceeds 100")
+        void listSuperUsers_limitOver100_returns400() throws Exception {
+            mockMvc.perform(get("/api/v1/users/super-users")
+                            .param("limit", "101")
+                            .with(mockJwt()))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.status").value(400));
+        }
+    }
+
+    // ── /state-admins pagination validation ───────────────────────────────────────
+
+    @Nested
+    @DisplayName("GET /api/v1/users/state-admins - pagination validation")
+    class ListStateAdminsPaginationTests {
+
+        @Test
+        @DisplayName("Should return 400 when page is negative")
+        void listStateAdmins_negativePage_returns400() throws Exception {
+            mockMvc.perform(get("/api/v1/users/state-admins")
+                            .param("page", "-1")
+                            .with(mockJwt()))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.status").value(400));
+        }
+
+        @Test
+        @DisplayName("Should return 400 when limit exceeds 100")
+        void listStateAdmins_limitOver100_returns400() throws Exception {
+            mockMvc.perform(get("/api/v1/users/state-admins")
+                            .param("limit", "101")
+                            .with(mockJwt()))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.status").value(400));
         }
     }
 }
