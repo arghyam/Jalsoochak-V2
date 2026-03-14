@@ -62,6 +62,8 @@ public class SecurityConfig {
                                 "/api/v1/auth/invite/info",
                                 "/api/v1/auth/activate-account",
                                 "/api/v1/pumpoperator/**",
+                                "/api/v1/tenant/user/staff",
+                                "/api/v1/tenant/user/staff/counts/by-role",
                                 "/api/v1/auth/forgot-password",
                                 "/api/v1/auth/reset-password",
                                 // Public (no-auth) endpoints
