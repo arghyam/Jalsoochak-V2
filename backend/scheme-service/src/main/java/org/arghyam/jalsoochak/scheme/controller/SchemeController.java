@@ -23,7 +23,7 @@ import org.springframework.web.multipart.MultipartFile;
 import java.util.List;
 
 @RestController
-@RequestMapping("/api")
+@RequestMapping("/api/v1/scheme")
 @RequiredArgsConstructor
 @Slf4j
 public class SchemeController {
