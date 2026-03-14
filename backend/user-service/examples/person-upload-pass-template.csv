@@ -1,2 +1,2 @@
-first_name,last_name,full_name,phone_number,alternate_number,person_type,state_scheme_id,center_scheme_id
-Ram,Kumar,Ram Kumar,9999999999,,pump_operator,SS-001,CS-001
+first_name,last_name,full_name,phone_number,person_type,state_scheme_id
+Ram,Kumar,Ram Kumar,9999999999,pump_operator,SS-001

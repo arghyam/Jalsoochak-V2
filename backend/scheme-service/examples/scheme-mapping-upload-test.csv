@@ -1,4 +1,4 @@
-scheme_id,parent_lgd_id,parent_lgd_level,parent_department_id,parent_department_level
-1,501,1,1001,division
-2,502,6,1002,sub_division
-3,503,7,1003,division
+state_scheme_id,village_lgd_code,sub_division_name
+SS-001,VLG-001,Bengaluru North
+SS-002,VLG-002,Mysuru South
+SS-003,VLG-003,Invalid Subdivision

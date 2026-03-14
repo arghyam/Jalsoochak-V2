@@ -35,10 +35,8 @@ public class PumpOperatorUploadChunkProcessor {
             String lastName,
             String fullName,
             String phone,
-            String alternateNumber,
             String personType,
-            String stateSchemeId,
-            String centreSchemeId
+            String stateSchemeId
     ) {}
 
     public record ChunkResult(int uploadedRows, int skippedRows) {}
@@ -65,7 +63,7 @@ public class PumpOperatorUploadChunkProcessor {
 
         for (UploadRow row : rows) {
             try {
-                Integer schemeId = resolveSchemeId(schemaName, row.stateSchemeId(), row.centreSchemeId(), schemeIdCache);
+                Integer schemeId = resolveSchemeId(schemaName, row.stateSchemeId(), schemeIdCache);
                 if (schemeId == null || schemeId < 0) {
                     skipped++;
                     continue;
@@ -149,15 +147,14 @@ public class PumpOperatorUploadChunkProcessor {
     private Integer resolveSchemeId(
             String schemaName,
             String stateSchemeId,
-            String centreSchemeId,
             Map<String, Integer> schemeIdCache
     ) {
-        String schemeKey = stateSchemeId + "|" + centreSchemeId;
+        String schemeKey = stateSchemeId;
         Integer schemeId = schemeIdCache.get(schemeKey);
         if (schemeId != null) {
             return schemeId;
         }
-        Integer found = userUploadRepository.findSchemeId(schemaName, blankToNull(stateSchemeId), blankToNull(centreSchemeId));
+        Integer found = userUploadRepository.findSchemeId(schemaName, blankToNull(stateSchemeId), null);
         schemeId = found != null ? found : -1;
         schemeIdCache.put(schemeKey, schemeId);
         return schemeId;

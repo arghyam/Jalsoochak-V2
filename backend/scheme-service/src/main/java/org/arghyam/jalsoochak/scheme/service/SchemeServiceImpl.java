@@ -33,6 +33,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -45,33 +46,34 @@ public class SchemeServiceImpl implements SchemeService {
     private static final int MAX_VALIDATION_ERRORS = 1000;
     private static final int CHUNK_SIZE = 1000;
 
-    private static final List<String> SCHEME_HEADERS_V2 = List.of(
+    // New upload contract:
+    // - `center_scheme_id` (CSV) maps to DB `centre_scheme_id`
+    // - `achieved_fhtc` maps to DB `fhtc_count`
+    // Optional: planned_fhtc, achieved_fhtc, latitude, longitude, operating_status
+    // Mandatory: state_scheme_id, center/centre_scheme_id, scheme_name, house_hold_count, work_status
+    private static final List<String> SCHEME_HEADERS_V3 = List.of(
             "state_scheme_id",
-            "centre_scheme_id",
+            "center_scheme_id",
             "scheme_name",
-            "fhtc_count",
             "planned_fhtc",
+            "achieved_fhtc",
             "house_hold_count",
-            "latitude",
             "longitude",
-            "channel",
+            "latitude",
             "work_status",
             "operating_status"
     );
-    private static final List<String> SCHEME_HEADERS_V1 = List.of(
+    private static final List<String> SCHEME_HEADERS_V3_LEGACY_CENTRE = List.of(
             "state_scheme_id",
             "centre_scheme_id",
             "scheme_name",
-            "fhtc_count",
             "planned_fhtc",
+            "achieved_fhtc",
             "house_hold_count",
-            "latitude",
             "longitude",
-            "channel",
+            "latitude",
             "work_status",
-            "operating_status",
-            "created_by",
-            "updated_by"
+            "operating_status"
     );
 
     private static final List<String> MAPPING_HEADERS_V2 = List.of(
@@ -86,12 +88,10 @@ public class SchemeServiceImpl implements SchemeService {
             "parent_department_id",
             "parent_department_level"
     );
-
-    private static final Map<String, Integer> CHANNEL_MAP = Map.of(
-            "1", 1,
-            "bfm", 1,
-            "2", 2,
-            "electric", 2
+    private static final List<String> MAPPING_HEADERS_V4 = List.of(
+            "state_scheme_id",
+            "village_lgd_code",
+            "sub_division_name"
     );
 
     private static final Map<String, Integer> WORK_STATUS_MAP = Map.of(
@@ -134,7 +134,7 @@ public class SchemeServiceImpl implements SchemeService {
         validateFile(file);
 
         String extension = extractExtension(file.getOriginalFilename());
-        List<String> activeHeaders = resolveHeaders(file, extension, List.of(SCHEME_HEADERS_V2, SCHEME_HEADERS_V1));
+        List<String> activeHeaders = resolveHeaders(file, extension, List.of(SCHEME_HEADERS_V3, SCHEME_HEADERS_V3_LEGACY_CENTRE));
 
         int totalRows = validateSchemes(file, extension, activeHeaders);
         int uploadedRows = processSchemes(schemaName, file, extension, activeHeaders, actorUserId);
@@ -153,11 +153,10 @@ public class SchemeServiceImpl implements SchemeService {
         validateFile(file);
 
         String extension = extractExtension(file.getOriginalFilename());
-        List<String> activeHeaders = resolveHeaders(file, extension, List.of(MAPPING_HEADERS_V3, MAPPING_HEADERS_V2));
-        boolean includeDepartment = activeHeaders.contains("parent_department_id");
+        List<String> activeHeaders = resolveHeaders(file, extension, List.of(MAPPING_HEADERS_V4));
 
-        int totalRows = validateMappings(schemaName, file, extension, activeHeaders, includeDepartment);
-        int uploadedRows = processMappings(schemaName, file, extension, activeHeaders, includeDepartment, actorUserId);
+        int totalRows = validateMappings(schemaName, file, extension, activeHeaders);
+        int uploadedRows = processMappings(schemaName, file, extension, activeHeaders, actorUserId);
 
         return SchemeUploadResponseDTO.builder()
                 .message("Scheme mappings uploaded successfully")
@@ -309,25 +308,25 @@ public class SchemeServiceImpl implements SchemeService {
                 int before = errors.size();
 
                 requireField(values, rowNumber, "state_scheme_id", errors);
-                requireField(values, rowNumber, "centre_scheme_id", errors);
+                if (values.containsKey("center_scheme_id")) {
+                    requireField(values, rowNumber, "center_scheme_id", errors);
+                } else {
+                    requireField(values, rowNumber, "centre_scheme_id", errors);
+                }
                 requireField(values, rowNumber, "scheme_name", errors);
-                requireField(values, rowNumber, "fhtc_count", errors);
-                requireField(values, rowNumber, "planned_fhtc", errors);
                 requireField(values, rowNumber, "house_hold_count", errors);
-                requireField(values, rowNumber, "latitude", errors);
-                requireField(values, rowNumber, "longitude", errors);
-                requireField(values, rowNumber, "channel", errors);
                 requireField(values, rowNumber, "work_status", errors);
-                requireField(values, rowNumber, "operating_status", errors);
 
-                parseInteger(values.get("fhtc_count"), rowNumber, "fhtc_count", errors);
+                // Optional: planned_fhtc, achieved_fhtc, latitude, longitude, operating_status
                 parseInteger(values.get("planned_fhtc"), rowNumber, "planned_fhtc", errors);
+                parseInteger(values.get("achieved_fhtc"), rowNumber, "achieved_fhtc", errors);
                 parseInteger(values.get("house_hold_count"), rowNumber, "house_hold_count", errors);
                 parseDouble(values.get("latitude"), rowNumber, "latitude", errors);
                 parseDouble(values.get("longitude"), rowNumber, "longitude", errors);
-                parseEnum(values.get("channel"), rowNumber, "channel", CHANNEL_MAP, "Bfm/Electric or 1/2", errors);
                 parseEnum(values.get("work_status"), rowNumber, "work_status", WORK_STATUS_MAP, "Ongoing, Completed, Not Started, Handed Over or 1/2/3/4", errors);
-                parseEnum(values.get("operating_status"), rowNumber, "operating_status", OPERATING_STATUS_MAP, "Operative, Non-Operative, Partially Operative or 1/2/3", errors);
+                if (!normalize(values.get("operating_status")).isBlank()) {
+                    parseEnum(values.get("operating_status"), rowNumber, "operating_status", OPERATING_STATUS_MAP, "Operative, Non-Operative, Partially Operative or 1/2/3", errors);
+                }
 
                 if (errors.size() > before && errors.size() >= MAX_VALIDATION_ERRORS) {
                     errors.add(error(rowNumber, "file", "Too many validation errors; showing first " + MAX_VALIDATION_ERRORS));
@@ -366,19 +365,26 @@ public class SchemeServiceImpl implements SchemeService {
                 }
 
                 // Validation already ran. Keep processing tight and avoid allocating error objects.
-                Integer fhtcCount = Integer.parseInt(normalize(values.get("fhtc_count")));
-                Integer plannedFhtc = Integer.parseInt(normalize(values.get("planned_fhtc")));
+                String centreField = values.containsKey("center_scheme_id") ? "center_scheme_id" : "centre_scheme_id";
+
+                String plannedRaw = normalize(values.get("planned_fhtc"));
+                String achievedRaw = normalize(values.get("achieved_fhtc"));
+                Integer plannedFhtc = plannedRaw.isBlank() ? 0 : Integer.parseInt(plannedRaw);
+                Integer fhtcCount = achievedRaw.isBlank() ? 0 : Integer.parseInt(achievedRaw);
                 Integer houseHoldCount = Integer.parseInt(normalize(values.get("house_hold_count")));
-                Double latitude = Double.parseDouble(normalize(values.get("latitude")));
-                Double longitude = Double.parseDouble(normalize(values.get("longitude")));
-                Integer channel = CHANNEL_MAP.get(normalize(values.get("channel")).toLowerCase());
+                String latRaw = normalize(values.get("latitude"));
+                String lonRaw = normalize(values.get("longitude"));
+                Double latitude = latRaw.isBlank() ? null : Double.parseDouble(latRaw);
+                Double longitude = lonRaw.isBlank() ? null : Double.parseDouble(lonRaw);
+                Integer channel = null;
                 Integer workStatus = WORK_STATUS_MAP.get(normalize(values.get("work_status")).toLowerCase());
-                Integer operatingStatus = OPERATING_STATUS_MAP.get(normalize(values.get("operating_status")).toLowerCase());
+                String operatingRaw = normalize(values.get("operating_status")).toLowerCase();
+                Integer operatingStatus = operatingRaw.isBlank() ? 1 : OPERATING_STATUS_MAP.get(operatingRaw);
 
                 chunk.add(new SchemeCreateRecord(
                         UUID.randomUUID().toString(),
                         normalize(values.get("state_scheme_id")),
-                        normalize(values.get("centre_scheme_id")),
+                        normalize(values.get(centreField)),
                         normalize(values.get("scheme_name")),
                         fhtcCount,
                         plannedFhtc,
@@ -412,7 +418,7 @@ public class SchemeServiceImpl implements SchemeService {
         return uploaded[0];
     }
 
-    private int validateMappings(String schemaName, MultipartFile file, String extension, List<String> activeHeaders, boolean includeDepartment) {
+    private int validateMappings(String schemaName, MultipartFile file, String extension, List<String> activeHeaders) {
         List<SchemeUploadErrorDTO> errors = new ArrayList<>();
         List<MappingRow> chunk = new ArrayList<>(CHUNK_SIZE);
         final int[] total = {0};
@@ -426,40 +432,22 @@ public class SchemeServiceImpl implements SchemeService {
 
                 int before = errors.size();
 
-                requireField(values, rowNumber, "scheme_id", errors);
-                requireField(values, rowNumber, "parent_lgd_id", errors);
-                requireField(values, rowNumber, "parent_lgd_level", errors);
-                if (includeDepartment) {
-                    requireField(values, rowNumber, "parent_department_id", errors);
-                    requireField(values, rowNumber, "parent_department_level", errors);
-                }
-
-                Integer schemeId = parseInteger(values.get("scheme_id"), rowNumber, "scheme_id", errors);
-                Integer parentLgdId = parseInteger(values.get("parent_lgd_id"), rowNumber, "parent_lgd_id", errors);
-                Integer parentLgdLevel = parseInteger(values.get("parent_lgd_level"), rowNumber, "parent_lgd_level", errors);
-                Integer parentDepartmentId = includeDepartment
-                        ? parseInteger(values.get("parent_department_id"), rowNumber, "parent_department_id", errors)
-                        : null;
-                String parentDepartmentLevel = includeDepartment ? normalize(values.get("parent_department_level")) : "";
+                requireField(values, rowNumber, "state_scheme_id", errors);
+                requireField(values, rowNumber, "village_lgd_code", errors);
+                requireField(values, rowNumber, "sub_division_name", errors);
 
                 boolean rowHasErrors = errors.size() != before;
                 if (!rowHasErrors) {
-                    if (parentLgdLevel == null || parentLgdLevel < 1 || parentLgdLevel > 6) {
-                        errors.add(error(rowNumber, "parent_lgd_level", "parent_lgd_level must be between 1 and 6"));
-                        rowHasErrors = true;
-                    }
-                    if (includeDepartment && parentDepartmentLevel.isBlank()) {
-                        errors.add(error(rowNumber, "parent_department_level", "parent_department_level is required"));
-                        rowHasErrors = true;
-                    }
-                }
-
-                if (!rowHasErrors) {
-                    chunk.add(new MappingRow(rowNumber, schemeId, parentLgdId, parentLgdLevel, parentDepartmentId, parentDepartmentLevel));
+                    chunk.add(new MappingRow(
+                            rowNumber,
+                            normalize(values.get("state_scheme_id")),
+                            normalize(values.get("village_lgd_code")),
+                            normalize(values.get("sub_division_name"))
+                    ));
                 }
 
                 if (chunk.size() >= CHUNK_SIZE) {
-                    validateMappingChunk(schemaName, chunk, includeDepartment, errors);
+                    validateMappingChunk(schemaName, chunk, errors);
                     chunk.clear();
                 }
 
@@ -478,7 +466,7 @@ public class SchemeServiceImpl implements SchemeService {
         }
 
         if (!chunk.isEmpty()) {
-            validateMappingChunk(schemaName, chunk, includeDepartment, errors);
+            validateMappingChunk(schemaName, chunk, errors);
         }
 
         if (!errors.isEmpty()) {
@@ -496,38 +484,33 @@ public class SchemeServiceImpl implements SchemeService {
     private void validateMappingChunk(
             String schemaName,
             List<MappingRow> rows,
-            boolean includeDepartment,
             List<SchemeUploadErrorDTO> errors
     ) {
-        List<Integer> schemeIds = new ArrayList<>(rows.size());
-        List<Integer> lgdIds = new ArrayList<>(rows.size());
-        List<Integer> deptIds = includeDepartment ? new ArrayList<>(rows.size()) : List.of();
+        List<String> stateSchemeIds = new ArrayList<>(rows.size());
+        List<String> villageCodes = new ArrayList<>(rows.size());
+        List<String> subDivisionNames = new ArrayList<>(rows.size());
 
         for (MappingRow r : rows) {
-            schemeIds.add(r.schemeId());
-            lgdIds.add(r.parentLgdId());
-            if (includeDepartment) {
-                deptIds.add(r.parentDepartmentId());
-            }
+            stateSchemeIds.add(r.stateSchemeId());
+            villageCodes.add(r.villageLgdCode());
+            subDivisionNames.add(r.subDivisionName());
         }
 
-        Set<Integer> existingSchemes = schemeDbRepository.findExistingSchemeIds(schemaName, schemeIds);
-        Set<Integer> existingLgds = schemeDbRepository.findExistingLgdLocationIds(schemaName, lgdIds);
-        Set<Integer> existingDepts = includeDepartment
-                ? schemeDbRepository.findExistingDepartmentLocationIds(schemaName, deptIds)
-                : Set.of();
+        Map<String, Integer> schemeIdsByStateSchemeId = schemeDbRepository.findSchemeIdsByStateSchemeIds(schemaName, stateSchemeIds);
+        Map<String, Integer> lgdIdsByCode = schemeDbRepository.findLgdIdsByCodes(schemaName, villageCodes);
+        Map<String, Integer> deptIdsByTitle = schemeDbRepository.findDepartmentIdsByTitles(schemaName, subDivisionNames);
 
         for (MappingRow r : rows) {
-            if (!existingSchemes.contains(r.schemeId())) {
-                errors.add(error(r.rowNumber(), "scheme_id", "scheme_id does not exist"));
+            if (!schemeIdsByStateSchemeId.containsKey(r.stateSchemeId().toLowerCase(Locale.ROOT))) {
+                errors.add(error(r.rowNumber(), "state_scheme_id", "state_scheme_id does not exist"));
                 continue;
             }
-            if (!existingLgds.contains(r.parentLgdId())) {
-                errors.add(error(r.rowNumber(), "parent_lgd_id", "parent_lgd_id does not exist"));
+            if (!lgdIdsByCode.containsKey(r.villageLgdCode().toLowerCase(Locale.ROOT))) {
+                errors.add(error(r.rowNumber(), "village_lgd_code", "village_lgd_code does not exist"));
                 continue;
             }
-            if (includeDepartment && (r.parentDepartmentId() == null || !existingDepts.contains(r.parentDepartmentId()))) {
-                errors.add(error(r.rowNumber(), "parent_department_id", "parent_department_id does not exist"));
+            if (!deptIdsByTitle.containsKey(r.subDivisionName().toLowerCase(Locale.ROOT))) {
+                errors.add(error(r.rowNumber(), "sub_division_name", "sub_division_name does not exist"));
             }
         }
     }
@@ -537,7 +520,6 @@ public class SchemeServiceImpl implements SchemeService {
             MultipartFile file,
             String extension,
             List<String> activeHeaders,
-            boolean includeDepartment,
             int actorUserId
     ) {
         List<MappingRow> chunk = new ArrayList<>(CHUNK_SIZE);
@@ -549,17 +531,14 @@ public class SchemeServiceImpl implements SchemeService {
                     return;
                 }
 
-                Integer schemeId = Integer.parseInt(normalize(values.get("scheme_id")));
-                Integer parentLgdId = Integer.parseInt(normalize(values.get("parent_lgd_id")));
-                Integer parentLgdLevel = Integer.parseInt(normalize(values.get("parent_lgd_level")));
-                Integer parentDepartmentId = includeDepartment
-                        ? Integer.parseInt(normalize(values.get("parent_department_id")))
-                        : null;
-                String parentDepartmentLevel = includeDepartment ? normalize(values.get("parent_department_level")) : "";
-
-                chunk.add(new MappingRow(rowNumber, schemeId, parentLgdId, parentLgdLevel, parentDepartmentId, parentDepartmentLevel));
+                chunk.add(new MappingRow(
+                        rowNumber,
+                        normalize(values.get("state_scheme_id")),
+                        normalize(values.get("village_lgd_code")),
+                        normalize(values.get("sub_division_name"))
+                ));
                 if (chunk.size() >= CHUNK_SIZE) {
-                    insertMappingChunk(schemaName, chunk, includeDepartment, actorUserId);
+                    insertMappingChunk(schemaName, chunk, actorUserId);
                     uploaded[0] += chunk.size();
                     chunk.clear();
                 }
@@ -572,33 +551,53 @@ public class SchemeServiceImpl implements SchemeService {
         }
 
         if (!chunk.isEmpty()) {
-            insertMappingChunk(schemaName, chunk, includeDepartment, actorUserId);
+            insertMappingChunk(schemaName, chunk, actorUserId);
             uploaded[0] += chunk.size();
         }
         return uploaded[0];
     }
 
-    private void insertMappingChunk(String schemaName, List<MappingRow> rows, boolean includeDepartment, int actorUserId) {
+    private void insertMappingChunk(String schemaName, List<MappingRow> rows, int actorUserId) {
+        List<String> stateSchemeIds = new ArrayList<>(rows.size());
+        List<String> villageCodes = new ArrayList<>(rows.size());
+        List<String> subDivisionNames = new ArrayList<>(rows.size());
+        for (MappingRow r : rows) {
+            stateSchemeIds.add(r.stateSchemeId());
+            villageCodes.add(r.villageLgdCode());
+            subDivisionNames.add(r.subDivisionName());
+        }
+
+        Map<String, Integer> schemeIdsByStateSchemeId = schemeDbRepository.findSchemeIdsByStateSchemeIds(schemaName, stateSchemeIds);
+        Map<String, Integer> lgdIdsByCode = schemeDbRepository.findLgdIdsByCodes(schemaName, villageCodes);
+        Map<String, Integer> deptIdsByTitle = schemeDbRepository.findDepartmentIdsByTitles(schemaName, subDivisionNames);
+
+        // Row-level existence is validated in the pre-pass; during insert we best-effort skip missing lookups
+        // (protects against concurrent deletes/changes between validation and insert).
         List<SchemeLgdMappingCreateRecord> lgd = new ArrayList<>(rows.size());
-        List<SchemeSubdivisionMappingCreateRecord> dept = includeDepartment ? new ArrayList<>(rows.size()) : List.of();
+        List<SchemeSubdivisionMappingCreateRecord> dept = new ArrayList<>(rows.size());
 
         for (MappingRow r : rows) {
+            Integer schemeId = schemeIdsByStateSchemeId.get(r.stateSchemeId().toLowerCase(Locale.ROOT));
+            Integer lgdId = lgdIdsByCode.get(r.villageLgdCode().toLowerCase(Locale.ROOT));
+            Integer deptId = deptIdsByTitle.get(r.subDivisionName().toLowerCase(Locale.ROOT));
+            if (schemeId == null || lgdId == null || deptId == null) {
+                continue;
+            }
+
             lgd.add(new SchemeLgdMappingCreateRecord(
-                    r.schemeId(),
-                    r.parentLgdId(),
-                    r.parentLgdLevel(),
+                    schemeId,
+                    lgdId,
+                    6, // village
                     actorUserId,
                     actorUserId
             ));
-            if (includeDepartment) {
-                dept.add(new SchemeSubdivisionMappingCreateRecord(
-                        r.schemeId(),
-                        r.parentDepartmentId(),
-                        r.parentDepartmentLevel(),
-                        actorUserId,
-                        actorUserId
-                ));
-            }
+            dept.add(new SchemeSubdivisionMappingCreateRecord(
+                    schemeId,
+                    deptId,
+                    "sub_division",
+                    actorUserId,
+                    actorUserId
+            ));
         }
 
         chunkProcessor.insertMappingsChunk(schemaName, lgd, dept);
@@ -739,11 +738,9 @@ public class SchemeServiceImpl implements SchemeService {
 
     private record MappingRow(
             int rowNumber,
-            Integer schemeId,
-            Integer parentLgdId,
-            Integer parentLgdLevel,
-            Integer parentDepartmentId,
-            String parentDepartmentLevel
+            String stateSchemeId,
+            String villageLgdCode,
+            String subDivisionName
     ) {
     }
 
