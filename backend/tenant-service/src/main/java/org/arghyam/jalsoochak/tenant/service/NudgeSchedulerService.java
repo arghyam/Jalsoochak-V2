@@ -10,6 +10,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDate;
 import java.util.Map;
 
 /**
@@ -31,7 +32,7 @@ public class NudgeSchedulerService {
     private final KafkaProducer kafkaProducer;
 
     public void processNudgesForTenant(String schema, int tenantId) {
-        int total = nudgeRepository.streamUsersWithNoUploadToday(schema, row -> {
+        int total = nudgeRepository.streamUsersWithNoUploadToday(schema, LocalDate.now(), row -> {
             String phone = (String) row.get("phone_number");
             long whatsappId = row.get("whatsapp_connection_id") != null
                     ? ((Number) row.get("whatsapp_connection_id")).longValue() : 0L;

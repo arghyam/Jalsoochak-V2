@@ -8,7 +8,9 @@ import org.arghyam.jalsoochak.tenant.repository.NudgeRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -32,6 +34,7 @@ public class EscalationSchedulerService {
     private final TenantConfigService tenantConfigService;
     private final KafkaProducer kafkaProducer;
 
+    @Transactional(readOnly = true)
     public void processEscalationsForTenant(String schema, int tenantId) {
         EscalationScheduleConfig cfg = tenantConfigService.getEscalationConfig(tenantId);
         int level1Days = cfg.getLevel1Days();
@@ -58,7 +61,7 @@ public class EscalationSchedulerService {
         // Key = "LEVEL_<n>|<phone>" to keep level1 and level2 officers separate
         Map<String, OfficerGroup> officerGroups = new LinkedHashMap<>();
 
-        int total = nudgeRepository.streamUsersWithMissedDays(schema, level1Days, row -> {
+        int total = nudgeRepository.streamUsersWithMissedDays(schema, level1Days, LocalDate.now(), row -> {
             // days_since_last_upload is NULL when the operator has never uploaded
             Number daysSinceObj = (Number) row.get("days_since_last_upload");
             boolean neverUploaded = (daysSinceObj == null);
@@ -74,8 +77,8 @@ public class EscalationSchedulerService {
                     ? level2OfficersByScheme.get(schemeId)
                     : level1OfficersByScheme.get(schemeId);
             if (officerRow == null) {
-                log.debug("[EscalationJob] No officer found for scheme={} level={}, skipping",
-                        schemeId, escalationLevel);
+                log.warn("[EscalationJob] No officer found – schema={}, schemeId={}, escalationLevel={}, skipping",
+                        schema, schemeId, escalationLevel);
                 return;
             }
 

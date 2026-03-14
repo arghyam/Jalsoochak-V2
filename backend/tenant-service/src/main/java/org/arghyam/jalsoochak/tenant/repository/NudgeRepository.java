@@ -7,6 +7,7 @@ import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.sql.PreparedStatement;
+import java.time.LocalDate;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -32,7 +33,8 @@ public class NudgeRepository {
      * into heap, preventing OOM on large tenants.</p>
      */
     @Transactional(readOnly = true)
-    public int streamUsersWithNoUploadToday(String schema, Consumer<Map<String, Object>> consumer) {
+    public int streamUsersWithNoUploadToday(String schema, LocalDate referenceDate,
+                                            Consumer<Map<String, Object>> consumer) {
         validateSchemaName(schema);
         String sql = String.format("""
                 SELECT u.id as user_id, u.title as name, u.phone_number, u.language_id,
@@ -43,7 +45,7 @@ public class NudgeRepository {
                 LEFT JOIN %s.flow_reading_table fr
                     ON fr.scheme_id = usm.scheme_id
                     AND fr.created_by = u.id
-                    AND fr.reading_date = CURRENT_DATE
+                    AND fr.reading_date = ?
                 WHERE usm.status = 1
                   AND UPPER(ut.c_name) = 'PUMP_OPERATOR'
                   AND fr.id IS NULL
@@ -52,6 +54,7 @@ public class NudgeRepository {
         int[] count = {0};
         jdbcTemplate.query(con -> {
             PreparedStatement ps = con.prepareStatement(sql);
+            ps.setObject(1, referenceDate);
             ps.setFetchSize(500);
             return ps;
         }, rs -> {
@@ -85,7 +88,7 @@ public class NudgeRepository {
      * </ul>
      */
     @Transactional(readOnly = true)
-    public int streamUsersWithMissedDays(String schema, int minMissedDays,
+    public int streamUsersWithMissedDays(String schema, int minMissedDays, LocalDate referenceDate,
                                          Consumer<Map<String, Object>> consumer) {
         validateSchemaName(schema);
         String sql = String.format("""
@@ -103,7 +106,7 @@ public class NudgeRepository {
                       MAX(fr.reading_date) AS last_reading_date,
                       CASE
                         WHEN MAX(fr.reading_date) IS NULL THEN NULL
-                        ELSE CURRENT_DATE - MAX(fr.reading_date)
+                        ELSE CAST(? AS DATE) - MAX(fr.reading_date)
                       END AS days_since_last_upload
                     FROM %s.user_scheme_mapping_table usm
                     JOIN %s.user_table u ON u.id = usm.user_id
@@ -123,7 +126,8 @@ public class NudgeRepository {
         int[] count = {0};
         jdbcTemplate.query(con -> {
             PreparedStatement ps = con.prepareStatement(sql);
-            ps.setInt(1, minMissedDays);
+            ps.setObject(1, referenceDate);
+            ps.setInt(2, minMissedDays);
             ps.setFetchSize(500);
             return ps;
         }, rs -> {

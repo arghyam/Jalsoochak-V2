@@ -287,6 +287,47 @@ class NudgeRepositoryIntegrationTest {
         assertThat(result.get("whatsapp_connection_id")).isNull();
     }
 
+    // ──────────────────────── findAllOfficersByUserType ────────────────────────
+
+    @Test
+    void findAllOfficersByUserType_returnsOneEntryPerScheme_withLowestUserId() {
+        // Insert two section officers for the same scheme; DISTINCT ON / ORDER BY u.id
+        // must pick the one with the lower user id.
+        int officerLow  = insertUser("SO First",  "919000000010", sectionOfficerTypeId);
+        int officerHigh = insertUser("SO Second", "919000000011", sectionOfficerTypeId);
+        insertSchemeMapping(officerLow,  schemeId, 1);
+        insertSchemeMapping(officerHigh, schemeId, 1);
+
+        java.util.Map<Object, java.util.Map<String, Object>> result =
+                nudgeRepository.findAllOfficersByUserType("tenant_test", "SECTION_OFFICER");
+
+        assertThat(result).hasSize(1);
+        java.util.Map<String, Object> chosen = result.get((long) schemeId) != null
+                ? result.get((long) schemeId)
+                : result.values().iterator().next();
+        assertThat(((Number) chosen.get("user_id")).intValue()).isEqualTo(officerLow);
+        assertThat(chosen.get("name")).isEqualTo("SO First");
+    }
+
+    @Test
+    void findAllOfficersByUserType_excludesInactiveMappings() {
+        int officerId = insertUser("SO Inactive", "919000000012", sectionOfficerTypeId);
+        insertSchemeMapping(officerId, schemeId, 0); // inactive
+
+        java.util.Map<Object, java.util.Map<String, Object>> result =
+                nudgeRepository.findAllOfficersByUserType("tenant_test", "SECTION_OFFICER");
+
+        assertThat(result).isEmpty();
+    }
+
+    @Test
+    void findAllOfficersByUserType_returnsEmptyMap_whenNoOfficersExist() {
+        java.util.Map<Object, java.util.Map<String, Object>> result =
+                nudgeRepository.findAllOfficersByUserType("tenant_test", "DISTRICT_OFFICER");
+
+        assertThat(result).isEmpty();
+    }
+
     // ────────────────────────── updateWhatsAppConnectionId ─────────────────────
 
     @Test
@@ -325,7 +366,7 @@ class NudgeRepositoryIntegrationTest {
 
     @Test
     void streamUsersWithNoUploadToday_rejectsInvalidSchemaName() {
-        assertThatThrownBy(() -> nudgeRepository.streamUsersWithNoUploadToday("invalid-schema!", row -> {}))
+        assertThatThrownBy(() -> nudgeRepository.streamUsersWithNoUploadToday("invalid-schema!", LocalDate.now(), row -> {}))
                 .hasCauseInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("Invalid schema name");
     }
@@ -333,7 +374,7 @@ class NudgeRepositoryIntegrationTest {
     @Test
     void streamUsersWithMissedDays_rejectsSqlInjectionAttempt() {
         assertThatThrownBy(() ->
-                nudgeRepository.streamUsersWithMissedDays("'; DROP TABLE users; --", 3, row -> {}))
+                nudgeRepository.streamUsersWithMissedDays("'; DROP TABLE users; --", 3, LocalDate.now(), row -> {}))
                 .hasCauseInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("Invalid schema name");
     }
@@ -349,14 +390,14 @@ class NudgeRepositoryIntegrationTest {
 
     private List<Map<String, Object>> collectNoUploadToday(String schema) {
         List<Map<String, Object>> result = new ArrayList<>();
-        int count = nudgeRepository.streamUsersWithNoUploadToday(schema, result::add);
+        int count = nudgeRepository.streamUsersWithNoUploadToday(schema, LocalDate.now(), result::add);
         assertThat(count).isEqualTo(result.size());
         return result;
     }
 
     private List<Map<String, Object>> collectMissedDays(String schema, int minMissedDays) {
         List<Map<String, Object>> result = new ArrayList<>();
-        int count = nudgeRepository.streamUsersWithMissedDays(schema, minMissedDays, result::add);
+        int count = nudgeRepository.streamUsersWithMissedDays(schema, minMissedDays, LocalDate.now(), result::add);
         assertThat(count).isEqualTo(result.size());
         return result;
     }

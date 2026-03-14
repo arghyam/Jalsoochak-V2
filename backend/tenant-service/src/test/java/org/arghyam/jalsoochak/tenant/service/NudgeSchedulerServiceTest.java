@@ -10,6 +10,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.time.LocalDate;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -167,11 +168,11 @@ class NudgeSchedulerServiceTest {
     private void stubStream(String schema, Map<String, Object>... rows) {
         doAnswer(inv -> {
             @SuppressWarnings("unchecked")
-            Consumer<Map<String, Object>> consumer = inv.getArgument(1);
+            Consumer<Map<String, Object>> consumer = inv.getArgument(2);
             for (Map<String, Object> row : rows) {
                 consumer.accept(row);
             }
             return rows.length;
-        }).when(nudgeRepository).streamUsersWithNoUploadToday(eq(schema), any());
+        }).when(nudgeRepository).streamUsersWithNoUploadToday(eq(schema), any(LocalDate.class), any());
     }
 }

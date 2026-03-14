@@ -52,9 +52,7 @@ public class GlificGraphQLClient {
             throw new RuntimeException("Glific API URL is not configured (glific.api-url)");
         }
 
-        if (attempt == 0) {
-            throttleIfNeeded();
-        }
+        throttleIfNeeded();
 
         // Capture the token before sending so we can compare it in auth-failure branches.
         // If another thread already refreshed the token by the time we get a 401,
@@ -117,8 +115,8 @@ public class GlificGraphQLClient {
     }
 
     private void throttleIfNeeded() {
-        long now = System.currentTimeMillis();
         long last = lastCallEpochMs.get();
+        long now = System.currentTimeMillis();
         long elapsed = now - last;
         if (elapsed < requestIntervalMs) {
             long sleepMs = requestIntervalMs - elapsed;
@@ -131,6 +129,10 @@ public class GlificGraphQLClient {
             }
             now = System.currentTimeMillis();
         }
-        lastCallEpochMs.compareAndSet(last, now);
+        // updateAndGet retries internally on CAS failure, ensuring this call's
+        // timestamp is always recorded even if another thread raced ahead.
+        // Math.max prevents the clock from going backwards under contention.
+        final long recorded = now;
+        lastCallEpochMs.updateAndGet(prev -> Math.max(prev, recorded));
     }
 }

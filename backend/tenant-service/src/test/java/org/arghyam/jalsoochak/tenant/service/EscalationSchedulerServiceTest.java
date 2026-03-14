@@ -12,6 +12,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.time.LocalDate;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.function.Consumer;
@@ -200,8 +201,8 @@ class EscalationSchedulerServiceTest {
         escalationSchedulerService.processEscalationsForTenant(SCHEMA, TENANT_ID);
         escalationSchedulerService.processEscalationsForTenant("tenant_up", tenantId2);
 
-        verify(nudgeRepository).streamUsersWithMissedDays(eq(SCHEMA), eq(3), any());
-        verify(nudgeRepository).streamUsersWithMissedDays(eq("tenant_up"), eq(5), any());
+        verify(nudgeRepository).streamUsersWithMissedDays(eq(SCHEMA), eq(3), any(LocalDate.class), any());
+        verify(nudgeRepository).streamUsersWithMissedDays(eq("tenant_up"), eq(5), any(LocalDate.class), any());
     }
 
     // ── helpers ─────────────────────────────────────────────────────────────────
@@ -218,12 +219,12 @@ class EscalationSchedulerServiceTest {
     private void stubStream(String schema, int minDays, Map<String, Object>... rows) {
         doAnswer(inv -> {
             @SuppressWarnings("unchecked")
-            Consumer<Map<String, Object>> consumer = inv.getArgument(2);
+            Consumer<Map<String, Object>> consumer = inv.getArgument(3);
             for (Map<String, Object> row : rows) {
                 consumer.accept(row);
             }
             return rows.length;
-        }).when(nudgeRepository).streamUsersWithMissedDays(eq(schema), eq(minDays), any());
+        }).when(nudgeRepository).streamUsersWithMissedDays(eq(schema), eq(minDays), any(LocalDate.class), any());
     }
 
     private Map<String, Object> operatorRow(String name, String phone, int schemeId, int daysSince) {
