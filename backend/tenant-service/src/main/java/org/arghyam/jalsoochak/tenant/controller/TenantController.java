@@ -27,6 +27,7 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.RestController;
 
 import io.swagger.v3.oas.annotations.Operation;
@@ -44,6 +45,7 @@ import lombok.extern.slf4j.Slf4j;
 @RequestMapping("/api/v1/tenants")
 @RequiredArgsConstructor
 @Slf4j
+@Validated
 @Tag(name = "Tenant Management", description = "APIs for tenant onboarding, schema provisioning, and tenant management")
 public class TenantController {
 
@@ -267,7 +269,7 @@ public class TenantController {
         public ResponseEntity<ApiResponseDTO<LocationHierarchyResponseDTO>> updateLocationHierarchy(
                         @PathVariable Integer tenantId,
                         @Parameter(description = "Hierarchy type: LGD or DEPARTMENT", example = "LGD") @PathVariable String hierarchyType,
-                        @RequestBody List<LocationLevelConfigDTO> levels) {
+                        @RequestBody @Valid List<LocationLevelConfigDTO> levels) {
                 log.info("PUT /api/v1/tenants/{}/location-hierarchy/{}", tenantId, hierarchyType);
                 LocationHierarchyResponseDTO updated = tenantManagementService.updateLocationHierarchy(tenantId,
                                 hierarchyType, levels);

@@ -8,22 +8,8 @@ import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
-import org.arghyam.jalsoochak.tenant.config.TenantContext;
 import org.arghyam.jalsoochak.tenant.config.TenantDefaultsProperties;
-import org.arghyam.jalsoochak.tenant.event.TenantCreatedEvent;
-import org.arghyam.jalsoochak.tenant.event.TenantDeactivatedEvent;
-import org.arghyam.jalsoochak.tenant.event.TenantUpdatedEvent;
 import org.arghyam.jalsoochak.tenant.dto.common.PageResponseDTO;
-import org.arghyam.jalsoochak.tenant.dto.request.CreateTenantRequestDTO;
-import org.arghyam.jalsoochak.tenant.dto.request.SetTenantConfigRequestDTO;
-import org.arghyam.jalsoochak.tenant.dto.request.UpdateTenantRequestDTO;
-import org.arghyam.jalsoochak.tenant.dto.response.LocationHierarchyEditConstraintsResponseDTO;
-import org.arghyam.jalsoochak.tenant.dto.response.TenantConfigResponseDTO;
-import org.arghyam.jalsoochak.tenant.dto.response.TenantConfigStatusResponseDTO;
-import org.arghyam.jalsoochak.tenant.dto.response.TenantResponseDTO;
-import org.arghyam.jalsoochak.tenant.dto.response.TenantSummaryResponseDTO;
-import org.arghyam.jalsoochak.tenant.dto.response.LocationResponseDTO;
-import org.arghyam.jalsoochak.tenant.dto.response.LocationHierarchyResponseDTO;
 import org.arghyam.jalsoochak.tenant.dto.internal.ConfigDTO;
 import org.arghyam.jalsoochak.tenant.dto.internal.ConfigValueDTO;
 import org.arghyam.jalsoochak.tenant.dto.internal.LanguageConfigDTO;
@@ -32,14 +18,27 @@ import org.arghyam.jalsoochak.tenant.dto.internal.LocationConfigDTO;
 import org.arghyam.jalsoochak.tenant.dto.internal.LocationLevelConfigDTO;
 import org.arghyam.jalsoochak.tenant.dto.internal.ReasonListConfigDTO;
 import org.arghyam.jalsoochak.tenant.dto.internal.SimpleConfigValueDTO;
+import org.arghyam.jalsoochak.tenant.dto.request.CreateTenantRequestDTO;
+import org.arghyam.jalsoochak.tenant.dto.request.SetTenantConfigRequestDTO;
+import org.arghyam.jalsoochak.tenant.dto.request.UpdateTenantRequestDTO;
+import org.arghyam.jalsoochak.tenant.dto.response.LocationHierarchyEditConstraintsResponseDTO;
+import org.arghyam.jalsoochak.tenant.dto.response.LocationHierarchyResponseDTO;
+import org.arghyam.jalsoochak.tenant.dto.response.LocationResponseDTO;
+import org.arghyam.jalsoochak.tenant.dto.response.TenantConfigResponseDTO;
+import org.arghyam.jalsoochak.tenant.dto.response.TenantConfigStatusResponseDTO;
+import org.arghyam.jalsoochak.tenant.dto.response.TenantResponseDTO;
+import org.arghyam.jalsoochak.tenant.dto.response.TenantSummaryResponseDTO;
+import org.arghyam.jalsoochak.tenant.enums.ConfigStatusEnum;
 import org.arghyam.jalsoochak.tenant.enums.RegionTypeEnum;
 import org.arghyam.jalsoochak.tenant.enums.TenantConfigKeyEnum;
-import org.arghyam.jalsoochak.tenant.enums.TenantStatusEnum;
 import org.arghyam.jalsoochak.tenant.enums.TenantConfigKeyEnum.ConfigType;
+import org.arghyam.jalsoochak.tenant.enums.TenantStatusEnum;
+import org.arghyam.jalsoochak.tenant.event.TenantCreatedEvent;
+import org.arghyam.jalsoochak.tenant.event.TenantDeactivatedEvent;
+import org.arghyam.jalsoochak.tenant.event.TenantUpdatedEvent;
 import org.arghyam.jalsoochak.tenant.exception.ConfigurationException;
 import org.arghyam.jalsoochak.tenant.exception.InvalidConfigKeyException;
 import org.arghyam.jalsoochak.tenant.exception.InvalidConfigValueException;
-import org.arghyam.jalsoochak.tenant.exception.LocationHierarchyStructureLockedException;
 import org.arghyam.jalsoochak.tenant.exception.ResourceNotFoundException;
 import org.arghyam.jalsoochak.tenant.repository.TenantCommonRepository;
 import org.arghyam.jalsoochak.tenant.repository.TenantSchemaRepository;
@@ -308,7 +307,7 @@ public class TenantManagementServiceImpl implements TenantManagementService {
                     : configuredKeys.contains(key.name());
 
             configs.put(key, TenantConfigStatusResponseDTO.ConfigEntry.builder()
-                    .status(configured ? "CONFIGURED" : "PENDING")
+                    .status(configured ? ConfigStatusEnum.CONFIGURED : ConfigStatusEnum.PENDING)
                     .build());
 
             if (configured) configuredCount++;
@@ -454,11 +453,7 @@ public class TenantManagementServiceImpl implements TenantManagementService {
         boolean isStructuralChange = isStructuralChange(existingLevels, levels);
 
         if (isStructuralChange) {
-            long seededCount = tenantSchemaRepository.countSeededLocationData(schemaName, regionType);
-            if (seededCount > 0) {
-                throw new LocationHierarchyStructureLockedException(hierarchyType.toUpperCase(), seededCount);
-            }
-            tenantSchemaRepository.setLocationHierarchy(schemaName, regionType, levels, currentUserId);
+            tenantSchemaRepository.rewriteLocationHierarchyIfNoSeededData(schemaName, regionType, levels, currentUserId);
         } else {
             tenantSchemaRepository.updateLevelNames(schemaName, regionType, levels, currentUserId);
         }

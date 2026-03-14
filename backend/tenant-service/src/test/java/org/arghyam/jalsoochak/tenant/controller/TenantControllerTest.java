@@ -37,6 +37,7 @@ import org.arghyam.jalsoochak.tenant.dto.response.TenantConfigResponseDTO;
 import org.arghyam.jalsoochak.tenant.dto.response.TenantConfigStatusResponseDTO;
 import org.arghyam.jalsoochak.tenant.dto.response.TenantResponseDTO;
 import org.arghyam.jalsoochak.tenant.dto.response.TenantSummaryResponseDTO;
+import org.arghyam.jalsoochak.tenant.enums.ConfigStatusEnum;
 import org.arghyam.jalsoochak.tenant.enums.StatusEnum;
 import org.arghyam.jalsoochak.tenant.enums.TenantConfigKeyEnum;
 import org.arghyam.jalsoochak.tenant.enums.TenantStatusEnum;
@@ -444,7 +445,7 @@ class TenantControllerTest {
             Integer tenantId = 1;
             Map<TenantConfigKeyEnum, TenantConfigStatusResponseDTO.ConfigEntry> configs = new HashMap<>();
             configs.put(TenantConfigKeyEnum.TENANT_LOGO,
-                    TenantConfigStatusResponseDTO.ConfigEntry.builder().status("CONFIGURED").build());
+                    TenantConfigStatusResponseDTO.ConfigEntry.builder().status(ConfigStatusEnum.CONFIGURED).build());
 
             TenantConfigStatusResponseDTO response = TenantConfigStatusResponseDTO.builder()
                     .tenantId(tenantId)

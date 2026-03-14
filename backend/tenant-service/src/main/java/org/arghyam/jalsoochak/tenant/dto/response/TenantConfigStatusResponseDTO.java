@@ -2,6 +2,7 @@ package org.arghyam.jalsoochak.tenant.dto.response;
 
 import java.util.Map;
 
+import org.arghyam.jalsoochak.tenant.enums.ConfigStatusEnum;
 import org.arghyam.jalsoochak.tenant.enums.TenantConfigKeyEnum;
 
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -52,6 +53,6 @@ public class TenantConfigStatusResponseDTO {
 
         @Schema(description = "CONFIGURED if a value has been set, PENDING otherwise",
                 example = "CONFIGURED", allowableValues = {"CONFIGURED", "PENDING"})
-        private String status;
+        private ConfigStatusEnum status;
     }
 }

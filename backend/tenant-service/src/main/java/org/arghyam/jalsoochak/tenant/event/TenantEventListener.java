@@ -83,7 +83,15 @@ public class TenantEventListener {
             log.error("Cannot publish {} event: name is null or blank [id={}]", eventType, tenant.getId());
             return;
         }
-        int statusInt = TenantStatusEnum.valueOf(tenant.getStatus()).getCode();
+        String rawStatus = tenant.getStatus();
+        int statusInt;
+        try {
+            statusInt = TenantStatusEnum.valueOf(rawStatus).getCode();
+        } catch (NullPointerException | IllegalArgumentException ex) {
+            log.error("Cannot publish {} event: unrecognized or null status '{}' [id={}]",
+                    eventType, rawStatus, tenant.getId());
+            return;
+        }
         Map<String, Object> event = Map.of(
                 "eventType", eventType,
                 "tenantId", tenant.getId(),

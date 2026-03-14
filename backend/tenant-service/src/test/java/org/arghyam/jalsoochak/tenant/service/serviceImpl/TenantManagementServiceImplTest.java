@@ -9,6 +9,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.never;
@@ -22,7 +23,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
-import org.arghyam.jalsoochak.tenant.config.TenantContext;
 import org.arghyam.jalsoochak.tenant.config.TenantDefaultsProperties;
 import org.arghyam.jalsoochak.tenant.dto.common.PageResponseDTO;
 import org.arghyam.jalsoochak.tenant.dto.internal.ConfigDTO;
@@ -43,6 +43,7 @@ import org.arghyam.jalsoochak.tenant.dto.response.TenantConfigResponseDTO;
 import org.arghyam.jalsoochak.tenant.dto.response.TenantConfigStatusResponseDTO;
 import org.arghyam.jalsoochak.tenant.dto.response.TenantResponseDTO;
 import org.arghyam.jalsoochak.tenant.dto.response.TenantSummaryResponseDTO;
+import org.arghyam.jalsoochak.tenant.enums.ConfigStatusEnum;
 import org.arghyam.jalsoochak.tenant.enums.RegionTypeEnum;
 import org.arghyam.jalsoochak.tenant.enums.StatusEnum;
 import org.arghyam.jalsoochak.tenant.enums.TenantConfigKeyEnum;
@@ -702,7 +703,7 @@ class TenantManagementServiceImplTest {
             assertEquals(total, result.getSummary().getTotal());
             assertEquals(1, result.getSummary().getConfigured());
             assertEquals(total - 1, result.getSummary().getPending());
-            assertEquals("CONFIGURED", result.getConfigs().get(TenantConfigKeyEnum.TENANT_LOGO).getStatus());
+            assertEquals(ConfigStatusEnum.CONFIGURED, result.getConfigs().get(TenantConfigKeyEnum.TENANT_LOGO).getStatus());
             verify(tenantCommonRepository).findById(tenantId);
             verify(tenantCommonRepository).findConfigsByTenantId(tenantId);
         }
@@ -721,7 +722,7 @@ class TenantManagementServiceImplTest {
             TenantConfigStatusResponseDTO result = tenantManagementService.getTenantConfigStatus(tenantId);
 
             assertNotNull(result);
-            assertEquals("CONFIGURED",
+            assertEquals(ConfigStatusEnum.CONFIGURED,
                     result.getConfigs().get(TenantConfigKeyEnum.SUPPORTED_LANGUAGES).getStatus());
             assertEquals(1, result.getSummary().getConfigured());
         }
@@ -992,7 +993,7 @@ class TenantManagementServiceImplTest {
             when(tenantCommonRepository.findUserIdByUuid("user-uuid")).thenReturn(Optional.of(100));
             when(tenantSchemaRepository.getLocationHierarchy("tenant_mp", RegionTypeEnum.LGD))
                     .thenReturn(LocationConfigDTO.builder().locationHierarchy(existingLevels).build());
-            when(tenantSchemaRepository.countSeededLocationData("tenant_mp", RegionTypeEnum.LGD)).thenReturn(0L);
+            // rewriteLocationHierarchyIfNoSeededData is a void method; default mock does nothing (no seeded data)
 
             // Act
             LocationHierarchyResponseDTO result =
@@ -1002,7 +1003,8 @@ class TenantManagementServiceImplTest {
             assertNotNull(result);
             assertEquals("LGD", result.getHierarchyType());
             assertEquals(2, result.getLevels().size());
-            verify(tenantSchemaRepository).setLocationHierarchy("tenant_mp", RegionTypeEnum.LGD, newLevels, 100);
+            verify(tenantSchemaRepository).rewriteLocationHierarchyIfNoSeededData(
+                    "tenant_mp", RegionTypeEnum.LGD, newLevels, 100);
             verify(tenantSchemaRepository, never()).updateLevelNames(any(), any(), any(), any());
         }
 
@@ -1029,7 +1031,10 @@ class TenantManagementServiceImplTest {
             when(tenantCommonRepository.findUserIdByUuid("user-uuid")).thenReturn(Optional.of(100));
             when(tenantSchemaRepository.getLocationHierarchy("tenant_mp", RegionTypeEnum.LGD))
                     .thenReturn(LocationConfigDTO.builder().locationHierarchy(existingLevels).build());
-            when(tenantSchemaRepository.countSeededLocationData("tenant_mp", RegionTypeEnum.LGD)).thenReturn(1842L);
+            // Simulate seeded data by having the atomic method throw the locked exception
+            doThrow(new LocationHierarchyStructureLockedException("LGD", 1842L))
+                    .when(tenantSchemaRepository).rewriteLocationHierarchyIfNoSeededData(
+                            eq("tenant_mp"), eq(RegionTypeEnum.LGD), any(), anyInt());
 
             // Act & Assert
             assertThrows(LocationHierarchyStructureLockedException.class,
@@ -1097,6 +1102,41 @@ class TenantManagementServiceImplTest {
             assertThrows(IllegalArgumentException.class,
                     () -> tenantManagementService.updateLocationHierarchy(tenantId, "INVALID",
                             List.of(LocationLevelConfigDTO.builder().level(1).levelName(List.of()).build())));
+        }
+
+        // --- System-tenant guard tests (tenantId = 0) ---
+
+        @Test
+        @DisplayName("Should reject getLocationHierarchy for system tenant (tenantId=0)")
+        void testGetLocationHierarchy_SystemTenant_Rejected() {
+            assertThrows(IllegalArgumentException.class,
+                    () -> tenantManagementService.getLocationHierarchy(0, "LGD"));
+            verify(tenantCommonRepository, never()).findById(any());
+        }
+
+        @Test
+        @DisplayName("Should reject getLocationChildren for system tenant (tenantId=0)")
+        void testGetLocationChildren_SystemTenant_Rejected() {
+            assertThrows(IllegalArgumentException.class,
+                    () -> tenantManagementService.getLocationChildren(0, "LGD", null));
+            verify(tenantCommonRepository, never()).findById(any());
+        }
+
+        @Test
+        @DisplayName("Should reject getLocationHierarchyEditConstraints for system tenant (tenantId=0)")
+        void testGetLocationHierarchyEditConstraints_SystemTenant_Rejected() {
+            assertThrows(IllegalArgumentException.class,
+                    () -> tenantManagementService.getLocationHierarchyEditConstraints(0, "LGD"));
+            verify(tenantCommonRepository, never()).findById(any());
+        }
+
+        @Test
+        @DisplayName("Should reject updateLocationHierarchy for system tenant (tenantId=0)")
+        void testUpdateLocationHierarchy_SystemTenant_Rejected() {
+            assertThrows(IllegalArgumentException.class,
+                    () -> tenantManagementService.updateLocationHierarchy(0, "LGD",
+                            List.of(LocationLevelConfigDTO.builder().level(1).levelName(List.of()).build())));
+            verify(tenantCommonRepository, never()).findById(any());
         }
     }
 }

@@ -10,6 +10,7 @@ import org.arghyam.jalsoochak.tenant.dto.internal.LocationConfigDTO;
 import org.arghyam.jalsoochak.tenant.enums.RegionTypeEnum;
 import org.arghyam.jalsoochak.tenant.enums.StatusEnum;
 import org.arghyam.jalsoochak.tenant.exception.InvalidConfigValueException;
+import org.arghyam.jalsoochak.tenant.exception.LocationHierarchyStructureLockedException;
 
 import java.sql.Types;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -201,6 +202,41 @@ public class TenantSchemaRepository {
         }
 
         /**
+         * Atomically checks for seeded location data and, if none exists, replaces the hierarchy
+         * configuration. Acquires a transaction-scoped PostgreSQL advisory lock keyed on the
+         * schema+regionType pair to prevent a concurrent seeding transaction from racing between
+         * the count check and the delete/insert. The lock is auto-released on commit/rollback.
+         *
+         * @param schemaName    Schema name (e.g., "tenant_mp")
+         * @param regionType    LGD or DEPARTMENT
+         * @param hierarchy     New level definitions
+         * @param currentUserId Audit user ID
+         * @throws LocationHierarchyStructureLockedException when seeded rows exist
+         */
+        public void rewriteLocationHierarchyIfNoSeededData(String schemaName, RegionTypeEnum regionType,
+                        List<LocationLevelConfigDTO> hierarchy, Integer currentUserId) {
+                validateSchemaName(schemaName);
+
+                // Advisory lock key is a deterministic long derived from the (schema, regionType) pair.
+                // pg_advisory_xact_lock serialises concurrent structural-change attempts for the same
+                // tenant hierarchy and is auto-released when the surrounding transaction ends.
+                long lockKey = (long) (schemaName + ":" + regionType.name()).hashCode();
+                jdbcTemplate.execute("SELECT pg_advisory_xact_lock(" + lockKey + ")");
+
+                String masterTableName = regionType == RegionTypeEnum.LGD
+                                ? "lgd_location_master_table"
+                                : "department_location_master_table";
+                String countSql = String.format("SELECT COUNT(*) FROM %s.%s", schemaName, masterTableName);
+                Long seededCount = jdbcTemplate.queryForObject(countSql, Long.class);
+                long count = seededCount != null ? seededCount : 0L;
+                if (count > 0) {
+                        throw new LocationHierarchyStructureLockedException(regionType.name(), count);
+                }
+
+                setLocationHierarchy(schemaName, regionType, hierarchy, currentUserId);
+        }
+
+        /**
          * Updates only the level_name fields for existing hierarchy levels.
          * Used when seeded data is present and structural changes are not allowed.
          * Each level in the incoming list must match an existing level number in the DB.
@@ -226,12 +262,17 @@ public class TenantSchemaRepository {
                 for (LocationLevelConfigDTO config : hierarchy) {
                         try {
                                 String levelNameJson = objectMapper.writeValueAsString(config.getLevelName());
-                                jdbcTemplate.update(updateSql, ps -> {
+                                int rowsAffected = jdbcTemplate.update(updateSql, ps -> {
                                         ps.setObject(1, levelNameJson, Types.OTHER);
                                         ps.setObject(2, currentUserId);
                                         ps.setObject(3, regionType.getCode());
                                         ps.setInt(4, config.getLevel());
                                 });
+                                if (rowsAffected == 0) {
+                                        throw new InvalidConfigValueException(
+                                                        "No matching level found to update for regionType="
+                                                                        + regionType.getCode() + ", level=" + config.getLevel());
+                                }
                         } catch (JsonProcessingException e) {
                                 throw new InvalidConfigValueException(
                                                 "Failed to serialize levelName for level " + config.getLevel(), e);
