@@ -217,11 +217,16 @@ public class TenantSchemaRepository {
                         List<LocationLevelConfigDTO> hierarchy, Integer currentUserId) {
                 validateSchemaName(schemaName);
 
-                // Advisory lock key is a deterministic long derived from the (schema, regionType) pair.
-                // pg_advisory_xact_lock serialises concurrent structural-change attempts for the same
+                // Advisory lock uses two int keys for better distribution and no string-concatenation SQL injection.
+                // pg_advisory_xact_lock(int, int) serialises concurrent structural-change attempts for the same
                 // tenant hierarchy and is auto-released when the surrounding transaction ends.
-                long lockKey = (long) (schemaName + ":" + regionType.name()).hashCode();
-                jdbcTemplate.execute("SELECT pg_advisory_xact_lock(" + lockKey + ")");
+                jdbcTemplate.query(
+                        "SELECT pg_advisory_xact_lock(?, ?)",
+                        ps -> {
+                            ps.setInt(1, schemaName.hashCode());
+                            ps.setInt(2, regionType.ordinal());
+                        },
+                        rs -> null);
 
                 String masterTableName = regionType == RegionTypeEnum.LGD
                                 ? "lgd_location_master_table"

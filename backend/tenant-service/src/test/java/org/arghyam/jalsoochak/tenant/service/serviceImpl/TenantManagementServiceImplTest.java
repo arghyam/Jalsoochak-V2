@@ -51,7 +51,9 @@ import org.arghyam.jalsoochak.tenant.enums.TenantStatusEnum;
 import org.arghyam.jalsoochak.tenant.event.TenantCreatedEvent;
 import org.arghyam.jalsoochak.tenant.event.TenantDeactivatedEvent;
 import org.arghyam.jalsoochak.tenant.event.TenantUpdatedEvent;
+import org.arghyam.jalsoochak.tenant.exception.InvalidConfigValueException;
 import org.arghyam.jalsoochak.tenant.exception.LocationHierarchyStructureLockedException;
+import org.arghyam.jalsoochak.tenant.util.TenantConstants;
 import org.arghyam.jalsoochak.tenant.exception.ResourceNotFoundException;
 import org.arghyam.jalsoochak.tenant.repository.TenantCommonRepository;
 import org.arghyam.jalsoochak.tenant.repository.TenantSchemaRepository;
@@ -740,7 +742,7 @@ class TenantManagementServiceImplTest {
         @DisplayName("Should throw IllegalArgumentException for system tenant (id=0)")
         void testGetTenantConfigStatus_SystemTenantRejected() {
             assertThrows(IllegalArgumentException.class,
-                    () -> tenantManagementService.getTenantConfigStatus(0));
+                    () -> tenantManagementService.getTenantConfigStatus(TenantConstants.SYSTEM_TENANT_ID));
         }
     }
 
@@ -1110,7 +1112,7 @@ class TenantManagementServiceImplTest {
         @DisplayName("Should reject getLocationHierarchy for system tenant (tenantId=0)")
         void testGetLocationHierarchy_SystemTenant_Rejected() {
             assertThrows(IllegalArgumentException.class,
-                    () -> tenantManagementService.getLocationHierarchy(0, "LGD"));
+                    () -> tenantManagementService.getLocationHierarchy(TenantConstants.SYSTEM_TENANT_ID, "LGD"));
             verify(tenantCommonRepository, never()).findById(any());
         }
 
@@ -1118,7 +1120,7 @@ class TenantManagementServiceImplTest {
         @DisplayName("Should reject getLocationChildren for system tenant (tenantId=0)")
         void testGetLocationChildren_SystemTenant_Rejected() {
             assertThrows(IllegalArgumentException.class,
-                    () -> tenantManagementService.getLocationChildren(0, "LGD", null));
+                    () -> tenantManagementService.getLocationChildren(TenantConstants.SYSTEM_TENANT_ID, "LGD", null));
             verify(tenantCommonRepository, never()).findById(any());
         }
 
@@ -1126,7 +1128,7 @@ class TenantManagementServiceImplTest {
         @DisplayName("Should reject getLocationHierarchyEditConstraints for system tenant (tenantId=0)")
         void testGetLocationHierarchyEditConstraints_SystemTenant_Rejected() {
             assertThrows(IllegalArgumentException.class,
-                    () -> tenantManagementService.getLocationHierarchyEditConstraints(0, "LGD"));
+                    () -> tenantManagementService.getLocationHierarchyEditConstraints(TenantConstants.SYSTEM_TENANT_ID, "LGD"));
             verify(tenantCommonRepository, never()).findById(any());
         }
 
@@ -1134,9 +1136,39 @@ class TenantManagementServiceImplTest {
         @DisplayName("Should reject updateLocationHierarchy for system tenant (tenantId=0)")
         void testUpdateLocationHierarchy_SystemTenant_Rejected() {
             assertThrows(IllegalArgumentException.class,
-                    () -> tenantManagementService.updateLocationHierarchy(0, "LGD",
+                    () -> tenantManagementService.updateLocationHierarchy(TenantConstants.SYSTEM_TENANT_ID, "LGD",
                             List.of(LocationLevelConfigDTO.builder().level(1).levelName(List.of()).build())));
             verify(tenantCommonRepository, never()).findById(any());
+        }
+
+        @Test
+        @DisplayName("Should throw InvalidConfigValueException when levels list contains a null entry")
+        void testUpdateLocationHierarchy_NullLevelEntry_Rejected() {
+            Integer tenantId = 1;
+            TenantResponseDTO tenant = TenantResponseDTO.builder().id(tenantId).stateCode("mp").build();
+            when(tenantCommonRepository.findById(tenantId)).thenReturn(Optional.of(tenant));
+
+            List<LocationLevelConfigDTO> levelsWithNull = new java.util.ArrayList<>();
+            levelsWithNull.add(LocationLevelConfigDTO.builder().level(1).levelName(List.of()).build());
+            levelsWithNull.add(null);
+
+            assertThrows(InvalidConfigValueException.class,
+                    () -> tenantManagementService.updateLocationHierarchy(tenantId, "LGD", levelsWithNull));
+        }
+
+        @Test
+        @DisplayName("Should throw InvalidConfigValueException when a level entry has a null level field")
+        void testUpdateLocationHierarchy_NullLevelField_Rejected() {
+            Integer tenantId = 1;
+            TenantResponseDTO tenant = TenantResponseDTO.builder().id(tenantId).stateCode("mp").build();
+            when(tenantCommonRepository.findById(tenantId)).thenReturn(Optional.of(tenant));
+
+            List<LocationLevelConfigDTO> levelsWithNullField = List.of(
+                    LocationLevelConfigDTO.builder().level(1).levelName(List.of()).build(),
+                    LocationLevelConfigDTO.builder().level(null).levelName(List.of()).build());
+
+            assertThrows(InvalidConfigValueException.class,
+                    () -> tenantManagementService.updateLocationHierarchy(tenantId, "LGD", levelsWithNullField));
         }
     }
 }

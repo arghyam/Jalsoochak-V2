@@ -45,6 +45,7 @@ import org.arghyam.jalsoochak.tenant.repository.TenantSchemaRepository;
 import org.arghyam.jalsoochak.tenant.service.TenantManagementService;
 import org.arghyam.jalsoochak.tenant.service.TenantSchedulerManager;
 import org.arghyam.jalsoochak.tenant.util.SecurityUtils;
+import org.arghyam.jalsoochak.tenant.util.TenantConstants;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -448,7 +449,15 @@ public class TenantManagementServiceImpl implements TenantManagementService {
         Integer currentUserId = resolveCurrentUserId();
 
         LocationConfigDTO existing = tenantSchemaRepository.getLocationHierarchy(schemaName, regionType);
-        List<LocationLevelConfigDTO> existingLevels = existing != null ? existing.getLocationHierarchy() : List.of();
+        List<LocationLevelConfigDTO> existingLevels =
+                existing != null && existing.getLocationHierarchy() != null
+                        ? existing.getLocationHierarchy()
+                        : List.of();
+
+        if (levels.stream().anyMatch(java.util.Objects::isNull)
+                || levels.stream().map(LocationLevelConfigDTO::getLevel).anyMatch(java.util.Objects::isNull)) {
+            throw new InvalidConfigValueException("Each hierarchy level must be non-null and include a level number");
+        }
 
         boolean isStructuralChange = isStructuralChange(existingLevels, levels);
 
@@ -473,10 +482,13 @@ public class TenantManagementServiceImpl implements TenantManagementService {
      * Pure name changes within the same level numbers are not structural.
      */
     private boolean isStructuralChange(List<LocationLevelConfigDTO> existing, List<LocationLevelConfigDTO> incoming) {
-        if (existing.size() != incoming.size()) {
+        List<LocationLevelConfigDTO> safeExisting = existing.stream()
+                .filter(e -> e != null && e.getLevel() != null)
+                .collect(Collectors.toList());
+        if (safeExisting.size() != incoming.size()) {
             return true;
         }
-        Set<Integer> existingLevelNumbers = existing.stream()
+        Set<Integer> existingLevelNumbers = safeExisting.stream()
                 .map(LocationLevelConfigDTO::getLevel)
                 .collect(Collectors.toSet());
         Set<Integer> incomingLevelNumbers = incoming.stream()
@@ -486,7 +498,7 @@ public class TenantManagementServiceImpl implements TenantManagementService {
     }
 
     private void validateNotSystemTenant(Integer tenantId) {
-        if (tenantId != null && tenantId == 0) {
+        if (tenantId != null && tenantId.equals(TenantConstants.SYSTEM_TENANT_ID)) {
             throw new IllegalArgumentException("Operation not permitted on the system tenant.");
         }
     }
