@@ -87,12 +87,12 @@ class PumpOperatorUploadServiceImplTest {
                 "file",
                 "pump-operators.csv",
                 "text/csv",
-                ("first_name,last_name,full_name,phone_number,alternate_number,person_type,state_scheme_id,center_scheme_id\n" +
-                 "Ram,Kumar,Ram Kumar,9999999999,,pump_operator,SS-1,CS-1\n").getBytes(StandardCharsets.UTF_8)
+                ("first_name,last_name,full_name,phone_number,person_type,state_scheme_id\n" +
+                 "Ram,Kumar,Ram Kumar,9999999999,pump_operator,SS-1\n").getBytes(StandardCharsets.UTF_8)
         );
 
         // Service validation passes; actual skipping happens in the chunk processor.
-        when(userUploadRepository.findSchemeId(eq("tenant_ka"), eq("SS-1"), eq("CS-1"))).thenReturn(100);
+        when(userUploadRepository.findSchemeId(eq("tenant_ka"), eq("SS-1"), eq((String) null))).thenReturn(100);
         when(chunkProcessor.processChunk(eq("tenant_ka"), eq("KA"), any(), anyInt(), anyInt(), anyInt(), anyList(), any()))
                 .thenReturn(new PumpOperatorUploadChunkProcessor.ChunkResult(0, 1));
 
@@ -115,8 +115,8 @@ class PumpOperatorUploadServiceImplTest {
                 "file",
                 "pump-operators.csv",
                 "text/csv",
-                ("first_name,last_name,full_name,phone_number,alternate_number,person_type,state_scheme_id,center_scheme_id\n" +
-                 "Ram,Kumar,Ram Kumar,9999999999,,pump_operator,SS-1,CS-1\n").getBytes(StandardCharsets.UTF_8)
+                ("first_name,last_name,full_name,phone_number,person_type,state_scheme_id\n" +
+                 "Ram,Kumar,Ram Kumar,9999999999,pump_operator,SS-1\n").getBytes(StandardCharsets.UTF_8)
         );
 
         when(userTenantRepository.findUserByPhone(eq("tenant_ka"), eq("9999999999")))
@@ -125,7 +125,7 @@ class PumpOperatorUploadServiceImplTest {
                 .thenReturn(Optional.empty());
         when(userTenantRepository.createUser(eq("tenant_ka"), anyString(), eq(1), anyString(), anyString(), eq(2), eq("9999999999"), anyString(), eq(10L)))
                 .thenReturn(55L);
-        when(userUploadRepository.findSchemeId(eq("tenant_ka"), eq("SS-1"), eq("CS-1"))).thenReturn(100);
+        when(userUploadRepository.findSchemeId(eq("tenant_ka"), eq("SS-1"), eq((String) null))).thenReturn(100);
         when(chunkProcessor.processChunk(eq("tenant_ka"), eq("KA"), any(), anyInt(), anyInt(), anyInt(), anyList(), any()))
                 .thenReturn(new PumpOperatorUploadChunkProcessor.ChunkResult(1, 0));
 
@@ -152,11 +152,11 @@ class PumpOperatorUploadServiceImplTest {
                 "file",
                 "pump-operators.csv",
                 "text/csv",
-                ("first_name,last_name,full_name,phone_number,alternate_number,person_type,state_scheme_id,center_scheme_id\n" +
-                 "Ram,Kumar,Ram Kumar,9999999999,,pump_operator,SS-1,CS-1\n").getBytes(StandardCharsets.UTF_8)
+                ("first_name,last_name,full_name,phone_number,person_type,state_scheme_id\n" +
+                 "Ram,Kumar,Ram Kumar,9999999999,pump_operator,SS-1\n").getBytes(StandardCharsets.UTF_8)
         );
 
-        when(userUploadRepository.findSchemeId(eq("tenant_ka"), eq("SS-1"), eq("CS-1"))).thenReturn(100);
+        when(userUploadRepository.findSchemeId(eq("tenant_ka"), eq("SS-1"), eq((String) null))).thenReturn(100);
         when(chunkProcessor.processChunk(eq("tenant_ka"), eq("KA"), any(), anyInt(), anyInt(), anyInt(), anyList(), any()))
                 .thenReturn(new PumpOperatorUploadChunkProcessor.ChunkResult(1, 0));
 
@@ -179,11 +179,11 @@ class PumpOperatorUploadServiceImplTest {
                 "file",
                 "pump-operators.csv",
                 "text/csv",
-                ("first_name,last_name,full_name,phone_number,alternate_number,person_type,state_scheme_id,center_scheme_id\n" +
-                 "Ram,Kumar,Ram Kumar,9999999999,,pump_operator,BAD-SS,BAD-CS\n").getBytes(StandardCharsets.UTF_8)
+                ("first_name,last_name,full_name,phone_number,person_type,state_scheme_id\n" +
+                 "Ram,Kumar,Ram Kumar,9999999999,pump_operator,BAD-SS\n").getBytes(StandardCharsets.UTF_8)
         );
 
-        when(userUploadRepository.findSchemeId(eq("tenant_ka"), eq("BAD-SS"), eq("BAD-CS"))).thenReturn(null);
+        when(userUploadRepository.findSchemeId(eq("tenant_ka"), eq("BAD-SS"), eq((String) null))).thenReturn(null);
 
         BadRequestException ex = assertThrows(
                 BadRequestException.class,

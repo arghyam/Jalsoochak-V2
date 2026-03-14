@@ -6,6 +6,7 @@ import org.arghyam.jalsoochak.scheme.dto.SchemeUploadResponseDTO;
 import org.arghyam.jalsoochak.scheme.exception.FileValidationException;
 import org.arghyam.jalsoochak.scheme.repository.SchemeDbRepository;
 import org.arghyam.jalsoochak.scheme.repository.SchemeLgdMappingCreateRecord;
+import org.arghyam.jalsoochak.scheme.repository.SchemeSubdivisionMappingCreateRecord;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -19,7 +20,7 @@ import org.springframework.mock.web.MockMultipartFile;
 
 import java.nio.charset.StandardCharsets;
 import java.util.List;
-import java.util.Set;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -47,6 +48,9 @@ class SchemeMappingUploadTest {
     @Captor
     ArgumentCaptor<List<SchemeLgdMappingCreateRecord>> rowsCaptor;
 
+    @Captor
+    ArgumentCaptor<List<SchemeSubdivisionMappingCreateRecord>> deptRowsCaptor;
+
     @BeforeEach
     void setUp() {
         TenantContext.setSchema("tenant_ka");
@@ -61,8 +65,8 @@ class SchemeMappingUploadTest {
     @Test
     void uploadSchemeMappings_insertsLgdMappings_andPopulatesCreatedByFromActor() {
         String csv = """
-                scheme_id,parent_lgd_id,parent_lgd_level
-                1,501,5
+                state_scheme_id,village_lgd_code,sub_division_name
+                SS-1,VLG-001,Bengaluru North
                 """;
         MockMultipartFile file = new MockMultipartFile(
                 "file",
@@ -71,9 +75,12 @@ class SchemeMappingUploadTest {
                 csv.getBytes(StandardCharsets.UTF_8)
         );
 
-        // Existence checks are now performed in batch to avoid N queries for large uploads.
-        when(schemeDbRepository.findExistingSchemeIds(eq("tenant_ka"), anyList())).thenReturn(Set.of(1));
-        when(schemeDbRepository.findExistingLgdLocationIds(eq("tenant_ka"), anyList())).thenReturn(Set.of(501));
+        when(schemeDbRepository.findSchemeIdsByStateSchemeIds(eq("tenant_ka"), anyList()))
+                .thenReturn(Map.of("ss-1", 1));
+        when(schemeDbRepository.findLgdIdsByCodes(eq("tenant_ka"), anyList()))
+                .thenReturn(Map.of("vlg-001", 501));
+        when(schemeDbRepository.findDepartmentIdsByTitles(eq("tenant_ka"), anyList()))
+                .thenReturn(Map.of("bengaluru north", 1001));
 
         SchemeUploadResponseDTO res = schemeService.uploadSchemeMappings(file, "Bearer token");
 
@@ -81,21 +88,29 @@ class SchemeMappingUploadTest {
         assertThat(res.getTotalRows()).isEqualTo(1);
         assertThat(res.getUploadedRows()).isEqualTo(1);
 
-        verify(chunkProcessor).insertMappingsChunk(eq("tenant_ka"), rowsCaptor.capture(), eq(List.of()));
+        verify(chunkProcessor).insertMappingsChunk(eq("tenant_ka"), rowsCaptor.capture(), deptRowsCaptor.capture());
         List<SchemeLgdMappingCreateRecord> rows = rowsCaptor.getValue();
         assertThat(rows).hasSize(1);
         assertThat(rows.getFirst().schemeId()).isEqualTo(1);
         assertThat(rows.getFirst().parentLgdId()).isEqualTo(501);
-        assertThat(rows.getFirst().parentLgdLevel()).isEqualTo(5);
+        assertThat(rows.getFirst().parentLgdLevel()).isEqualTo(6);
         assertThat(rows.getFirst().createdBy()).isEqualTo(10);
         assertThat(rows.getFirst().updatedBy()).isEqualTo(10);
+
+        List<SchemeSubdivisionMappingCreateRecord> deptRows = deptRowsCaptor.getValue();
+        assertThat(deptRows).hasSize(1);
+        assertThat(deptRows.getFirst().schemeId()).isEqualTo(1);
+        assertThat(deptRows.getFirst().parentDepartmentId()).isEqualTo(1001);
+        assertThat(deptRows.getFirst().parentDepartmentLevel()).isEqualTo("sub_division");
+        assertThat(deptRows.getFirst().createdBy()).isEqualTo(10);
+        assertThat(deptRows.getFirst().updatedBy()).isEqualTo(10);
     }
 
     @Test
     void uploadSchemeMappings_rejectsInvalidHeaders() {
         String csv = """
-                scheme_id,village_id,subdivision_id
-                1,501,301
+                scheme_id,parent_lgd_id,parent_lgd_level
+                1,501,5
                 """;
         MockMultipartFile file = new MockMultipartFile(
                 "file",
@@ -112,10 +127,10 @@ class SchemeMappingUploadTest {
     }
 
     @Test
-    void uploadSchemeMappings_rejectsParentLgdLevelAbove6() {
+    void uploadSchemeMappings_rejectsUnknownSchemeOrBoundaryValues() {
         String csv = """
-                scheme_id,parent_lgd_id,parent_lgd_level
-                1,501,7
+                state_scheme_id,village_lgd_code,sub_division_name
+                UNKNOWN_SCHEME,UNKNOWN_VILLAGE,UNKNOWN_SUBDIV
                 """;
         MockMultipartFile file = new MockMultipartFile(
                 "file",
@@ -124,6 +139,10 @@ class SchemeMappingUploadTest {
                 csv.getBytes(StandardCharsets.UTF_8)
         );
 
+        when(schemeDbRepository.findSchemeIdsByStateSchemeIds(eq("tenant_ka"), anyList())).thenReturn(Map.of());
+        when(schemeDbRepository.findLgdIdsByCodes(eq("tenant_ka"), anyList())).thenReturn(Map.of());
+        when(schemeDbRepository.findDepartmentIdsByTitles(eq("tenant_ka"), anyList())).thenReturn(Map.of());
+
         assertThatThrownBy(() -> schemeService.uploadSchemeMappings(file, "Bearer token"))
                 .isInstanceOf(FileValidationException.class)
                 .hasMessage("Validation failed for uploaded file")
@@ -131,12 +150,11 @@ class SchemeMappingUploadTest {
                     FileValidationException fve = (FileValidationException) ex;
                     assertThat(fve.getErrors())
                             .anySatisfy(err -> {
-                                assertThat(err.getField()).isEqualTo("parent_lgd_level");
-                                assertThat(err.getMessage()).contains("between 1 and 6");
+                                assertThat(err.getField()).isEqualTo("state_scheme_id");
+                                assertThat(err.getMessage()).contains("does not exist");
                             });
                 });
 
-        // Row-level validation fails before DB existence checks run.
-        verifyNoInteractions(schemeDbRepository);
+        verify(schemeDbRepository).findSchemeIdsByStateSchemeIds(eq("tenant_ka"), anyList());
     }
 }

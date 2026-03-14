@@ -9,8 +9,12 @@ import org.springframework.stereotype.Repository;
 
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
+import java.sql.Types;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.LinkedHashMap;
 import java.util.Set;
 import java.util.regex.Pattern;
 
@@ -100,6 +104,30 @@ public class SchemeDbRepository {
         return findExistingIds(schemaName, "department_location_master_table", departmentIds);
     }
 
+    /**
+     * Batch lookup of internal scheme IDs by state_scheme_id (case-insensitive).
+     * Returns a map keyed by lower(state_scheme_id).
+     */
+    public Map<String, Integer> findSchemeIdsByStateSchemeIds(String schemaName, List<String> stateSchemeIds) {
+        return findIdsByLowerTextKey(schemaName, "scheme_master_table", "state_scheme_id", stateSchemeIds);
+    }
+
+    /**
+     * Batch lookup of LGD location IDs by lgd_code (case-insensitive).
+     * Returns a map keyed by lower(lgd_code).
+     */
+    public Map<String, Integer> findLgdIdsByCodes(String schemaName, List<String> lgdCodes) {
+        return findIdsByLowerTextKey(schemaName, "lgd_location_master_table", "lgd_code", lgdCodes);
+    }
+
+    /**
+     * Batch lookup of department location IDs by title (case-insensitive).
+     * Returns a map keyed by lower(title).
+     */
+    public Map<String, Integer> findDepartmentIdsByTitles(String schemaName, List<String> titles) {
+        return findIdsByLowerTextKey(schemaName, "department_location_master_table", "title", titles);
+    }
+
     public Integer findUserIdByEmail(String schemaName, String email) {
         validateSchemaName(schemaName);
         if (email == null || email.isBlank()) {
@@ -168,7 +196,7 @@ public class SchemeDbRepository {
                 ps.setInt(7, row.houseHoldCount());
                 ps.setObject(8, row.latitude());
                 ps.setObject(9, row.longitude());
-                ps.setInt(10, row.channel());
+                ps.setObject(10, row.channel(), Types.INTEGER);
                 ps.setInt(11, row.workStatus());
                 ps.setInt(12, row.operatingStatus());
                 ps.setInt(13, row.createdBy());
@@ -275,5 +303,55 @@ public class SchemeDbRepository {
         Object[] args = uniq.toArray();
         List<Integer> existing = jdbcTemplate.query(sql, (rs, rowNum) -> rs.getInt("id"), args);
         return new HashSet<>(existing);
+    }
+
+    private Map<String, Integer> findIdsByLowerTextKey(String schemaName, String table, String keyColumn, List<String> values) {
+        validateSchemaName(schemaName);
+        if (values == null || values.isEmpty()) {
+            return Map.of();
+        }
+
+        // Deduplicate normalized values to keep IN clause small and stable.
+        Set<String> uniq = new HashSet<>(Math.max(16, values.size()));
+        for (String v : values) {
+            if (v == null) {
+                continue;
+            }
+            String t = v.trim();
+            if (!t.isBlank()) {
+                uniq.add(t.toLowerCase(Locale.ROOT));
+            }
+        }
+        if (uniq.isEmpty()) {
+            return Map.of();
+        }
+
+        StringBuilder placeholders = new StringBuilder();
+        int n = uniq.size();
+        for (int i = 0; i < n; i++) {
+            if (i > 0) {
+                placeholders.append(',');
+            }
+            placeholders.append('?');
+        }
+
+        String sql = String.format(
+                "SELECT lower(%s) AS k, id FROM %s.%s WHERE deleted_at IS NULL AND lower(%s) IN (%s)",
+                keyColumn,
+                schemaName,
+                table,
+                keyColumn,
+                placeholders
+        );
+        Object[] args = uniq.toArray();
+
+        Map<String, Integer> out = new LinkedHashMap<>();
+        jdbcTemplate.query(sql, rs -> {
+            String k = rs.getString("k");
+            int id = rs.getInt("id");
+            // If there are duplicates in DB (case-insensitive), keep the first deterministically.
+            out.putIfAbsent(k, id);
+        }, args);
+        return out;
     }
 }
