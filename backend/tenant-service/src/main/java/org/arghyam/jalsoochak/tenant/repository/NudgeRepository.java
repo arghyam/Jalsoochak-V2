@@ -163,6 +163,33 @@ public class NudgeRepository {
     }
 
     /**
+     * Loads one officer row per scheme for the given {@code userTypeName} across all schemes
+     * in the tenant, returning a map keyed by {@code scheme_id}.
+     *
+     * <p>When multiple officers of the same type exist for a scheme the first row encountered
+     * is kept (consistent with the single-row behaviour of {@link #findOfficerByUserType}).</p>
+     */
+    public Map<Object, Map<String, Object>> findAllOfficersByUserType(String schema, String userTypeName) {
+        validateSchemaName(schema);
+        String sql = String.format("""
+                SELECT DISTINCT ON (usm.scheme_id)
+                       usm.scheme_id, u.id as user_id, u.title as name, u.phone_number,
+                       u.language_id, u.whatsapp_connection_id
+                FROM %s.user_scheme_mapping_table usm
+                JOIN %s.user_table u ON u.id = usm.user_id
+                JOIN common_schema.user_type_master_table ut ON ut.id = u.user_type
+                WHERE UPPER(ut.c_name) = UPPER(?) AND usm.status = 1
+                ORDER BY usm.scheme_id, u.id
+                """, schema, schema);
+        List<Map<String, Object>> rows = jdbcTemplate.queryForList(sql, userTypeName);
+        Map<Object, Map<String, Object>> result = new HashMap<>(rows.size() * 2);
+        for (Map<String, Object> row : rows) {
+            result.putIfAbsent(row.get("scheme_id"), row);
+        }
+        return result;
+    }
+
+    /**
      * Persists the Glific contact ID for the given user.
      * Called by the Kafka consumer when a {@code WHATSAPP_CONTACT_REGISTERED} event arrives.
      */

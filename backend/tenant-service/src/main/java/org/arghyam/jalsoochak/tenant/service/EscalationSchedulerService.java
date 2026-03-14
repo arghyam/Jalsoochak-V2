@@ -48,6 +48,12 @@ public class EscalationSchedulerService {
         log.info("[EscalationJob] schema={} – L1: {} days ({}), L2: {} days ({})",
                 schema, level1Days, level1UserType, level2Days, level2UserType);
 
+        // Preload all officer data for both levels in two queries (avoids N+1 inside the stream)
+        Map<Object, Map<String, Object>> level1OfficersByScheme =
+                nudgeRepository.findAllOfficersByUserType(schema, level1UserType);
+        Map<Object, Map<String, Object>> level2OfficersByScheme =
+                nudgeRepository.findAllOfficersByUserType(schema, level2UserType);
+
         // officer-key → (officerRow, level, detailList)
         // Key = "LEVEL_<n>|<phone>" to keep level1 and level2 officers separate
         Map<String, OfficerGroup> officerGroups = new LinkedHashMap<>();
@@ -62,14 +68,14 @@ public class EscalationSchedulerService {
             int escalationLevel = (neverUploaded || daysSinceLastUpload >= level2Days) ? 2 : 1;
             // Use null for display so PDFs/reports don't show Integer.MAX_VALUE for never-uploaded operators
             Integer displayedMissedDays = neverUploaded ? null : daysSinceLastUpload;
-            String officerUserType = escalationLevel == 2 ? level2UserType : level1UserType;
             Object schemeId = row.get("scheme_id");
 
-            Map<String, Object> officerRow =
-                    nudgeRepository.findOfficerByUserType(schema, schemeId, officerUserType);
+            Map<String, Object> officerRow = escalationLevel == 2
+                    ? level2OfficersByScheme.get(schemeId)
+                    : level1OfficersByScheme.get(schemeId);
             if (officerRow == null) {
-                log.debug("[EscalationJob] No {} found for scheme={}, skipping",
-                        officerUserType, schemeId);
+                log.debug("[EscalationJob] No officer found for scheme={} level={}, skipping",
+                        schemeId, escalationLevel);
                 return;
             }
 
@@ -85,11 +91,10 @@ public class EscalationSchedulerService {
                 return;
             }
 
-            // Always look up SO name for informational purposes in the detail
+            // Look up SO name from preloaded map for informational purposes in the detail
             String soName = "";
             if (escalationLevel == 2) {
-                Map<String, Object> soRow =
-                        nudgeRepository.findOfficerByUserType(schema, schemeId, level1UserType);
+                Map<String, Object> soRow = level1OfficersByScheme.get(schemeId);
                 if (soRow != null) {
                     soName = (String) soRow.getOrDefault("name", "");
                 }

@@ -116,7 +116,7 @@ class EscalationPdfServiceTest {
     @Test
     void generate_showsNeverForNullLastRecordedDate() throws Exception {
         OperatorEscalationDetail op = OperatorEscalationDetail.builder()
-                .name("Never Op").phoneNumber("911111111111")
+                .name("Op").phoneNumber("911111111111")
                 .schemeName("S").schemeId("1").soName("SO")
                 .consecutiveDaysMissed(null) // null → never uploaded, should show "Never"
                 .lastRecordedBfmDate(null) // null → should show "Never"
@@ -125,7 +125,14 @@ class EscalationPdfServiceTest {
         String filename = service.generate(List.of(op), 2, "DO");
         String pdfText = extractText(tempDir.resolve(filename));
 
-        assertThat(pdfText).contains("Never");
+        // Count occurrences of "Never" — one for consecutiveDaysMissed null, one for lastRecordedBfmDate null
+        long occurrences = 0;
+        int idx = 0;
+        while ((idx = pdfText.indexOf("Never", idx)) != -1) {
+            occurrences++;
+            idx += "Never".length();
+        }
+        assertThat(occurrences).isGreaterThanOrEqualTo(2);
     }
 
     @Test

@@ -15,6 +15,7 @@ import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.core.ProducerFactory;
 import org.springframework.kafka.listener.DeadLetterPublishingRecoverer;
 import org.springframework.kafka.listener.DefaultErrorHandler;
+import org.springframework.kafka.support.serializer.DeserializationException;
 import org.springframework.util.backoff.ExponentialBackOff;
 
 import java.util.HashMap;
@@ -69,7 +70,10 @@ public class KafkaConfig {
         backOff.setMaxElapsedTime(90_000L);   // ~3 retries (10s + 20s + 40s = 70s)
         // Route exhausted messages to <topic>.DLT rather than silently dropping them
         DeadLetterPublishingRecoverer recoverer = new DeadLetterPublishingRecoverer(kafkaTemplate());
-        factory.setCommonErrorHandler(new DefaultErrorHandler(recoverer, backOff));
+        DefaultErrorHandler errorHandler = new DefaultErrorHandler(recoverer, backOff);
+        // Deserialization failures are permanent — skip retries and go straight to DLT
+        errorHandler.addNotRetryableExceptions(DeserializationException.class);
+        factory.setCommonErrorHandler(errorHandler);
 
         return factory;
     }

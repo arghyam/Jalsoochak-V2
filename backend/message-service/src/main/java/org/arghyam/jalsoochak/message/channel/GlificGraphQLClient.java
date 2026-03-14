@@ -74,9 +74,7 @@ public class GlificGraphQLClient {
                 return executeWithRetry(query, variables, tokenRefreshed, attempt + 1);
             }
             if (!tokenRefreshed && (status == 401 || status == 403)) {
-                if (tokenUsed.equals(glificAuthService.getAccessToken())) {
-                    glificAuthService.refresh();
-                }
+                glificAuthService.refreshIfStale(tokenUsed);
                 // Do not advance attempt — the rate-limit budget should not be consumed by auth retries
                 return executeWithRetry(query, variables, true, attempt);
             }
@@ -91,9 +89,7 @@ public class GlificGraphQLClient {
             String msg = response.get("errors").get(0).path("message").asText("unknown");
             if (!tokenRefreshed && (msg.toLowerCase().contains("unauthenticated")
                     || msg.toLowerCase().contains("unauthorized"))) {
-                if (tokenUsed.equals(glificAuthService.getAccessToken())) {
-                    glificAuthService.refresh();
-                }
+                glificAuthService.refreshIfStale(tokenUsed);
                 // Do not advance attempt — the rate-limit budget should not be consumed by auth retries
                 return executeWithRetry(query, variables, true, attempt);
             }
