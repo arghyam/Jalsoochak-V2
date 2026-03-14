@@ -126,12 +126,9 @@ public class WhatsAppChannel implements NotificationChannel {
             log.info("[WHATSAPP] Escalation HSM sent");
             log.debug("[WHATSAPP] Escalation HSM sent to contactId={}", contactId);
             return true;
-        } catch (RuntimeException ex) {
-            log.error("[WHATSAPP] Failed escalation delivery: {}", ex.getMessage());
-            throw ex;
         } catch (Exception ex) {
-            log.error("[WHATSAPP] Failed escalation delivery: {}", ex.getMessage());
-            throw new RuntimeException(ex);
+            log.error("[WHATSAPP] Failed escalation delivery: {}", ex.getMessage(), ex);
+            return false;
         }
     }
 }

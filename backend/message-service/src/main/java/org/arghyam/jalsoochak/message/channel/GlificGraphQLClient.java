@@ -44,11 +44,16 @@ public class GlificGraphQLClient {
             throw new RuntimeException("Glific API URL is not configured (glific.api-url)");
         }
 
+        // Capture the token before sending so we can compare it in auth-failure branches.
+        // If another thread already refreshed the token by the time we get a 401,
+        // the tokens will differ and we skip a redundant refresh call.
+        String tokenUsed = glificAuthService.getAccessToken();
+
         JsonNode response;
         try {
             response = webClient.post()
                 .uri(apiUrl)
-                .header("Authorization", glificAuthService.getAccessToken())
+                .header("Authorization", tokenUsed)
                 .header("Content-Type", "application/json")
                 .bodyValue(Map.of("query", query, "variables", variables))
                 .retrieve()
@@ -65,11 +70,15 @@ public class GlificGraphQLClient {
                     Thread.currentThread().interrupt();
                     throw new RuntimeException("Interrupted during Glific rate-limit backoff", ie);
                 }
+                // Only the rate-limit counter advances; auth state is unchanged
                 return executeWithRetry(query, variables, tokenRefreshed, attempt + 1);
             }
             if (!tokenRefreshed && (status == 401 || status == 403)) {
-                glificAuthService.refresh();
-                return executeWithRetry(query, variables, true, attempt + 1);
+                if (tokenUsed.equals(glificAuthService.getAccessToken())) {
+                    glificAuthService.refresh();
+                }
+                // Do not advance attempt — the rate-limit budget should not be consumed by auth retries
+                return executeWithRetry(query, variables, true, attempt);
             }
             throw new RuntimeException("Glific GraphQL HTTP error: " + ex.getStatusCode(), ex);
         }
@@ -82,8 +91,11 @@ public class GlificGraphQLClient {
             String msg = response.get("errors").get(0).path("message").asText("unknown");
             if (!tokenRefreshed && (msg.toLowerCase().contains("unauthenticated")
                     || msg.toLowerCase().contains("unauthorized"))) {
-                glificAuthService.refresh();
-                return executeWithRetry(query, variables, true, attempt + 1);
+                if (tokenUsed.equals(glificAuthService.getAccessToken())) {
+                    glificAuthService.refresh();
+                }
+                // Do not advance attempt — the rate-limit budget should not be consumed by auth retries
+                return executeWithRetry(query, variables, true, attempt);
             }
             throw new RuntimeException("Glific GraphQL error: " + msg);
         }

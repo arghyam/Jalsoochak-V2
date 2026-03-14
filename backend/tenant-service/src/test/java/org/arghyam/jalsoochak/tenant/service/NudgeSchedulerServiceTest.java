@@ -65,8 +65,15 @@ class NudgeSchedulerServiceTest {
     }
 
     @Test
-    void processNudgesForTenant_skipsOperator_withBlankPhoneNumber() {
-        stubStream(SCHEMA, Map.of("phone_number", "", "name", "No Phone", "scheme_id", 1, "language_id", 0));
+    void processNudgesForTenant_skipsOperator_withBlankPhoneAndNoWhatsappId() {
+        Map<String, Object> row = new HashMap<>();
+        row.put("phone_number", "");
+        row.put("name", "No Phone");
+        row.put("scheme_id", 1);
+        row.put("language_id", 0);
+        row.put("whatsapp_connection_id", null);
+
+        stubStream(SCHEMA, row);
 
         nudgeSchedulerService.processNudgesForTenant(SCHEMA, TENANT_ID);
 
@@ -74,18 +81,38 @@ class NudgeSchedulerServiceTest {
     }
 
     @Test
-    void processNudgesForTenant_skipsOperator_withNullPhoneNumber() {
-        Map<String, Object> rowWithNullPhone = new HashMap<>();
-        rowWithNullPhone.put("phone_number", null);
-        rowWithNullPhone.put("name", "Null Phone");
-        rowWithNullPhone.put("scheme_id", 1);
-        rowWithNullPhone.put("language_id", 0);
+    void processNudgesForTenant_skipsOperator_withNullPhoneAndZeroWhatsappId() {
+        Map<String, Object> row = new HashMap<>();
+        row.put("phone_number", null);
+        row.put("name", "Null Phone");
+        row.put("scheme_id", 1);
+        row.put("language_id", 0);
+        row.put("whatsapp_connection_id", 0);
 
-        stubStream(SCHEMA, rowWithNullPhone);
+        stubStream(SCHEMA, row);
 
         nudgeSchedulerService.processNudgesForTenant(SCHEMA, TENANT_ID);
 
         verifyNoInteractions(kafkaProducer);
+    }
+
+    @Test
+    void processNudgesForTenant_publishesEvent_whenPhoneBlankButWhatsappConnectionIdPresent() {
+        Map<String, Object> row = new HashMap<>();
+        row.put("phone_number", "");
+        row.put("name", "No Phone Op");
+        row.put("scheme_id", 7);
+        row.put("language_id", 2);
+        row.put("user_id", 55);
+        row.put("whatsapp_connection_id", 123L);
+
+        stubStream(SCHEMA, row);
+
+        nudgeSchedulerService.processNudgesForTenant(SCHEMA, TENANT_ID);
+
+        ArgumentCaptor<NudgeEvent> captor = ArgumentCaptor.forClass(NudgeEvent.class);
+        verify(kafkaProducer).publishJson(eq("common-topic"), captor.capture());
+        assertThat(captor.getValue().getWhatsappConnectionId()).isEqualTo(123L);
     }
 
     @Test

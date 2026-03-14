@@ -326,7 +326,7 @@ class NudgeRepositoryIntegrationTest {
     @Test
     void streamUsersWithNoUploadToday_rejectsInvalidSchemaName() {
         assertThatThrownBy(() -> nudgeRepository.streamUsersWithNoUploadToday("invalid-schema!", row -> {}))
-                .isInstanceOf(IllegalArgumentException.class)
+                .hasCauseInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("Invalid schema name");
     }
 
@@ -334,7 +334,7 @@ class NudgeRepositoryIntegrationTest {
     void streamUsersWithMissedDays_rejectsSqlInjectionAttempt() {
         assertThatThrownBy(() ->
                 nudgeRepository.streamUsersWithMissedDays("'; DROP TABLE users; --", 3, row -> {}))
-                .isInstanceOf(IllegalArgumentException.class)
+                .hasCauseInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("Invalid schema name");
     }
 
@@ -349,13 +349,15 @@ class NudgeRepositoryIntegrationTest {
 
     private List<Map<String, Object>> collectNoUploadToday(String schema) {
         List<Map<String, Object>> result = new ArrayList<>();
-        nudgeRepository.streamUsersWithNoUploadToday(schema, result::add);
+        int count = nudgeRepository.streamUsersWithNoUploadToday(schema, result::add);
+        assertThat(count).isEqualTo(result.size());
         return result;
     }
 
     private List<Map<String, Object>> collectMissedDays(String schema, int minMissedDays) {
         List<Map<String, Object>> result = new ArrayList<>();
-        nudgeRepository.streamUsersWithMissedDays(schema, minMissedDays, result::add);
+        int count = nudgeRepository.streamUsersWithMissedDays(schema, minMissedDays, result::add);
+        assertThat(count).isEqualTo(result.size());
         return result;
     }
 

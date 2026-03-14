@@ -60,6 +60,8 @@ public class EscalationSchedulerService {
 
             // Never-uploaded operators go straight to level-2 (most severe)
             int escalationLevel = (neverUploaded || daysSinceLastUpload >= level2Days) ? 2 : 1;
+            // Use null for display so PDFs/reports don't show Integer.MAX_VALUE for never-uploaded operators
+            Integer displayedMissedDays = neverUploaded ? null : daysSinceLastUpload;
             String officerUserType = escalationLevel == 2 ? level2UserType : level1UserType;
             Object schemeId = row.get("scheme_id");
 
@@ -105,7 +107,7 @@ public class EscalationSchedulerService {
                     .schemeName((String) row.getOrDefault("scheme_name", String.valueOf(schemeId)))
                     .schemeId(String.valueOf(schemeId))
                     .soName(soName)
-                    .consecutiveDaysMissed(daysSinceLastUpload)
+                    .consecutiveDaysMissed(displayedMissedDays)
                     .lastRecordedBfmDate(lastRecordedBfmDate)
                     .build();
 

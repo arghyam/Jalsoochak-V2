@@ -118,7 +118,7 @@ class EscalationPdfServiceTest {
         OperatorEscalationDetail op = OperatorEscalationDetail.builder()
                 .name("Never Op").phoneNumber("911111111111")
                 .schemeName("S").schemeId("1").soName("SO")
-                .consecutiveDaysMissed(Integer.MAX_VALUE)
+                .consecutiveDaysMissed(null) // null → never uploaded, should show "Never"
                 .lastRecordedBfmDate(null) // null → should show "Never"
                 .build();
 
