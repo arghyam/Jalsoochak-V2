@@ -6,16 +6,16 @@ import java.util.Set;
 import org.arghyam.jalsoochak.tenant.dto.common.ApiResponseDTO;
 import org.arghyam.jalsoochak.tenant.dto.common.PageResponseDTO;
 import org.arghyam.jalsoochak.tenant.dto.internal.LocationLevelConfigDTO;
-import org.arghyam.jalsoochak.tenant.dto.request.CreateDepartmentRequestDTO;
 import org.arghyam.jalsoochak.tenant.dto.request.CreateTenantRequestDTO;
 import org.arghyam.jalsoochak.tenant.dto.request.SetTenantConfigRequestDTO;
 import org.arghyam.jalsoochak.tenant.dto.request.UpdateTenantRequestDTO;
-import org.arghyam.jalsoochak.tenant.dto.response.DepartmentResponseDTO;
 import org.arghyam.jalsoochak.tenant.dto.response.LocationHierarchyEditConstraintsResponseDTO;
 import org.arghyam.jalsoochak.tenant.dto.response.LocationHierarchyResponseDTO;
 import org.arghyam.jalsoochak.tenant.dto.response.LocationResponseDTO;
 import org.arghyam.jalsoochak.tenant.dto.response.TenantConfigResponseDTO;
+import org.arghyam.jalsoochak.tenant.dto.response.TenantConfigStatusResponseDTO;
 import org.arghyam.jalsoochak.tenant.dto.response.TenantResponseDTO;
+import org.arghyam.jalsoochak.tenant.dto.response.TenantSummaryResponseDTO;
 import org.arghyam.jalsoochak.tenant.enums.TenantConfigKeyEnum;
 import org.arghyam.jalsoochak.tenant.service.TenantManagementService;
 import org.springframework.http.HttpStatus;
@@ -52,7 +52,7 @@ public class TenantController {
         private final TenantManagementService tenantManagementService;
 
         /**
-         * 1. Create a new tenant
+         * Create a new tenant
          */
         @Operation(summary = "Create a new tenant", description = "Registers a new tenant in the common schema and provisions a dedicated "
                         + "database schema (tenant_<stateCode>) with all required tables and indexes.")
@@ -74,7 +74,22 @@ public class TenantController {
         }
 
         /**
-         * 2. Get all tenants
+         * Get tenant status summary
+         */
+        @Operation(summary = "Get tenant status summary", description = "Returns aggregate counts of all non-system tenants grouped by status: total, active, inactive, and archived.")
+        @ApiResponses({
+                        @ApiResponse(responseCode = "200", description = "Tenant summary retrieved successfully"),
+                        @ApiResponse(responseCode = "500", description = "Internal server error")
+        })
+        @GetMapping("/summary")
+        public ResponseEntity<ApiResponseDTO<TenantSummaryResponseDTO>> getTenantSummary() {
+                log.info("GET /api/v1/tenants/summary");
+                return ResponseEntity.ok(ApiResponseDTO.of(200, "Tenant summary retrieved successfully",
+                                tenantManagementService.getTenantSummary()));
+        }
+
+        /**
+         * Get all tenants
          */
         @Operation(summary = "List all tenants with pagination", description = "Returns a paginated list of tenants registered in the common schema, ordered by ID.")
         @ApiResponses({
@@ -94,7 +109,7 @@ public class TenantController {
         }
 
         /**
-         * 3. Update a tenant
+         * Update a tenant
          */
         @Operation(summary = "Update tenant", description = "Updates the status of an existing tenant identified by tenantId.")
         @ApiResponses({
@@ -115,7 +130,7 @@ public class TenantController {
         }
 
         /**
-         * 4. Deactivate a tenant
+         * Deactivate a tenant
          */
         @Operation(summary = "Deactivate (soft-delete) a tenant", description = "Sets the tenant status to INACTIVE for the given tenantId.")
         @ApiResponses({
@@ -134,7 +149,7 @@ public class TenantController {
         }
 
         /**
-         * 5. Get all configurations for a tenant
+         * Get all configurations for a tenant
          */
         @Operation(summary = "Get the configurations for a tenant", description = "Retrieves either all or the selected configuration key-value pairs for a specific tenant in a Map format.")
         @ApiResponses({
@@ -154,7 +169,26 @@ public class TenantController {
         }
 
         /**
-         * 6. Set or update multiple configurations for a tenant
+         * Get configuration completeness status for a tenant
+         */
+        @Operation(summary = "Get configuration status for a tenant", description = "Returns the configuration completeness status for a tenant. "
+                        + "Each known configuration key is listed with a CONFIGURED or PENDING status, "
+                        + "along with an aggregate summary of total, configured, and pending counts.")
+        @ApiResponses({
+                        @ApiResponse(responseCode = "200", description = "Configuration status retrieved successfully"),
+                        @ApiResponse(responseCode = "404", description = "Tenant not found"),
+                        @ApiResponse(responseCode = "500", description = "Internal server error")
+        })
+        @GetMapping("/{tenantId}/config/status")
+        public ResponseEntity<ApiResponseDTO<TenantConfigStatusResponseDTO>> getTenantConfigStatus(
+                        @PathVariable Integer tenantId) {
+                log.info("GET /api/v1/tenants/{}/config/status", tenantId);
+                return ResponseEntity.ok(ApiResponseDTO.of(200, "Configuration status retrieved successfully",
+                                tenantManagementService.getTenantConfigStatus(tenantId)));
+        }
+
+        /**
+         * Set or update multiple configurations for a tenant
          */
         @Operation(summary = "Set or update multiple tenant configurations", description = "Batch updates or creates configurations for the specified tenant using a Map structure.")
         @ApiResponses({
@@ -175,7 +209,7 @@ public class TenantController {
         }
 
         /**
-         * 7. Get tenant location hierarchy by hierarchy type
+         * Get tenant location hierarchy by hierarchy type
          */
         @Operation(summary = "Get location hierarchy configuration for a tenant", description = "Retrieves the location hierarchy structure (levels) for the specified hierarchy type (LGD or DEPARTMENT). ")
         @ApiResponses({
@@ -196,7 +230,7 @@ public class TenantController {
         }
 
         /**
-         * 8. Get location hierarchy edit constraints
+         * Get location hierarchy edit constraints
          */
         @Operation(summary = "Get location hierarchy edit constraints", description = "Returns whether structural changes (add/remove levels) are permitted for the given hierarchy type. "
                         + "Structural changes are blocked when seeded location data exists in the master table.")
@@ -217,7 +251,7 @@ public class TenantController {
         }
 
         /**
-         * 9. Update location hierarchy
+         * Update location hierarchy
          */
         @Operation(summary = "Update location hierarchy for a tenant", description = "Updates the location hierarchy levels. "
                         + "If no seeded data exists, full structural changes (add/remove levels) are allowed. "
@@ -241,7 +275,7 @@ public class TenantController {
         }
 
         /**
-         * 10. Get child locations by parent id and hierarchy type
+         * Get child locations by parent id and hierarchy type
          */
         @Operation(summary = "Get child locations by parent ID", description = "Fetches all child locations under the specified parent location in the given hierarchy type. "
                         + "Pass parentId as 0 to fetch root-level locations (where parent_id IS NULL).")
@@ -262,45 +296,4 @@ public class TenantController {
                 return ResponseEntity.ok(ApiResponseDTO.of(200, "Child locations retrieved successfully", children));
         }
 
-        /**
-         * 11. Get departments for the current tenant
-         */
-        @Operation(summary = "Get departments for the current tenant", description = "Fetches the department hierarchy from the tenant-specific schema. "
-                        + "Requires the X-Tenant-Code header to be set by the API gateway.")
-        @ApiResponses({
-                        @ApiResponse(responseCode = "200", description = "List of departments for the resolved tenant"),
-                        @ApiResponse(responseCode = "400", description = "Tenant could not be resolved — missing X-Tenant-Code header"),
-                        @ApiResponse(responseCode = "500", description = "Internal server error")
-        })
-        // TODO: Change this to permission / role based authorization for SUPER_ADMIN &
-        // TENANT_ADMIN
-        // @PreAuthorize("hasAuthority('tenant.department.read')")
-        @GetMapping("/departments")
-        public ResponseEntity<ApiResponseDTO<List<DepartmentResponseDTO>>> getTenantDepartments() {
-                log.info("GET /api/v1/tenants/departments");
-                return ResponseEntity.ok(ApiResponseDTO.of(200, "Departments retrieved successfully",
-                                tenantManagementService.getTenantDepartments()));
-        }
-
-        /**
-         * 12. Create a department for the current tenant
-         */
-        @Operation(summary = "Create a department for the current tenant", description = "Inserts a new department into the tenant-specific schema's department_location_master_table. "
-                        + "Requires the X-Tenant-Code header to identify the target tenant schema.")
-        @ApiResponses({
-                        @ApiResponse(responseCode = "201", description = "Department created successfully"),
-                        @ApiResponse(responseCode = "400", description = "Invalid request or tenant could not be resolved"),
-                        @ApiResponse(responseCode = "500", description = "Internal server error")
-        })
-        // TODO: Change this to permission / role based authorization for SUPER_ADMIN &
-        // TENANT_ADMIN
-        // @PreAuthorize("hasAuthority('tenant.department.create')")
-        @PostMapping("/departments")
-        public ResponseEntity<ApiResponseDTO<DepartmentResponseDTO>> createDepartment(
-                        @Valid @RequestBody CreateDepartmentRequestDTO request) {
-                log.info("POST /api/v1/tenants/departments – Creating department: {}", request.getTitle());
-                DepartmentResponseDTO dept = tenantManagementService.createDepartment(request);
-                return ResponseEntity.status(HttpStatus.CREATED)
-                                .body(ApiResponseDTO.of(201, "Department created successfully", dept));
-        }
 }

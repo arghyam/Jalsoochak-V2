@@ -2,6 +2,7 @@ package org.arghyam.jalsoochak.tenant.service.serviceImpl;
 
 import java.util.EnumSet;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -13,14 +14,14 @@ import org.arghyam.jalsoochak.tenant.event.TenantCreatedEvent;
 import org.arghyam.jalsoochak.tenant.event.TenantDeactivatedEvent;
 import org.arghyam.jalsoochak.tenant.event.TenantUpdatedEvent;
 import org.arghyam.jalsoochak.tenant.dto.common.PageResponseDTO;
-import org.arghyam.jalsoochak.tenant.dto.request.CreateDepartmentRequestDTO;
 import org.arghyam.jalsoochak.tenant.dto.request.CreateTenantRequestDTO;
 import org.arghyam.jalsoochak.tenant.dto.request.SetTenantConfigRequestDTO;
 import org.arghyam.jalsoochak.tenant.dto.request.UpdateTenantRequestDTO;
-import org.arghyam.jalsoochak.tenant.dto.response.DepartmentResponseDTO;
 import org.arghyam.jalsoochak.tenant.dto.response.LocationHierarchyEditConstraintsResponseDTO;
 import org.arghyam.jalsoochak.tenant.dto.response.TenantConfigResponseDTO;
+import org.arghyam.jalsoochak.tenant.dto.response.TenantConfigStatusResponseDTO;
 import org.arghyam.jalsoochak.tenant.dto.response.TenantResponseDTO;
+import org.arghyam.jalsoochak.tenant.dto.response.TenantSummaryResponseDTO;
 import org.arghyam.jalsoochak.tenant.dto.response.LocationResponseDTO;
 import org.arghyam.jalsoochak.tenant.dto.response.LocationHierarchyResponseDTO;
 import org.arghyam.jalsoochak.tenant.dto.internal.ConfigDTO;
@@ -33,6 +34,7 @@ import org.arghyam.jalsoochak.tenant.dto.internal.ReasonListConfigDTO;
 import org.arghyam.jalsoochak.tenant.dto.internal.SimpleConfigValueDTO;
 import org.arghyam.jalsoochak.tenant.enums.RegionTypeEnum;
 import org.arghyam.jalsoochak.tenant.enums.TenantConfigKeyEnum;
+import org.arghyam.jalsoochak.tenant.enums.TenantStatusEnum;
 import org.arghyam.jalsoochak.tenant.enums.TenantConfigKeyEnum.ConfigType;
 import org.arghyam.jalsoochak.tenant.exception.ConfigurationException;
 import org.arghyam.jalsoochak.tenant.exception.InvalidConfigKeyException;
@@ -99,12 +101,13 @@ public class TenantManagementServiceImpl implements TenantManagementService {
     @Transactional
     public TenantResponseDTO updateTenant(Integer tenantId, UpdateTenantRequestDTO request) {
         log.info("Updating tenant [id={}]", tenantId);
+        validateNotSystemTenant(tenantId);
 
         tenantCommonRepository.findById(tenantId)
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "Tenant with tenantId " + tenantId + " does not exist"));
 
-        if ("INACTIVE".equalsIgnoreCase(request.getStatus())) {
+        if (TenantStatusEnum.INACTIVE.name().equalsIgnoreCase(request.getStatus())) {
             throw new IllegalArgumentException(
                     "Cannot deactivate tenant via this endpoint. Use the deactivateTenant endpoint instead.");
         }
@@ -123,6 +126,7 @@ public class TenantManagementServiceImpl implements TenantManagementService {
     @Transactional
     public void deactivateTenant(Integer tenantId) {
         log.info("Deactivating tenant [id={}]", tenantId);
+        validateNotSystemTenant(tenantId);
 
         tenantCommonRepository.findById(tenantId)
                 .orElseThrow(() -> new ResourceNotFoundException(
@@ -138,31 +142,6 @@ public class TenantManagementServiceImpl implements TenantManagementService {
     }
 
     @Override
-    public List<DepartmentResponseDTO> getTenantDepartments() {
-        String schemaName = TenantContext.getSchema();
-        if (schemaName == null || schemaName.isBlank()) {
-            throw new IllegalArgumentException(
-                    "Tenant could not be resolved. Ensure the X-Tenant-Code header is set by the gateway.");
-        }
-        log.info("Fetching departments from schema: {}", schemaName);
-        return tenantSchemaRepository.getDepartments(schemaName);
-    }
-
-    @Override
-    @Transactional
-    public DepartmentResponseDTO createDepartment(CreateDepartmentRequestDTO request) {
-        String schemaName = TenantContext.getSchema();
-        if (schemaName == null || schemaName.isBlank()) {
-            throw new IllegalArgumentException(
-                    "Tenant could not be resolved. Ensure the X-Tenant-Code header is set.");
-        }
-        log.info("Creating department in schema: {}", schemaName);
-        Integer currentUserId = resolveCurrentUserId();
-        return tenantSchemaRepository.createDepartment(schemaName, request, currentUserId)
-                .orElseThrow(() -> new RuntimeException("Department creation failed – no record returned"));
-    }
-
-    @Override
     public PageResponseDTO<TenantResponseDTO> getAllTenants(int page, int size) {
         long offset = (long) page * size;
         List<TenantResponseDTO> tenants = tenantCommonRepository.findAll(size, offset);
@@ -171,8 +150,15 @@ public class TenantManagementServiceImpl implements TenantManagementService {
     }
 
     @Override
+    public TenantSummaryResponseDTO getTenantSummary() {
+        log.info("Fetching tenant status summary");
+        return tenantCommonRepository.getTenantSummary();
+    }
+
+    @Override
     public TenantConfigResponseDTO getTenantConfigs(Integer tenantId, Set<TenantConfigKeyEnum> keys) {
         log.info("Fetching tenant configurations [id={}, keys={}]", tenantId, keys);
+        validateNotSystemTenant(tenantId);
         TenantResponseDTO tenant = tenantCommonRepository.findById(tenantId)
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "Tenant with tenantId " + tenantId + " does not exist"));
@@ -219,6 +205,7 @@ public class TenantManagementServiceImpl implements TenantManagementService {
     @Transactional
     public TenantConfigResponseDTO setTenantConfigs(Integer tenantId, SetTenantConfigRequestDTO request) {
         log.info("Setting tenant configurations [id={}]", tenantId);
+        validateNotSystemTenant(tenantId);
         TenantResponseDTO tenant = tenantCommonRepository.findById(tenantId)
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "Tenant with tenantId " + tenantId + " does not exist"));
@@ -292,6 +279,53 @@ public class TenantManagementServiceImpl implements TenantManagementService {
                 .build();
     }
 
+    @Override
+    public TenantConfigStatusResponseDTO getTenantConfigStatus(Integer tenantId) {
+        log.info("Fetching config status [id={}]", tenantId);
+        validateNotSystemTenant(tenantId);
+
+        TenantResponseDTO tenant = tenantCommonRepository.findById(tenantId)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Tenant with tenantId " + tenantId + " does not exist"));
+
+        // Collect configured GENERIC keys from DB
+        Set<String> configuredKeys = tenantCommonRepository.findConfigsByTenantId(tenantId)
+                .stream()
+                .map(ConfigDTO::getConfigKey)
+                .collect(Collectors.toSet());
+
+        // Check SPECIALIZED key: SUPPORTED_LANGUAGES
+        String schemaName = "tenant_" + tenant.getStateCode().toLowerCase();
+        List<LanguageConfigDTO> langs = tenantSchemaRepository.getSupportedLanguages(schemaName);
+        boolean languagesConfigured = langs != null && !langs.isEmpty();
+
+        Map<TenantConfigKeyEnum, TenantConfigStatusResponseDTO.ConfigEntry> configs = new LinkedHashMap<>();
+        int configuredCount = 0;
+
+        for (TenantConfigKeyEnum key : TenantConfigKeyEnum.values()) {
+            boolean configured = key.getType() == TenantConfigKeyEnum.ConfigType.SPECIALIZED
+                    ? languagesConfigured
+                    : configuredKeys.contains(key.name());
+
+            configs.put(key, TenantConfigStatusResponseDTO.ConfigEntry.builder()
+                    .status(configured ? "CONFIGURED" : "PENDING")
+                    .build());
+
+            if (configured) configuredCount++;
+        }
+
+        int total = TenantConfigKeyEnum.values().length;
+        return TenantConfigStatusResponseDTO.builder()
+                .tenantId(tenantId)
+                .summary(TenantConfigStatusResponseDTO.Summary.builder()
+                        .total(total)
+                        .configured(configuredCount)
+                        .pending(total - configuredCount)
+                        .build())
+                .configs(configs)
+                .build();
+    }
+
     private void handleSpecializedConfig(String schemaName, TenantConfigKeyEnum key, ConfigValueDTO dto,
             Integer currentUserId) {
         switch (key) {
@@ -311,7 +345,8 @@ public class TenantManagementServiceImpl implements TenantManagementService {
     @Override
     public LocationHierarchyResponseDTO getLocationHierarchy(Integer tenantId, String hierarchyType) {
         log.info("Fetching location hierarchy [id={}, hierarchyType={}]", tenantId, hierarchyType);
-        
+        validateNotSystemTenant(tenantId);
+
         TenantResponseDTO tenant = tenantCommonRepository.findById(tenantId)
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "Tenant with tenantId " + tenantId + " does not exist"));
@@ -342,7 +377,8 @@ public class TenantManagementServiceImpl implements TenantManagementService {
     @Override
     public List<LocationResponseDTO> getLocationChildren(Integer tenantId, String hierarchyType, Integer parentId) {
         log.info("Fetching location children [id={}, hierarchyType={}, parentId={}]", tenantId, hierarchyType, parentId);
-        
+        validateNotSystemTenant(tenantId);
+
         TenantResponseDTO tenant = tenantCommonRepository.findById(tenantId)
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "Tenant with tenantId " + tenantId + " does not exist"));
@@ -376,6 +412,7 @@ public class TenantManagementServiceImpl implements TenantManagementService {
     public LocationHierarchyEditConstraintsResponseDTO getLocationHierarchyEditConstraints(
             Integer tenantId, String hierarchyType) {
         log.info("Fetching location hierarchy edit constraints [id={}, hierarchyType={}]", tenantId, hierarchyType);
+        validateNotSystemTenant(tenantId);
 
         TenantResponseDTO tenant = tenantCommonRepository.findById(tenantId)
                 .orElseThrow(() -> new ResourceNotFoundException(
@@ -397,6 +434,7 @@ public class TenantManagementServiceImpl implements TenantManagementService {
     public LocationHierarchyResponseDTO updateLocationHierarchy(
             Integer tenantId, String hierarchyType, List<LocationLevelConfigDTO> levels) {
         log.info("Updating location hierarchy [id={}, hierarchyType={}]", tenantId, hierarchyType);
+        validateNotSystemTenant(tenantId);
 
         if (levels == null || levels.isEmpty()) {
             throw new InvalidConfigValueException("Hierarchy levels cannot be null or empty");
@@ -450,6 +488,12 @@ public class TenantManagementServiceImpl implements TenantManagementService {
                 .map(LocationLevelConfigDTO::getLevel)
                 .collect(Collectors.toSet());
         return !existingLevelNumbers.equals(incomingLevelNumbers);
+    }
+
+    private void validateNotSystemTenant(Integer tenantId) {
+        if (tenantId != null && tenantId == 0) {
+            throw new IllegalArgumentException("Operation not permitted on the system tenant.");
+        }
     }
 
     private RegionTypeEnum resolveRegionType(String hierarchyType) {

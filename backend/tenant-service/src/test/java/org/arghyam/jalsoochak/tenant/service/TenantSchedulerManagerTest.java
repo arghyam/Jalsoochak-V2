@@ -3,6 +3,7 @@ package org.arghyam.jalsoochak.tenant.service;
 import org.arghyam.jalsoochak.tenant.config.EscalationScheduleConfig;
 import org.arghyam.jalsoochak.tenant.config.NudgeScheduleConfig;
 import org.arghyam.jalsoochak.tenant.dto.response.TenantResponseDTO;
+import org.arghyam.jalsoochak.tenant.enums.TenantStatusEnum;
 import org.arghyam.jalsoochak.tenant.repository.TenantCommonRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -60,8 +61,8 @@ class TenantSchedulerManagerTest {
 
     @Test
     void loadAndScheduleAll_schedulesNudgeAndEscalation_forEachActiveTenant() {
-        TenantResponseDTO t1 = TenantResponseDTO.builder().id(1).stateCode("MP").status("ACTIVE").build();
-        TenantResponseDTO t2 = TenantResponseDTO.builder().id(2).stateCode("UP").status("ACTIVE").build();
+        TenantResponseDTO t1 = TenantResponseDTO.builder().id(1).stateCode("MP").status(TenantStatusEnum.ACTIVE.name()).build();
+        TenantResponseDTO t2 = TenantResponseDTO.builder().id(2).stateCode("UP").status(TenantStatusEnum.ACTIVE.name()).build();
         when(tenantCommonRepository.findAll()).thenReturn(List.of(t1, t2));
 
         stubConfigs(1, 8, 0, 9, 0);
@@ -75,8 +76,8 @@ class TenantSchedulerManagerTest {
 
     @Test
     void loadAndScheduleAll_skipsInactiveTenants() {
-        TenantResponseDTO active = TenantResponseDTO.builder().id(1).stateCode("MP").status("ACTIVE").build();
-        TenantResponseDTO inactive = TenantResponseDTO.builder().id(2).stateCode("UP").status("INACTIVE").build();
+        TenantResponseDTO active = TenantResponseDTO.builder().id(1).stateCode("MP").status(TenantStatusEnum.ACTIVE.name()).build();
+        TenantResponseDTO inactive = TenantResponseDTO.builder().id(2).stateCode("UP").status(TenantStatusEnum.INACTIVE.name()).build();
         when(tenantCommonRepository.findAll()).thenReturn(List.of(active, inactive));
 
         stubConfigs(1, 8, 0, 9, 0);
@@ -89,7 +90,7 @@ class TenantSchedulerManagerTest {
 
     @Test
     void loadAndScheduleAll_buildsCronExpression_fromConfigHourAndMinute() {
-        TenantResponseDTO t1 = TenantResponseDTO.builder().id(1).stateCode("MP").status("ACTIVE").build();
+        TenantResponseDTO t1 = TenantResponseDTO.builder().id(1).stateCode("MP").status(TenantStatusEnum.ACTIVE.name()).build();
         when(tenantCommonRepository.findAll()).thenReturn(List.of(t1));
 
         stubConfigs(1, 10, 30, 11, 15);
@@ -112,7 +113,7 @@ class TenantSchedulerManagerTest {
     @SuppressWarnings("unchecked")
     void rescheduleForTenant_cancelsOldFuturesBeforeSchedulingNew() {
         // First schedule
-        TenantResponseDTO t1 = TenantResponseDTO.builder().id(1).stateCode("MP").status("ACTIVE").build();
+        TenantResponseDTO t1 = TenantResponseDTO.builder().id(1).stateCode("MP").status(TenantStatusEnum.ACTIVE.name()).build();
         when(tenantCommonRepository.findAll()).thenReturn(List.of(t1));
         stubConfigs(1, 8, 0, 9, 0);
         manager.loadAndScheduleAll();

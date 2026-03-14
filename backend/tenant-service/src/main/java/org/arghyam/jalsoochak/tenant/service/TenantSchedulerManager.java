@@ -3,6 +3,7 @@ package org.arghyam.jalsoochak.tenant.service;
 import org.arghyam.jalsoochak.tenant.config.EscalationScheduleConfig;
 import org.arghyam.jalsoochak.tenant.config.NudgeScheduleConfig;
 import org.arghyam.jalsoochak.tenant.dto.response.TenantResponseDTO;
+import org.arghyam.jalsoochak.tenant.enums.TenantStatusEnum;
 import org.arghyam.jalsoochak.tenant.repository.TenantCommonRepository;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
@@ -45,7 +46,7 @@ public class TenantSchedulerManager {
     public void loadAndScheduleAll() {
         List<TenantResponseDTO> tenants = tenantCommonRepository.findAll();
         tenants.stream()
-            .filter(t -> "ACTIVE".equalsIgnoreCase(t.getStatus()))
+            .filter(t -> TenantStatusEnum.ACTIVE.name().equals(t.getStatus()))
             .forEach(t -> {
                 Integer tenantId = t.getId();
                 String stateCode = t.getStateCode();

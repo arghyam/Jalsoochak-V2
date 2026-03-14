@@ -27,23 +27,26 @@ import org.arghyam.jalsoochak.tenant.config.TenantDefaultsProperties;
 import org.arghyam.jalsoochak.tenant.dto.common.PageResponseDTO;
 import org.arghyam.jalsoochak.tenant.dto.internal.ConfigDTO;
 import org.arghyam.jalsoochak.tenant.dto.internal.ConfigValueDTO;
+import org.arghyam.jalsoochak.tenant.dto.internal.LanguageConfigDTO;
 import org.arghyam.jalsoochak.tenant.dto.internal.LocationConfigDTO;
 import org.arghyam.jalsoochak.tenant.dto.internal.LocationLevelConfigDTO;
 import org.arghyam.jalsoochak.tenant.dto.internal.LocationLevelNameDTO;
 import org.arghyam.jalsoochak.tenant.dto.internal.ReasonItemDTO;
 import org.arghyam.jalsoochak.tenant.dto.internal.SimpleConfigValueDTO;
-import org.arghyam.jalsoochak.tenant.dto.request.CreateDepartmentRequestDTO;
 import org.arghyam.jalsoochak.tenant.dto.request.CreateTenantRequestDTO;
 import org.arghyam.jalsoochak.tenant.dto.request.SetTenantConfigRequestDTO;
 import org.arghyam.jalsoochak.tenant.dto.request.UpdateTenantRequestDTO;
-import org.arghyam.jalsoochak.tenant.dto.response.DepartmentResponseDTO;
 import org.arghyam.jalsoochak.tenant.dto.response.LocationHierarchyEditConstraintsResponseDTO;
 import org.arghyam.jalsoochak.tenant.dto.response.LocationHierarchyResponseDTO;
 import org.arghyam.jalsoochak.tenant.dto.response.LocationResponseDTO;
 import org.arghyam.jalsoochak.tenant.dto.response.TenantConfigResponseDTO;
+import org.arghyam.jalsoochak.tenant.dto.response.TenantConfigStatusResponseDTO;
 import org.arghyam.jalsoochak.tenant.dto.response.TenantResponseDTO;
+import org.arghyam.jalsoochak.tenant.dto.response.TenantSummaryResponseDTO;
 import org.arghyam.jalsoochak.tenant.enums.RegionTypeEnum;
+import org.arghyam.jalsoochak.tenant.enums.StatusEnum;
 import org.arghyam.jalsoochak.tenant.enums.TenantConfigKeyEnum;
+import org.arghyam.jalsoochak.tenant.enums.TenantStatusEnum;
 import org.arghyam.jalsoochak.tenant.event.TenantCreatedEvent;
 import org.arghyam.jalsoochak.tenant.event.TenantDeactivatedEvent;
 import org.arghyam.jalsoochak.tenant.event.TenantUpdatedEvent;
@@ -139,7 +142,7 @@ class TenantManagementServiceImplTest {
                     .id(1)
                     .name("Test Tenant")
                     .stateCode("TT")
-                    .status("ACTIVE")
+                    .status(TenantStatusEnum.ACTIVE.name())
                     .build();
 
             when(tenantCommonRepository.findByStateCode("TT")).thenReturn(Optional.empty());
@@ -159,7 +162,7 @@ class TenantManagementServiceImplTest {
             assertNotNull(result);
             assertEquals("Test Tenant", result.getName());
             assertEquals("TT", result.getStateCode());
-            assertEquals("ACTIVE", result.getStatus());
+            assertEquals(TenantStatusEnum.ACTIVE.name(), result.getStatus());
             
             verify(tenantCommonRepository).findByStateCode("TT");
             verify(tenantCommonRepository).createTenant(eq(request), eq(100));
@@ -222,7 +225,7 @@ class TenantManagementServiceImplTest {
                     .id(1)
                     .name("Test Tenant")
                     .stateCode("TT")
-                    .status("ACTIVE")
+                    .status(TenantStatusEnum.ACTIVE.name())
                     .build();
 
             List<LocationLevelConfigDTO> lgdLevels = List.of(
@@ -275,12 +278,12 @@ class TenantManagementServiceImplTest {
             // Arrange
             Integer tenantId = 1;
             UpdateTenantRequestDTO request = new UpdateTenantRequestDTO();
-            request.setStatus("ACTIVE");
+            request.setStatus(TenantStatusEnum.ACTIVE.name());
 
             TenantResponseDTO existing = TenantResponseDTO.builder()
-                    .id(tenantId).stateCode("TT").name("Tenant").status("ACTIVE").build();
+                    .id(tenantId).stateCode("TT").name("Tenant").status(TenantStatusEnum.ACTIVE.name()).build();
             TenantResponseDTO updated = TenantResponseDTO.builder()
-                    .id(tenantId).stateCode("TT").name("Tenant").status("ACTIVE").build();
+                    .id(tenantId).stateCode("TT").name("Tenant").status(TenantStatusEnum.ACTIVE.name()).build();
 
             when(tenantCommonRepository.findById(tenantId)).thenReturn(Optional.of(existing));
             when(SecurityUtils.getCurrentUserUuid()).thenReturn("user-uuid");
@@ -293,7 +296,7 @@ class TenantManagementServiceImplTest {
 
             // Assert
             assertNotNull(result);
-            assertEquals("ACTIVE", result.getStatus());
+            assertEquals(TenantStatusEnum.ACTIVE.name(), result.getStatus());
             verify(tenantCommonRepository).updateTenant(anyInt(), any(UpdateTenantRequestDTO.class), anyInt());
             verify(eventPublisher).publishEvent(any(TenantUpdatedEvent.class));
         }
@@ -304,7 +307,7 @@ class TenantManagementServiceImplTest {
             // Arrange
             Integer tenantId = 1;
             UpdateTenantRequestDTO request = new UpdateTenantRequestDTO();
-            request.setStatus("INACTIVE");
+            request.setStatus(TenantStatusEnum.INACTIVE.name());
 
             TenantResponseDTO existing = TenantResponseDTO.builder().build();
             when(tenantCommonRepository.findById(tenantId)).thenReturn(Optional.of(existing));
@@ -319,7 +322,7 @@ class TenantManagementServiceImplTest {
         void testUpdateTenant_NotFound() {
             // Arrange
             Integer tenantId = 999;
-            UpdateTenantRequestDTO request = UpdateTenantRequestDTO.builder().status("ACTIVE").build();
+            UpdateTenantRequestDTO request = UpdateTenantRequestDTO.builder().status(TenantStatusEnum.ACTIVE.name()).build();
 
             when(tenantCommonRepository.findById(tenantId)).thenReturn(Optional.empty());
 
@@ -333,7 +336,7 @@ class TenantManagementServiceImplTest {
         void testUpdateTenant_UpdateReturnsEmpty() {
             // Arrange
             Integer tenantId = 1;
-            UpdateTenantRequestDTO request = UpdateTenantRequestDTO.builder().status("ACTIVE").build();
+            UpdateTenantRequestDTO request = UpdateTenantRequestDTO.builder().status(TenantStatusEnum.ACTIVE.name()).build();
             TenantResponseDTO existing = TenantResponseDTO.builder().id(tenantId).build();
 
             when(tenantCommonRepository.findById(tenantId)).thenReturn(Optional.of(existing));
@@ -357,9 +360,9 @@ class TenantManagementServiceImplTest {
             // Arrange
             Integer tenantId = 1;
             TenantResponseDTO existing = TenantResponseDTO.builder()
-                    .id(tenantId).stateCode("TT").name("Tenant").status("ACTIVE").build();
+                    .id(tenantId).stateCode("TT").name("Tenant").status(TenantStatusEnum.ACTIVE.name()).build();
             TenantResponseDTO deactivated = TenantResponseDTO.builder()
-                    .id(tenantId).stateCode("TT").name("Tenant").status("INACTIVE").build();
+                    .id(tenantId).stateCode("TT").name("Tenant").status(TenantStatusEnum.INACTIVE.name()).build();
 
             when(tenantCommonRepository.findById(tenantId))
                     .thenReturn(Optional.of(existing))
@@ -648,102 +651,96 @@ class TenantManagementServiceImplTest {
     }
 
     @Nested
-    @DisplayName("Get Tenant Departments Tests")
-    class GetTenantDepartmentsTests {
+    @DisplayName("Get Tenant Summary Tests")
+    class GetTenantSummaryTests {
 
         @Test
-        @DisplayName("Should retrieve all departments for tenant schema")
-        void testGetTenantDepartments_Success() {
-            // Arrange
-            List<DepartmentResponseDTO> departments = Arrays.asList(
-                    DepartmentResponseDTO.builder().id(1).title("Health").build(),
-                    DepartmentResponseDTO.builder().id(2).title("Operations").build()
-            );
+        @DisplayName("Should return tenant summary from repository")
+        void testGetTenantSummary_Success() {
+            TenantSummaryResponseDTO summary = TenantSummaryResponseDTO.builder()
+                    .totalTenants(10L)
+                    .activeTenants(8L)
+                    .inactiveTenants(1L)
+                    .archivedTenants(1L)
+                    .build();
 
-            // Mock TenantContext via reflection or static mock
-            try (MockedStatic<TenantContext> tenantContextMock = mockStatic(TenantContext.class)) {
-                tenantContextMock.when(TenantContext::getSchema).thenReturn("tenant_tn");
-                when(tenantSchemaRepository.getDepartments("tenant_tn")).thenReturn(departments);
+            when(tenantCommonRepository.getTenantSummary()).thenReturn(summary);
 
-                // Act
-                List<DepartmentResponseDTO> result = tenantManagementService.getTenantDepartments();
+            TenantSummaryResponseDTO result = tenantManagementService.getTenantSummary();
 
-                // Assert
-                assertNotNull(result);
-                assertEquals(2, result.size());
-                verify(tenantSchemaRepository).getDepartments("tenant_tn");
-            }
-        }
-
-        @Test
-        @DisplayName("Should throw exception when schema is not resolved")
-        void testGetTenantDepartments_NoSchema() {
-            try (MockedStatic<TenantContext> tenantContextMock = mockStatic(TenantContext.class)) {
-                tenantContextMock.when(TenantContext::getSchema).thenReturn(null);
-
-                // Act & Assert
-                assertThrows(RuntimeException.class, 
-                        () -> tenantManagementService.getTenantDepartments());
-            }
+            assertNotNull(result);
+            assertEquals(10L, result.getTotalTenants());
+            assertEquals(8L, result.getActiveTenants());
+            assertEquals(1L, result.getInactiveTenants());
+            assertEquals(1L, result.getArchivedTenants());
+            verify(tenantCommonRepository).getTenantSummary();
         }
     }
 
     @Nested
-    @DisplayName("Create Department Tests")
-    class CreateDepartmentTests {
+    @DisplayName("Get Tenant Config Status Tests")
+    class GetTenantConfigStatusTests {
 
         @Test
-        @DisplayName("Should create department successfully")
-        void testCreateDepartment_Success() {
-            // Arrange
-            CreateDepartmentRequestDTO request = new CreateDepartmentRequestDTO();
-            request.setTitle("Health");
-            request.setStatus(1);
-            request.setParentId(0);
+        @DisplayName("Should return config status with correct configured and pending counts")
+        void testGetTenantConfigStatus_Success() {
+            Integer tenantId = 1;
+            TenantResponseDTO tenant = TenantResponseDTO.builder().id(tenantId).stateCode("TN").build();
+            List<ConfigDTO> dbConfigs = List.of(
+                    ConfigDTO.builder().configKey(TenantConfigKeyEnum.TENANT_LOGO.name()).build()
+            );
 
-            DepartmentResponseDTO expectedResponse = DepartmentResponseDTO.builder()
-                    .id(1)
-                    .title("Health")
-                    .status(1)
-                    .build();
+            when(tenantCommonRepository.findById(tenantId)).thenReturn(Optional.of(tenant));
+            when(tenantCommonRepository.findConfigsByTenantId(tenantId)).thenReturn(dbConfigs);
+            when(tenantSchemaRepository.getSupportedLanguages("tenant_tn")).thenReturn(Collections.emptyList());
 
-            try (MockedStatic<TenantContext> tenantContextMock = mockStatic(TenantContext.class)) {
-                tenantContextMock.when(TenantContext::getSchema).thenReturn("tenant_tn");
-                mockedSecurityUtils.when(SecurityUtils::getCurrentUserUuid).thenReturn("user-uuid");
-                when(tenantCommonRepository.findUserIdByUuid("user-uuid")).thenReturn(Optional.of(100));
-                when(tenantSchemaRepository.createDepartment(eq("tenant_tn"), any(CreateDepartmentRequestDTO.class), eq(100)))
-                        .thenReturn(Optional.of(expectedResponse));
+            TenantConfigStatusResponseDTO result = tenantManagementService.getTenantConfigStatus(tenantId);
 
-                // Act
-                DepartmentResponseDTO result = tenantManagementService.createDepartment(request);
-
-                // Assert
-                assertNotNull(result);
-                assertEquals("Health", result.getTitle());
-                assertEquals(1, result.getStatus());
-                verify(tenantSchemaRepository).createDepartment(eq("tenant_tn"), any(), eq(100));
-            }
+            assertNotNull(result);
+            assertEquals(tenantId, result.getTenantId());
+            int total = TenantConfigKeyEnum.values().length;
+            assertEquals(total, result.getSummary().getTotal());
+            assertEquals(1, result.getSummary().getConfigured());
+            assertEquals(total - 1, result.getSummary().getPending());
+            assertEquals("CONFIGURED", result.getConfigs().get(TenantConfigKeyEnum.TENANT_LOGO).getStatus());
+            verify(tenantCommonRepository).findById(tenantId);
+            verify(tenantCommonRepository).findConfigsByTenantId(tenantId);
         }
 
         @Test
-        @DisplayName("Should throw exception when department creation fails")
-        void testCreateDepartment_Failed() {
-            // Arrange
-            CreateDepartmentRequestDTO request = new CreateDepartmentRequestDTO();
-            request.setTitle("Health");
+        @DisplayName("Should mark SUPPORTED_LANGUAGES as CONFIGURED when schema languages exist")
+        void testGetTenantConfigStatus_SupportedLanguagesConfigured() {
+            Integer tenantId = 1;
+            TenantResponseDTO tenant = TenantResponseDTO.builder().id(tenantId).stateCode("TN").build();
 
-            try (MockedStatic<TenantContext> tenantContextMock = mockStatic(TenantContext.class)) {
-                tenantContextMock.when(TenantContext::getSchema).thenReturn("tenant_tn");
-                mockedSecurityUtils.when(SecurityUtils::getCurrentUserUuid).thenReturn("user-uuid");
-                when(tenantCommonRepository.findUserIdByUuid("user-uuid")).thenReturn(Optional.of(100));
-                when(tenantSchemaRepository.createDepartment(eq("tenant_tn"), any(CreateDepartmentRequestDTO.class), eq(100)))
-                        .thenThrow(new RuntimeException("Database error"));
+            when(tenantCommonRepository.findById(tenantId)).thenReturn(Optional.of(tenant));
+            when(tenantCommonRepository.findConfigsByTenantId(tenantId)).thenReturn(Collections.emptyList());
+            when(tenantSchemaRepository.getSupportedLanguages("tenant_tn"))
+                    .thenReturn(List.of(LanguageConfigDTO.builder().language("english").preference(1).build()));
 
-                // Act & Assert
-                assertThrows(RuntimeException.class, 
-                        () -> tenantManagementService.createDepartment(request));
-            }
-        }    
+            TenantConfigStatusResponseDTO result = tenantManagementService.getTenantConfigStatus(tenantId);
+
+            assertNotNull(result);
+            assertEquals("CONFIGURED",
+                    result.getConfigs().get(TenantConfigKeyEnum.SUPPORTED_LANGUAGES).getStatus());
+            assertEquals(1, result.getSummary().getConfigured());
+        }
+
+        @Test
+        @DisplayName("Should throw ResourceNotFoundException when tenant not found")
+        void testGetTenantConfigStatus_TenantNotFound() {
+            when(tenantCommonRepository.findById(999)).thenReturn(Optional.empty());
+
+            assertThrows(ResourceNotFoundException.class,
+                    () -> tenantManagementService.getTenantConfigStatus(999));
+        }
+
+        @Test
+        @DisplayName("Should throw IllegalArgumentException for system tenant (id=0)")
+        void testGetTenantConfigStatus_SystemTenantRejected() {
+            assertThrows(IllegalArgumentException.class,
+                    () -> tenantManagementService.getTenantConfigStatus(0));
+        }
     }
 
     @Nested
@@ -817,7 +814,7 @@ class TenantManagementServiceImplTest {
                     .build();
             
             List<LocationResponseDTO> children = List.of(
-                    LocationResponseDTO.builder().id(1).uuid("uuid-1").title("Madhya Pradesh").status(1).build()
+                    LocationResponseDTO.builder().id(1).uuid("uuid-1").title("Madhya Pradesh").status(StatusEnum.ACTIVE.getCode()).build()
             );
             
             when(tenantCommonRepository.findById(tenantId)).thenReturn(Optional.of(tenant));
@@ -849,8 +846,8 @@ class TenantManagementServiceImplTest {
                     .build();
             
             List<LocationResponseDTO> children = List.of(
-                    LocationResponseDTO.builder().id(10).uuid("uuid-10").title("Zone A").parentId(1).status(1).build(),
-                    LocationResponseDTO.builder().id(11).uuid("uuid-11").title("Zone B").parentId(1).status(1).build()
+                    LocationResponseDTO.builder().id(10).uuid("uuid-10").title("Zone A").parentId(1).status(StatusEnum.ACTIVE.getCode()).build(),
+                    LocationResponseDTO.builder().id(11).uuid("uuid-11").title("Zone B").parentId(1).status(StatusEnum.ACTIVE.getCode()).build()
             );
             
             when(tenantCommonRepository.findById(tenantId)).thenReturn(Optional.of(tenant));

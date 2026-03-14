@@ -1,16 +1,14 @@
 package org.arghyam.jalsoochak.tenant.repository;
 
 import java.util.List;
-import java.util.Optional;
 
-import org.arghyam.jalsoochak.tenant.dto.request.CreateDepartmentRequestDTO;
-import org.arghyam.jalsoochak.tenant.dto.response.DepartmentResponseDTO;
 import org.arghyam.jalsoochak.tenant.dto.response.LocationResponseDTO;
 import org.arghyam.jalsoochak.tenant.dto.internal.LanguageConfigDTO;
 import org.arghyam.jalsoochak.tenant.dto.internal.LocationLevelConfigDTO;
 import org.arghyam.jalsoochak.tenant.dto.internal.LocationLevelNameDTO;
 import org.arghyam.jalsoochak.tenant.dto.internal.LocationConfigDTO;
 import org.arghyam.jalsoochak.tenant.enums.RegionTypeEnum;
+import org.arghyam.jalsoochak.tenant.enums.StatusEnum;
 import org.arghyam.jalsoochak.tenant.exception.InvalidConfigValueException;
 
 import java.sql.Types;
@@ -41,28 +39,6 @@ public class TenantSchemaRepository {
         private final ObjectMapper objectMapper;
 
         /**
-         * Row mapper for {@code tenant_schema.department_location_master_table}.
-         */
-        private static final RowMapper<DepartmentResponseDTO> DEPARTMENT_ROW_MAPPER = (rs,
-                        rowNum) -> DepartmentResponseDTO.builder()
-                                        .id(rs.getInt("id"))
-                                        .uuid(rs.getString("uuid"))
-                                        .title(rs.getString("title"))
-                                        .departmentLocationConfigId(
-                                                        (Integer) rs.getObject("department_location_config_id"))
-                                        .parentId((Integer) rs.getObject("parent_id"))
-                                        .status(rs.getInt("status"))
-                                        .createdAt(rs.getTimestamp("created_at") != null
-                                                        ? rs.getTimestamp("created_at").toLocalDateTime()
-                                                        : null)
-                                        .createdBy((Integer) rs.getObject("created_by"))
-                                        .updatedAt(rs.getTimestamp("updated_at") != null
-                                                        ? rs.getTimestamp("updated_at").toLocalDateTime()
-                                                        : null)
-                                        .updatedBy((Integer) rs.getObject("updated_by"))
-                                        .build();
-
-        /**
          * Row mapper for {@code tenant_schema.lgd_location_master_table}.
          */
         private static final RowMapper<LocationResponseDTO> LGD_LOCATION_ROW_MAPPER = (rs,
@@ -88,43 +64,6 @@ public class TenantSchemaRepository {
                                         .build();
 
         /**
-         * Fetches all departments from the specified schema.
-         */
-        public List<DepartmentResponseDTO> getDepartments(String schemaName) {
-                validateSchemaName(schemaName);
-                log.debug("Fetching departments from schema: {}", schemaName);
-
-                String sql = String.format(
-                                "SELECT * FROM %s.department_location_master_table ORDER BY id", schemaName);
-                return jdbcTemplate.query(sql, DEPARTMENT_ROW_MAPPER);
-        }
-
-        /**
-         * Creates a new department in the specified schema.
-         */
-        public Optional<DepartmentResponseDTO> createDepartment(String schemaName, CreateDepartmentRequestDTO request,
-                        Integer currentUserId) {
-                validateSchemaName(schemaName);
-                log.debug("Creating department in schema: {}", schemaName);
-
-                String sql = String.format("""
-                                INSERT INTO %s.department_location_master_table
-                                    (title, department_location_config_id, parent_id, status, created_by, updated_by)
-                                VALUES (?, ?, ?, ?, ?, ?)
-                                RETURNING *
-                                """, schemaName);
-
-                List<DepartmentResponseDTO> results = jdbcTemplate.query(sql, DEPARTMENT_ROW_MAPPER,
-                                request.getTitle(),
-                                request.getDepartmentLocationConfigId(),
-                                request.getParentId(),
-                                request.getStatus(),
-                                currentUserId,
-                                currentUserId);
-                return results.stream().findFirst();
-        }
-
-        /**
          * Validates the schema name.
          */
         private void validateSchemaName(String schemaName) {
@@ -139,8 +78,8 @@ public class TenantSchemaRepository {
         public List<LanguageConfigDTO> getSupportedLanguages(String schemaName) {
                 validateSchemaName(schemaName);
                 String sql = String.format(
-                                "SELECT language_name, preference FROM %s.language_master_table WHERE status = 1 ORDER BY preference",
-                                schemaName);
+                                "SELECT language_name, preference FROM %s.language_master_table WHERE status = %d ORDER BY preference",
+                                schemaName, StatusEnum.ACTIVE.getCode());
                 return jdbcTemplate.query(sql, (rs, rowNum) -> LanguageConfigDTO.builder()
                                 .language(rs.getString("language_name"))
                                 .preference((Integer) rs.getObject("preference"))
@@ -159,18 +98,18 @@ public class TenantSchemaRepository {
                 }
                 // Mark all as inactive
                 String deactivateSql = String.format(
-                                "UPDATE %s.language_master_table SET status = 0, updated_by = ?, updated_at = NOW()",
-                                schemaName);
+                                "UPDATE %s.language_master_table SET status = %d, updated_by = ?, updated_at = NOW()",
+                                schemaName, StatusEnum.INACTIVE.getCode());
                 jdbcTemplate.update(deactivateSql, currentUserId);
 
                 // Upsert new languages
                 String upsertSql = String.format(
                                 """
                                                 INSERT INTO %s.language_master_table (language_name, preference, status, created_by, updated_by)
-                                                VALUES (?, ?, 1, ?, ?)
-                                                ON CONFLICT (language_name) DO UPDATE SET status = 1, preference = EXCLUDED.preference, updated_by = EXCLUDED.updated_by, updated_at = NOW()
+                                                VALUES (?, ?, %d, ?, ?)
+                                                ON CONFLICT (language_name) DO UPDATE SET status = %d, preference = EXCLUDED.preference, updated_by = EXCLUDED.updated_by, updated_at = NOW()
                                                 """,
-                                schemaName);
+                                schemaName, StatusEnum.ACTIVE.getCode(), StatusEnum.ACTIVE.getCode());
 
                 for (LanguageConfigDTO lang : languages) {
                         jdbcTemplate.update(upsertSql, lang.getLanguage(), lang.getPreference(), currentUserId,
@@ -315,13 +254,13 @@ public class TenantSchemaRepository {
                 
                 if (parentId == null) {
                         sql = String.format(
-                                "SELECT * FROM %s.lgd_location_master_table WHERE parent_id IS NULL AND status = 1 ORDER BY title",
-                                schemaName);
+                                "SELECT * FROM %s.lgd_location_master_table WHERE parent_id IS NULL AND status = %d ORDER BY title",
+                                schemaName, StatusEnum.ACTIVE.getCode());
                         params = new Object[]{};
                 } else {
                         sql = String.format(
-                                "SELECT * FROM %s.lgd_location_master_table WHERE parent_id = ? AND status = 1 ORDER BY title",
-                                schemaName);
+                                "SELECT * FROM %s.lgd_location_master_table WHERE parent_id = ? AND status = %d ORDER BY title",
+                                schemaName, StatusEnum.ACTIVE.getCode());
                         params = new Object[]{parentId};
                 }
                 
@@ -344,13 +283,13 @@ public class TenantSchemaRepository {
                 
                 if (parentId == null) {
                         sql = String.format(
-                                "SELECT * FROM %s.department_location_master_table WHERE parent_id IS NULL AND status = 1 ORDER BY title",
-                                schemaName);
+                                "SELECT * FROM %s.department_location_master_table WHERE parent_id IS NULL AND status = %d ORDER BY title",
+                                schemaName, StatusEnum.ACTIVE.getCode());
                         params = new Object[]{};
                 } else {
                         sql = String.format(
-                                "SELECT * FROM %s.department_location_master_table WHERE parent_id = ? AND status = 1 ORDER BY title",
-                                schemaName);
+                                "SELECT * FROM %s.department_location_master_table WHERE parent_id = ? AND status = %d ORDER BY title",
+                                schemaName, StatusEnum.ACTIVE.getCode());
                         params = new Object[]{parentId};
                 }
                 

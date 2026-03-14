@@ -27,17 +27,19 @@ import org.arghyam.jalsoochak.tenant.dto.internal.ConfigValueDTO;
 import org.arghyam.jalsoochak.tenant.dto.internal.LocationLevelConfigDTO;
 import org.arghyam.jalsoochak.tenant.dto.internal.LocationLevelNameDTO;
 import org.arghyam.jalsoochak.tenant.dto.internal.SimpleConfigValueDTO;
-import org.arghyam.jalsoochak.tenant.dto.request.CreateDepartmentRequestDTO;
 import org.arghyam.jalsoochak.tenant.dto.request.CreateTenantRequestDTO;
 import org.arghyam.jalsoochak.tenant.dto.request.SetTenantConfigRequestDTO;
 import org.arghyam.jalsoochak.tenant.dto.request.UpdateTenantRequestDTO;
-import org.arghyam.jalsoochak.tenant.dto.response.DepartmentResponseDTO;
 import org.arghyam.jalsoochak.tenant.dto.response.LocationHierarchyEditConstraintsResponseDTO;
 import org.arghyam.jalsoochak.tenant.dto.response.LocationHierarchyResponseDTO;
 import org.arghyam.jalsoochak.tenant.dto.response.LocationResponseDTO;
 import org.arghyam.jalsoochak.tenant.dto.response.TenantConfigResponseDTO;
+import org.arghyam.jalsoochak.tenant.dto.response.TenantConfigStatusResponseDTO;
 import org.arghyam.jalsoochak.tenant.dto.response.TenantResponseDTO;
+import org.arghyam.jalsoochak.tenant.dto.response.TenantSummaryResponseDTO;
+import org.arghyam.jalsoochak.tenant.enums.StatusEnum;
 import org.arghyam.jalsoochak.tenant.enums.TenantConfigKeyEnum;
+import org.arghyam.jalsoochak.tenant.enums.TenantStatusEnum;
 import org.arghyam.jalsoochak.tenant.exception.InvalidConfigKeyException;
 import org.arghyam.jalsoochak.tenant.exception.LocationHierarchyStructureLockedException;
 import org.arghyam.jalsoochak.tenant.exception.ResourceNotFoundException;
@@ -81,7 +83,7 @@ class TenantControllerTest {
                     .build();
 
             TenantResponseDTO response = TenantResponseDTO.builder().id(1).name("Test Tenant").stateCode("KA")
-                    .status("ACTIVE").build();
+                    .status(TenantStatusEnum.ACTIVE.name()).build();
 
             when(tenantManagementService.createTenant(any(CreateTenantRequestDTO.class))).thenReturn(response);
 
@@ -218,9 +220,9 @@ class TenantControllerTest {
         void updateTenant_Success() throws Exception {
             Integer tenantId = 1;
             UpdateTenantRequestDTO request = new UpdateTenantRequestDTO();
-            request.setStatus("ACTIVE");
+            request.setStatus(TenantStatusEnum.ACTIVE.name());
 
-            TenantResponseDTO response = TenantResponseDTO.builder().id(1).status("ACTIVE").build();
+            TenantResponseDTO response = TenantResponseDTO.builder().id(1).status(TenantStatusEnum.ACTIVE.name()).build();
 
             when(tenantManagementService.updateTenant(eq(tenantId), any(UpdateTenantRequestDTO.class))).thenReturn(response);
 
@@ -229,7 +231,7 @@ class TenantControllerTest {
                     .content(objectMapper.writeValueAsString(request)))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.status").value(200))
-                    .andExpect(jsonPath("$.data.status").value("ACTIVE"));
+                    .andExpect(jsonPath("$.data.status").value(TenantStatusEnum.ACTIVE.name()));
 
             verify(tenantManagementService).updateTenant(eq(tenantId), any());
         }
@@ -237,7 +239,7 @@ class TenantControllerTest {
         @Test
         void updateTenant_NotFound() throws Exception {
             Integer tenantId = 999;
-            UpdateTenantRequestDTO request = UpdateTenantRequestDTO.builder().status("INACTIVE").build();
+            UpdateTenantRequestDTO request = UpdateTenantRequestDTO.builder().status(TenantStatusEnum.INACTIVE.name()).build();
 
             when(tenantManagementService.updateTenant(eq(tenantId), any()))
                     .thenThrow(new ResourceNotFoundException("Tenant not found"));
@@ -397,68 +399,83 @@ class TenantControllerTest {
     }
 
     @Nested
-    @DisplayName("Get Tenant Departments")
-    class GetTenantDepartmentsTests {
+    @DisplayName("Get Tenant Summary")
+    class GetTenantSummaryTests {
+
         @Test
-        void getTenantDepartments_Success() throws Exception {
-            DepartmentResponseDTO dept1 = DepartmentResponseDTO.builder().id(1).title("Health").status(1).build();
-            DepartmentResponseDTO dept2 = DepartmentResponseDTO.builder().id(2).title("Operations").status(1).build();
+        void getTenantSummary_Success() throws Exception {
+            TenantSummaryResponseDTO summary = TenantSummaryResponseDTO.builder()
+                    .totalTenants(10L)
+                    .activeTenants(8L)
+                    .inactiveTenants(1L)
+                    .archivedTenants(1L)
+                    .build();
 
-            when(tenantManagementService.getTenantDepartments()).thenReturn(List.of(dept1, dept2));
+            when(tenantManagementService.getTenantSummary()).thenReturn(summary);
 
-            mockMvc.perform(get("/api/v1/tenants/departments")
-                    .contentType(MediaType.APPLICATION_JSON))
+            mockMvc.perform(get("/api/v1/tenants/summary"))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.status").value(200))
-                    .andExpect(jsonPath("$.data", hasSize(2)));
+                    .andExpect(jsonPath("$.message").value("Tenant summary retrieved successfully"))
+                    .andExpect(jsonPath("$.data.totalTenants").value(10))
+                    .andExpect(jsonPath("$.data.activeTenants").value(8))
+                    .andExpect(jsonPath("$.data.inactiveTenants").value(1))
+                    .andExpect(jsonPath("$.data.archivedTenants").value(1));
 
-            verify(tenantManagementService).getTenantDepartments();
+            verify(tenantManagementService).getTenantSummary();
         }
 
         @Test
-        void getTenantDepartments_EmptyList() throws Exception {
-            when(tenantManagementService.getTenantDepartments()).thenReturn(Collections.emptyList());
+        void getTenantSummary_InternalError() throws Exception {
+            when(tenantManagementService.getTenantSummary())
+                    .thenThrow(new RuntimeException("DB error"));
 
-            mockMvc.perform(get("/api/v1/tenants/departments"))
-                    .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.data", hasSize(0)));
+            mockMvc.perform(get("/api/v1/tenants/summary"))
+                    .andExpect(status().isInternalServerError());
         }
     }
 
     @Nested
-    @DisplayName("Create Department")
-    class CreateDepartmentTests {
+    @DisplayName("Get Tenant Config Status")
+    class GetTenantConfigStatusTests {
+
         @Test
-        void createDepartment_Success() throws Exception {
-            CreateDepartmentRequestDTO request = new CreateDepartmentRequestDTO();
-            request.setTitle("Health");
-            request.setStatus(1);
-            request.setParentId(0);
+        void getTenantConfigStatus_Success() throws Exception {
+            Integer tenantId = 1;
+            Map<TenantConfigKeyEnum, TenantConfigStatusResponseDTO.ConfigEntry> configs = new HashMap<>();
+            configs.put(TenantConfigKeyEnum.TENANT_LOGO,
+                    TenantConfigStatusResponseDTO.ConfigEntry.builder().status("CONFIGURED").build());
 
-            DepartmentResponseDTO dept = DepartmentResponseDTO.builder().id(1).title("Health").build();
+            TenantConfigStatusResponseDTO response = TenantConfigStatusResponseDTO.builder()
+                    .tenantId(tenantId)
+                    .summary(TenantConfigStatusResponseDTO.Summary.builder()
+                            .total(19).configured(1).pending(18).build())
+                    .configs(configs)
+                    .build();
 
-            when(tenantManagementService.createDepartment(any(CreateDepartmentRequestDTO.class))).thenReturn(dept);
+            when(tenantManagementService.getTenantConfigStatus(tenantId)).thenReturn(response);
 
-            mockMvc.perform(post("/api/v1/tenants/departments")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content(objectMapper.writeValueAsString(request)))
-                    .andExpect(status().isCreated())
-                    .andExpect(jsonPath("$.status").value(201))
-                    .andExpect(jsonPath("$.data.title").value("Health"));
+            mockMvc.perform(get("/api/v1/tenants/{tenantId}/config/status", tenantId))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.status").value(200))
+                    .andExpect(jsonPath("$.message").value("Configuration status retrieved successfully"))
+                    .andExpect(jsonPath("$.data.tenantId").value(1))
+                    .andExpect(jsonPath("$.data.summary.total").value(19))
+                    .andExpect(jsonPath("$.data.summary.configured").value(1))
+                    .andExpect(jsonPath("$.data.summary.pending").value(18))
+                    .andExpect(jsonPath("$.data.configs.TENANT_LOGO.status").value("CONFIGURED"));
 
-            verify(tenantManagementService).createDepartment(any());
+            verify(tenantManagementService).getTenantConfigStatus(tenantId);
         }
 
         @Test
-        void createDepartment_MissingTitle() throws Exception {
-            String requestJson = "{\"status\":1,\"parentId\":0}";
+        void getTenantConfigStatus_TenantNotFound() throws Exception {
+            Integer tenantId = 999;
+            when(tenantManagementService.getTenantConfigStatus(tenantId))
+                    .thenThrow(new ResourceNotFoundException("Tenant not found"));
 
-            mockMvc.perform(post("/api/v1/tenants/departments")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content(requestJson))
-                    .andExpect(status().is4xxClientError());
-
-            verify(tenantManagementService, never()).createDepartment(any());
+            mockMvc.perform(get("/api/v1/tenants/{tenantId}/config/status", tenantId))
+                    .andExpect(status().isNotFound());
         }
     }
 
@@ -555,8 +572,8 @@ class TenantControllerTest {
             Integer parentId = 0;
 
             List<LocationResponseDTO> children = List.of(
-                    LocationResponseDTO.builder().id(1).uuid("uuid-1").title("Madhya Pradesh").status(1).build(),
-                    LocationResponseDTO.builder().id(2).uuid("uuid-2").title("Maharashtra").status(1).build()
+                    LocationResponseDTO.builder().id(1).uuid("uuid-1").title("Madhya Pradesh").status(StatusEnum.ACTIVE.getCode()).build(),
+                    LocationResponseDTO.builder().id(2).uuid("uuid-2").title("Maharashtra").status(StatusEnum.ACTIVE.getCode()).build()
             );
 
             when(tenantManagementService.getLocationChildren(tenantId, hierarchyType, null)).thenReturn(children);
@@ -578,8 +595,8 @@ class TenantControllerTest {
             Integer parentId = 1;
 
             List<LocationResponseDTO> children = List.of(
-                    LocationResponseDTO.builder().id(10).uuid("uuid-10").title("Indore").lgdCode("IND001").parentId(1).status(1).build(),
-                    LocationResponseDTO.builder().id(11).uuid("uuid-11").title("Bhopal").lgdCode("BHP001").parentId(1).status(1).build()
+                    LocationResponseDTO.builder().id(10).uuid("uuid-10").title("Indore").lgdCode("IND001").parentId(1).status(StatusEnum.ACTIVE.getCode()).build(),
+                    LocationResponseDTO.builder().id(11).uuid("uuid-11").title("Bhopal").lgdCode("BHP001").parentId(1).status(StatusEnum.ACTIVE.getCode()).build()
             );
 
             when(tenantManagementService.getLocationChildren(tenantId, hierarchyType, parentId)).thenReturn(children);

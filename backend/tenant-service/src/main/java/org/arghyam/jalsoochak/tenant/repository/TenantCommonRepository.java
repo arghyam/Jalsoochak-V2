@@ -11,6 +11,7 @@ import org.arghyam.jalsoochak.tenant.dto.internal.ConfigDTO;
 import org.arghyam.jalsoochak.tenant.dto.request.CreateTenantRequestDTO;
 import org.arghyam.jalsoochak.tenant.dto.request.UpdateTenantRequestDTO;
 import org.arghyam.jalsoochak.tenant.dto.response.TenantResponseDTO;
+import org.arghyam.jalsoochak.tenant.dto.response.TenantSummaryResponseDTO;
 import org.arghyam.jalsoochak.tenant.enums.TenantStatusEnum;
 import org.springframework.jdbc.core.ConnectionCallback;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -144,7 +145,8 @@ public class TenantCommonRepository {
     }
 
     /**
-     * Lists all tenants in the common_schema.tenant_master_table with pagination.
+     * Lists all non-system tenants in the common_schema.tenant_master_table with pagination.
+     * The system tenant (id = 0) is excluded from results.
      */
     public List<TenantResponseDTO> findAll(int limit, long offset) {
         if (limit <= 0) {
@@ -154,17 +156,44 @@ public class TenantCommonRepository {
             throw new IllegalArgumentException("offset must be non-negative");
         }
         return jdbcTemplate.query(
-                "SELECT * FROM common_schema.tenant_master_table ORDER BY id LIMIT ? OFFSET ?",
+                "SELECT * FROM common_schema.tenant_master_table WHERE id != 0 ORDER BY id LIMIT ? OFFSET ?",
                 TENANT_ROW_MAPPER, limit, offset);
     }
 
     /**
-     * Counts the total number of tenants in common_schema.tenant_master_table.
+     * Counts the total number of non-system tenants in common_schema.tenant_master_table.
+     * The system tenant (id = 0) is excluded from the count.
      */
     public long countAllTenants() {
         return jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM common_schema.tenant_master_table",
+                "SELECT COUNT(*) FROM common_schema.tenant_master_table WHERE id != 0",
                 Long.class);
+    }
+
+    /**
+     * Returns an aggregate status summary for all non-system tenants in a single query.
+     * Uses PostgreSQL conditional aggregation to count per status in one round-trip.
+     */
+    public TenantSummaryResponseDTO getTenantSummary() {
+        String sql = """
+                SELECT
+                    COUNT(*)                                       AS total,
+                    COUNT(*) FILTER (WHERE status = ?)            AS active,
+                    COUNT(*) FILTER (WHERE status = ?)            AS inactive,
+                    COUNT(*) FILTER (WHERE status = ?)            AS archived
+                FROM common_schema.tenant_master_table
+                WHERE id != 0
+                """;
+        return jdbcTemplate.queryForObject(sql,
+                (rs, rn) -> TenantSummaryResponseDTO.builder()
+                        .totalTenants(rs.getLong("total"))
+                        .activeTenants(rs.getLong("active"))
+                        .inactiveTenants(rs.getLong("inactive"))
+                        .archivedTenants(rs.getLong("archived"))
+                        .build(),
+                TenantStatusEnum.ACTIVE.getCode(),
+                TenantStatusEnum.INACTIVE.getCode(),
+                TenantStatusEnum.ARCHIVED.getCode());
     }
 
     /**

@@ -1,13 +1,13 @@
 package org.arghyam.jalsoochak.tenant.service;
 
 import org.arghyam.jalsoochak.tenant.dto.common.PageResponseDTO;
-import org.arghyam.jalsoochak.tenant.dto.request.CreateDepartmentRequestDTO;
 import org.arghyam.jalsoochak.tenant.dto.request.CreateTenantRequestDTO;
 import org.arghyam.jalsoochak.tenant.dto.request.SetTenantConfigRequestDTO;
 import org.arghyam.jalsoochak.tenant.dto.request.UpdateTenantRequestDTO;
-import org.arghyam.jalsoochak.tenant.dto.response.DepartmentResponseDTO;
 import org.arghyam.jalsoochak.tenant.dto.response.TenantConfigResponseDTO;
+import org.arghyam.jalsoochak.tenant.dto.response.TenantConfigStatusResponseDTO;
 import org.arghyam.jalsoochak.tenant.dto.response.TenantResponseDTO;
+import org.arghyam.jalsoochak.tenant.dto.response.TenantSummaryResponseDTO;
 import org.arghyam.jalsoochak.tenant.dto.response.LocationResponseDTO;
 import org.arghyam.jalsoochak.tenant.dto.response.LocationHierarchyEditConstraintsResponseDTO;
 import org.arghyam.jalsoochak.tenant.dto.response.LocationHierarchyResponseDTO;
@@ -47,28 +47,21 @@ public interface TenantManagementService {
     void deactivateTenant(Integer tenantId);
 
     /**
-     * Gets all departments of a tenant.
-     * 
-     * @return List of department responses.
-     */
-    List<DepartmentResponseDTO> getTenantDepartments();
-
-    /**
-     * Creates a new department.
-     * 
-     * @param request Department creation request.
-     * @return Created department response.
-     */
-    DepartmentResponseDTO createDepartment(CreateDepartmentRequestDTO request);
-
-    /**
      * Gets all tenants.
-     * 
+     *
      * @param page Page number.
      * @param size Page size.
      * @return Page of tenants.
      */
     PageResponseDTO<TenantResponseDTO> getAllTenants(int page, int size);
+
+    /**
+     * Returns an aggregate status summary (total, active, inactive, archived)
+     * for all non-system tenants.
+     *
+     * @return Tenant summary response.
+     */
+    TenantSummaryResponseDTO getTenantSummary();
 
     /**
      * Gets tenant configurations.
@@ -81,12 +74,22 @@ public interface TenantManagementService {
 
     /**
      * Sets tenant configurations.
-     * 
+     *
      * @param tenantId ID of the tenant.
      * @param request  Tenant configuration request.
      * @return Tenant configurations response.
      */
     TenantConfigResponseDTO setTenantConfigs(Integer tenantId, SetTenantConfigRequestDTO request);
+
+    /**
+     * Returns the configuration completeness status for a tenant.
+     * Each known config key is listed with a CONFIGURED or PENDING status,
+     * along with an aggregate summary.
+     *
+     * @param tenantId ID of the tenant.
+     * @return Configuration status response.
+     */
+    TenantConfigStatusResponseDTO getTenantConfigStatus(Integer tenantId);
 
     /**
      * Gets the location hierarchy configuration for a tenant.
