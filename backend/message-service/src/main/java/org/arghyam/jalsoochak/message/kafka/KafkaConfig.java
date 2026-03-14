@@ -13,6 +13,8 @@ import org.springframework.kafka.core.DefaultKafkaConsumerFactory;
 import org.springframework.kafka.core.DefaultKafkaProducerFactory;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.core.ProducerFactory;
+import org.springframework.kafka.listener.DefaultErrorHandler;
+import org.springframework.util.backoff.ExponentialBackOff;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -60,6 +62,12 @@ public class KafkaConfig {
         ConcurrentKafkaListenerContainerFactory<String, String> factory =
                 new ConcurrentKafkaListenerContainerFactory<>();
         factory.setConsumerFactory(consumerFactory());
+
+        ExponentialBackOff backOff = new ExponentialBackOff(10_000L, 2.0);
+        backOff.setMaxInterval(60_000L);      // cap at 60s per retry
+        backOff.setMaxElapsedTime(90_000L);   // ~3 retries (10s + 20s + 40s = 70s)
+        factory.setCommonErrorHandler(new DefaultErrorHandler(backOff));
+
         return factory;
     }
 }

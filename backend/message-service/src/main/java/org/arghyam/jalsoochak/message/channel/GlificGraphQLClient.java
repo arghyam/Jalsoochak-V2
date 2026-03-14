@@ -31,11 +31,15 @@ public class GlificGraphQLClient {
         this.glificAuthService = glificAuthService;
     }
 
+    private static final int MAX_RATE_LIMIT_RETRIES = 3;
+    private static final long RATE_LIMIT_BASE_WAIT_MS = 5_000; // 5s, 10s, 20s
+
     public JsonNode execute(String query, Map<String, Object> variables) {
-        return executeWithRetry(query, variables, false);
+        return executeWithRetry(query, variables, false, 0);
     }
 
-    private JsonNode executeWithRetry(String query, Map<String, Object> variables, boolean isRetry) {
+    private JsonNode executeWithRetry(String query, Map<String, Object> variables,
+                                      boolean tokenRefreshed, int attempt) {
         if (apiUrl == null || apiUrl.isBlank()) {
             throw new RuntimeException("Glific API URL is not configured (glific.api-url)");
         }
@@ -51,11 +55,22 @@ public class GlificGraphQLClient {
                 .bodyToMono(JsonNode.class)
                 .block(Duration.ofSeconds(30));
         } catch (WebClientResponseException ex) {
-            if (!isRetry && (ex.getStatusCode().value() == 401
-                || ex.getStatusCode().value() == 403)) {
-                    glificAuthService.refresh();
-                    return executeWithRetry(query, variables, true);
+            int status = ex.getStatusCode().value();
+            if (status == 429 && attempt < MAX_RATE_LIMIT_RETRIES) {
+                long waitMs = RATE_LIMIT_BASE_WAIT_MS * (1L << attempt); // 5s → 10s → 20s
+                log.warn("[Glific] Rate limited (429), waiting {}ms before retry {}/{}",
+                         waitMs, attempt + 1, MAX_RATE_LIMIT_RETRIES);
+                try { Thread.sleep(waitMs); }
+                catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    throw new RuntimeException("Interrupted during Glific rate-limit backoff", ie);
                 }
+                return executeWithRetry(query, variables, tokenRefreshed, attempt + 1);
+            }
+            if (!tokenRefreshed && (status == 401 || status == 403)) {
+                glificAuthService.refresh();
+                return executeWithRetry(query, variables, true, attempt + 1);
+            }
             throw new RuntimeException("Glific GraphQL HTTP error: " + ex.getStatusCode(), ex);
         }
 
@@ -65,10 +80,10 @@ public class GlificGraphQLClient {
 
         if (response.has("errors") && response.get("errors").size() > 0) {
             String msg = response.get("errors").get(0).path("message").asText("unknown");
-            if (!isRetry && (msg.toLowerCase().contains("unauthenticated")
+            if (!tokenRefreshed && (msg.toLowerCase().contains("unauthenticated")
                     || msg.toLowerCase().contains("unauthorized"))) {
                 glificAuthService.refresh();
-                return executeWithRetry(query, variables, true);
+                return executeWithRetry(query, variables, true, attempt + 1);
             }
             throw new RuntimeException("Glific GraphQL error: " + msg);
         }
