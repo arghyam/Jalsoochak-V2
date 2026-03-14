@@ -64,7 +64,8 @@ public class NudgeRepository {
         validateSchemaName(schema);
         String sql = String.format("""
                 SELECT user_id, name, phone_number, language_id, whatsapp_connection_id,
-                       scheme_id, scheme_name, last_reading_date, days_since_last_upload
+                       scheme_id, scheme_name, last_reading_date, days_since_last_upload,
+                       last_confirmed_reading
                 FROM (
                     SELECT
                       u.id AS user_id,
@@ -78,7 +79,14 @@ public class NudgeRepository {
                       CASE
                         WHEN MAX(fr.reading_date) IS NULL THEN NULL
                         ELSE CURRENT_DATE - MAX(fr.reading_date)
-                      END AS days_since_last_upload
+                      END AS days_since_last_upload,
+                      (SELECT fr2.confirmed_reading
+                         FROM %s.flow_reading_table fr2
+                        WHERE fr2.scheme_id = usm.scheme_id
+                          AND fr2.created_by = u.id
+                          AND fr2.confirmed_reading IS NOT NULL
+                        ORDER BY fr2.reading_date DESC
+                        LIMIT 1) AS last_confirmed_reading
                     FROM %s.user_scheme_mapping_table usm
                     JOIN %s.user_table u ON u.id = usm.user_id
                     JOIN common_schema.user_type_master_table ut ON ut.id = u.user_type
@@ -92,7 +100,7 @@ public class NudgeRepository {
                 ) sub
                 WHERE days_since_last_upload IS NULL
                    OR days_since_last_upload >= ?
-                """, schema, schema, schema, schema);
+                """, schema, schema, schema, schema, schema);
 
         log.debug("findUsersWithMissedDays – schema={}, minMissedDays={}", schema, minMissedDays);
         return jdbcTemplate.queryForList(sql, minMissedDays);

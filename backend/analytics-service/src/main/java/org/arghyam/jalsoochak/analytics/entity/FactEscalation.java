@@ -28,13 +28,16 @@ public class FactEscalation {
     @Column(name = "tenant_id", nullable = false)
     private Integer tenantId;
 
-    @Column(name = "scheme_id", nullable = false)
+    @Column(name = "scheme_id")
     private Integer schemeId;
 
     @Column(name = "escalation_type")
     private Integer escalationType;
 
     private String message;
+
+    @Column(name = "correlation_id")
+    private String correlationId;
 
     @Column(name = "user_id", nullable = false)
     private Integer userId;

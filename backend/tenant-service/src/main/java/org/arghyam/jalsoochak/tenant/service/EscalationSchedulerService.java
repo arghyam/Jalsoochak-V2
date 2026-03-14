@@ -9,10 +9,13 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+import java.nio.charset.StandardCharsets;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 /**
  * Processes escalations for a single tenant. Called by {@link TenantSchedulerManager}
@@ -102,6 +105,19 @@ public class EscalationSchedulerService {
             Object lastReadingDateObj = row.get("last_reading_date");
             String lastRecordedBfmDate = (lastReadingDateObj == null) ? "Never" : lastReadingDateObj.toString();
 
+            Object lastConfirmedReadingObj = row.get("last_confirmed_reading");
+            Double lastConfirmedReading = lastConfirmedReadingObj != null
+                    ? ((Number) lastConfirmedReadingObj).doubleValue() : null;
+
+            Integer userId = row.get("user_id") != null
+                    ? ((Number) row.get("user_id")).intValue() : null;
+
+            int effectiveDays = neverUploaded ? 0 : daysSinceLastUpload;
+            LocalDate streakStart = LocalDate.now().minusDays(effectiveDays);
+            String opCorrelationKey = schema + ":" + schemeId + ":NO_SUBMISSION:" + streakStart;
+            String opCorrelationId = UUID.nameUUIDFromBytes(
+                    opCorrelationKey.getBytes(StandardCharsets.UTF_8)).toString();
+
             OperatorEscalationDetail detail = OperatorEscalationDetail.builder()
                     .name((String) row.get("name"))
                     .phoneNumber((String) row.get("phone_number"))
@@ -110,6 +126,9 @@ public class EscalationSchedulerService {
                     .soName(soName)
                     .consecutiveDaysMissed(daysSinceLastUpload)
                     .lastRecordedBfmDate(lastRecordedBfmDate)
+                    .userId(userId)
+                    .lastConfirmedReading(lastConfirmedReading)
+                    .correlationId(opCorrelationId)
                     .build();
 
             String groupKey = "LEVEL_" + escalationLevel + "|" + officerPhone;
@@ -121,6 +140,10 @@ public class EscalationSchedulerService {
 
         // Publish one EscalationEvent per officer
         for (OfficerGroup group : officerGroups.values()) {
+            String officerCorrelationKey = tenantId + ":" + group.officerId + ":NO_SUBMISSION";
+            String officerCorrelationId = UUID.nameUUIDFromBytes(
+                    officerCorrelationKey.getBytes(StandardCharsets.UTF_8)).toString();
+
             EscalationEvent event = EscalationEvent.builder()
                     .eventType("ESCALATION")
                     .escalationLevel(group.level)
@@ -132,6 +155,7 @@ public class EscalationSchedulerService {
                     .officerId(group.officerId)
                     .officerWhatsappConnectionId(group.officerWhatsappConnectionId)
                     .tenantSchema(schema)
+                    .correlationId(officerCorrelationId)
                     .build();
             kafkaProducer.publishJson(COMMON_TOPIC, event);
             log.info("[EscalationJob] Published EscalationEvent level={} with {} operators",

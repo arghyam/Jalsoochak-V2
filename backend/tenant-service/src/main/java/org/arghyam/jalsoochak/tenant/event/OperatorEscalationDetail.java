@@ -17,4 +17,7 @@ public class OperatorEscalationDetail {
     private String soName;
     private int consecutiveDaysMissed;
     private String lastRecordedBfmDate;
+    private Integer userId;
+    private Double lastConfirmedReading;
+    private String correlationId;
 }
