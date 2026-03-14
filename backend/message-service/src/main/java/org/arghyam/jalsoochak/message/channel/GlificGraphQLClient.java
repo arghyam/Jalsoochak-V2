@@ -9,6 +9,7 @@ import org.springframework.web.reactive.function.client.WebClientResponseExcepti
 
 import java.time.Duration;
 import java.util.Map;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
@@ -39,6 +40,7 @@ public class GlificGraphQLClient {
 
     private static final int MAX_RATE_LIMIT_RETRIES = 3;
     private static final long RATE_LIMIT_BASE_WAIT_MS = 5_000; // 5s, 10s, 20s
+    private static final long JITTER_MS = 1_000; // ±1s jitter on 429 backoff
 
     public JsonNode execute(String query, Map<String, Object> variables) {
         return executeWithRetry(query, variables, false, 0);
@@ -72,7 +74,9 @@ public class GlificGraphQLClient {
         } catch (WebClientResponseException ex) {
             int status = ex.getStatusCode().value();
             if (status == 429 && attempt < MAX_RATE_LIMIT_RETRIES) {
-                long waitMs = RATE_LIMIT_BASE_WAIT_MS * (1L << attempt); // 5s → 10s → 20s
+                long baseWait = RATE_LIMIT_BASE_WAIT_MS * (1L << attempt); // 5s → 10s → 20s
+                long jitter = ThreadLocalRandom.current().nextLong(-JITTER_MS, JITTER_MS + 1);
+                long waitMs = Math.max(0, baseWait + jitter);
                 log.warn("[Glific] Rate limited (429), waiting {}ms before retry {}/{}",
                          waitMs, attempt + 1, MAX_RATE_LIMIT_RETRIES);
                 try { Thread.sleep(waitMs); }

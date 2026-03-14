@@ -76,10 +76,10 @@ class NudgeRepositoryIntegrationTest {
                 "SELECT id FROM common_schema.user_type_master_table WHERE UPPER(c_name) = 'PUMP_OPERATOR'",
                 Integer.class);
         sectionOfficerTypeId = jdbcTemplate.queryForObject(
-                "SELECT id FROM common_schema.user_type_master_table WHERE c_name = 'SECTION_OFFICER'",
+                "SELECT id FROM common_schema.user_type_master_table WHERE UPPER(c_name) = 'SECTION_OFFICER'",
                 Integer.class);
         districtOfficerTypeId = jdbcTemplate.queryForObject(
-                "SELECT id FROM common_schema.user_type_master_table WHERE c_name = 'DISTRICT_OFFICER'",
+                "SELECT id FROM common_schema.user_type_master_table WHERE UPPER(c_name) = 'DISTRICT_OFFICER'",
                 Integer.class);
 
         schemeId = jdbcTemplate.queryForObject(

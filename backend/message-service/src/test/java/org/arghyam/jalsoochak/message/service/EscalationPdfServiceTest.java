@@ -132,7 +132,7 @@ class EscalationPdfServiceTest {
             occurrences++;
             idx += "Never".length();
         }
-        assertThat(occurrences).isGreaterThanOrEqualTo(2);
+        assertThat(occurrences).isEqualTo(2);
     }
 
     @Test

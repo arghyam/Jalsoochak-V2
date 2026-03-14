@@ -156,6 +156,7 @@ public class NudgeRepository {
                 JOIN %s.user_table u ON u.id = usm.user_id
                 JOIN common_schema.user_type_master_table ut ON ut.id = u.user_type
                 WHERE usm.scheme_id = ? AND UPPER(ut.c_name) = UPPER(?) AND usm.status = 1
+                ORDER BY u.id
                 LIMIT 1
                 """, schema, schema);
         List<Map<String, Object>> rows = jdbcTemplate.queryForList(sql, schemeId, userTypeName);

@@ -88,6 +88,8 @@ public class EscalationSchedulerService {
             Long officerWhatsappConnectionId = officerRow.get("whatsapp_connection_id") != null
                     ? ((Number) officerRow.get("whatsapp_connection_id")).longValue() : null;
             if (officerPhone == null || officerPhone.isBlank()) {
+                log.warn("[EscalationJob] Skipping escalation due to missing officerPhone – schema={}, schemeId={}, escalationLevel={}",
+                        schema, schemeId, escalationLevel);
                 return;
             }
 
@@ -109,7 +111,7 @@ public class EscalationSchedulerService {
             OperatorEscalationDetail detail = OperatorEscalationDetail.builder()
                     .name((String) row.get("name"))
                     .phoneNumber((String) row.get("phone_number"))
-                    .schemeName((String) row.getOrDefault("scheme_name", String.valueOf(schemeId)))
+                    .schemeName(row.get("scheme_name") != null ? (String) row.get("scheme_name") : String.valueOf(schemeId))
                     .schemeId(String.valueOf(schemeId))
                     .soName(soName)
                     .consecutiveDaysMissed(displayedMissedDays)
