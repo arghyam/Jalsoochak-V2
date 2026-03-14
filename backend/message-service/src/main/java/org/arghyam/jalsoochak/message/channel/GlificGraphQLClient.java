@@ -9,6 +9,7 @@ import org.springframework.web.reactive.function.client.WebClientResponseExcepti
 
 import java.time.Duration;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Thin WebClient wrapper for the Glific GraphQL API.
@@ -26,6 +27,11 @@ public class GlificGraphQLClient {
     @Value("${glific.api-url:}")
     private String apiUrl;
 
+    @Value("${glific.request-interval-ms:500}")
+    private long requestIntervalMs;
+
+    private final AtomicLong lastCallEpochMs = new AtomicLong(0);
+
     public GlificGraphQLClient(WebClient.Builder builder, GlificAuthService glificAuthService) {
         this.webClient = builder.build();
         this.glificAuthService = glificAuthService;
@@ -42,6 +48,10 @@ public class GlificGraphQLClient {
                                       boolean tokenRefreshed, int attempt) {
         if (apiUrl == null || apiUrl.isBlank()) {
             throw new RuntimeException("Glific API URL is not configured (glific.api-url)");
+        }
+
+        if (attempt == 0) {
+            throttleIfNeeded();
         }
 
         // Capture the token before sending so we can compare it in auth-failure branches.
@@ -100,5 +110,23 @@ public class GlificGraphQLClient {
             throw new RuntimeException("Glific GraphQL response missing 'data' node");
         }
         return dataNode;
+    }
+
+    private void throttleIfNeeded() {
+        long now = System.currentTimeMillis();
+        long last = lastCallEpochMs.get();
+        long elapsed = now - last;
+        if (elapsed < requestIntervalMs) {
+            long sleepMs = requestIntervalMs - elapsed;
+            log.debug("[Glific] Throttling: sleeping {}ms before next request", sleepMs);
+            try {
+                Thread.sleep(sleepMs);
+            } catch (InterruptedException ie) {
+                Thread.currentThread().interrupt();
+                throw new RuntimeException("Interrupted during Glific rate throttle", ie);
+            }
+            now = System.currentTimeMillis();
+        }
+        lastCallEpochMs.compareAndSet(last, now);
     }
 }
