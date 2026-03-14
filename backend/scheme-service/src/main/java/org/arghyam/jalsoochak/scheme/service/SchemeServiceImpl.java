@@ -12,15 +12,19 @@ import org.apache.poi.ss.usermodel.Workbook;
 import org.apache.poi.ss.usermodel.WorkbookFactory;
 import org.arghyam.jalsoochak.scheme.auth.UploadAuthService;
 import org.arghyam.jalsoochak.scheme.config.TenantContext;
+import org.arghyam.jalsoochak.scheme.dto.SchemeCountsDTO;
 import org.arghyam.jalsoochak.scheme.dto.SchemeDTO;
+import org.arghyam.jalsoochak.scheme.dto.SchemeMappingDTO;
 import org.arghyam.jalsoochak.scheme.dto.SchemeUploadErrorDTO;
 import org.arghyam.jalsoochak.scheme.dto.SchemeUploadResponseDTO;
+import org.arghyam.jalsoochak.scheme.dto.common.PageResponseDTO;
 import org.arghyam.jalsoochak.scheme.exception.FileValidationException;
 import org.arghyam.jalsoochak.scheme.exception.UnsupportedFileTypeException;
 import org.arghyam.jalsoochak.scheme.repository.SchemeCreateRecord;
 import org.arghyam.jalsoochak.scheme.repository.SchemeDbRepository;
 import org.arghyam.jalsoochak.scheme.repository.SchemeLgdMappingCreateRecord;
 import org.arghyam.jalsoochak.scheme.repository.SchemeSubdivisionMappingCreateRecord;
+import org.arghyam.jalsoochak.scheme.util.TenantSchemaResolver;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
@@ -122,9 +126,94 @@ public class SchemeServiceImpl implements SchemeService {
     private final SchemeUploadChunkProcessor chunkProcessor;
 
     @Override
-    public List<SchemeDTO> getAllSchemes() {
-        String schemaName = requireTenantSchema();
-        return schemeDbRepository.findAllSchemes(schemaName);
+    public PageResponseDTO<SchemeDTO> listSchemes(
+            String tenantCode,
+            int page,
+            int limit,
+            String sortBy,
+            String sortDir,
+            String stateSchemeId,
+            String schemeName,
+            String name,
+            String workStatus,
+            String operatingStatus,
+            String status
+    ) {
+        String schemaName = TenantSchemaResolver.requireSchemaNameFromTenantCode(tenantCode);
+
+        Integer workStatusCode = parseWorkStatus(workStatus);
+        Integer operatingStatusCode = parseOperatingStatus(operatingStatus);
+
+        int size = clampLimit(limit);
+        int p = Math.max(0, page);
+        int offset = p * size;
+
+        List<SchemeDTO> rows = schemeDbRepository.listSchemes(
+                schemaName,
+                stateSchemeId,
+                schemeName,
+                name,
+                workStatusCode,
+                operatingStatusCode,
+                status,
+                sortBy,
+                sortDir,
+                offset,
+                size
+        );
+        long total = schemeDbRepository.countSchemes(schemaName, stateSchemeId, schemeName, name, workStatusCode, operatingStatusCode, status);
+        return PageResponseDTO.of(rows, total, p, size);
+    }
+
+    @Override
+    public PageResponseDTO<SchemeMappingDTO> listSchemeMappings(
+            String tenantCode,
+            int page,
+            int limit,
+            String sortBy,
+            String sortDir,
+            String name,
+            String workStatus,
+            String operatingStatus,
+            String status,
+            String villageLgdCode,
+            String subDivisionName
+    ) {
+        String schemaName = TenantSchemaResolver.requireSchemaNameFromTenantCode(tenantCode);
+
+        Integer workStatusCode = parseWorkStatus(workStatus);
+        Integer operatingStatusCode = parseOperatingStatus(operatingStatus);
+
+        int size = clampLimit(limit);
+        int p = Math.max(0, page);
+        int offset = p * size;
+
+        List<SchemeMappingDTO> rows = schemeDbRepository.listSchemeMappings(
+                schemaName,
+                name,
+                workStatusCode,
+                operatingStatusCode,
+                status,
+                villageLgdCode,
+                subDivisionName,
+                sortBy,
+                sortDir,
+                offset,
+                size
+        );
+        long total = schemeDbRepository.countSchemeMappings(schemaName, name, workStatusCode, operatingStatusCode, status, villageLgdCode, subDivisionName);
+        return PageResponseDTO.of(rows, total, p, size);
+    }
+
+    @Override
+    public SchemeCountsDTO getSchemeCounts(String tenantCode) {
+        String schemaName = TenantSchemaResolver.requireSchemaNameFromTenantCode(tenantCode);
+
+        SchemeDbRepository.SchemeCounts counts = schemeDbRepository.countActiveInactiveSchemes(schemaName);
+        return SchemeCountsDTO.builder()
+                .activeSchemes(counts.activeSchemes())
+                .inactiveSchemes(counts.inactiveSchemes())
+                .build();
     }
 
     @Override
@@ -612,6 +701,55 @@ public class SchemeServiceImpl implements SchemeService {
             );
         }
         return schemaName;
+    }
+
+    private int clampLimit(int limit) {
+        if (limit < 1) {
+            return 1;
+        }
+        return Math.min(limit, 100);
+    }
+
+    private Integer parseWorkStatus(String value) {
+        String v = value == null ? "" : value.trim();
+        if (v.isBlank()) {
+            return null;
+        }
+        String k = v.toLowerCase(Locale.ROOT);
+        Integer byName = WORK_STATUS_MAP.get(k);
+        if (byName != null) {
+            return byName;
+        }
+        try {
+            int n = Integer.parseInt(v);
+            if (n >= 1 && n <= 4) {
+                return n;
+            }
+        } catch (NumberFormatException ignored) {
+        }
+        throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                "Invalid workStatus. Expected one of: Ongoing, Completed, Not Started, Handed Over or 1/2/3/4");
+    }
+
+    private Integer parseOperatingStatus(String value) {
+        String v = value == null ? "" : value.trim();
+        if (v.isBlank()) {
+            return null;
+        }
+        String k = v.toLowerCase(Locale.ROOT);
+        Integer byName = OPERATING_STATUS_MAP.get(k);
+        if (byName != null) {
+            return byName;
+        }
+        try {
+            int n = Integer.parseInt(v);
+            if (n >= 1 && n <= 3) {
+                return n;
+            }
+        } catch (NumberFormatException ignored) {
+        }
+        throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                "Invalid operatingStatus. Expected one of: Operative, Non-Operative, Partially Operative or 1/2/3");
     }
 
     private void requireField(Map<String, String> values, int rowNumber, String field, List<SchemeUploadErrorDTO> errors) {

@@ -2,6 +2,7 @@ package org.arghyam.jalsoochak.scheme.repository;
 
 import lombok.RequiredArgsConstructor;
 import org.arghyam.jalsoochak.scheme.dto.SchemeDTO;
+import org.arghyam.jalsoochak.scheme.dto.SchemeMappingDTO;
 import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.jdbc.core.BatchPreparedStatementSetter;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -11,11 +12,13 @@ import java.sql.PreparedStatement;
 import java.sql.SQLException;
 import java.sql.Types;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Locale;
+import java.util.List;
 import java.util.Map;
 import java.util.LinkedHashMap;
 import java.util.Set;
+import java.util.ArrayList;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Pattern;
 
 @Repository
@@ -24,6 +27,7 @@ public class SchemeDbRepository {
 
     private final JdbcTemplate jdbcTemplate;
     private static final Pattern SAFE_SCHEMA = Pattern.compile("^[a-z_][a-z0-9_]*$");
+    private final ConcurrentHashMap<String, Boolean> deptTablesExistCache = new ConcurrentHashMap<>();
 
     public List<SchemeDTO> findAllSchemes(String schemaName) {
         validateSchemaName(schemaName);
@@ -53,6 +57,282 @@ public class SchemeDbRepository {
                 .build());
     }
 
+    public List<SchemeDTO> listSchemes(
+            String schemaName,
+            String stateSchemeId,
+            String schemeName,
+            String name,
+            Integer workStatus,
+            Integer operatingStatus,
+            String status,
+            String sortBy,
+            String sortDir,
+            int offset,
+            int limit
+    ) {
+        validateSchemaName(schemaName);
+
+        SqlAndArgs where = buildSchemeWhere(stateSchemeId, schemeName, name, workStatus, operatingStatus, status);
+        String orderBy = schemeOrderBy(sortBy, sortDir);
+
+        String sql = String.format("""
+                SELECT id, uuid, state_scheme_id, centre_scheme_id, scheme_name,
+                       fhtc_count, planned_fhtc, house_hold_count,
+                       latitude, longitude, channel, work_status, operating_status
+                FROM %s.scheme_master_table
+                WHERE deleted_at IS NULL
+                  %s
+                %s
+                LIMIT ? OFFSET ?
+                """, schemaName, where.sql(), orderBy);
+
+        List<Object> args = new ArrayList<>(where.args());
+        args.add(limit);
+        args.add(offset);
+
+        return jdbcTemplate.query(sql, (rs, rowNum) -> SchemeDTO.builder()
+                .id(rs.getInt("id"))
+                .uuid(rs.getString("uuid"))
+                .stateSchemeId(rs.getString("state_scheme_id"))
+                .centreSchemeId(rs.getString("centre_scheme_id"))
+                .schemeName(rs.getString("scheme_name"))
+                .fhtcCount(rs.getInt("fhtc_count"))
+                .plannedFhtc(rs.getInt("planned_fhtc"))
+                .houseHoldCount(rs.getInt("house_hold_count"))
+                .latitude((Double) rs.getObject("latitude"))
+                .longitude((Double) rs.getObject("longitude"))
+                .channel((Integer) rs.getObject("channel"))
+                .workStatus(rs.getInt("work_status"))
+                .operatingStatus(rs.getInt("operating_status"))
+                .build(), args.toArray());
+    }
+
+    public long countSchemes(
+            String schemaName,
+            String stateSchemeId,
+            String schemeName,
+            String name,
+            Integer workStatus,
+            Integer operatingStatus,
+            String status
+    ) {
+        validateSchemaName(schemaName);
+        SqlAndArgs where = buildSchemeWhere(stateSchemeId, schemeName, name, workStatus, operatingStatus, status);
+        String sql = String.format("""
+                SELECT COUNT(1)
+                FROM %s.scheme_master_table
+                WHERE deleted_at IS NULL
+                  %s
+                """, schemaName, where.sql());
+        Long total = jdbcTemplate.queryForObject(sql, Long.class, where.args().toArray());
+        return total == null ? 0 : total;
+    }
+
+    public List<SchemeMappingDTO> listSchemeMappings(
+            String schemaName,
+            String name,
+            Integer workStatus,
+            Integer operatingStatus,
+            String status,
+            String villageLgdCode,
+            String subDivisionName,
+            String sortBy,
+            String sortDir,
+            int offset,
+            int limit
+    ) {
+        validateSchemaName(schemaName);
+
+        boolean hasDept = hasDepartmentTables(schemaName);
+        if (!hasDept && subDivisionName != null && !subDivisionName.isBlank()) {
+            return List.of();
+        }
+
+        List<Object> args = new ArrayList<>();
+        List<String> clauses = new ArrayList<>();
+        if (name != null && !name.isBlank()) {
+            clauses.add("(sm.scheme_name ILIKE ? OR sm.state_scheme_id ILIKE ?)");
+            String pat = "%" + name.trim() + "%";
+            args.add(pat);
+            args.add(pat);
+        }
+        if (workStatus != null) {
+            clauses.add("sm.work_status = ?");
+            args.add(workStatus);
+        }
+        if (operatingStatus != null) {
+            clauses.add("sm.operating_status = ?");
+            args.add(operatingStatus);
+        }
+        if (status != null && !status.isBlank()) {
+            String s = status.trim().toLowerCase(Locale.ROOT);
+            if ("active".equals(s)) {
+                clauses.add("sm.operating_status = 1");
+            } else if ("inactive".equals(s)) {
+                clauses.add("sm.operating_status <> 1");
+            }
+        }
+        if (villageLgdCode != null && !villageLgdCode.isBlank()) {
+            clauses.add("lgd.lgd_code ILIKE ?");
+            args.add("%" + villageLgdCode.trim() + "%");
+        }
+        if (hasDept && subDivisionName != null && !subDivisionName.isBlank()) {
+            clauses.add("dept.title ILIKE ?");
+            args.add("%" + subDivisionName.trim() + "%");
+        }
+
+        String filterSql = clauses.isEmpty() ? "" : " AND " + String.join(" AND ", clauses) + " ";
+
+        String orderBy = mappingOrderBy(sortBy, sortDir, hasDept);
+        String sql = hasDept
+                ? String.format("""
+                    SELECT slm.id,
+                           sm.id AS scheme_id,
+                           sm.state_scheme_id,
+                           sm.scheme_name,
+                           lgd.lgd_code AS village_lgd_code,
+                           dept.title   AS sub_division_name
+                    FROM %s.scheme_lgd_mapping_table slm
+                    JOIN %s.scheme_master_table sm
+                      ON sm.id = slm.scheme_id AND sm.deleted_at IS NULL
+                    JOIN %s.lgd_location_master_table lgd
+                      ON lgd.id = slm.parent_lgd_id AND lgd.deleted_at IS NULL
+                    LEFT JOIN %s.scheme_department_mapping_table sdm
+                      ON sdm.scheme_id = sm.id AND sdm.deleted_at IS NULL
+                    LEFT JOIN %s.department_location_master_table dept
+                      ON dept.id = sdm.parent_department_id AND dept.deleted_at IS NULL
+                    WHERE slm.deleted_at IS NULL
+                      %s
+                    %s
+                    LIMIT ? OFFSET ?
+                    """, schemaName, schemaName, schemaName, schemaName, schemaName, filterSql, orderBy)
+                : String.format("""
+                    SELECT slm.id,
+                           sm.id AS scheme_id,
+                           sm.state_scheme_id,
+                           sm.scheme_name,
+                           lgd.lgd_code AS village_lgd_code,
+                           NULL::varchar AS sub_division_name
+                    FROM %s.scheme_lgd_mapping_table slm
+                    JOIN %s.scheme_master_table sm
+                      ON sm.id = slm.scheme_id AND sm.deleted_at IS NULL
+                    JOIN %s.lgd_location_master_table lgd
+                      ON lgd.id = slm.parent_lgd_id AND lgd.deleted_at IS NULL
+                    WHERE slm.deleted_at IS NULL
+                      %s
+                    %s
+                    LIMIT ? OFFSET ?
+                    """, schemaName, schemaName, schemaName, filterSql, orderBy);
+
+        args.add(limit);
+        args.add(offset);
+
+        return jdbcTemplate.query(sql, (rs, rowNum) -> SchemeMappingDTO.builder()
+                .id(rs.getLong("id"))
+                .schemeId((Integer) rs.getObject("scheme_id"))
+                .stateSchemeId(rs.getString("state_scheme_id"))
+                .schemeName(rs.getString("scheme_name"))
+                .villageLgdCode(rs.getString("village_lgd_code"))
+                .subDivisionName(rs.getString("sub_division_name"))
+                .build(), args.toArray());
+    }
+
+    public long countSchemeMappings(
+            String schemaName,
+            String name,
+            Integer workStatus,
+            Integer operatingStatus,
+            String status,
+            String villageLgdCode,
+            String subDivisionName
+    ) {
+        validateSchemaName(schemaName);
+
+        boolean hasDept = hasDepartmentTables(schemaName);
+        if (!hasDept && subDivisionName != null && !subDivisionName.isBlank()) {
+            return 0;
+        }
+
+        List<Object> args = new ArrayList<>();
+        List<String> clauses = new ArrayList<>();
+        if (name != null && !name.isBlank()) {
+            clauses.add("(sm.scheme_name ILIKE ? OR sm.state_scheme_id ILIKE ?)");
+            String pat = "%" + name.trim() + "%";
+            args.add(pat);
+            args.add(pat);
+        }
+        if (workStatus != null) {
+            clauses.add("sm.work_status = ?");
+            args.add(workStatus);
+        }
+        if (operatingStatus != null) {
+            clauses.add("sm.operating_status = ?");
+            args.add(operatingStatus);
+        }
+        if (status != null && !status.isBlank()) {
+            String s = status.trim().toLowerCase(Locale.ROOT);
+            if ("active".equals(s)) {
+                clauses.add("sm.operating_status = 1");
+            } else if ("inactive".equals(s)) {
+                clauses.add("sm.operating_status <> 1");
+            }
+        }
+        if (villageLgdCode != null && !villageLgdCode.isBlank()) {
+            clauses.add("lgd.lgd_code ILIKE ?");
+            args.add("%" + villageLgdCode.trim() + "%");
+        }
+        if (hasDept && subDivisionName != null && !subDivisionName.isBlank()) {
+            clauses.add("dept.title ILIKE ?");
+            args.add("%" + subDivisionName.trim() + "%");
+        }
+
+        String filterSql = clauses.isEmpty() ? "" : " AND " + String.join(" AND ", clauses) + " ";
+
+        String sql = hasDept
+                ? String.format("""
+                    SELECT COUNT(1)
+                    FROM %s.scheme_lgd_mapping_table slm
+                    JOIN %s.scheme_master_table sm
+                      ON sm.id = slm.scheme_id AND sm.deleted_at IS NULL
+                    JOIN %s.lgd_location_master_table lgd
+                      ON lgd.id = slm.parent_lgd_id AND lgd.deleted_at IS NULL
+                    LEFT JOIN %s.scheme_department_mapping_table sdm
+                      ON sdm.scheme_id = sm.id AND sdm.deleted_at IS NULL
+                    LEFT JOIN %s.department_location_master_table dept
+                      ON dept.id = sdm.parent_department_id AND dept.deleted_at IS NULL
+                    WHERE slm.deleted_at IS NULL
+                      %s
+                    """, schemaName, schemaName, schemaName, schemaName, schemaName, filterSql)
+                : String.format("""
+                    SELECT COUNT(1)
+                    FROM %s.scheme_lgd_mapping_table slm
+                    JOIN %s.scheme_master_table sm
+                      ON sm.id = slm.scheme_id AND sm.deleted_at IS NULL
+                    JOIN %s.lgd_location_master_table lgd
+                      ON lgd.id = slm.parent_lgd_id AND lgd.deleted_at IS NULL
+                    WHERE slm.deleted_at IS NULL
+                      %s
+                    """, schemaName, schemaName, schemaName, filterSql);
+
+        Long total = jdbcTemplate.queryForObject(sql, Long.class, args.toArray());
+        return total == null ? 0 : total;
+    }
+
+    public record SchemeCounts(long activeSchemes, long inactiveSchemes) {}
+
+    public SchemeCounts countActiveInactiveSchemes(String schemaName) {
+        validateSchemaName(schemaName);
+        String sql = String.format("""
+                SELECT
+                  COUNT(1) FILTER (WHERE deleted_at IS NULL AND operating_status = 1) AS active,
+                  COUNT(1) FILTER (WHERE deleted_at IS NULL AND operating_status <> 1) AS inactive
+                FROM %s.scheme_master_table
+                """, schemaName);
+
+        return jdbcTemplate.queryForObject(sql, (rs, rowNum) ->
+                new SchemeCounts(rs.getLong("active"), rs.getLong("inactive")));
+    }
+
     public boolean existsSchemeById(String schemaName, Integer schemeId) {
         validateSchemaName(schemaName);
         String sql = String.format(
@@ -61,6 +341,38 @@ public class SchemeDbRepository {
         );
         Boolean exists = jdbcTemplate.queryForObject(sql, Boolean.class, schemeId);
         return Boolean.TRUE.equals(exists);
+    }
+
+    public SchemeDTO findSchemeById(String schemaName, int schemeId) {
+        validateSchemaName(schemaName);
+        String sql = String.format("""
+                SELECT id, uuid, state_scheme_id, centre_scheme_id, scheme_name,
+                       fhtc_count, planned_fhtc, house_hold_count,
+                       latitude, longitude, channel, work_status, operating_status
+                FROM %s.scheme_master_table
+                WHERE deleted_at IS NULL
+                  AND id = ?
+                LIMIT 1
+                """, schemaName);
+        try {
+            return jdbcTemplate.queryForObject(sql, (rs, rowNum) -> SchemeDTO.builder()
+                    .id(rs.getInt("id"))
+                    .uuid(rs.getString("uuid"))
+                    .stateSchemeId(rs.getString("state_scheme_id"))
+                    .centreSchemeId(rs.getString("centre_scheme_id"))
+                    .schemeName(rs.getString("scheme_name"))
+                    .fhtcCount(rs.getInt("fhtc_count"))
+                    .plannedFhtc(rs.getInt("planned_fhtc"))
+                    .houseHoldCount(rs.getInt("house_hold_count"))
+                    .latitude((Double) rs.getObject("latitude"))
+                    .longitude((Double) rs.getObject("longitude"))
+                    .channel((Integer) rs.getObject("channel"))
+                    .workStatus(rs.getInt("work_status"))
+                    .operatingStatus(rs.getInt("operating_status"))
+                    .build(), schemeId);
+        } catch (EmptyResultDataAccessException ex) {
+            return null;
+        }
     }
 
     /**
@@ -266,6 +578,94 @@ public class SchemeDbRepository {
         if (schemaName == null || schemaName.isBlank() || !SAFE_SCHEMA.matcher(schemaName).matches()) {
             throw new IllegalArgumentException("Invalid schema name: " + schemaName);
         }
+    }
+
+    private record SqlAndArgs(String sql, List<Object> args) {}
+
+    private SqlAndArgs buildSchemeWhere(
+            String stateSchemeId,
+            String schemeName,
+            String name,
+            Integer workStatus,
+            Integer operatingStatus,
+            String status
+    ) {
+        List<String> clauses = new ArrayList<>();
+        List<Object> args = new ArrayList<>();
+
+        if (stateSchemeId != null && !stateSchemeId.isBlank()) {
+            clauses.add("lower(state_scheme_id) = lower(?)");
+            args.add(stateSchemeId.trim());
+        }
+        if (schemeName != null && !schemeName.isBlank()) {
+            clauses.add("scheme_name ILIKE ?");
+            args.add("%" + schemeName.trim() + "%");
+        }
+        if (name != null && !name.isBlank()) {
+            clauses.add("(scheme_name ILIKE ? OR state_scheme_id ILIKE ?)");
+            String pat = "%" + name.trim() + "%";
+            args.add(pat);
+            args.add(pat);
+        }
+        if (workStatus != null) {
+            clauses.add("work_status = ?");
+            args.add(workStatus);
+        }
+        if (operatingStatus != null) {
+            clauses.add("operating_status = ?");
+            args.add(operatingStatus);
+        }
+        if (status != null && !status.isBlank()) {
+            String s = status.trim().toLowerCase(Locale.ROOT);
+            if ("active".equals(s)) {
+                clauses.add("operating_status = 1");
+            } else if ("inactive".equals(s)) {
+                clauses.add("operating_status <> 1");
+            }
+        }
+
+        if (clauses.isEmpty()) {
+            return new SqlAndArgs("", List.of());
+        }
+        return new SqlAndArgs(" AND " + String.join(" AND ", clauses), args);
+    }
+
+    private String schemeOrderBy(String sortBy, String sortDir) {
+        String dir = "asc".equalsIgnoreCase(sortDir) ? "ASC" : "DESC";
+        String key = sortBy == null ? "" : sortBy.trim().toLowerCase(Locale.ROOT);
+        String col = switch (key) {
+            case "id" -> "id";
+            case "state_scheme_id" -> "state_scheme_id";
+            case "centre_scheme_id", "center_scheme_id" -> "centre_scheme_id";
+            case "scheme_name", "name" -> "scheme_name";
+            case "work_status" -> "work_status";
+            case "operating_status" -> "operating_status";
+            case "created_at" -> "created_at";
+            default -> "id";
+        };
+        return "ORDER BY " + col + " " + dir;
+    }
+
+    private String mappingOrderBy(String sortBy, String sortDir, boolean hasDept) {
+        String dir = "asc".equalsIgnoreCase(sortDir) ? "ASC" : "DESC";
+        String key = sortBy == null ? "" : sortBy.trim().toLowerCase(Locale.ROOT);
+        String col = switch (key) {
+            case "id" -> "slm.id";
+            case "scheme_name", "name" -> "sm.scheme_name";
+            case "state_scheme_id" -> "sm.state_scheme_id";
+            case "village_lgd_code" -> "lgd.lgd_code";
+            case "sub_division_name" -> hasDept ? "dept.title" : "slm.id";
+            default -> "slm.id";
+        };
+        return "ORDER BY " + col + " " + dir;
+    }
+
+    private boolean hasDepartmentTables(String schemaName) {
+        return deptTablesExistCache.computeIfAbsent(schemaName, s -> {
+            String dept = jdbcTemplate.queryForObject("SELECT to_regclass(?)", String.class, s + ".department_location_master_table");
+            String sdm = jdbcTemplate.queryForObject("SELECT to_regclass(?)", String.class, s + ".scheme_department_mapping_table");
+            return dept != null && sdm != null;
+        });
     }
 
     private Set<Integer> findExistingIds(String schemaName, String table, List<Integer> ids) {
