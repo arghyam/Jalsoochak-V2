@@ -1,5 +1,7 @@
 package org.arghyam.jalsoochak.user.exceptions;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -19,6 +21,8 @@ import java.util.Map;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+
+    private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
     @ExceptionHandler(BadRequestException.class)
     public ResponseEntity<Map<String, Object>> handleBadRequest(BadRequestException ex) {
@@ -97,6 +101,8 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(Exception.class)
     public ResponseEntity<Map<String, Object>> handleUnexpected(Exception ex) {
+        // Ensure dev/prod logs contain the real root cause (MDC includes requestId via RequestCorrelationFilter).
+        log.error("Unhandled exception", ex);
         return build(HttpStatus.INTERNAL_SERVER_ERROR, "Internal server error", null);
     }
 
