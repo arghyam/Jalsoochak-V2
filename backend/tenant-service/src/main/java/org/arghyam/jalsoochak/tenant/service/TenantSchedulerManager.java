@@ -13,6 +13,7 @@ import org.springframework.scheduling.support.CronTrigger;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
+import java.util.TimeZone;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ScheduledFuture;
 
@@ -103,7 +104,7 @@ public class TenantSchedulerManager {
                                 log.error("[Scheduler] Nudge job failed for tenant={}: {}", tenantId, e.getMessage(), e);
                             }
                         },
-                        new CronTrigger(nudgeCron)));
+                        new CronTrigger(nudgeCron, TimeZone.getTimeZone("Asia/Kolkata"))));
 
         futures.put("escalation_" + tenantId,
                 taskScheduler.schedule(
@@ -114,7 +115,7 @@ public class TenantSchedulerManager {
                                 log.error("[Scheduler] Escalation job failed for tenant={}: {}", tenantId, e.getMessage(), e);
                             }
                         },
-                        new CronTrigger(escalCron)));
+                        new CronTrigger(escalCron, TimeZone.getTimeZone("Asia/Kolkata"))));
 
         log.info("[Scheduler] Tenant {} ({}): nudge={}, escalation={}", tenantId, stateCode, nudgeCron, escalCron);
     }
