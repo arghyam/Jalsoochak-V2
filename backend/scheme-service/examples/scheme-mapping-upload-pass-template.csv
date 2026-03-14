@@ -1,2 +1,2 @@
-scheme_id,parent_lgd_id,parent_lgd_level,parent_department_id,parent_department_level
-1,501,1,1001,division
+state_scheme_id,village_lgd_code,sub_division_name
+SS-001,VLG-001,Bengaluru North

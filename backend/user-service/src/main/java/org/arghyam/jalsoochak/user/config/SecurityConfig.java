@@ -63,6 +63,11 @@ public class SecurityConfig {
                                 "/api/v1/auth/activate-account",
                                 "/api/v1/auth/forgot-password",
                                 "/api/v1/auth/reset-password",
+                                // Public (no-auth) endpoints
+                                "/api/v1/public/**",
+                                // Tenant staff endpoints (no-auth; tenantCode param required)
+                                "/api/v1/tenant/staff",
+                                "/api/v1/tenant/staff/counts/by-role",
                                 // Upload endpoint is authorized via UploadAuthService (JWT validation + role check),
                                 // not via Spring Security's JwtDecoder (which may require network access to Keycloak).
                                 "/api/v1/state-admin/pump-operators/upload",
