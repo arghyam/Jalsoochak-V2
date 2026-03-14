@@ -16,6 +16,7 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -28,8 +29,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  *
  * <p>Verifies the three core queries:
  * <ul>
- *   <li>{@code findUsersWithNoUploadToday} – nudge candidates</li>
- *   <li>{@code findUsersWithMissedDays} – escalation candidates</li>
+ *   <li>{@code streamUsersWithNoUploadToday} – nudge candidates</li>
+ *   <li>{@code streamUsersWithMissedDays} – escalation candidates</li>
  *   <li>{@code findOfficerByUserType} – officer lookup for escalation</li>
  * </ul>
  */
@@ -94,14 +95,14 @@ class NudgeRepositoryIntegrationTest {
         jdbcTemplate.execute("DELETE FROM tenant_test.scheme_master_table");
     }
 
-    // ───────────────────────────── findUsersWithNoUploadToday ─────────────────
+    // ───────────────────────────── streamUsersWithNoUploadToday ─────────────────
 
     @Test
-    void findUsersWithNoUploadToday_returnsOperator_whenNoReadingSubmittedToday() {
+    void streamUsersWithNoUploadToday_returnsOperator_whenNoReadingSubmittedToday() {
         int opId = insertUser("Op One", "911111111111", operatorTypeId);
         insertSchemeMapping(opId, schemeId, 1);
 
-        List<Map<String, Object>> result = nudgeRepository.findUsersWithNoUploadToday("tenant_test");
+        List<Map<String, Object>> result = collectNoUploadToday("tenant_test");
 
         assertThat(result).hasSize(1);
         assertThat(result.get(0).get("phone_number")).isEqualTo("911111111111");
@@ -111,67 +112,67 @@ class NudgeRepositoryIntegrationTest {
     }
 
     @Test
-    void findUsersWithNoUploadToday_excludesOperator_whenReadingSubmittedToday() {
+    void streamUsersWithNoUploadToday_excludesOperator_whenReadingSubmittedToday() {
         int opId = insertUser("Op Two", "912222222222", operatorTypeId);
         insertSchemeMapping(opId, schemeId, 1);
         insertFlowReading(schemeId, opId, LocalDate.now());
 
-        List<Map<String, Object>> result = nudgeRepository.findUsersWithNoUploadToday("tenant_test");
+        List<Map<String, Object>> result = collectNoUploadToday("tenant_test");
 
         assertThat(result).isEmpty();
     }
 
     @Test
-    void findUsersWithNoUploadToday_excludesNonOperatorUserTypes() {
+    void streamUsersWithNoUploadToday_excludesNonOperatorUserTypes() {
         int officerId = insertUser("SO Officer", "913333333333", sectionOfficerTypeId);
         insertSchemeMapping(officerId, schemeId, 1);
 
-        List<Map<String, Object>> result = nudgeRepository.findUsersWithNoUploadToday("tenant_test");
+        List<Map<String, Object>> result = collectNoUploadToday("tenant_test");
 
         assertThat(result).isEmpty();
     }
 
     @Test
-    void findUsersWithNoUploadToday_excludesOperator_withInactiveSchemeMappingStatus() {
+    void streamUsersWithNoUploadToday_excludesOperator_withInactiveSchemeMappingStatus() {
         int opId = insertUser("Op Inactive", "914444444444", operatorTypeId);
         insertSchemeMapping(opId, schemeId, 0); // status=0 means inactive
 
-        List<Map<String, Object>> result = nudgeRepository.findUsersWithNoUploadToday("tenant_test");
+        List<Map<String, Object>> result = collectNoUploadToday("tenant_test");
 
         assertThat(result).isEmpty();
     }
 
     @Test
-    void findUsersWithNoUploadToday_includesOperator_whenReadingFromYesterdayOnly() {
+    void streamUsersWithNoUploadToday_includesOperator_whenReadingFromYesterdayOnly() {
         int opId = insertUser("Op Yesterday", "915555555555", operatorTypeId);
         insertSchemeMapping(opId, schemeId, 1);
         insertFlowReading(schemeId, opId, LocalDate.now().minusDays(1));
 
-        List<Map<String, Object>> result = nudgeRepository.findUsersWithNoUploadToday("tenant_test");
+        List<Map<String, Object>> result = collectNoUploadToday("tenant_test");
 
         assertThat(result).hasSize(1);
     }
 
     @Test
-    void findUsersWithNoUploadToday_returnsLanguageId() {
+    void streamUsersWithNoUploadToday_returnsLanguageId() {
         int opId = insertUserWithLanguage("Op Lang", "916601010101", operatorTypeId, 2);
         insertSchemeMapping(opId, schemeId, 1);
 
-        List<Map<String, Object>> result = nudgeRepository.findUsersWithNoUploadToday("tenant_test");
+        List<Map<String, Object>> result = collectNoUploadToday("tenant_test");
 
         assertThat(result).hasSize(1);
         assertThat(((Number) result.get(0).get("language_id")).intValue()).isEqualTo(2);
     }
 
-    // ─────────────────────────── findUsersWithMissedDays ──────────────────────
+    // ─────────────────────────── streamUsersWithMissedDays ──────────────────────
 
     @Test
-    void findUsersWithMissedDays_returnsOperator_whoHasNeverUploaded() {
+    void streamUsersWithMissedDays_returnsOperator_whoHasNeverUploaded() {
         int opId = insertUser("Op Never", "916666666666", operatorTypeId);
         insertSchemeMapping(opId, schemeId, 1);
         // no flow_reading rows → never uploaded
 
-        List<Map<String, Object>> result = nudgeRepository.findUsersWithMissedDays("tenant_test", 3);
+        List<Map<String, Object>> result = collectMissedDays("tenant_test", 3);
 
         assertThat(result).hasSize(1);
         assertThat(result.get(0).get("phone_number")).isEqualTo("916666666666");
@@ -181,12 +182,12 @@ class NudgeRepositoryIntegrationTest {
     }
 
     @Test
-    void findUsersWithMissedDays_returnsOperator_whenDaysExceedThreshold() {
+    void streamUsersWithMissedDays_returnsOperator_whenDaysExceedThreshold() {
         int opId = insertUser("Op Missed", "917777777777", operatorTypeId);
         insertSchemeMapping(opId, schemeId, 1);
         insertFlowReading(schemeId, opId, LocalDate.now().minusDays(5));
 
-        List<Map<String, Object>> result = nudgeRepository.findUsersWithMissedDays("tenant_test", 3);
+        List<Map<String, Object>> result = collectMissedDays("tenant_test", 3);
 
         assertThat(result).hasSize(1);
         Number daysMissed = (Number) result.get(0).get("days_since_last_upload");
@@ -194,35 +195,35 @@ class NudgeRepositoryIntegrationTest {
     }
 
     @Test
-    void findUsersWithMissedDays_excludesOperator_whenDaysBelowThreshold() {
+    void streamUsersWithMissedDays_excludesOperator_whenDaysBelowThreshold() {
         int opId = insertUser("Op Recent", "918888888888", operatorTypeId);
         insertSchemeMapping(opId, schemeId, 1);
         insertFlowReading(schemeId, opId, LocalDate.now().minusDays(2));
 
-        List<Map<String, Object>> result = nudgeRepository.findUsersWithMissedDays("tenant_test", 3);
+        List<Map<String, Object>> result = collectMissedDays("tenant_test", 3);
 
         assertThat(result).isEmpty();
     }
 
     @Test
-    void findUsersWithMissedDays_returnsOperatorAtExactThreshold() {
+    void streamUsersWithMissedDays_returnsOperatorAtExactThreshold() {
         int opId = insertUser("Op Exact", "919191919191", operatorTypeId);
         insertSchemeMapping(opId, schemeId, 1);
         insertFlowReading(schemeId, opId, LocalDate.now().minusDays(3));
 
-        List<Map<String, Object>> result = nudgeRepository.findUsersWithMissedDays("tenant_test", 3);
+        List<Map<String, Object>> result = collectMissedDays("tenant_test", 3);
 
         assertThat(result).hasSize(1);
         assertThat(((Number) result.get(0).get("days_since_last_upload")).intValue()).isEqualTo(3);
     }
 
     @Test
-    void findUsersWithMissedDays_includesSchemeName() {
+    void streamUsersWithMissedDays_includesSchemeName() {
         jdbcTemplate.update("UPDATE tenant_test.scheme_master_table SET state_scheme_id = 'MY-SCHEME' WHERE id = ?", schemeId);
         int opId = insertUser("Op Scheme", "917070707070", operatorTypeId);
         insertSchemeMapping(opId, schemeId, 1);
 
-        List<Map<String, Object>> result = nudgeRepository.findUsersWithMissedDays("tenant_test", 0);
+        List<Map<String, Object>> result = collectMissedDays("tenant_test", 0);
 
         assertThat(result).isNotEmpty();
         assertThat(result.get(0).get("scheme_name")).isEqualTo("MY-SCHEME");
@@ -309,12 +310,12 @@ class NudgeRepositoryIntegrationTest {
     }
 
     @Test
-    void findUsersWithNoUploadToday_returnsStoredWhatsappConnectionId() {
+    void streamUsersWithNoUploadToday_returnsStoredWhatsappConnectionId() {
         int opId = insertUser("Op WA Stored", "911900000002", operatorTypeId);
         insertSchemeMapping(opId, schemeId, 1);
         nudgeRepository.updateWhatsAppConnectionId("tenant_test", opId, 1234L);
 
-        List<Map<String, Object>> result = nudgeRepository.findUsersWithNoUploadToday("tenant_test");
+        List<Map<String, Object>> result = collectNoUploadToday("tenant_test");
 
         assertThat(result).hasSize(1);
         assertThat(((Number) result.get(0).get("whatsapp_connection_id")).longValue()).isEqualTo(1234L);
@@ -323,17 +324,17 @@ class NudgeRepositoryIntegrationTest {
     // ──────────────────────────── schema validation ────────────────────────────
 
     @Test
-    void findUsersWithNoUploadToday_rejectsInvalidSchemaName() {
-        assertThatThrownBy(() -> nudgeRepository.findUsersWithNoUploadToday("invalid-schema!"))
-                .hasCauseInstanceOf(IllegalArgumentException.class)
+    void streamUsersWithNoUploadToday_rejectsInvalidSchemaName() {
+        assertThatThrownBy(() -> nudgeRepository.streamUsersWithNoUploadToday("invalid-schema!", row -> {}))
+                .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("Invalid schema name");
     }
 
     @Test
-    void findUsersWithMissedDays_rejectsSqlInjectionAttempt() {
+    void streamUsersWithMissedDays_rejectsSqlInjectionAttempt() {
         assertThatThrownBy(() ->
-                nudgeRepository.findUsersWithMissedDays("'; DROP TABLE users; --", 3))
-                .hasCauseInstanceOf(IllegalArgumentException.class)
+                nudgeRepository.streamUsersWithMissedDays("'; DROP TABLE users; --", 3, row -> {}))
+                .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("Invalid schema name");
     }
 
@@ -345,6 +346,18 @@ class NudgeRepositoryIntegrationTest {
     }
 
     // ────────────────────────────── helpers ────────────────────────────────────
+
+    private List<Map<String, Object>> collectNoUploadToday(String schema) {
+        List<Map<String, Object>> result = new ArrayList<>();
+        nudgeRepository.streamUsersWithNoUploadToday(schema, result::add);
+        return result;
+    }
+
+    private List<Map<String, Object>> collectMissedDays(String schema, int minMissedDays) {
+        List<Map<String, Object>> result = new ArrayList<>();
+        nudgeRepository.streamUsersWithMissedDays(schema, minMissedDays, result::add);
+        return result;
+    }
 
     private int insertUser(String name, String phone, int userTypeId) {
         return insertUserWithLanguage(name, phone, userTypeId, 0);

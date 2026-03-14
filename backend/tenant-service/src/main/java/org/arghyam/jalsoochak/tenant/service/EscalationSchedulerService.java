@@ -48,14 +48,11 @@ public class EscalationSchedulerService {
         log.info("[EscalationJob] schema={} – L1: {} days ({}), L2: {} days ({})",
                 schema, level1Days, level1UserType, level2Days, level2UserType);
 
-        List<Map<String, Object>> rows = nudgeRepository.findUsersWithMissedDays(schema, level1Days);
-        log.info("[EscalationJob] schema={} → {} users exceeded level1 threshold", schema, rows.size());
-
         // officer-key → (officerRow, level, detailList)
         // Key = "LEVEL_<n>|<phone>" to keep level1 and level2 officers separate
         Map<String, OfficerGroup> officerGroups = new LinkedHashMap<>();
 
-        for (Map<String, Object> row : rows) {
+        int total = nudgeRepository.streamUsersWithMissedDays(schema, level1Days, row -> {
             // days_since_last_upload is NULL when the operator has never uploaded
             Number daysSinceObj = (Number) row.get("days_since_last_upload");
             boolean neverUploaded = (daysSinceObj == null);
@@ -71,7 +68,7 @@ public class EscalationSchedulerService {
             if (officerRow == null) {
                 log.debug("[EscalationJob] No {} found for scheme={}, skipping",
                         officerUserType, schemeId);
-                continue;
+                return;
             }
 
             String officerPhone = (String) officerRow.get("phone_number");
@@ -83,7 +80,7 @@ public class EscalationSchedulerService {
             Long officerWhatsappConnectionId = officerRow.get("whatsapp_connection_id") != null
                     ? ((Number) officerRow.get("whatsapp_connection_id")).longValue() : null;
             if (officerPhone == null || officerPhone.isBlank()) {
-                continue;
+                return;
             }
 
             // Always look up SO name for informational purposes in the detail
@@ -117,7 +114,8 @@ public class EscalationSchedulerService {
                     new OfficerGroup(officerPhone, officerName, escalationLevel, officerLanguageId,
                             officerId, officerWhatsappConnectionId))
                     .details.add(detail);
-        }
+        });
+        log.info("[EscalationJob] schema={} → {} users exceeded level1 threshold", schema, total);
 
         // Publish one EscalationEvent per officer
         for (OfficerGroup group : officerGroups.values()) {

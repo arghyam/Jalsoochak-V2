@@ -13,6 +13,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Consumer;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -42,14 +43,12 @@ class NudgeSchedulerServiceTest {
 
     @Test
     void processNudgesForTenant_publishesNudgeEvent_forOperatorWithoutUploadToday() {
-        when(nudgeRepository.findUsersWithNoUploadToday(SCHEMA)).thenReturn(
-                List.of(Map.of(
-                        "phone_number", "919876543210",
-                        "name", "Ramesh Kumar",
-                        "scheme_id", 42,
-                        "language_id", 1
-                ))
-        );
+        stubStream(SCHEMA, Map.of(
+                "phone_number", "919876543210",
+                "name", "Ramesh Kumar",
+                "scheme_id", 42,
+                "language_id", 1
+        ));
 
         nudgeSchedulerService.processNudgesForTenant(SCHEMA, TENANT_ID);
 
@@ -67,9 +66,7 @@ class NudgeSchedulerServiceTest {
 
     @Test
     void processNudgesForTenant_skipsOperator_withBlankPhoneNumber() {
-        when(nudgeRepository.findUsersWithNoUploadToday(SCHEMA)).thenReturn(
-                List.of(Map.of("phone_number", "", "name", "No Phone", "scheme_id", 1, "language_id", 0))
-        );
+        stubStream(SCHEMA, Map.of("phone_number", "", "name", "No Phone", "scheme_id", 1, "language_id", 0));
 
         nudgeSchedulerService.processNudgesForTenant(SCHEMA, TENANT_ID);
 
@@ -84,7 +81,7 @@ class NudgeSchedulerServiceTest {
         rowWithNullPhone.put("scheme_id", 1);
         rowWithNullPhone.put("language_id", 0);
 
-        when(nudgeRepository.findUsersWithNoUploadToday(SCHEMA)).thenReturn(List.of(rowWithNullPhone));
+        stubStream(SCHEMA, rowWithNullPhone);
 
         nudgeSchedulerService.processNudgesForTenant(SCHEMA, TENANT_ID);
 
@@ -93,10 +90,10 @@ class NudgeSchedulerServiceTest {
 
     @Test
     void processNudgesForTenant_publishesMultipleEvents_forMultipleOperators() {
-        when(nudgeRepository.findUsersWithNoUploadToday(SCHEMA)).thenReturn(List.of(
+        stubStream(SCHEMA,
                 Map.of("phone_number", "911111111111", "name", "Op A", "scheme_id", 1, "language_id", 0),
                 Map.of("phone_number", "912222222222", "name", "Op B", "scheme_id", 2, "language_id", 0)
-        ));
+        );
 
         nudgeSchedulerService.processNudgesForTenant(SCHEMA, TENANT_ID);
 
@@ -111,7 +108,7 @@ class NudgeSchedulerServiceTest {
         rowNullLang.put("scheme_id", 99);
         rowNullLang.put("language_id", null);
 
-        when(nudgeRepository.findUsersWithNoUploadToday(SCHEMA)).thenReturn(List.of(rowNullLang));
+        stubStream(SCHEMA, rowNullLang);
 
         nudgeSchedulerService.processNudgesForTenant(SCHEMA, TENANT_ID);
 
@@ -128,12 +125,26 @@ class NudgeSchedulerServiceTest {
         rowNullScheme.put("scheme_id", null);
         rowNullScheme.put("language_id", 0);
 
-        when(nudgeRepository.findUsersWithNoUploadToday(SCHEMA)).thenReturn(List.of(rowNullScheme));
+        stubStream(SCHEMA, rowNullScheme);
 
         nudgeSchedulerService.processNudgesForTenant(SCHEMA, TENANT_ID);
 
         ArgumentCaptor<NudgeEvent> captor = ArgumentCaptor.forClass(NudgeEvent.class);
         verify(kafkaProducer).publishJson(eq("common-topic"), captor.capture());
         assertThat(captor.getValue().getSchemeId()).isEqualTo("");
+    }
+
+    // ── helpers ─────────────────────────────────────────────────────────────────
+
+    @SafeVarargs
+    private void stubStream(String schema, Map<String, Object>... rows) {
+        doAnswer(inv -> {
+            @SuppressWarnings("unchecked")
+            Consumer<Map<String, Object>> consumer = inv.getArgument(1);
+            for (Map<String, Object> row : rows) {
+                consumer.accept(row);
+            }
+            return rows.length;
+        }).when(nudgeRepository).streamUsersWithNoUploadToday(eq(schema), any());
     }
 }

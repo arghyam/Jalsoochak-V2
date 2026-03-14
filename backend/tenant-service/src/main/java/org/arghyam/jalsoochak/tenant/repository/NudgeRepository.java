@@ -4,9 +4,13 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
 
+import java.sql.PreparedStatement;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Consumer;
 
 /**
  * JdbcTemplate-based repository for nudge and escalation queries.
@@ -21,10 +25,14 @@ public class NudgeRepository {
     private final JdbcTemplate jdbcTemplate;
 
     /**
-     * Returns OPERATOR users who have an active scheme mapping but no flow reading for today.
-     * These are candidates for a nudge notification.
+     * Streams OPERATOR users who have an active scheme mapping but no flow reading for today,
+     * calling {@code consumer} once per row. Returns the total row count.
+     *
+     * <p>Uses a server-side cursor (fetchSize=500) to avoid materialising the full result set
+     * into heap, preventing OOM on large tenants.</p>
      */
-    public List<Map<String, Object>> findUsersWithNoUploadToday(String schema) {
+    @Transactional(readOnly = true)
+    public int streamUsersWithNoUploadToday(String schema, Consumer<Map<String, Object>> consumer) {
         validateSchemaName(schema);
         String sql = String.format("""
                 SELECT u.id as user_id, u.title as name, u.phone_number, u.language_id,
@@ -40,14 +48,30 @@ public class NudgeRepository {
                   AND UPPER(ut.c_name) = 'PUMP_OPERATOR'
                   AND fr.id IS NULL
                 """, schema, schema, schema);
-        log.debug("findUsersWithNoUploadToday – schema={}", schema);
-        return jdbcTemplate.queryForList(sql);
+        log.debug("streamUsersWithNoUploadToday – schema={}", schema);
+        int[] count = {0};
+        jdbcTemplate.query(con -> {
+            PreparedStatement ps = con.prepareStatement(sql);
+            ps.setFetchSize(500);
+            return ps;
+        }, rs -> {
+            Map<String, Object> row = new HashMap<>(8);
+            row.put("user_id", rs.getObject("user_id"));
+            row.put("name", rs.getString("name"));
+            row.put("phone_number", rs.getString("phone_number"));
+            row.put("language_id", rs.getObject("language_id"));
+            row.put("whatsapp_connection_id", rs.getObject("whatsapp_connection_id"));
+            row.put("scheme_id", rs.getObject("scheme_id"));
+            consumer.accept(row);
+            count[0]++;
+        });
+        return count[0];
     }
 
     /**
-     * Returns OPERATOR users who have missed at least {@code minMissedDays} consecutive
-     * days of uploads, plus any operators who have NEVER uploaded (returned with a
-     * {@code null} value for {@code days_since_last_upload}).
+     * Streams OPERATOR users who have missed at least {@code minMissedDays} consecutive days
+     * of uploads, plus any operators who have NEVER uploaded ({@code days_since_last_upload}
+     * is {@code null}). Calls {@code consumer} once per row. Returns the total row count.
      *
      * <p>{@code days_since_last_upload} is the calendar-day gap between the operator's
      * most recent reading and today: {@code CURRENT_DATE - MAX(reading_date)}.
@@ -60,7 +84,9 @@ public class NudgeRepository {
      *   <li>Never uploaded → NULL → always escalated (level-2)</li>
      * </ul>
      */
-    public List<Map<String, Object>> findUsersWithMissedDays(String schema, int minMissedDays) {
+    @Transactional(readOnly = true)
+    public int streamUsersWithMissedDays(String schema, int minMissedDays,
+                                         Consumer<Map<String, Object>> consumer) {
         validateSchemaName(schema);
         String sql = String.format("""
                 SELECT user_id, name, phone_number, language_id, whatsapp_connection_id,
@@ -93,9 +119,28 @@ public class NudgeRepository {
                 WHERE days_since_last_upload IS NULL
                    OR days_since_last_upload >= ?
                 """, schema, schema, schema, schema);
-
-        log.debug("findUsersWithMissedDays – schema={}, minMissedDays={}", schema, minMissedDays);
-        return jdbcTemplate.queryForList(sql, minMissedDays);
+        log.debug("streamUsersWithMissedDays – schema={}, minMissedDays={}", schema, minMissedDays);
+        int[] count = {0};
+        jdbcTemplate.query(con -> {
+            PreparedStatement ps = con.prepareStatement(sql);
+            ps.setInt(1, minMissedDays);
+            ps.setFetchSize(500);
+            return ps;
+        }, rs -> {
+            Map<String, Object> row = new HashMap<>(10);
+            row.put("user_id", rs.getObject("user_id"));
+            row.put("name", rs.getString("name"));
+            row.put("phone_number", rs.getString("phone_number"));
+            row.put("language_id", rs.getObject("language_id"));
+            row.put("whatsapp_connection_id", rs.getObject("whatsapp_connection_id"));
+            row.put("scheme_id", rs.getObject("scheme_id"));
+            row.put("scheme_name", rs.getString("scheme_name"));
+            row.put("last_reading_date", rs.getObject("last_reading_date"));
+            row.put("days_since_last_upload", rs.getObject("days_since_last_upload"));
+            consumer.accept(row);
+            count[0]++;
+        });
+        return count[0];
     }
 
     /**

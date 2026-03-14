@@ -10,7 +10,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
-import java.util.List;
 import java.util.Map;
 
 /**
@@ -32,14 +31,9 @@ public class NudgeSchedulerService {
     private final KafkaProducer kafkaProducer;
 
     public void processNudgesForTenant(String schema, int tenantId) {
-        List<Map<String, Object>> users = nudgeRepository.findUsersWithNoUploadToday(schema);
-        log.info("[NudgeJob] schema={} → {} users have no upload today", schema, users.size());
-
-        for (Map<String, Object> row : users) {
+        int total = nudgeRepository.streamUsersWithNoUploadToday(schema, row -> {
             String phone = (String) row.get("phone_number");
-            if (phone == null || phone.isBlank()) {
-                continue;
-            }
+            if (phone == null || phone.isBlank()) return;
             NudgeEvent event = NudgeEvent.builder()
                     .eventType("NUDGE")
                     .recipientPhone(phone)
@@ -53,7 +47,8 @@ public class NudgeSchedulerService {
                     .tenantSchema(schema)
                     .build();
             kafkaProducer.publishJson(COMMON_TOPIC, event);
-            log.debug("[NudgeJob] Published NudgeEvent for phone={}", phone);
-        }
+            log.debug("[NudgeJob] Published NudgeEvent for userId={}", row.get("user_id"));
+        });
+        log.info("[NudgeJob] schema={} → {} users have no upload today", schema, total);
     }
 }
