@@ -56,7 +56,7 @@ class EscalationSchedulerServiceTest {
         stubStream(SCHEMA, 3, operatorRow("Op Level1", "911001001001", 1, 5));
 
         Map<String, Object> soRow = officerRow("SO Singh", "919001001001", 1);
-        when(nudgeRepository.findOfficerByUserType(SCHEMA, 1, "SECTION_OFFICER")).thenReturn(soRow);
+        when(nudgeRepository.findAllOfficersByUserType(SCHEMA, "SECTION_OFFICER")).thenReturn(Map.of(1, soRow));
 
         escalationSchedulerService.processEscalationsForTenant(SCHEMA, TENANT_ID);
 
@@ -76,9 +76,9 @@ class EscalationSchedulerServiceTest {
         stubStream(SCHEMA, 3, operatorRow("Op Level2", "911002002002", 1, 8));
 
         Map<String, Object> doRow = officerRow("DO Kumar", "919002002002", 0);
-        when(nudgeRepository.findOfficerByUserType(SCHEMA, 1, "DISTRICT_OFFICER")).thenReturn(doRow);
-        when(nudgeRepository.findOfficerByUserType(SCHEMA, 1, "SECTION_OFFICER"))
-                .thenReturn(officerRow("SO Ref", "910000000001", 0));
+        when(nudgeRepository.findAllOfficersByUserType(SCHEMA, "DISTRICT_OFFICER")).thenReturn(Map.of(1, doRow));
+        when(nudgeRepository.findAllOfficersByUserType(SCHEMA, "SECTION_OFFICER"))
+                .thenReturn(Map.of(1, officerRow("SO Ref", "910000000001", 0)));
 
         escalationSchedulerService.processEscalationsForTenant(SCHEMA, TENANT_ID);
 
@@ -101,10 +101,10 @@ class EscalationSchedulerServiceTest {
         neverUploaded.put("days_since_last_upload", null);
 
         stubStream(SCHEMA, 3, neverUploaded);
-        when(nudgeRepository.findOfficerByUserType(SCHEMA, 1, "DISTRICT_OFFICER"))
-                .thenReturn(officerRow("DO Patel", "919003003003", 0));
-        when(nudgeRepository.findOfficerByUserType(SCHEMA, 1, "SECTION_OFFICER"))
-                .thenReturn(officerRow("SO Ref", "910000000002", 0));
+        when(nudgeRepository.findAllOfficersByUserType(SCHEMA, "DISTRICT_OFFICER"))
+                .thenReturn(Map.of(1, officerRow("DO Patel", "919003003003", 0)));
+        when(nudgeRepository.findAllOfficersByUserType(SCHEMA, "SECTION_OFFICER"))
+                .thenReturn(Map.of(1, officerRow("SO Ref", "910000000002", 0)));
 
         escalationSchedulerService.processEscalationsForTenant(SCHEMA, TENANT_ID);
 
@@ -123,8 +123,8 @@ class EscalationSchedulerServiceTest {
         );
 
         Map<String, Object> soRow = officerRow("SO Batch", "919009009009", 0);
-        when(nudgeRepository.findOfficerByUserType(eq(SCHEMA), eq(1), eq("SECTION_OFFICER")))
-                .thenReturn(soRow);
+        when(nudgeRepository.findAllOfficersByUserType(SCHEMA, "SECTION_OFFICER"))
+                .thenReturn(Map.of(1, soRow));
 
         escalationSchedulerService.processEscalationsForTenant(SCHEMA, TENANT_ID);
 
@@ -140,10 +140,10 @@ class EscalationSchedulerServiceTest {
                 operatorRow("Op L2", "912000001111", 1, 8)
         );
 
-        when(nudgeRepository.findOfficerByUserType(SCHEMA, 1, "SECTION_OFFICER"))
-                .thenReturn(officerRow("SO X", "919100000001", 0));
-        when(nudgeRepository.findOfficerByUserType(SCHEMA, 1, "DISTRICT_OFFICER"))
-                .thenReturn(officerRow("DO Y", "919200000001", 0));
+        when(nudgeRepository.findAllOfficersByUserType(SCHEMA, "SECTION_OFFICER"))
+                .thenReturn(Map.of(1, officerRow("SO X", "919100000001", 0)));
+        when(nudgeRepository.findAllOfficersByUserType(SCHEMA, "DISTRICT_OFFICER"))
+                .thenReturn(Map.of(1, officerRow("DO Y", "919200000001", 0)));
 
         escalationSchedulerService.processEscalationsForTenant(SCHEMA, TENANT_ID);
 
@@ -153,7 +153,7 @@ class EscalationSchedulerServiceTest {
     @Test
     void processEscalationsForTenant_skipsOperator_whenNoOfficerFound() {
         stubStream(SCHEMA, 3, operatorRow("Op Orphan", "913000000001", 1, 4));
-        when(nudgeRepository.findOfficerByUserType(any(), any(), any())).thenReturn(null);
+        when(nudgeRepository.findAllOfficersByUserType(SCHEMA, "SECTION_OFFICER")).thenReturn(Map.of());
 
         escalationSchedulerService.processEscalationsForTenant(SCHEMA, TENANT_ID);
 
@@ -168,7 +168,7 @@ class EscalationSchedulerServiceTest {
         soRow.put("name", "SO Hindi");
         soRow.put("phone_number", "919550005555");
         soRow.put("language_id", 2);
-        when(nudgeRepository.findOfficerByUserType(SCHEMA, 1, "SECTION_OFFICER")).thenReturn(soRow);
+        when(nudgeRepository.findAllOfficersByUserType(SCHEMA, "SECTION_OFFICER")).thenReturn(Map.of(1, soRow));
 
         escalationSchedulerService.processEscalationsForTenant(SCHEMA, TENANT_ID);
 
