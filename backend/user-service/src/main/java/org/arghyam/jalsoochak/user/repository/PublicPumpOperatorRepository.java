@@ -9,6 +9,8 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
 import java.math.BigDecimal;
+import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.sql.Array;
 import java.sql.Timestamp;
 import java.time.LocalDateTime;
@@ -21,6 +23,20 @@ import java.util.List;
 public class PublicPumpOperatorRepository {
 
     private final JdbcTemplate jdbcTemplate;
+
+    private static Integer getNullableInt(ResultSet rs, String column) throws SQLException {
+        Object o = rs.getObject(column);
+        if (o == null) return null;
+        if (o instanceof Number n) return n.intValue();
+        return Integer.valueOf(o.toString());
+    }
+
+    private static Double getNullableDouble(ResultSet rs, String column) throws SQLException {
+        Object o = rs.getObject(column);
+        if (o == null) return null;
+        if (o instanceof Number n) return n.doubleValue();
+        return Double.valueOf(o.toString());
+    }
 
     private void validateSchemaName(String schemaName) {
         if (schemaName == null || !schemaName.matches("^[a-z_][a-z0-9_]*$")) {
@@ -159,11 +175,11 @@ public class PublicPumpOperatorRepository {
                         .name(rs.getString("title"))
                         .email(rs.getString("email"))
                         .phoneNumber(rs.getString("phone_number"))
-                        .status((Integer) rs.getObject("status"))
-                        .schemeId((Integer) rs.getObject("scheme_id"))
+                        .status(getNullableInt(rs, "status"))
+                        .schemeId(getNullableInt(rs, "scheme_id"))
                         .schemeName(rs.getString("scheme_name"))
-                        .schemeLatitude((Double) rs.getObject("scheme_latitude"))
-                        .schemeLongitude((Double) rs.getObject("scheme_longitude"))
+                        .schemeLatitude(getNullableDouble(rs, "scheme_latitude"))
+                        .schemeLongitude(getNullableDouble(rs, "scheme_longitude"))
                         .lastSubmissionAt(lastSubmissionAt)
                         .firstSubmissionDate(firstSubmissionDate)
                         .totalDaysSinceFirstSubmission(totalDays)
