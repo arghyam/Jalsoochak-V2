@@ -616,6 +616,46 @@ public class TelemetryTenantRepository {
         return rows.stream().findFirst();
     }
 
+    /**
+     * Returns the latest confirmed reading strictly before {@code cutoffDateExclusive}.
+     * This is useful when validations should ignore any readings submitted "today".
+     */
+    public Optional<TelemetryConfirmedReadingSnapshot> findLatestConfirmedReadingSnapshotBeforeDate(String schemaName,
+                                                                                                    Long schemeId,
+                                                                                                    LocalDate cutoffDateExclusive,
+                                                                                                    Long excludeReadingId) {
+        validateSchemaName(schemaName);
+        if (cutoffDateExclusive == null) {
+            throw new IllegalArgumentException("cutoffDateExclusive is required");
+        }
+        String timeColumn = resolveFlowReadingTimeColumn(schemaName);
+        StringBuilder sql = new StringBuilder(String.format("""
+                SELECT confirmed_reading, created_at
+                FROM %s.flow_reading_table
+                WHERE scheme_id = ?
+                  AND confirmed_reading > 0
+                  AND reading_date < ?
+                  AND deleted_at IS NULL
+                """, schemaName));
+        List<Object> params = new ArrayList<>();
+        params.add(schemeId);
+        params.add(cutoffDateExclusive);
+        if (excludeReadingId != null) {
+            sql.append(" AND id <> ?");
+            params.add(excludeReadingId);
+        }
+        sql.append(" ORDER BY ").append(timeColumn).append(" DESC, created_at DESC LIMIT 1");
+        List<TelemetryConfirmedReadingSnapshot> rows = jdbcTemplate.query(
+                sql.toString(),
+                (rs, n) -> new TelemetryConfirmedReadingSnapshot(
+                        rs.getBigDecimal("confirmed_reading"),
+                        rs.getTimestamp("created_at") != null ? rs.getTimestamp("created_at").toLocalDateTime() : null
+                ),
+                params.toArray()
+        );
+        return rows.stream().findFirst();
+    }
+
     public int countAnomaliesByTypeForToday(String schemaName, Long userId, Long schemeId, int anomalyType) {
         validateSchemaName(schemaName);
         String sql = String.format("""

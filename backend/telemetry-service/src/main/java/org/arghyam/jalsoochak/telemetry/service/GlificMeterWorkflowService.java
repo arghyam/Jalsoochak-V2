@@ -580,8 +580,18 @@ public class GlificMeterWorkflowService {
                     ? request.getCorrelationId().trim()
                     : "manual-" + UUID.randomUUID();
 
-            Optional<TelemetryConfirmedReadingSnapshot> previousSnapshotOpt = telemetryTenantRepository
-                    .findLatestConfirmedReadingSnapshot(operatorWithSchema.schemaName(), schemeId, null);
+            // Default behavior (null/true) keeps current validation: compare against latest confirmed reading,
+            // including today's submissions. When false, ignore today's readings and only compare against the
+            // latest confirmed reading strictly before today.
+            boolean isManualReading = !Boolean.FALSE.equals(request.getIsManualReading());
+            Optional<TelemetryConfirmedReadingSnapshot> previousSnapshotOpt = isManualReading
+                    ? telemetryTenantRepository.findLatestConfirmedReadingSnapshot(operatorWithSchema.schemaName(), schemeId, null)
+                    : telemetryTenantRepository.findLatestConfirmedReadingSnapshotBeforeDate(
+                            operatorWithSchema.schemaName(),
+                            schemeId,
+                            LocalDate.now(),
+                            null
+                    );
 
             // When the meter is replaced, treat the submitted reading as the new baseline.
             // That means we must not reject lower readings vs the previous meter's last confirmed reading.
@@ -620,7 +630,8 @@ public class GlificMeterWorkflowService {
             }
 
             if (pendingOpt.isPresent()) {
-                telemetryTenantRepository.updatePendingMeterChangeReading(
+                // Manual reading submissions should only update confirmed_reading (never extracted_reading).
+                telemetryTenantRepository.updateConfirmedReading(
                         operatorWithSchema.schemaName(),
                         pendingOpt.get().id(),
                         manualReadingValue,
@@ -645,22 +656,14 @@ public class GlificMeterWorkflowService {
 
                 if (todaysFlowOpt.isPresent()) {
                     TelemetryFlowReadingDetails todaysFlow = todaysFlowOpt.get();
-                    BigDecimal extracted = todaysFlow.extractedReading();
-                    if (extracted == null || extracted.compareTo(BigDecimal.ZERO) <= 0) {
-                        telemetryTenantRepository.updateReadingValues(
-                                operatorWithSchema.schemaName(),
-                                todaysFlow.id(),
-                                manualReadingValue,
-                                operatorWithSchema.operator().id()
-                        );
-                    } else {
-                        telemetryTenantRepository.updateConfirmedReading(
-                                operatorWithSchema.schemaName(),
-                                todaysFlow.id(),
-                                manualReadingValue,
-                                operatorWithSchema.operator().id()
-                        );
-                    }
+                    // Manual reading submissions should only update confirmed_reading (never extracted_reading),
+                    // regardless of whether extracted_reading exists for today's row.
+                    telemetryTenantRepository.updateConfirmedReading(
+                            operatorWithSchema.schemaName(),
+                            todaysFlow.id(),
+                            manualReadingValue,
+                            operatorWithSchema.operator().id()
+                    );
                     if (isMeterReplaced) {
                         telemetryTenantRepository.updateMeterChangeReason(
                                 operatorWithSchema.schemaName(),
@@ -679,7 +682,7 @@ public class GlificMeterWorkflowService {
                             schemeId,
                             operatorWithSchema.operator().id(),
                             LocalDateTime.now(),
-                            manualReadingValue,
+                            BigDecimal.ZERO,
                             manualReadingValue,
                             correlationId,
                             "",
