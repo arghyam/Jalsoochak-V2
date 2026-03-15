@@ -245,7 +245,13 @@ public class UserCommonRepository {
 
     // --- Listing (paginated) ---
 
-    public List<AdminUserRow> listSuperUsers(int offset, int limit) {
+    public List<AdminUserRow> listSuperUsers(long offset, int limit) {
+        if (limit <= 0) {
+            throw new IllegalArgumentException("limit must be greater than 0");
+        }
+        if (offset < 0) {
+            throw new IllegalArgumentException("offset must be non-negative");
+        }
         String sql = """
                 SELECT id, uuid, email, phone_number, tenant_id, admin_level, status, created_by, created_at
                 FROM common_schema.tenant_admin_user_master_table
@@ -266,7 +272,13 @@ public class UserCommonRepository {
         return count != null ? count : 0L;
     }
 
-    public List<AdminUserRow> listStateAdminsByTenant(Integer tenantId, int offset, int limit) {
+    public List<AdminUserRow> listStateAdminsByTenant(Integer tenantId, long offset, int limit) {
+        if (limit <= 0) {
+            throw new IllegalArgumentException("limit must be greater than 0");
+        }
+        if (offset < 0) {
+            throw new IllegalArgumentException("offset must be non-negative");
+        }
         if (tenantId == null) {
             String sql = """
                     SELECT id, uuid, email, phone_number, tenant_id, admin_level, status, created_by, created_at

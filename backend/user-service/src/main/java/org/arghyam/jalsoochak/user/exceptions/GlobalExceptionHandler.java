@@ -1,5 +1,6 @@
 package org.arghyam.jalsoochak.user.exceptions;
 
+import jakarta.validation.ConstraintViolationException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
@@ -27,6 +28,19 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(BadRequestException.class)
     public ResponseEntity<Map<String, Object>> handleBadRequest(BadRequestException ex) {
         return build(HttpStatus.BAD_REQUEST, ex.getMessage(), ex.getErrors());
+    }
+
+    @ExceptionHandler(ConstraintViolationException.class)
+    public ResponseEntity<Map<String, Object>> handleConstraintViolation(ConstraintViolationException ex) {
+        List<Map<String, Object>> errors = new ArrayList<>();
+        for (var violation : ex.getConstraintViolations()) {
+            Map<String, Object> e = new LinkedHashMap<>();
+            String path = violation.getPropertyPath().toString();
+            e.put("field", path.contains(".") ? path.substring(path.lastIndexOf('.') + 1) : path);
+            e.put("message", violation.getMessage());
+            errors.add(e);
+        }
+        return build(HttpStatus.BAD_REQUEST, "Validation failed", errors.isEmpty() ? null : errors);
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
