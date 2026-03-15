@@ -427,11 +427,19 @@ public class GlificSelectionService {
                     .replace("{item}", selectedItemLabel)
                     .replace("{selected}", selectedCode);
 
-            boolean locationCheckRequired = false;
             String responseSelectedCode = selectedCode;
             if ("readingSubmission".equals(selectedCode)) {
-                locationCheckRequired = isLocationCheckRequired(tenantId);
-                if (locationCheckRequired) {
+                boolean isFirstOptionSelected = selectedIndex == 0;
+                boolean locationCheckRequiredYes = isLocationCheckRequiredYes(tenantId);
+                Long schemeId = telemetryTenantRepository
+                        .findFirstSchemeForUser(operatorWithSchema.schemaName(), operatorWithSchema.operator().id())
+                        .orElse(null);
+                boolean schemeHasLatLng = schemeId != null
+                        && telemetryTenantRepository.schemeHasLatitudeAndLongitude(operatorWithSchema.schemaName(), schemeId);
+
+                // Only allow the "readingSubmission" selection to flow through when:
+                // 1 is selected, LOCATION_CHECK_REQUIRED is YES, and scheme has latitude + longitude.
+                if (!(isFirstOptionSelected && locationCheckRequiredYes && schemeHasLatLng)) {
                     responseSelectedCode = "readingSubmissionLocationNotSelected";
                 }
             }
@@ -453,13 +461,13 @@ public class GlificSelectionService {
         }
     }
 
-    private boolean isLocationCheckRequired(Integer tenantId) {
+    private boolean isLocationCheckRequiredYes(Integer tenantId) {
         String raw = tenantConfigRepository.findConfigValue(tenantId, "LOCATION_CHECK_REQUIRED").orElse(null);
         String value = extractSimpleConfigValue(raw).orElse(raw == null ? null : raw.trim());
         if (value == null || value.isBlank()) {
             return false;
         }
-        return value.trim().equalsIgnoreCase("NO");
+        return value.trim().equalsIgnoreCase("YES");
     }
 
     private Optional<String> extractSimpleConfigValue(String raw) {
