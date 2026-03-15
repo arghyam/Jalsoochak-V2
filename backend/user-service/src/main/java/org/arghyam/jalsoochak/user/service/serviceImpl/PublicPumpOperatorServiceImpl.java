@@ -47,8 +47,8 @@ public class PublicPumpOperatorServiceImpl implements PublicPumpOperatorService 
     }
 
     @Override
-    public List<SchemePumpOperatorsDTO> listPumpOperatorsByScheme(String tenantCode, List<Long> schemeIds) {
+    public List<SchemePumpOperatorsDTO> listPumpOperatorsByScheme(String tenantCode, List<Long> schemeIds, String schemeName) {
         String schemaName = TenantSchemaResolver.requireSchemaNameFromTenantCode(tenantCode);
-        return publicPumpOperatorRepository.listPumpOperatorsByScheme(schemaName, schemeIds);
+        return publicPumpOperatorRepository.listPumpOperatorsByScheme(schemaName, schemeIds, schemeName);
     }
 }
