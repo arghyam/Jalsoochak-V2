@@ -1,6 +1,8 @@
 package org.arghyam.jalsoochak.telemetry.service;
 
 import lombok.extern.slf4j.Slf4j;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.arghyam.jalsoochak.telemetry.dto.requests.IntroRequest;
 import org.arghyam.jalsoochak.telemetry.dto.requests.SelectedChannelRequest;
 import org.arghyam.jalsoochak.telemetry.dto.requests.SelectedItemRequest;
@@ -38,6 +40,7 @@ public class GlificSelectionService {
     private final TelemetryTenantRepository telemetryTenantRepository;
     private final UserLanguagePreferenceRepository userLanguagePreferenceRepository;
     private final GlificContactSyncService glificContactSyncService;
+    private final ObjectMapper objectMapper;
 
     public GlificSelectionService(GlificOperatorContextService operatorContextService,
                                   GlificLocalizationService localizationService,
@@ -45,7 +48,8 @@ public class GlificSelectionService {
                                   GlificMessageTemplatesService templatesService,
                                   TelemetryTenantRepository telemetryTenantRepository,
                                   UserLanguagePreferenceRepository userLanguagePreferenceRepository,
-                                  GlificContactSyncService glificContactSyncService) {
+                                  GlificContactSyncService glificContactSyncService,
+                                  ObjectMapper objectMapper) {
         this.operatorContextService = operatorContextService;
         this.localizationService = localizationService;
         this.tenantConfigRepository = tenantConfigRepository;
@@ -53,6 +57,7 @@ public class GlificSelectionService {
         this.telemetryTenantRepository = telemetryTenantRepository;
         this.userLanguagePreferenceRepository = userLanguagePreferenceRepository;
         this.glificContactSyncService = glificContactSyncService;
+        this.objectMapper = objectMapper;
     }
 
     public IntroResponse languageSelectionMessage(IntroRequest request) {
@@ -422,9 +427,20 @@ public class GlificSelectionService {
                     .replace("{item}", selectedItemLabel)
                     .replace("{selected}", selectedCode);
 
+            boolean locationCheckRequired = false;
+            String responseSelectedCode = selectedCode;
+            if ("readingSubmission".equals(selectedCode)) {
+                locationCheckRequired = isLocationCheckRequired(tenantId);
+                if (locationCheckRequired) {
+                    responseSelectedCode = "readingSubmissionLocationNotSelected";
+                }
+            }
+
+            // Intentionally no stdout prints here. Use logs if needed for production debugging.
+
             return SelectionResponse.builder()
                     .success(true)
-                    .selected(selectedCode)
+                    .selected(responseSelectedCode)
                     .message(message)
                     .build();
         } catch (Exception e) {
@@ -437,6 +453,38 @@ public class GlificSelectionService {
                     .message(localizationService.resolveUserFacingErrorMessage(e, "Item selection could not be saved.", languageKey))
                     .build();
         }
+    }
+
+    private boolean isLocationCheckRequired(Integer tenantId) {
+        String raw = tenantConfigRepository.findConfigValue(tenantId, "LOCATION_CHECK_REQUIRED").orElse(null);
+        String value = extractSimpleConfigValue(raw).orElse(raw == null ? null : raw.trim());
+        if (value == null || value.isBlank()) {
+            return false;
+        }
+        // Per current webhook contract: when LOCATION_CHECK_REQUIRED is "NO", return readingSubmissionLocationNotSelected.
+        return value.trim().equalsIgnoreCase("NO");
+    }
+
+    private Optional<String> extractSimpleConfigValue(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return Optional.empty();
+        }
+        try {
+            JsonNode node = objectMapper.readTree(raw);
+            if (node == null) {
+                return Optional.empty();
+            }
+            if (node.isTextual()) {
+                return Optional.ofNullable(node.asText());
+            }
+            JsonNode valueNode = node.get("value");
+            if (valueNode != null && !valueNode.isNull()) {
+                return Optional.ofNullable(valueNode.asText());
+            }
+        } catch (Exception ignored) {
+            // Fall back to raw string value.
+        }
+        return Optional.empty();
     }
 
     private Optional<String> resolveSelection(String rawSelection, List<String> options) {
