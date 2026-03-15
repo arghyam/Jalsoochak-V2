@@ -1,11 +1,25 @@
 package org.arghyam.jalsoochak.user.service;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
+import java.util.Optional;
+
 import org.arghyam.jalsoochak.user.clients.KeycloakClient;
 import org.arghyam.jalsoochak.user.clients.KeycloakTokenResponse;
 import org.arghyam.jalsoochak.user.config.KeycloakProvider;
 import org.arghyam.jalsoochak.user.config.properties.FrontendProperties;
-import org.arghyam.jalsoochak.user.config.properties.InviteProperties;
 import org.arghyam.jalsoochak.user.config.properties.PasswordResetProperties;
 import org.arghyam.jalsoochak.user.dto.internal.AuthResult;
 import org.arghyam.jalsoochak.user.dto.request.ActivateAccountRequestDTO;
@@ -34,21 +48,7 @@ import org.mockito.Answers;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import java.time.Instant;
-import java.time.temporal.ChronoUnit;
-import java.util.Optional;
-
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.doNothing;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 @ExtendWith(MockitoExtension.class)
 @DisplayName("AuthServiceImpl - Unit Tests")
@@ -80,9 +80,6 @@ class AuthServiceImplTest {
     private KeycloakAdminHelper keycloakAdminHelper;
 
     @Mock
-    private InviteProperties inviteProperties;
-
-    @Mock
     private PasswordResetProperties passwordResetProperties;
 
     @Mock
@@ -97,7 +94,7 @@ class AuthServiceImplTest {
     void setUp() {
         authService = new AuthServiceImpl(
                 keycloakProvider, keycloakClient, userCommonRepository, userTenantRepository,
-                mailService, keycloakAdminHelper, inviteProperties, passwordResetProperties,
+                mailService, keycloakAdminHelper, passwordResetProperties,
                 frontendProperties, tokenService, new ObjectMapper()
         );
     }
