@@ -122,7 +122,7 @@ public class EscalationSchedulerService {
 
             int effectiveDays = neverUploaded ? 0 : daysSinceLastUpload;
             LocalDate streakStart = neverUploaded ? LocalDate.of(1970, 1, 1) : LocalDate.now().minusDays(effectiveDays);
-            String opCorrelationKey = schema + ":" + schemeId + ":NO_SUBMISSION:" + streakStart;
+            String opCorrelationKey = schema + ":" + schemeId + ":" + (userId != null ? userId : row.get("phone_number")) + ":NO_SUBMISSION:" + streakStart;
             String opCorrelationId = UUID.nameUUIDFromBytes(
                     opCorrelationKey.getBytes(StandardCharsets.UTF_8)).toString();
 

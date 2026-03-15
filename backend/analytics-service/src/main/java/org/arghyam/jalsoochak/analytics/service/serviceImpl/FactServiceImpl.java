@@ -135,12 +135,18 @@ public class FactServiceImpl implements FactService {
         ensureTenantExists(event.getTenantId(), event.getTenantSchema());
         OffsetDateTime now = OffsetDateTime.now();
         int operatorCount = event.getOperators() != null ? event.getOperators().size() : 0;
+        int escalationRowsCreated = 0;
+        int anomalyRowsCreated = 0;
 
         // One fact_escalation_table row + one anomaly_table row per operator
         if (event.getOperators() == null) return;
         for (TenantEscalationEvent.TenantOperatorEscalationDetail op : event.getOperators()) {
+            if (op.getCorrelationId() == null) {
+                log.warn("Skipping operator escalation row — correlationId is null (userId={} name={})", op.getUserId(), op.getName());
+                continue;
+            }
             if (op.getUserId() == null) {
-                log.warn("Skipping operator escalation row — op.userId is null (correlationId={})", op.getCorrelationId());
+                log.warn("Skipping operator escalation row — userId is null (correlationId={})", op.getCorrelationId());
                 continue;
             }
             if (op.getConsecutiveDaysMissed() == null) {
@@ -158,7 +164,7 @@ public class FactServiceImpl implements FactService {
             }
 
             // Idempotency: skip if this operator event was already ingested
-            if (op.getCorrelationId() != null && escalationRepository.existsByCorrelationId(op.getCorrelationId())) {
+            if (escalationRepository.existsByCorrelationId(op.getCorrelationId())) {
                 log.debug("Skipping duplicate fact_escalation for correlationId={}", op.getCorrelationId());
             } else {
                 FactEscalation escalationFact = FactEscalation.builder()
@@ -174,11 +180,11 @@ public class FactServiceImpl implements FactService {
                         .updatedAt(now.toLocalDateTime())
                         .build();
                 escalationRepository.save(escalationFact);
+                escalationRowsCreated++;
             }
 
-            if (op.getCorrelationId() != null
-                    && anomalyRepository.existsByCorrelationIdAndTypeAndSchemeIdAndTenantId(
-                            op.getCorrelationId(), 6, schemeId, event.getTenantId())) {
+            if (anomalyRepository.existsByCorrelationIdAndTypeAndSchemeIdAndTenantId(
+                    op.getCorrelationId(), 6, schemeId, event.getTenantId())) {
                 log.debug("Skipping duplicate anomaly for correlationId={}", op.getCorrelationId());
                 continue;
             }
@@ -208,8 +214,10 @@ public class FactServiceImpl implements FactService {
                     .updatedAt(now)
                     .build();
             anomalyRepository.save(anomaly);
+            anomalyRowsCreated++;
         }
-        log.info("Ingested {} fact_escalation + anomaly row(s) for tenant={}", operatorCount, event.getTenantId());
+        log.info("Processed {} operators for tenant={}: {} escalation rows, {} anomaly rows created (of {} total)",
+                operatorCount, event.getTenantId(), escalationRowsCreated, anomalyRowsCreated, operatorCount);
     }
 
     private void ensureTenantExists(Integer tenantId, String tenantSchema) {

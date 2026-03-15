@@ -3,7 +3,9 @@ package org.arghyam.jalsoochak.analytics.service.serviceImpl;
 import org.arghyam.jalsoochak.analytics.dto.event.EscalationEvent;
 import org.arghyam.jalsoochak.analytics.dto.event.MeterReadingEvent;
 import org.arghyam.jalsoochak.analytics.dto.event.SchemePerformanceEvent;
+import org.arghyam.jalsoochak.analytics.dto.event.TenantEscalationEvent;
 import org.arghyam.jalsoochak.analytics.dto.event.WaterQuantityEvent;
+import org.arghyam.jalsoochak.analytics.entity.Anomaly;
 import org.arghyam.jalsoochak.analytics.entity.FactEscalation;
 import org.arghyam.jalsoochak.analytics.entity.FactMeterReading;
 import org.arghyam.jalsoochak.analytics.entity.FactSchemePerformance;
@@ -24,9 +26,16 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 
+import java.util.List;
+
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class FactServiceImplTest {
@@ -107,6 +116,100 @@ class FactServiceImplTest {
         verify(escalationRepository, times(1)).save(captor.capture());
         assertThat(captor.getValue().getEscalationType()).isEqualTo(3);
         assertThat(captor.getValue().getResolutionStatus()).isEqualTo(0);
+    }
+
+    // ── ingestTenantEscalation ───────────────────────────────────────────────
+
+    private TenantEscalationEvent buildEscalationEvent(TenantEscalationEvent.TenantOperatorEscalationDetail... ops) {
+        TenantEscalationEvent event = new TenantEscalationEvent();
+        event.setTenantId(1);
+        event.setTenantSchema("tenant_mp");
+        event.setEscalationLevel(1);
+        event.setOfficerId(99L);
+        event.setOperators(ops.length == 0 ? List.of() : List.of(ops));
+        return event;
+    }
+
+    private TenantEscalationEvent.TenantOperatorEscalationDetail buildOp(
+            Integer userId, Integer consecutiveDays, String correlationId, String schemeId) {
+        TenantEscalationEvent.TenantOperatorEscalationDetail op =
+                new TenantEscalationEvent.TenantOperatorEscalationDetail();
+        op.setUserId(userId);
+        op.setConsecutiveDaysMissed(consecutiveDays);
+        op.setCorrelationId(correlationId);
+        op.setSchemeId(schemeId);
+        op.setName("Test Operator");
+        return op;
+    }
+
+    @Test
+    void ingestTenantEscalation_happyPath_savesEscalationAndAnomaly() {
+        TenantEscalationEvent event = buildEscalationEvent(buildOp(21, 5, "corr-1", "11"));
+        when(dimTenantRepository.existsById(1)).thenReturn(true);
+        when(escalationRepository.existsByCorrelationId("corr-1")).thenReturn(false);
+        when(anomalyRepository.existsByCorrelationIdAndTypeAndSchemeIdAndTenantId("corr-1", 6, 11, 1)).thenReturn(false);
+
+        service.ingestTenantEscalation(event);
+
+        ArgumentCaptor<FactEscalation> escCaptor = ArgumentCaptor.forClass(FactEscalation.class);
+        verify(escalationRepository, times(1)).save(escCaptor.capture());
+        assertThat(escCaptor.getValue().getUserId()).isEqualTo(21);
+        assertThat(escCaptor.getValue().getSchemeId()).isEqualTo(11);
+        assertThat(escCaptor.getValue().getCorrelationId()).isEqualTo("corr-1");
+
+        ArgumentCaptor<Anomaly> anomalyCaptor = ArgumentCaptor.forClass(Anomaly.class);
+        verify(anomalyRepository, times(1)).save(anomalyCaptor.capture());
+        assertThat(anomalyCaptor.getValue().getUserId()).isEqualTo(21);
+        assertThat(anomalyCaptor.getValue().getConsecutiveDaysMissed()).isEqualTo(5);
+    }
+
+    @Test
+    void ingestTenantEscalation_nullUserId_skipsRow() {
+        TenantEscalationEvent event = buildEscalationEvent(buildOp(null, 5, "corr-2", "11"));
+        when(dimTenantRepository.existsById(1)).thenReturn(true);
+
+        service.ingestTenantEscalation(event);
+
+        verify(escalationRepository, never()).save(any());
+        verify(anomalyRepository, never()).save(any());
+    }
+
+    @Test
+    void ingestTenantEscalation_nullCorrelationId_skipsRow() {
+        TenantEscalationEvent event = buildEscalationEvent(buildOp(21, 5, null, "11"));
+        when(dimTenantRepository.existsById(1)).thenReturn(true);
+
+        service.ingestTenantEscalation(event);
+
+        verify(escalationRepository, never()).save(any());
+        verify(anomalyRepository, never()).save(any());
+    }
+
+    @Test
+    void ingestTenantEscalation_duplicateCorrelationId_skipsInsert() {
+        TenantEscalationEvent event = buildEscalationEvent(buildOp(21, 5, "corr-dup", "11"));
+        when(dimTenantRepository.existsById(1)).thenReturn(true);
+        when(escalationRepository.existsByCorrelationId("corr-dup")).thenReturn(true);
+        when(anomalyRepository.existsByCorrelationIdAndTypeAndSchemeIdAndTenantId("corr-dup", 6, 11, 1)).thenReturn(true);
+
+        service.ingestTenantEscalation(event);
+
+        verify(escalationRepository, never()).save(any());
+        verify(anomalyRepository, never()).save(any());
+    }
+
+    @Test
+    void ingestTenantEscalation_invalidSchemeId_doesNotThrow() {
+        TenantEscalationEvent event = buildEscalationEvent(buildOp(21, 5, "corr-3", "not-a-number"));
+        when(dimTenantRepository.existsById(1)).thenReturn(true);
+        when(escalationRepository.existsByCorrelationId("corr-3")).thenReturn(false);
+        when(anomalyRepository.existsByCorrelationIdAndTypeAndSchemeIdAndTenantId(anyString(), anyInt(), any(), anyInt())).thenReturn(false);
+
+        service.ingestTenantEscalation(event);
+
+        ArgumentCaptor<FactEscalation> captor = ArgumentCaptor.forClass(FactEscalation.class);
+        verify(escalationRepository, times(1)).save(captor.capture());
+        assertThat(captor.getValue().getSchemeId()).isNull();
     }
 
     @Test
