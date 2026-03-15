@@ -450,6 +450,21 @@ public class TelemetryTenantRepository {
         jdbcTemplate.update(sql, readingValue, readingValue, updatedBy, readingId);
     }
 
+    public void updateMeterChangeReason(String schemaName,
+                                        Long readingId,
+                                        String meterChangeReason,
+                                        Long updatedBy) {
+        validateSchemaName(schemaName);
+        String sql = String.format("""
+                UPDATE %s.flow_reading_table
+                SET meter_change_reason = ?,
+                    updated_by = ?,
+                    updated_at = NOW()
+                WHERE id = ?
+                """, schemaName);
+        jdbcTemplate.update(sql, meterChangeReason, updatedBy, readingId);
+    }
+
     public Optional<BigDecimal> findLastConfirmedReading(String schemaName, Long schemeId, Long excludeReadingId) {
         return findLatestConfirmedReadingSnapshot(schemaName, schemeId, excludeReadingId)
                 .map(TelemetryConfirmedReadingSnapshot::confirmedReading);
