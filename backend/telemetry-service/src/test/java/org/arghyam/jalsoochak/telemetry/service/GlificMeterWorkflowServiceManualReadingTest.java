@@ -71,7 +71,7 @@ class GlificMeterWorkflowServiceManualReadingTest {
         when(telemetryTenantRepository.findFirstSchemeForUser("tenant_test", 1L)).thenReturn(Optional.of(10L));
         when(telemetryTenantRepository.findLatestPendingMeterChangeRecord("tenant_test", 10L, 1L))
                 .thenReturn(Optional.empty());
-        when(telemetryTenantRepository.findLatestConfirmedReadingSnapshot("tenant_test", 10L, null))
+        when(telemetryTenantRepository.findLatestConfirmedReadingSnapshotForDate("tenant_test", 10L, LocalDate.now().minusDays(1), null))
                 .thenReturn(Optional.empty());
 
         when(telemetryTenantRepository.findLatestFlowReadingForDate("tenant_test", 10L, 1L, LocalDate.now()))
@@ -133,7 +133,7 @@ class GlificMeterWorkflowServiceManualReadingTest {
         when(telemetryTenantRepository.findFirstSchemeForUser("tenant_test", 1L)).thenReturn(Optional.of(10L));
         when(telemetryTenantRepository.findLatestPendingMeterChangeRecord("tenant_test", 10L, 1L))
                 .thenReturn(Optional.empty());
-        when(telemetryTenantRepository.findLatestConfirmedReadingSnapshot("tenant_test", 10L, null))
+        when(telemetryTenantRepository.findLatestConfirmedReadingSnapshotForDate("tenant_test", 10L, LocalDate.now().minusDays(1), null))
                 .thenReturn(Optional.empty());
 
         when(telemetryTenantRepository.findLatestFlowReadingForDate("tenant_test", 10L, 1L, LocalDate.now()))
@@ -195,7 +195,7 @@ class GlificMeterWorkflowServiceManualReadingTest {
         when(telemetryTenantRepository.findFirstSchemeForUser("tenant_test", 1L)).thenReturn(Optional.of(10L));
         when(telemetryTenantRepository.findLatestPendingMeterChangeRecord("tenant_test", 10L, 1L))
                 .thenReturn(Optional.empty());
-        when(telemetryTenantRepository.findLatestConfirmedReadingSnapshot("tenant_test", 10L, null))
+        when(telemetryTenantRepository.findLatestConfirmedReadingSnapshotForDate("tenant_test", 10L, LocalDate.now().minusDays(1), null))
                 .thenReturn(Optional.of(new TelemetryConfirmedReadingSnapshot(new BigDecimal("200"), LocalDateTime.now().minusDays(1))));
 
         // Less-than-previous path should short-circuit before any flow-reading mutations.
@@ -216,7 +216,7 @@ class GlificMeterWorkflowServiceManualReadingTest {
     }
 
     @Test
-    void manualReadingWhenIsManualReadingFalseIgnoresTodaysSnapshotForLowerReadingValidation() {
+    void manualReadingWhenNoYesterdaySnapshotDoesNotRejectAgainstHistoricReadings() {
         TelemetryOperatorWithSchema operatorWithSchema = new TelemetryOperatorWithSchema(
                 "tenant_test",
                 new TelemetryOperator(1L, 1, "op", "op@example.com", "919999999999", null)
@@ -230,9 +230,9 @@ class GlificMeterWorkflowServiceManualReadingTest {
         when(telemetryTenantRepository.findLatestPendingMeterChangeRecord("tenant_test", 10L, 1L))
                 .thenReturn(Optional.empty());
 
-        // "Latest" snapshot might be from today and much higher, but isManualReading=false should ignore it.
-        when(telemetryTenantRepository.findLatestConfirmedReadingSnapshotBeforeDate("tenant_test", 10L, LocalDate.now(), null))
-                .thenReturn(Optional.of(new TelemetryConfirmedReadingSnapshot(new BigDecimal("500"), LocalDateTime.now().minusDays(1))));
+        // No confirmed reading yesterday => do not reject today's manual reading against any older history.
+        when(telemetryTenantRepository.findLatestConfirmedReadingSnapshotForDate("tenant_test", 10L, LocalDate.now().minusDays(1), null))
+                .thenReturn(Optional.empty());
 
         when(telemetryTenantRepository.findLatestFlowReadingForDate("tenant_test", 10L, 1L, LocalDate.now()))
                 .thenReturn(Optional.of(new TelemetryFlowReadingDetails(
@@ -276,7 +276,8 @@ class GlificMeterWorkflowServiceManualReadingTest {
         assertEquals(new BigDecimal("1000"), resp.getMeterReading());
         assertEquals("bfm-1", resp.getCorrelationId());
 
-        verify(telemetryTenantRepository).findLatestConfirmedReadingSnapshotBeforeDate("tenant_test", 10L, LocalDate.now(), null);
+        verify(telemetryTenantRepository).findLatestConfirmedReadingSnapshotForDate("tenant_test", 10L, LocalDate.now().minusDays(1), null);
+        verify(telemetryTenantRepository, never()).findLatestConfirmedReadingSnapshotBeforeDate("tenant_test", 10L, LocalDate.now(), null);
         verify(telemetryTenantRepository, never()).findLatestConfirmedReadingSnapshot("tenant_test", 10L, null);
         verify(telemetryTenantRepository).updateConfirmedReading("tenant_test", 99L, new BigDecimal("1000"), 1L);
     }

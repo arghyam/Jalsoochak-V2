@@ -55,6 +55,8 @@ class BfmReadingServiceMeterReplacedTest {
 
         when(telemetryTenantRepository.findLatestConfirmedReadingSnapshot(schemaName, 10L, null))
                 .thenReturn(Optional.of(new TelemetryConfirmedReadingSnapshot(new BigDecimal("200"), LocalDateTime.now().minusDays(1))));
+        when(telemetryTenantRepository.findLatestConfirmedReadingSnapshotForDate(schemaName, 10L, LocalDate.now().minusDays(1), null))
+                .thenReturn(Optional.of(new TelemetryConfirmedReadingSnapshot(new BigDecimal("200"), LocalDateTime.now().minusDays(1))));
 
         CreateReadingResponse resp = service.createReading(request, schemaName, operator, "919999999999", false);
 
@@ -124,4 +126,3 @@ class BfmReadingServiceMeterReplacedTest {
         );
     }
 }
-

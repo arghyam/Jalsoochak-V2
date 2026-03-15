@@ -580,16 +580,20 @@ public class GlificMeterWorkflowService {
                     ? request.getCorrelationId().trim()
                     : "manual-" + UUID.randomUUID();
 
-            // Default behavior (null/true) keeps current validation: compare against latest confirmed reading,
-            // including today's submissions. When false, ignore today's readings and only compare against the
-            // latest confirmed reading strictly before today.
-            boolean isManualReading = !Boolean.FALSE.equals(request.getIsManualReading());
-            Optional<TelemetryConfirmedReadingSnapshot> previousSnapshotOpt = isManualReading
+            // Validation baseline:
+            // - If the meter is not replaced, compare only against yesterday's confirmed reading (if any).
+            //   This avoids rejecting a "today" reading against an older historic reading when there was no
+            //   reading yesterday.
+            // - If the meter is replaced, we still load the latest snapshot for anomaly/audit context, but we
+            //   do not reject lower readings vs the previous meter's baseline.
+            LocalDate today = LocalDate.now();
+            LocalDate yesterday = today.minusDays(1);
+            Optional<TelemetryConfirmedReadingSnapshot> previousSnapshotOpt = isMeterReplaced
                     ? telemetryTenantRepository.findLatestConfirmedReadingSnapshot(operatorWithSchema.schemaName(), schemeId, null)
-                    : telemetryTenantRepository.findLatestConfirmedReadingSnapshotBeforeDate(
+                    : telemetryTenantRepository.findLatestConfirmedReadingSnapshotForDate(
                             operatorWithSchema.schemaName(),
                             schemeId,
-                            LocalDate.now(),
+                            yesterday,
                             null
                     );
 
@@ -651,7 +655,7 @@ public class GlificMeterWorkflowService {
                         operatorWithSchema.schemaName(),
                         schemeId,
                         operatorWithSchema.operator().id(),
-                        LocalDate.now()
+                        today
                 );
 
                 if (todaysFlowOpt.isPresent()) {
