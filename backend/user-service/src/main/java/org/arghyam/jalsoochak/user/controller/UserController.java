@@ -105,7 +105,7 @@ public class UserController {
     }
 
     @PutMapping("/{id}/activate")
-    @PreAuthorize("hasRole('SUPER_USER', 'STATE_ADMIN')")
+    @PreAuthorize("hasAnyRole('SUPER_USER', 'STATE_ADMIN')")
     public ResponseEntity<ApiResponseDTO<Void>> activate(@PathVariable Long id, Authentication authentication) {
         userManagementService.activateUser(id, authentication);
         return ResponseEntity.ok(ApiResponseDTO.of(200, "User activated successfully"));

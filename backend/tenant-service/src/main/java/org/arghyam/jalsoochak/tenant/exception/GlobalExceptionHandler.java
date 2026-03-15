@@ -3,7 +3,6 @@ package org.arghyam.jalsoochak.tenant.exception;
 import jakarta.validation.ConstraintViolationException;
 import lombok.extern.slf4j.Slf4j;
 import org.arghyam.jalsoochak.tenant.dto.common.ApiErrorResponseDTO;
-import org.slf4j.MDC;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -13,6 +12,7 @@ import org.springframework.web.method.annotation.MethodArgumentTypeMismatchExcep
 
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 @RestControllerAdvice
 @Slf4j
@@ -34,7 +34,10 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ApiErrorResponseDTO> handleValidationErrors(MethodArgumentNotValidException ex) {
         List<Map<String, String>> fieldErrors = ex.getBindingResult().getFieldErrors().stream()
-                .map(fe -> Map.of("field", fe.getField(), "message", fe.getDefaultMessage()))
+                .map(fe -> {
+                    String message = Optional.ofNullable(fe.getDefaultMessage()).orElse("Validation failed");
+                    return Map.of("field", fe.getField(), "message", message);
+                })
                 .toList();
         log.warn("Validation failed: {}", fieldErrors);
         return build(HttpStatus.BAD_REQUEST, "Validation failed", fieldErrors);
@@ -113,10 +116,7 @@ public class GlobalExceptionHandler {
     }
 
     private ResponseEntity<ApiErrorResponseDTO> build(HttpStatus status, String message, Object fieldErrors) {
-        String requestId = MDC.get("requestId");
         return ResponseEntity.status(status).body(
-                new ApiErrorResponseDTO(status.value(), status.getReasonPhrase(), message,
-                        requestId != null && !requestId.isBlank() ? requestId : null,
-                        fieldErrors));
+                new ApiErrorResponseDTO(status.value(), status.getReasonPhrase(), message, fieldErrors));
     }
 }

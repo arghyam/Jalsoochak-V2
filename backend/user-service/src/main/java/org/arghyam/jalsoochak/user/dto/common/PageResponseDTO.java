@@ -7,6 +7,8 @@ import lombok.NoArgsConstructor;
 
 import java.util.List;
 
+import org.arghyam.jalsoochak.user.exceptions.BadRequestException;
+
 import io.swagger.v3.oas.annotations.media.Schema;
 
 @Data
@@ -36,17 +38,17 @@ public class PageResponseDTO<T> {
      */
     public static <T> PageResponseDTO<T> of(List<T> content, long totalElements, int page, int size) {
         if (size <= 0) {
-            throw new IllegalArgumentException("size must be greater than 0");
+            throw new BadRequestException("size must be greater than 0");
         }
         if (page < 0) {
-            throw new IllegalArgumentException("page must be non-negative");
+            throw new BadRequestException("page must be non-negative");
         }
         if (totalElements < 0) {
-            throw new IllegalArgumentException("totalElements must be non-negative");
+            throw new BadRequestException("totalElements must be non-negative");
         }
         int totalPages = (int) Math.ceil((double) totalElements / size);
         if ((totalPages == 0 && page != 0) || (totalPages > 0 && page >= totalPages)) {
-            throw new IllegalArgumentException(
+            throw new BadRequestException(
                     "page " + page + " is out of range; totalPages is " + totalPages);
         }
         return PageResponseDTO.<T>builder()

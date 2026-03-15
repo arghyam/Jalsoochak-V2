@@ -2,6 +2,7 @@ package org.arghyam.jalsoochak.user.repository;
 
 import lombok.RequiredArgsConstructor;
 import org.arghyam.jalsoochak.user.enums.AdminUserStatus;
+import org.arghyam.jalsoochak.user.exceptions.BadRequestException;
 import org.arghyam.jalsoochak.user.repository.records.AdminUserRow;
 import org.arghyam.jalsoochak.user.repository.records.AdminUserTokenRow;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -247,10 +248,10 @@ public class UserCommonRepository {
 
     public List<AdminUserRow> listSuperUsers(long offset, int limit) {
         if (limit <= 0) {
-            throw new IllegalArgumentException("limit must be greater than 0");
+            throw new BadRequestException("limit must be greater than 0");
         }
         if (offset < 0) {
-            throw new IllegalArgumentException("offset must be non-negative");
+            throw new BadRequestException("offset must be non-negative");
         }
         String sql = """
                 SELECT id, uuid, email, phone_number, tenant_id, admin_level, status, created_by, created_at
@@ -274,10 +275,10 @@ public class UserCommonRepository {
 
     public List<AdminUserRow> listStateAdminsByTenant(Integer tenantId, long offset, int limit) {
         if (limit <= 0) {
-            throw new IllegalArgumentException("limit must be greater than 0");
+            throw new BadRequestException("limit must be greater than 0");
         }
         if (offset < 0) {
-            throw new IllegalArgumentException("offset must be non-negative");
+            throw new BadRequestException("offset must be non-negative");
         }
         if (tenantId == null) {
             String sql = """

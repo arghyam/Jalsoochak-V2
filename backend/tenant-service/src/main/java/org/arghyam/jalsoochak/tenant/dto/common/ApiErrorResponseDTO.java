@@ -21,18 +21,14 @@ public class ApiErrorResponseDTO {
     @Schema(description = "Error detail message")
     private String message;
 
-    @Schema(description = "Request correlation ID")
-    private String requestId;
-
     @Schema(description = "Field-level validation errors")
     private Object fieldErrors;
 
-    public ApiErrorResponseDTO(int status, String error, String message, String requestId, Object fieldErrors) {
+    public ApiErrorResponseDTO(int status, String error, String message, Object fieldErrors) {
         this.timestamp = OffsetDateTime.now().toString();
         this.status = status;
         this.error = error;
         this.message = message;
-        this.requestId = requestId;
         this.fieldErrors = fieldErrors;
     }
 
@@ -40,6 +36,5 @@ public class ApiErrorResponseDTO {
     public int getStatus() { return status; }
     public String getError() { return error; }
     public String getMessage() { return message; }
-    public String getRequestId() { return requestId; }
     public Object getFieldErrors() { return fieldErrors; }
 }
