@@ -263,7 +263,7 @@ public class UserManagementServiceImpl implements UserManagementService {
 
     @Override
     public PageResponseDTO<AdminUserResponseDTO> listSuperUsers(int page, int limit) {
-        int offset = page * limit;
+        long offset = (long) page * limit;
         List<AdminUserRow> rows = userCommonRepository.listSuperUsers(offset, limit);
         long total = userCommonRepository.countSuperUsers();
         List<AdminUserResponseDTO> users = rows.stream()
@@ -282,6 +282,9 @@ public class UserManagementServiceImpl implements UserManagementService {
             if (callerTenantCode == null) {
                 throw new ForbiddenAccessException("Unable to determine caller's tenant");
             }
+            if (!tenantCode.equalsIgnoreCase(callerTenantCode)) {
+                throw new ForbiddenAccessException("State admin can only list admins within their own state");
+            }
             tenantId = userCommonRepository.findTenantIdByStateCode(callerTenantCode)
                     .orElseThrow(() -> new ForbiddenAccessException("Caller's tenant not found"));
         } else if (tenantCode != null && !tenantCode.isBlank()) {
@@ -289,7 +292,7 @@ public class UserManagementServiceImpl implements UserManagementService {
                     .orElseThrow(() -> new ResourceNotFoundException("Tenant not found for state code: " + tenantCode));
         }
 
-        int offset = page * limit;
+        long offset = (long) page * limit;
         List<AdminUserRow> rows = userCommonRepository.listStateAdminsByTenant(tenantId, offset, limit);
         long total = userCommonRepository.countStateAdminsByTenant(tenantId);
         List<AdminUserResponseDTO> users = rows.stream()
