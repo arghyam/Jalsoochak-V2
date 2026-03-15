@@ -147,8 +147,8 @@ public class FactServiceImpl implements FactService {
         // One fact_escalation_table row + one anomaly_table row per operator
         if (event.getOperators() == null) return;
         for (TenantEscalationEvent.TenantOperatorEscalationDetail op : event.getOperators()) {
-            if (op.getCorrelationId() == null) {
-                log.warn("Skipping operator escalation row — correlationId is null (userId={} name={})", op.getUserId(), op.getName());
+            if (op.getCorrelationId() == null || op.getCorrelationId().isBlank()) {
+                log.warn("Skipping operator escalation row — correlationId is null/blank (userId={} name={})", op.getUserId(), op.getName());
                 continue;
             }
             if (op.getUserId() == null) {
@@ -198,7 +198,7 @@ public class FactServiceImpl implements FactService {
             LocalDate previousReadingDate = null;
             if (op.getLastRecordedBfmDate() != null && !op.getLastRecordedBfmDate().isBlank()
                     && !LAST_RECORDED_BFM_DATE_NEVER.equalsIgnoreCase(op.getLastRecordedBfmDate())) {
-                previousReadingDate = parseDate(op.getLastRecordedBfmDate());
+                previousReadingDate = parseDateOrNull(op.getLastRecordedBfmDate());
             }
 
             BigDecimal previousReading = op.getLastConfirmedReading() != null
@@ -268,6 +268,16 @@ public class FactServiceImpl implements FactService {
         } catch (Exception e) {
             log.warn("Could not parse date '{}', falling back to today", value);
             return LocalDate.now();
+        }
+    }
+
+    private LocalDate parseDateOrNull(String value) {
+        if (value == null || value.isBlank()) return null;
+        try {
+            return LocalDate.parse(value);
+        } catch (Exception e) {
+            log.warn("Could not parse date '{}', storing null", value);
+            return null;
         }
     }
 }

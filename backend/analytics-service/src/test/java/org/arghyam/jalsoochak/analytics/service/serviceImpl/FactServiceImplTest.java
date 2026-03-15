@@ -186,6 +186,17 @@ class FactServiceImplTest {
     }
 
     @Test
+    void ingestTenantEscalation_blankCorrelationId_skipsRow() {
+        TenantEscalationEvent event = buildEscalationEvent(buildOp(21, 5, "   ", "11"));
+        when(dimTenantRepository.existsById(1)).thenReturn(true);
+
+        service.ingestTenantEscalation(event);
+
+        verify(escalationRepository, never()).save(any());
+        verify(anomalyRepository, never()).save(any());
+    }
+
+    @Test
     void ingestTenantEscalation_duplicateCorrelationId_skipsInsert() {
         TenantEscalationEvent event = buildEscalationEvent(buildOp(21, 5, "corr-dup", "11"));
         when(dimTenantRepository.existsById(1)).thenReturn(true);
