@@ -98,12 +98,12 @@ password-reset:
   expiry-minutes: ${PASSWORD_RESET_EXPIRY_MINUTES:30}
 
 frontend:
-  base-url: ${FRONTEND_BASE_URL:http://localhost:3000}
-  invite-path: /createpassword
-  reset-path: /resetpassword
+  base-url: ${FRONTEND_BASE_URL}
+  invite-path: createpassword
+  reset-path: resetpassword
 
 cors:
-  allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000}
+  allowed-origins: ${CORS_ALLOWED_ORIGINS}
 
 cookie:
   secure: ${COOKIE_SECURE:false}  # set to true in production (HTTPS)
