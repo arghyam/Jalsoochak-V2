@@ -202,6 +202,26 @@ class GlificGraphQLClientTest {
     }
 
     @Test
+    void execute_enforcesMinimumIntervalBetweenConsecutiveCalls() {
+        ReflectionTestUtils.setField(client, "requestIntervalMs", 300L);
+
+        wireMockServer.stubFor(post(urlEqualTo(GRAPHQL_PATH))
+                .willReturn(aResponse()
+                        .withStatus(200)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody("""
+                                {"data":{"result":"ok"}}
+                                """)));
+
+        long start = System.currentTimeMillis();
+        client.execute("query {}", Map.of());
+        client.execute("query {}", Map.of());
+        long elapsed = System.currentTimeMillis() - start;
+
+        assertThat(elapsed).isGreaterThanOrEqualTo(300L);
+    }
+
+    @Test
     void glificAuthService_login_storesAccessToken() {
         // Token was set during @BeforeEach login()
         assertThat(authService.getAccessToken()).isEqualTo("initial_token");

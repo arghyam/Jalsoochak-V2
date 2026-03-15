@@ -67,6 +67,17 @@ public class GlificAuthService {
         return accessToken;
     }
 
+    /**
+     * Refreshes the access token only if {@code staleToken} still matches the current token.
+     * The equality check and the refresh are performed atomically under the same lock, preventing
+     * redundant refreshes when multiple threads detect a 401 concurrently.
+     */
+    public synchronized void refreshIfStale(String staleToken) {
+        if (staleToken != null && staleToken.equals(accessToken)) {
+            refresh();
+        }
+    }
+
     /** Refreshes tokens using the renewal token (PUT /api/v1/session/renew). */
     public synchronized void refresh() {
         log.info("[GlificAuth] Refreshing access token...");
