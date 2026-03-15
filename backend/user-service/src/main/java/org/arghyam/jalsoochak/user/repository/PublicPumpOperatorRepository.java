@@ -4,23 +4,43 @@ import lombok.RequiredArgsConstructor;
 import org.arghyam.jalsoochak.user.dto.response.PumpOperatorDetailsDTO;
 import org.arghyam.jalsoochak.user.dto.response.PumpOperatorReadingComplianceDTO;
 import org.arghyam.jalsoochak.user.dto.response.PumpOperatorReadingComplianceRowDTO;
+import org.arghyam.jalsoochak.user.dto.response.PumpOperatorSummaryDTO;
+import org.arghyam.jalsoochak.user.dto.response.SchemePumpOperatorsDTO;
 import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
 import java.math.BigDecimal;
+import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.sql.Array;
 import java.sql.Timestamp;
 import java.time.LocalDateTime;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 @Repository
 @RequiredArgsConstructor
 public class PublicPumpOperatorRepository {
 
     private final JdbcTemplate jdbcTemplate;
+
+    private static Integer getNullableInt(ResultSet rs, String column) throws SQLException {
+        Object o = rs.getObject(column);
+        if (o == null) return null;
+        if (o instanceof Number n) return n.intValue();
+        return Integer.valueOf(o.toString());
+    }
+
+    private static Double getNullableDouble(ResultSet rs, String column) throws SQLException {
+        Object o = rs.getObject(column);
+        if (o == null) return null;
+        if (o instanceof Number n) return n.doubleValue();
+        return Double.valueOf(o.toString());
+    }
 
     private void validateSchemaName(String schemaName) {
         if (schemaName == null || !schemaName.matches("^[a-z_][a-z0-9_]*$")) {
@@ -159,11 +179,11 @@ public class PublicPumpOperatorRepository {
                         .name(rs.getString("title"))
                         .email(rs.getString("email"))
                         .phoneNumber(rs.getString("phone_number"))
-                        .status((Integer) rs.getObject("status"))
-                        .schemeId((Integer) rs.getObject("scheme_id"))
+                        .status(getNullableInt(rs, "status"))
+                        .schemeId(getNullableInt(rs, "scheme_id"))
                         .schemeName(rs.getString("scheme_name"))
-                        .schemeLatitude((Double) rs.getObject("scheme_latitude"))
-                        .schemeLongitude((Double) rs.getObject("scheme_longitude"))
+                        .schemeLatitude(getNullableDouble(rs, "scheme_latitude"))
+                        .schemeLongitude(getNullableDouble(rs, "scheme_longitude"))
                         .lastSubmissionAt(lastSubmissionAt)
                         .firstSubmissionDate(firstSubmissionDate)
                         .totalDaysSinceFirstSubmission(totalDays)
@@ -175,6 +195,116 @@ public class PublicPumpOperatorRepository {
         } catch (EmptyResultDataAccessException ex) {
             return null;
         }
+    }
+
+    public List<SchemePumpOperatorsDTO> listPumpOperatorsByScheme(String schemaName, List<Long> schemeIds, String schemeName) {
+        validateSchemaName(schemaName);
+
+        List<Object> params = new ArrayList<>();
+        StringBuilder where = new StringBuilder("""
+                WHERE usm.deleted_at IS NULL
+                  AND usm.status = 1
+                  AND ut.c_name = 'pump_operator'
+                """);
+        if (schemeIds != null && !schemeIds.isEmpty()) {
+            where.append("\n  AND sm.id IN (");
+            for (int i = 0; i < schemeIds.size(); i++) {
+                if (i > 0) {
+                    where.append(", ");
+                }
+                where.append("?");
+                params.add(schemeIds.get(i));
+            }
+            where.append(")\n");
+        }
+        if (schemeName != null && !schemeName.trim().isBlank()) {
+            where.append("\n  AND sm.scheme_name ILIKE ?\n");
+            params.add("%" + schemeName.trim() + "%");
+        }
+
+        String sql = String.format("""
+                SELECT t.scheme_id,
+                       t.scheme_name,
+                       t.user_id,
+                       t.uuid,
+                       t.name,
+                       t.email,
+                       t.phone_number,
+                       t.status
+                FROM (
+                    SELECT DISTINCT ON (sm.id, u.id)
+                           sm.id AS scheme_id,
+                           sm.scheme_name AS scheme_name,
+                           u.id AS user_id,
+                           u.uuid AS uuid,
+                           u.title AS name,
+                           u.email AS email,
+                           u.phone_number AS phone_number,
+                           u.status AS status
+                    FROM %s.user_scheme_mapping_table usm
+                    JOIN %s.scheme_master_table sm
+                      ON sm.id = usm.scheme_id
+                     AND sm.deleted_at IS NULL
+                    JOIN %s.user_table u
+                      ON u.id = usm.user_id
+                     AND u.deleted_at IS NULL
+                    JOIN common_schema.user_type_master_table ut
+                      ON ut.id = u.user_type
+                    %s
+                    ORDER BY sm.id, u.id, usm.id DESC
+                ) t
+                ORDER BY t.scheme_id ASC, t.name ASC, t.user_id ASC
+                """, schemaName, schemaName, schemaName, where);
+
+        record Row(long schemeId,
+                   String schemeName,
+                   long userId,
+                   String uuid,
+                   String name,
+                   String email,
+                   String phoneNumber,
+                   Integer status) {
+        }
+
+        List<Row> rows = jdbcTemplate.query(sql, (rs, n) -> new Row(
+                rs.getLong("scheme_id"),
+                rs.getString("scheme_name"),
+                rs.getLong("user_id"),
+                rs.getString("uuid"),
+                rs.getString("name"),
+                rs.getString("email"),
+                rs.getString("phone_number"),
+                getNullableInt(rs, "status")
+        ), params.toArray());
+
+        // Group while preserving query order.
+        Map<Long, SchemePumpOperatorsDTO> grouped = new LinkedHashMap<>();
+        for (Row r : rows) {
+            SchemePumpOperatorsDTO existing = grouped.get(r.schemeId());
+            PumpOperatorSummaryDTO op = PumpOperatorSummaryDTO.builder()
+                    .id(r.userId())
+                    .uuid(r.uuid())
+                    .name(r.name())
+                    .email(r.email())
+                    .phoneNumber(r.phoneNumber())
+                    .status(r.status())
+                    .build();
+
+            if (existing == null) {
+                List<PumpOperatorSummaryDTO> ops = new ArrayList<>();
+                ops.add(op);
+                grouped.put(r.schemeId(), SchemePumpOperatorsDTO.builder()
+                        .schemeId(r.schemeId())
+                        .schemeName(r.schemeName())
+                        .pumpOperators(ops)
+                        .build());
+            } else {
+                // List is mutable because we constructed it above.
+                existing.pumpOperators().add(op);
+            }
+        }
+
+        return new ArrayList<>(grouped.values());
     }
 
     public PumpOperatorReadingComplianceDTO getReadingCompliance(String schemaName, long pumpOperatorId) {
