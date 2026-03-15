@@ -148,14 +148,15 @@ public class FactServiceImpl implements FactService {
         if (event.getOperators() == null) return;
         for (TenantEscalationEvent.TenantOperatorEscalationDetail op : event.getOperators()) {
             if (op.getCorrelationId() == null || op.getCorrelationId().isBlank()) {
-                log.warn("Skipping operator escalation row — correlationId is null/blank (userId={} name={})", op.getUserId(), op.getName());
+                log.warn("Skipping operator escalation row — correlationId is null/blank; row discarded");
                 continue;
             }
             if (op.getUserId() == null) {
                 log.warn("Skipping operator escalation row — userId is null (correlationId={})", op.getCorrelationId());
                 continue;
             }
-            if (op.getConsecutiveDaysMissed() == null) {
+            boolean neverUploaded = LAST_RECORDED_BFM_DATE_NEVER.equalsIgnoreCase(op.getLastRecordedBfmDate());
+            if (op.getConsecutiveDaysMissed() == null && !neverUploaded) {
                 log.warn("Skipping operator escalation row — consecutiveDaysMissed is null (correlationId={})", op.getCorrelationId());
                 continue;
             }
@@ -169,15 +170,16 @@ public class FactServiceImpl implements FactService {
                 log.warn("Could not parse schemeId '{}' for operator row", op.getSchemeId());
             }
 
-            // Idempotency: skip if this operator event was already ingested
-            if (escalationRepository.existsByCorrelationId(op.getCorrelationId())) {
-                log.debug("Skipping duplicate fact_escalation for correlationId={}", op.getCorrelationId());
-            } else {
+            // Idempotency: delegate to the DB unique constraint; catch duplicate-key on concurrent delivery
+            String escalationMessage = neverUploaded
+                    ? op.getName() + " has never submitted a reading"
+                    : op.getName() + " has not submitted for " + op.getConsecutiveDaysMissed() + " consecutive days";
+            try {
                 FactEscalation escalationFact = FactEscalation.builder()
                         .tenantId(event.getTenantId())
                         .schemeId(schemeId)
                         .escalationType(1) // NO_SUBMISSION
-                        .message(op.getName() + " has not submitted for " + op.getConsecutiveDaysMissed() + " consecutive days")
+                        .message(escalationMessage)
                         .correlationId(op.getCorrelationId())
                         .userId(op.getUserId())
                         .resolutionStatus(1) // UNRESOLVED
@@ -187,40 +189,42 @@ public class FactServiceImpl implements FactService {
                         .build();
                 escalationRepository.save(escalationFact);
                 escalationRowsCreated++;
-            }
-
-            if (anomalyRepository.existsByCorrelationIdAndTypeAndSchemeIdAndTenantId(
-                    op.getCorrelationId(), 6, schemeId, event.getTenantId())) {
-                log.debug("Skipping duplicate anomaly for correlationId={}", op.getCorrelationId());
-                continue;
+            } catch (DataIntegrityViolationException e) {
+                log.debug("Skipping duplicate fact_escalation for correlationId={}", op.getCorrelationId());
             }
 
             LocalDate previousReadingDate = null;
-            if (op.getLastRecordedBfmDate() != null && !op.getLastRecordedBfmDate().isBlank()
-                    && !LAST_RECORDED_BFM_DATE_NEVER.equalsIgnoreCase(op.getLastRecordedBfmDate())) {
+            if (!neverUploaded && op.getLastRecordedBfmDate() != null && !op.getLastRecordedBfmDate().isBlank()) {
                 previousReadingDate = parseDateOrNull(op.getLastRecordedBfmDate());
             }
 
             BigDecimal previousReading = op.getLastConfirmedReading() != null
                     ? BigDecimal.valueOf(op.getLastConfirmedReading()) : null;
 
-            Anomaly anomaly = Anomaly.builder()
-                    .uuid(UUID.randomUUID().toString())
-                    .type(6) // NO_SUBMISSION
-                    .userId(op.getUserId())
-                    .schemeId(schemeId)
-                    .tenantId(event.getTenantId())
-                    .previousReading(previousReading)
-                    .previousReadingDate(previousReadingDate)
-                    .consecutiveDaysMissed(op.getConsecutiveDaysMissed())
-                    .reason("No submission for " + op.getConsecutiveDaysMissed() + " consecutive days")
-                    .status(1) // OPEN
-                    .correlationId(op.getCorrelationId())
-                    .createdAt(now)
-                    .updatedAt(now)
-                    .build();
-            anomalyRepository.save(anomaly);
-            anomalyRowsCreated++;
+            String anomalyReason = neverUploaded
+                    ? "No submission — operator has never uploaded a reading"
+                    : "No submission for " + op.getConsecutiveDaysMissed() + " consecutive days";
+            try {
+                Anomaly anomaly = Anomaly.builder()
+                        .uuid(UUID.randomUUID().toString())
+                        .type(6) // NO_SUBMISSION
+                        .userId(op.getUserId())
+                        .schemeId(schemeId)
+                        .tenantId(event.getTenantId())
+                        .previousReading(previousReading)
+                        .previousReadingDate(previousReadingDate)
+                        .consecutiveDaysMissed(op.getConsecutiveDaysMissed())
+                        .reason(anomalyReason)
+                        .status(1) // OPEN
+                        .correlationId(op.getCorrelationId())
+                        .createdAt(now)
+                        .updatedAt(now)
+                        .build();
+                anomalyRepository.save(anomaly);
+                anomalyRowsCreated++;
+            } catch (DataIntegrityViolationException e) {
+                log.debug("Skipping duplicate anomaly for correlationId={}", op.getCorrelationId());
+            }
         }
         log.info("Processed {} operators for tenant={}: {} escalation rows, {} anomaly rows created (of {} total)",
                 operatorCount, event.getTenantId(), escalationRowsCreated, anomalyRowsCreated, operatorCount);
