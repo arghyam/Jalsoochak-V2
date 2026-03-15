@@ -10,7 +10,9 @@ import org.arghyam.jalsoochak.analytics.entity.FactEscalation;
 import org.arghyam.jalsoochak.analytics.entity.FactMeterReading;
 import org.arghyam.jalsoochak.analytics.entity.FactSchemePerformance;
 import org.arghyam.jalsoochak.analytics.entity.FactWaterQuantity;
+import org.arghyam.jalsoochak.analytics.entity.DimTenant;
 import org.arghyam.jalsoochak.analytics.repository.AnomalyRepository;
+import org.arghyam.jalsoochak.analytics.repository.DimTenantRepository;
 import org.arghyam.jalsoochak.analytics.repository.FactEscalationRepository;
 import org.arghyam.jalsoochak.analytics.repository.FactMeterReadingRepository;
 import org.arghyam.jalsoochak.analytics.repository.FactSchemePerformanceRepository;
@@ -37,6 +39,7 @@ public class FactServiceImpl implements FactService {
     private final FactEscalationRepository escalationRepository;
     private final FactSchemePerformanceRepository schemePerformanceRepository;
     private final AnomalyRepository anomalyRepository;
+    private final DimTenantRepository dimTenantRepository;
 
     @Override
     @Transactional
@@ -87,6 +90,7 @@ public class FactServiceImpl implements FactService {
     @Override
     @Transactional
     public void ingestEscalation(EscalationEvent event) {
+        ensureTenantExists(event.getTenantId(), null);
         LocalDateTime now = LocalDateTime.now();
 
         FactEscalation fact = FactEscalation.builder()
@@ -127,27 +131,11 @@ public class FactServiceImpl implements FactService {
     @Override
     @Transactional
     public void ingestTenantEscalation(TenantEscalationEvent event) {
+        ensureTenantExists(event.getTenantId(), event.getTenantSchema());
         OffsetDateTime now = OffsetDateTime.now();
         int operatorCount = event.getOperators() != null ? event.getOperators().size() : 0;
 
-        // One fact_escalation_table row per officer event (no single scheme)
-        FactEscalation escalationFact = FactEscalation.builder()
-                .tenantId(event.getTenantId())
-                .schemeId(null)
-                .escalationType(1) // NO_SUBMISSION
-                .message(operatorCount + " operator(s) have not submitted for \u2265" + event.getEscalationLevel() + " days")
-                .correlationId(event.getCorrelationId())
-                .userId(event.getOfficerId() != null ? event.getOfficerId().intValue() : null)
-                .resolutionStatus(1) // UNRESOLVED
-                .remark(null)
-                .createdAt(now.toLocalDateTime())
-                .updatedAt(now.toLocalDateTime())
-                .build();
-        escalationRepository.save(escalationFact);
-        log.info("Ingested fact_escalation_table for tenant={} officer={} operators={}",
-                event.getTenantId(), event.getOfficerId(), operatorCount);
-
-        // One anomaly_table row per operator
+        // One fact_escalation_table row + one anomaly_table row per operator
         if (event.getOperators() == null) return;
         for (TenantEscalationEvent.TenantOperatorEscalationDetail op : event.getOperators()) {
             Integer schemeId = null;
@@ -156,8 +144,22 @@ public class FactServiceImpl implements FactService {
                     schemeId = Integer.parseInt(op.getSchemeId());
                 }
             } catch (NumberFormatException e) {
-                log.warn("Could not parse schemeId '{}' for anomaly row", op.getSchemeId());
+                log.warn("Could not parse schemeId '{}' for operator row", op.getSchemeId());
             }
+
+            FactEscalation escalationFact = FactEscalation.builder()
+                    .tenantId(event.getTenantId())
+                    .schemeId(schemeId)
+                    .escalationType(1) // NO_SUBMISSION
+                    .message(op.getName() + " has not submitted for " + op.getConsecutiveDaysMissed() + " consecutive days")
+                    .correlationId(op.getCorrelationId())
+                    .userId(event.getOfficerId() != null ? event.getOfficerId().intValue() : null)
+                    .resolutionStatus(1) // UNRESOLVED
+                    .remark(null)
+                    .createdAt(now.toLocalDateTime())
+                    .updatedAt(now.toLocalDateTime())
+                    .build();
+            escalationRepository.save(escalationFact);
 
             LocalDate previousReadingDate = null;
             if (op.getLastRecordedBfmDate() != null && !op.getLastRecordedBfmDate().isBlank()
@@ -185,7 +187,27 @@ public class FactServiceImpl implements FactService {
                     .build();
             anomalyRepository.save(anomaly);
         }
-        log.info("Ingested {} anomaly row(s) for tenant={}", operatorCount, event.getTenantId());
+        log.info("Ingested {} fact_escalation + anomaly row(s) for tenant={}", operatorCount, event.getTenantId());
+    }
+
+    private void ensureTenantExists(Integer tenantId, String tenantSchema) {
+        if (tenantId == null) return;
+        if (dimTenantRepository.existsById(tenantId)) return;
+        String stateCode = (tenantSchema != null && tenantSchema.startsWith("tenant_"))
+                ? tenantSchema.substring("tenant_".length())
+                : "unknown";
+        LocalDateTime now = LocalDateTime.now();
+        DimTenant stub = DimTenant.builder()
+                .tenantId(tenantId)
+                .stateCode(stateCode)
+                .title(tenantSchema != null ? tenantSchema : "tenant-" + tenantId)
+                .countryCode("IN")
+                .status(1)
+                .createdAt(now)
+                .updatedAt(now)
+                .build();
+        dimTenantRepository.save(stub);
+        log.info("Created dim_tenant stub [id={} stateCode={}] — full data expected via TENANT_CREATED event", tenantId, stateCode);
     }
 
     private LocalDateTime parseTimestamp(String value) {
