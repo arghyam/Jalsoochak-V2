@@ -48,8 +48,32 @@ public class PublicPumpOperatorRepository {
         }
     }
 
+    private boolean columnExists(String schemaName, String tableName, String columnName) {
+        String sql = """
+                SELECT EXISTS (
+                    SELECT 1
+                    FROM information_schema.columns
+                    WHERE table_schema = ?
+                      AND table_name = ?
+                      AND column_name = ?
+                )
+                """;
+        Boolean exists = jdbcTemplate.queryForObject(sql, Boolean.class, schemaName, tableName, columnName);
+        return Boolean.TRUE.equals(exists);
+    }
+
+    /**
+     * flow_reading_table time column differs across tenant schema versions:
+     * - legacy: reading_at
+     * - newer:  observation_time
+     */
+    private String resolveFlowReadingTimeColumn(String schemaName) {
+        return columnExists(schemaName, "flow_reading_table", "observation_time") ? "observation_time" : "reading_at";
+    }
+
     public PumpOperatorDetailsDTO findPumpOperatorById(String schemaName, long pumpOperatorId) {
         validateSchemaName(schemaName);
+        String timeColumn = resolveFlowReadingTimeColumn(schemaName);
         String sql = String.format("""
                 SELECT u.id,
                        u.uuid,
@@ -88,7 +112,7 @@ public class PublicPumpOperatorRepository {
                 ) sch ON true
                 LEFT JOIN LATERAL (
                     SELECT
-                        MAX(fr.reading_at) AS last_submission_at,
+                        MAX(fr.%s) AS last_submission_at,
                         MIN(fr.reading_date) AS first_submission_date,
                         COUNT(DISTINCT fr.reading_date) AS submitted_days
                     FROM %s.flow_reading_table fr
@@ -134,7 +158,7 @@ public class PublicPumpOperatorRepository {
                   AND u.id = ?
                   AND upper(COALESCE(ut.c_name, '')) = 'PUMP_OPERATOR'
                 LIMIT 1
-                """, schemaName, schemaName, schemaName, schemaName, schemaName);
+                """, schemaName, schemaName, schemaName, schemaName, schemaName, timeColumn);
         try {
             return jdbcTemplate.queryForObject(sql, (rs, rowNum) -> {
                 Timestamp lastTs = (Timestamp) rs.getObject("last_submission_at");
@@ -309,6 +333,7 @@ public class PublicPumpOperatorRepository {
 
     public PumpOperatorReadingComplianceDTO getReadingCompliance(String schemaName, long pumpOperatorId) {
         validateSchemaName(schemaName);
+        String timeColumn = resolveFlowReadingTimeColumn(schemaName);
 
         // If the operator has no readings, lastSubmissionAt/confirmedReading will be null.
         String sql = String.format("""
@@ -319,18 +344,18 @@ public class PublicPumpOperatorRepository {
                 LEFT JOIN common_schema.user_type_master_table ut
                   ON ut.id = u.user_type
                 LEFT JOIN LATERAL (
-                    SELECT reading_at AS last_submission_at, confirmed_reading
+                    SELECT %s AS last_submission_at, confirmed_reading
                     FROM %s.flow_reading_table
                     WHERE deleted_at IS NULL
                       AND created_by = u.id
-                    ORDER BY reading_at DESC, id DESC
+                    ORDER BY %s DESC, id DESC
                     LIMIT 1
                 ) fr ON true
                 WHERE u.deleted_at IS NULL
                   AND u.id = ?
                   AND upper(COALESCE(ut.c_name, '')) = 'PUMP_OPERATOR'
                 LIMIT 1
-                """, schemaName, schemaName);
+                """, schemaName, timeColumn, schemaName, timeColumn);
 
         try {
             return jdbcTemplate.queryForObject(sql, (rs, rowNum) -> {
@@ -350,6 +375,7 @@ public class PublicPumpOperatorRepository {
 
     public List<PumpOperatorReadingComplianceRowDTO> listReadingCompliance(String schemaName) {
         validateSchemaName(schemaName);
+        String timeColumn = resolveFlowReadingTimeColumn(schemaName);
 
         String sql = String.format("""
                 SELECT u.id,
@@ -361,17 +387,17 @@ public class PublicPumpOperatorRepository {
                 LEFT JOIN common_schema.user_type_master_table ut
                   ON ut.id = u.user_type
                 LEFT JOIN LATERAL (
-                    SELECT reading_at AS last_submission_at, confirmed_reading
+                    SELECT %s AS last_submission_at, confirmed_reading
                     FROM %s.flow_reading_table
                     WHERE deleted_at IS NULL
                       AND created_by = u.id
-                    ORDER BY reading_at DESC, id DESC
+                    ORDER BY %s DESC, id DESC
                     LIMIT 1
                 ) fr ON true
                 WHERE u.deleted_at IS NULL
                   AND upper(COALESCE(ut.c_name, '')) = 'PUMP_OPERATOR'
                 ORDER BY u.id DESC
-                """, schemaName, schemaName);
+                """, schemaName, timeColumn, schemaName, timeColumn);
 
         return jdbcTemplate.query(sql, (rs, rowNum) -> {
             Timestamp ts = (Timestamp) rs.getObject("last_submission_at");
