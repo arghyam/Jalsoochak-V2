@@ -32,8 +32,7 @@ public class BfmReadingService {
     public CreateReadingResponse createReading(CreateReadingRequest request,
                                                String schemaName,
                                                TelemetryOperator operator,
-                                               String contactId,
-                                               boolean isMeterReplaced) {
+                                               String contactId) {
         if (!telemetryTenantRepository.existsSchemeById(schemaName, request.getSchemeId())) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "State scheme not found");
         }
@@ -143,9 +142,7 @@ public class BfmReadingService {
         Optional<TelemetryConfirmedReadingSnapshot> previousSnapshotOpt = telemetryTenantRepository
                 .findLatestConfirmedReadingSnapshot(schemaName, request.getSchemeId(), null);
 
-        // When the meter is replaced, treat the submitted reading as the new baseline.
-        // That means we must not reject lower readings vs the previous meter's last confirmed reading.
-        if (!isMeterReplaced && previousSnapshotOpt.isPresent() && confirmedReading != null
+        if (previousSnapshotOpt.isPresent() && confirmedReading != null
                 && confirmedReading.compareTo(previousSnapshotOpt.get().confirmedReading()) < 0) {
             TelemetryConfirmedReadingSnapshot previousSnapshot = previousSnapshotOpt.get();
             String submittedReadingText = confirmedReading.stripTrailingZeros().toPlainString();

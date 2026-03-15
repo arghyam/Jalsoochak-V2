@@ -542,7 +542,6 @@ public class GlificMeterWorkflowService {
             if (request.getManualReading() == null || request.getManualReading().isBlank()) {
                 throw new IllegalStateException("manualReading is required");
             }
-            boolean isMeterReplaced = Boolean.TRUE.equals(request.getIsMeterReplaced());
 
             String normalizedReading = request.getManualReading().trim().replace(",", "");
             if (!normalizedReading.matches("^\\d+(\\.\\d+)?$")) {
@@ -577,9 +576,7 @@ public class GlificMeterWorkflowService {
             Optional<TelemetryConfirmedReadingSnapshot> previousSnapshotOpt = telemetryTenantRepository
                     .findLatestConfirmedReadingSnapshot(operatorWithSchema.schemaName(), schemeId, null);
 
-            // When the meter is replaced, treat the submitted reading as the new baseline.
-            // That means we must not reject lower readings vs the previous meter's last confirmed reading.
-            if (!isMeterReplaced && previousSnapshotOpt.isPresent()
+            if (previousSnapshotOpt.isPresent()
                     && manualReadingValue.compareTo(previousSnapshotOpt.get().confirmedReading()) < 0) {
                 TelemetryConfirmedReadingSnapshot previousSnapshot = previousSnapshotOpt.get();
                 String submittedReadingText = manualReadingValue.stripTrailingZeros().toPlainString();
@@ -620,14 +617,6 @@ public class GlificMeterWorkflowService {
                         manualReadingValue,
                         operatorWithSchema.operator().id()
                 );
-                if (isMeterReplaced) {
-                    telemetryTenantRepository.updateMeterChangeReason(
-                            operatorWithSchema.schemaName(),
-                            pendingOpt.get().id(),
-                            "METER_REPLACED",
-                            operatorWithSchema.operator().id()
-                    );
-                }
                 correlationId = pendingOpt.get().correlationId();
             } else {
                 Optional<TelemetryFlowReadingDetails> todaysFlowOpt = telemetryTenantRepository.findLatestFlowReadingForDate(
@@ -655,14 +644,6 @@ public class GlificMeterWorkflowService {
                                 operatorWithSchema.operator().id()
                         );
                     }
-                    if (isMeterReplaced) {
-                        telemetryTenantRepository.updateMeterChangeReason(
-                                operatorWithSchema.schemaName(),
-                                todaysFlow.id(),
-                                "METER_REPLACED",
-                                operatorWithSchema.operator().id()
-                        );
-                    }
 
                     if (todaysFlow.correlationId() != null && !todaysFlow.correlationId().isBlank()) {
                         correlationId = todaysFlow.correlationId();
@@ -677,7 +658,7 @@ public class GlificMeterWorkflowService {
                             manualReadingValue,
                             correlationId,
                             "",
-                            isMeterReplaced ? "METER_REPLACED" : request.getMeterChangeReason()
+                            request.getMeterChangeReason()
                     );
                 }
             }

@@ -4,7 +4,6 @@ import lombok.RequiredArgsConstructor;
 import org.arghyam.jalsoochak.user.dto.response.PumpOperatorDetailsDTO;
 import org.arghyam.jalsoochak.user.dto.response.PumpOperatorReadingComplianceDTO;
 import org.arghyam.jalsoochak.user.dto.response.PumpOperatorReadingComplianceRowDTO;
-import org.arghyam.jalsoochak.user.dto.response.SchemePumpOperatorsDTO;
 import org.arghyam.jalsoochak.user.repository.PublicPumpOperatorRepository;
 import org.arghyam.jalsoochak.user.service.PublicPumpOperatorService;
 import org.arghyam.jalsoochak.user.util.TenantSchemaResolver;
@@ -44,11 +43,5 @@ public class PublicPumpOperatorServiceImpl implements PublicPumpOperatorService 
     public List<PumpOperatorReadingComplianceRowDTO> listReadingCompliance(String tenantCode) {
         String schemaName = TenantSchemaResolver.requireSchemaNameFromTenantCode(tenantCode);
         return publicPumpOperatorRepository.listReadingCompliance(schemaName);
-    }
-
-    @Override
-    public List<SchemePumpOperatorsDTO> listPumpOperatorsByScheme(String tenantCode, List<Long> schemeIds) {
-        String schemaName = TenantSchemaResolver.requireSchemaNameFromTenantCode(tenantCode);
-        return publicPumpOperatorRepository.listPumpOperatorsByScheme(schemaName, schemeIds);
     }
 }

@@ -35,7 +35,6 @@ public class GlificImageWorkflowService {
             String contactId = glificWebhookRequest.getContactId();
             String mediaId = glificWebhookRequest.getMediaId();
             String mediaUrl = glificWebhookRequest.getMediaUrl();
-            boolean isMeterReplaced = Boolean.TRUE.equals(glificWebhookRequest.getIsMeterReplaced());
 
             byte[] imageBytes = glificMediaService.downloadImage(mediaId, mediaUrl);
             log.debug("Downloaded image for contactId {} (bytes={})", contactId, imageBytes.length);
@@ -56,8 +55,6 @@ public class GlificImageWorkflowService {
                     .operatorId(operatorWithSchema.operator().id())
                     .readingUrl(imageStorageUrl)
                     .readingValue(null)
-                    // Record the reason on the flow_reading_table for meter-replacement submissions.
-                    .meterChangeReason(isMeterReplaced ? "METER_REPLACED" : null)
                     .readingTime(null)
                     .build();
 
@@ -65,8 +62,7 @@ public class GlificImageWorkflowService {
                     createReadingRequest,
                     operatorWithSchema.schemaName(),
                     operatorWithSchema.operator(),
-                    contactId,
-                    isMeterReplaced
+                    contactId
             );
             response.setMessage(localizationService.localizeMessage(response.getMessage(), languageKey));
             return response;

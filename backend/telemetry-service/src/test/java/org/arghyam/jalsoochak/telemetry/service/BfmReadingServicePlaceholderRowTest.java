@@ -71,7 +71,7 @@ class BfmReadingServicePlaceholderRowTest {
                 LocalDate.now()
         )).thenReturn(Optional.of(99L));
 
-        CreateReadingResponse resp = service.createReading(request, schemaName, operator, "919999999999", false);
+        CreateReadingResponse resp = service.createReading(request, schemaName, operator, "919999999999");
 
         assertNotNull(resp);
         assertEquals(true, resp.isSuccess());
