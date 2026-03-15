@@ -8,6 +8,7 @@ import org.arghyam.jalsoochak.tenant.repository.NudgeRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
@@ -35,6 +36,7 @@ public class EscalationSchedulerService {
     private final TenantConfigService tenantConfigService;
     private final KafkaProducer kafkaProducer;
 
+    @Transactional(readOnly = true)
     public void processEscalationsForTenant(String schema, int tenantId) {
         EscalationScheduleConfig cfg = tenantConfigService.getEscalationConfig(tenantId);
         int level1Days = cfg.getLevel1Days();
@@ -51,14 +53,17 @@ public class EscalationSchedulerService {
         log.info("[EscalationJob] schema={} – L1: {} days ({}), L2: {} days ({})",
                 schema, level1Days, level1UserType, level2Days, level2UserType);
 
-        List<Map<String, Object>> rows = nudgeRepository.findUsersWithMissedDays(schema, level1Days);
-        log.info("[EscalationJob] schema={} → {} users exceeded level1 threshold", schema, rows.size());
+        // Preload all officer data for both levels in two queries (avoids N+1 inside the stream)
+        Map<Object, Map<String, Object>> level1OfficersByScheme =
+                nudgeRepository.findAllOfficersByUserType(schema, level1UserType);
+        Map<Object, Map<String, Object>> level2OfficersByScheme =
+                nudgeRepository.findAllOfficersByUserType(schema, level2UserType);
 
         // officer-key → (officerRow, level, detailList)
         // Key = "LEVEL_<n>|<phone>" to keep level1 and level2 officers separate
         Map<String, OfficerGroup> officerGroups = new LinkedHashMap<>();
 
-        for (Map<String, Object> row : rows) {
+        int total = nudgeRepository.streamUsersWithMissedDays(schema, level1Days, LocalDate.now(), row -> {
             // days_since_last_upload is NULL when the operator has never uploaded
             Number daysSinceObj = (Number) row.get("days_since_last_upload");
             boolean neverUploaded = (daysSinceObj == null);
@@ -66,15 +71,17 @@ public class EscalationSchedulerService {
 
             // Never-uploaded operators go straight to level-2 (most severe)
             int escalationLevel = (neverUploaded || daysSinceLastUpload >= level2Days) ? 2 : 1;
-            String officerUserType = escalationLevel == 2 ? level2UserType : level1UserType;
+            // Use null for display so PDFs/reports don't show Integer.MAX_VALUE for never-uploaded operators
+            Integer displayedMissedDays = neverUploaded ? null : daysSinceLastUpload;
             Object schemeId = row.get("scheme_id");
 
-            Map<String, Object> officerRow =
-                    nudgeRepository.findOfficerByUserType(schema, schemeId, officerUserType);
+            Map<String, Object> officerRow = escalationLevel == 2
+                    ? level2OfficersByScheme.get(schemeId)
+                    : level1OfficersByScheme.get(schemeId);
             if (officerRow == null) {
-                log.debug("[EscalationJob] No {} found for scheme={}, skipping",
-                        officerUserType, schemeId);
-                continue;
+                log.warn("[EscalationJob] No officer found – schema={}, schemeId={}, escalationLevel={}, skipping",
+                        schema, schemeId, escalationLevel);
+                return;
             }
 
             String officerPhone = (String) officerRow.get("phone_number");
@@ -86,14 +93,15 @@ public class EscalationSchedulerService {
             Long officerWhatsappConnectionId = officerRow.get("whatsapp_connection_id") != null
                     ? ((Number) officerRow.get("whatsapp_connection_id")).longValue() : null;
             if (officerPhone == null || officerPhone.isBlank()) {
-                continue;
+                log.warn("[EscalationJob] Skipping escalation due to missing officerPhone – schema={}, schemeId={}, escalationLevel={}",
+                        schema, schemeId, escalationLevel);
+                return;
             }
 
-            // Always look up SO name for informational purposes in the detail
+            // Look up SO name from preloaded map for informational purposes in the detail
             String soName = "";
             if (escalationLevel == 2) {
-                Map<String, Object> soRow =
-                        nudgeRepository.findOfficerByUserType(schema, schemeId, level1UserType);
+                Map<String, Object> soRow = level1OfficersByScheme.get(schemeId);
                 if (soRow != null) {
                     soName = (String) soRow.getOrDefault("name", "");
                 }
@@ -121,10 +129,10 @@ public class EscalationSchedulerService {
             OperatorEscalationDetail detail = OperatorEscalationDetail.builder()
                     .name((String) row.get("name"))
                     .phoneNumber((String) row.get("phone_number"))
-                    .schemeName((String) row.getOrDefault("scheme_name", String.valueOf(schemeId)))
+                    .schemeName(row.get("scheme_name") != null ? (String) row.get("scheme_name") : String.valueOf(schemeId))
                     .schemeId(String.valueOf(schemeId))
                     .soName(soName)
-                    .consecutiveDaysMissed(daysSinceLastUpload)
+                    .consecutiveDaysMissed(displayedMissedDays)
                     .lastRecordedBfmDate(lastRecordedBfmDate)
                     .userId(userId)
                     .lastConfirmedReading(lastConfirmedReading)
@@ -136,7 +144,8 @@ public class EscalationSchedulerService {
                     new OfficerGroup(officerPhone, officerName, escalationLevel, officerLanguageId,
                             officerId, officerWhatsappConnectionId))
                     .details.add(detail);
-        }
+        });
+        log.info("[EscalationJob] schema={} → {} users exceeded level1 threshold", schema, total);
 
         // Publish one EscalationEvent per officer
         for (OfficerGroup group : officerGroups.values()) {

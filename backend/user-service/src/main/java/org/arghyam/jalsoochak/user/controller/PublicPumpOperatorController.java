@@ -5,6 +5,7 @@ import org.arghyam.jalsoochak.user.dto.common.ApiResponseDTO;
 import org.arghyam.jalsoochak.user.dto.response.PumpOperatorDetailsDTO;
 import org.arghyam.jalsoochak.user.dto.response.PumpOperatorReadingComplianceDTO;
 import org.arghyam.jalsoochak.user.dto.response.PumpOperatorReadingComplianceRowDTO;
+import org.arghyam.jalsoochak.user.dto.response.SchemePumpOperatorsDTO;
 import org.arghyam.jalsoochak.user.service.PublicPumpOperatorService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -16,7 +17,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.List;
 
 @RestController
-@RequestMapping("/api/v1/public")
+@RequestMapping("/api/v1/pumpoperator")
 @RequiredArgsConstructor
 public class PublicPumpOperatorController {
 
@@ -46,5 +47,24 @@ public class PublicPumpOperatorController {
     ) {
         List<PumpOperatorReadingComplianceRowDTO> rows = publicPumpOperatorService.listReadingCompliance(tenantCode);
         return ResponseEntity.ok(ApiResponseDTO.of(200, "Reading compliance retrieved", rows));
+    }
+
+    @GetMapping("/pump-operators/by-scheme")
+    public ResponseEntity<ApiResponseDTO<List<SchemePumpOperatorsDTO>>> listPumpOperatorsByScheme(
+            @RequestParam String tenantCode,
+            @RequestParam(required = false) Long schemeId,
+            @RequestParam(required = false) List<Long> schemeIds,
+            @RequestParam(required = false) String schemeName
+    ) {
+        List<Long> effectiveSchemeIds = schemeIds;
+        if (schemeId != null) {
+            effectiveSchemeIds = List.of(schemeId);
+        }
+        List<SchemePumpOperatorsDTO> rows = publicPumpOperatorService.listPumpOperatorsByScheme(
+                tenantCode,
+                effectiveSchemeIds,
+                schemeName
+        );
+        return ResponseEntity.ok(ApiResponseDTO.of(200, "Pump operators retrieved", rows));
     }
 }

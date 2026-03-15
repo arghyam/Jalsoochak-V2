@@ -12,6 +12,7 @@ import org.arghyam.jalsoochak.tenant.exception.InvalidConfigValueException;
 import org.arghyam.jalsoochak.tenant.repository.TenantCommonRepository;
 import org.arghyam.jalsoochak.tenant.service.SystemManagementService;
 import org.arghyam.jalsoochak.tenant.util.SecurityUtils;
+import org.arghyam.jalsoochak.tenant.util.TenantConstants;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -30,8 +31,6 @@ import java.util.Set;
 @Slf4j
 public class SystemManagementServiceImpl implements SystemManagementService {
 
-    private static final Integer SYSTEM_TENANT_ID = 0;
-
     private final TenantCommonRepository tenantCommonRepository;
     private final ObjectMapper objectMapper;
 
@@ -42,7 +41,7 @@ public class SystemManagementServiceImpl implements SystemManagementService {
                 ? EnumSet.allOf(SystemConfigKeyEnum.class)
                 : keys;
 
-        List<ConfigDTO> configs = tenantCommonRepository.findConfigsByTenantId(SYSTEM_TENANT_ID);
+        List<ConfigDTO> configs = tenantCommonRepository.findConfigsByTenantId(TenantConstants.SYSTEM_TENANT_ID);
         Map<SystemConfigKeyEnum, ConfigValueDTO> configMap = new HashMap<>();
 
         for (ConfigDTO cfg : configs) {
@@ -91,7 +90,7 @@ public class SystemManagementServiceImpl implements SystemManagementService {
             }
 
             ConfigDTO cfg = tenantCommonRepository
-                    .upsertConfig(SYSTEM_TENANT_ID, key.name(), serialized, currentUserId)
+                    .upsertConfig(TenantConstants.SYSTEM_TENANT_ID, key.name(), serialized, currentUserId)
                     .orElseThrow(() -> new RuntimeException("Failed to upsert system config: " + key));
 
             try {

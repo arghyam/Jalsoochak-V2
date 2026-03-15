@@ -4,6 +4,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 import org.arghyam.jalsoochak.tenant.dto.response.TenantResponseDTO;
+import org.arghyam.jalsoochak.tenant.enums.TenantStatusEnum;
 import org.arghyam.jalsoochak.tenant.kafka.KafkaProducer;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
@@ -82,7 +83,15 @@ public class TenantEventListener {
             log.error("Cannot publish {} event: name is null or blank [id={}]", eventType, tenant.getId());
             return;
         }
-        int statusInt = "ACTIVE".equalsIgnoreCase(tenant.getStatus()) ? 1 : 0;
+        String rawStatus = tenant.getStatus();
+        int statusInt;
+        try {
+            statusInt = TenantStatusEnum.valueOf(rawStatus).getCode();
+        } catch (NullPointerException | IllegalArgumentException ex) {
+            log.error("Cannot publish {} event: unrecognized or null status '{}' [id={}]",
+                    eventType, rawStatus, tenant.getId());
+            return;
+        }
         Map<String, Object> event = Map.of(
                 "eventType", eventType,
                 "tenantId", tenant.getId(),

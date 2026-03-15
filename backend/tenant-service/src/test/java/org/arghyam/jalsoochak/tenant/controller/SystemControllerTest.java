@@ -15,6 +15,7 @@ import java.util.Map;
 
 import org.arghyam.jalsoochak.tenant.dto.internal.ConfigValueDTO;
 import org.arghyam.jalsoochak.tenant.dto.internal.SimpleConfigValueDTO;
+import org.arghyam.jalsoochak.tenant.dto.internal.WaterSupplyThresholdConfigDTO;
 import org.arghyam.jalsoochak.tenant.dto.request.SetSystemConfigRequestDTO;
 import org.arghyam.jalsoochak.tenant.dto.response.SystemConfigResponseDTO;
 import org.arghyam.jalsoochak.tenant.enums.SystemConfigKeyEnum;
@@ -56,7 +57,7 @@ class SystemControllerTest {
         @DisplayName("Should return all system configs successfully")
         void getSystemConfigs_Success() throws Exception {
             Map<SystemConfigKeyEnum, ConfigValueDTO> configs = new HashMap<>();
-            configs.put(SystemConfigKeyEnum.WATER_QUANTITY_SUPPLY_THRESHOLD, new SimpleConfigValueDTO("80"));
+            configs.put(SystemConfigKeyEnum.WATER_QUANTITY_SUPPLY_THRESHOLD, new WaterSupplyThresholdConfigDTO(20.0, 30.0));
             SystemConfigResponseDTO response = SystemConfigResponseDTO.builder().configs(configs).build();
 
             when(systemManagementService.getSystemConfigs(any())).thenReturn(response);
@@ -66,7 +67,8 @@ class SystemControllerTest {
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.status").value(200))
                     .andExpect(jsonPath("$.message").value("System configurations retrieved successfully"))
-                    .andExpect(jsonPath("$.data.configs.WATER_QUANTITY_SUPPLY_THRESHOLD.value").value("80"));
+                    .andExpect(jsonPath("$.data.configs.WATER_QUANTITY_SUPPLY_THRESHOLD.undersupplyThresholdPercent").value(20.0))
+                    .andExpect(jsonPath("$.data.configs.WATER_QUANTITY_SUPPLY_THRESHOLD.oversupplyThresholdPercent").value(30.0));
         }
 
         @Test
@@ -87,7 +89,7 @@ class SystemControllerTest {
         @DisplayName("Should filter configs by key when keys param provided")
         void getSystemConfigs_WithKeyFilter() throws Exception {
             Map<SystemConfigKeyEnum, ConfigValueDTO> configs = new HashMap<>();
-            configs.put(SystemConfigKeyEnum.WATER_QUANTITY_SUPPLY_THRESHOLD, new SimpleConfigValueDTO("80"));
+            configs.put(SystemConfigKeyEnum.WATER_QUANTITY_SUPPLY_THRESHOLD, new WaterSupplyThresholdConfigDTO(20.0, 30.0));
             SystemConfigResponseDTO response = SystemConfigResponseDTO.builder().configs(configs).build();
 
             when(systemManagementService.getSystemConfigs(any())).thenReturn(response);
@@ -95,7 +97,7 @@ class SystemControllerTest {
             mockMvc.perform(get("/api/v1/system/config")
                     .param("keys", "WATER_QUANTITY_SUPPLY_THRESHOLD"))
                     .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.data.configs.WATER_QUANTITY_SUPPLY_THRESHOLD.value").value("80"));
+                    .andExpect(jsonPath("$.data.configs.WATER_QUANTITY_SUPPLY_THRESHOLD.undersupplyThresholdPercent").value(20.0));
 
             verify(systemManagementService).getSystemConfigs(any());
         }
@@ -124,7 +126,7 @@ class SystemControllerTest {
         @DisplayName("Should return multiple configs in response")
         void getSystemConfigs_MultipleConfigs() throws Exception {
             Map<SystemConfigKeyEnum, ConfigValueDTO> configs = new HashMap<>();
-            configs.put(SystemConfigKeyEnum.WATER_QUANTITY_SUPPLY_THRESHOLD, new SimpleConfigValueDTO("80"));
+            configs.put(SystemConfigKeyEnum.WATER_QUANTITY_SUPPLY_THRESHOLD, new WaterSupplyThresholdConfigDTO(20.0, 30.0));
             configs.put(SystemConfigKeyEnum.LOCATION_AFFINITY_THRESHOLD, new SimpleConfigValueDTO("100"));
             SystemConfigResponseDTO response = SystemConfigResponseDTO.builder().configs(configs).build();
 
@@ -132,7 +134,7 @@ class SystemControllerTest {
 
             mockMvc.perform(get("/api/v1/system/config"))
                     .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.data.configs.WATER_QUANTITY_SUPPLY_THRESHOLD.value").value("80"))
+                    .andExpect(jsonPath("$.data.configs.WATER_QUANTITY_SUPPLY_THRESHOLD.undersupplyThresholdPercent").value(20.0))
                     .andExpect(jsonPath("$.data.configs.LOCATION_AFFINITY_THRESHOLD.value").value("100"));
         }
     }
@@ -146,11 +148,11 @@ class SystemControllerTest {
         void setSystemConfigs_Success() throws Exception {
             Map<SystemConfigKeyEnum, JsonNode> requestConfigs = new HashMap<>();
             requestConfigs.put(SystemConfigKeyEnum.WATER_QUANTITY_SUPPLY_THRESHOLD,
-                    objectMapper.readTree("{\"value\":\"80\"}"));
+                    objectMapper.readTree("{\"undersupplyThresholdPercent\":20.0,\"oversupplyThresholdPercent\":30.0}"));
             SetSystemConfigRequestDTO request = SetSystemConfigRequestDTO.builder().configs(requestConfigs).build();
 
             Map<SystemConfigKeyEnum, ConfigValueDTO> responseConfigs = new HashMap<>();
-            responseConfigs.put(SystemConfigKeyEnum.WATER_QUANTITY_SUPPLY_THRESHOLD, new SimpleConfigValueDTO("80"));
+            responseConfigs.put(SystemConfigKeyEnum.WATER_QUANTITY_SUPPLY_THRESHOLD, new WaterSupplyThresholdConfigDTO(20.0, 30.0));
             SystemConfigResponseDTO response = SystemConfigResponseDTO.builder().configs(responseConfigs).build();
 
             when(systemManagementService.setSystemConfigs(any(SetSystemConfigRequestDTO.class))).thenReturn(response);
@@ -161,7 +163,8 @@ class SystemControllerTest {
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.status").value(200))
                     .andExpect(jsonPath("$.message").value("System configurations set successfully"))
-                    .andExpect(jsonPath("$.data.configs.WATER_QUANTITY_SUPPLY_THRESHOLD.value").value("80"));
+                    .andExpect(jsonPath("$.data.configs.WATER_QUANTITY_SUPPLY_THRESHOLD.undersupplyThresholdPercent").value(20.0))
+                    .andExpect(jsonPath("$.data.configs.WATER_QUANTITY_SUPPLY_THRESHOLD.oversupplyThresholdPercent").value(30.0));
         }
 
         @Test
@@ -169,13 +172,13 @@ class SystemControllerTest {
         void setSystemConfigs_MultipleKeys() throws Exception {
             Map<SystemConfigKeyEnum, JsonNode> requestConfigs = new HashMap<>();
             requestConfigs.put(SystemConfigKeyEnum.WATER_QUANTITY_SUPPLY_THRESHOLD,
-                    objectMapper.readTree("{\"value\":\"80\"}"));
+                    objectMapper.readTree("{\"undersupplyThresholdPercent\":20.0,\"oversupplyThresholdPercent\":30.0}"));
             requestConfigs.put(SystemConfigKeyEnum.LOCATION_AFFINITY_THRESHOLD,
                     objectMapper.readTree("{\"value\":\"100\"}"));
             SetSystemConfigRequestDTO request = SetSystemConfigRequestDTO.builder().configs(requestConfigs).build();
 
             Map<SystemConfigKeyEnum, ConfigValueDTO> responseConfigs = new HashMap<>();
-            responseConfigs.put(SystemConfigKeyEnum.WATER_QUANTITY_SUPPLY_THRESHOLD, new SimpleConfigValueDTO("80"));
+            responseConfigs.put(SystemConfigKeyEnum.WATER_QUANTITY_SUPPLY_THRESHOLD, new WaterSupplyThresholdConfigDTO(20.0, 30.0));
             responseConfigs.put(SystemConfigKeyEnum.LOCATION_AFFINITY_THRESHOLD, new SimpleConfigValueDTO("100"));
             SystemConfigResponseDTO response = SystemConfigResponseDTO.builder().configs(responseConfigs).build();
 
@@ -185,7 +188,7 @@ class SystemControllerTest {
                     .contentType(MediaType.APPLICATION_JSON)
                     .content(objectMapper.writeValueAsString(request)))
                     .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.data.configs.WATER_QUANTITY_SUPPLY_THRESHOLD.value").value("80"))
+                    .andExpect(jsonPath("$.data.configs.WATER_QUANTITY_SUPPLY_THRESHOLD.undersupplyThresholdPercent").value(20.0))
                     .andExpect(jsonPath("$.data.configs.LOCATION_AFFINITY_THRESHOLD.value").value("100"));
         }
 
@@ -194,7 +197,7 @@ class SystemControllerTest {
         void setSystemConfigs_InvalidValue_ReturnsBadRequest() throws Exception {
             Map<SystemConfigKeyEnum, JsonNode> requestConfigs = new HashMap<>();
             requestConfigs.put(SystemConfigKeyEnum.WATER_QUANTITY_SUPPLY_THRESHOLD,
-                    objectMapper.readTree("{\"value\":\"bad\"}"));
+                    objectMapper.readTree("{\"undersupplyThresholdPercent\":200.0,\"oversupplyThresholdPercent\":200.0}"));
             SetSystemConfigRequestDTO request = SetSystemConfigRequestDTO.builder().configs(requestConfigs).build();
 
             when(systemManagementService.setSystemConfigs(any()))
@@ -211,7 +214,7 @@ class SystemControllerTest {
         void setSystemConfigs_RepositoryFailure_ReturnsInternalError() throws Exception {
             Map<SystemConfigKeyEnum, JsonNode> requestConfigs = new HashMap<>();
             requestConfigs.put(SystemConfigKeyEnum.WATER_QUANTITY_SUPPLY_THRESHOLD,
-                    objectMapper.readTree("{\"value\":\"80\"}"));
+                    objectMapper.readTree("{\"undersupplyThresholdPercent\":20.0,\"oversupplyThresholdPercent\":30.0}"));
             SetSystemConfigRequestDTO request = SetSystemConfigRequestDTO.builder().configs(requestConfigs).build();
 
             when(systemManagementService.setSystemConfigs(any()))

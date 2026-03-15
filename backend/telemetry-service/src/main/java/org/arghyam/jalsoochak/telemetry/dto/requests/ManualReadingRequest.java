@@ -2,6 +2,7 @@ package org.arghyam.jalsoochak.telemetry.dto.requests;
 
 import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -21,4 +22,11 @@ public class ManualReadingRequest {
 
     @JsonAlias({"sessionToken", "correlationId"})
     private String correlationId;
+
+    /**
+     * When true, indicates the meter was replaced and the submitted reading should be treated as the new baseline.
+     * Nullable for backward compatibility with older payloads.
+     */
+    @JsonProperty("isMeterReplaced")
+    private Boolean isMeterReplaced;
 }

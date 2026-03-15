@@ -1,17 +1,16 @@
 package org.arghyam.jalsoochak.tenant.repository;
 
 import java.util.List;
-import java.util.Optional;
 
-import org.arghyam.jalsoochak.tenant.dto.request.CreateDepartmentRequestDTO;
-import org.arghyam.jalsoochak.tenant.dto.response.DepartmentResponseDTO;
 import org.arghyam.jalsoochak.tenant.dto.response.LocationResponseDTO;
 import org.arghyam.jalsoochak.tenant.dto.internal.LanguageConfigDTO;
 import org.arghyam.jalsoochak.tenant.dto.internal.LocationLevelConfigDTO;
 import org.arghyam.jalsoochak.tenant.dto.internal.LocationLevelNameDTO;
 import org.arghyam.jalsoochak.tenant.dto.internal.LocationConfigDTO;
 import org.arghyam.jalsoochak.tenant.enums.RegionTypeEnum;
+import org.arghyam.jalsoochak.tenant.enums.StatusEnum;
 import org.arghyam.jalsoochak.tenant.exception.InvalidConfigValueException;
+import org.arghyam.jalsoochak.tenant.exception.LocationHierarchyStructureLockedException;
 
 import java.sql.Types;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -41,28 +40,6 @@ public class TenantSchemaRepository {
         private final ObjectMapper objectMapper;
 
         /**
-         * Row mapper for {@code tenant_schema.department_location_master_table}.
-         */
-        private static final RowMapper<DepartmentResponseDTO> DEPARTMENT_ROW_MAPPER = (rs,
-                        rowNum) -> DepartmentResponseDTO.builder()
-                                        .id(rs.getInt("id"))
-                                        .uuid(rs.getString("uuid"))
-                                        .title(rs.getString("title"))
-                                        .departmentLocationConfigId(
-                                                        (Integer) rs.getObject("department_location_config_id"))
-                                        .parentId((Integer) rs.getObject("parent_id"))
-                                        .status(rs.getInt("status"))
-                                        .createdAt(rs.getTimestamp("created_at") != null
-                                                        ? rs.getTimestamp("created_at").toLocalDateTime()
-                                                        : null)
-                                        .createdBy((Integer) rs.getObject("created_by"))
-                                        .updatedAt(rs.getTimestamp("updated_at") != null
-                                                        ? rs.getTimestamp("updated_at").toLocalDateTime()
-                                                        : null)
-                                        .updatedBy((Integer) rs.getObject("updated_by"))
-                                        .build();
-
-        /**
          * Row mapper for {@code tenant_schema.lgd_location_master_table}.
          */
         private static final RowMapper<LocationResponseDTO> LGD_LOCATION_ROW_MAPPER = (rs,
@@ -88,43 +65,6 @@ public class TenantSchemaRepository {
                                         .build();
 
         /**
-         * Fetches all departments from the specified schema.
-         */
-        public List<DepartmentResponseDTO> getDepartments(String schemaName) {
-                validateSchemaName(schemaName);
-                log.debug("Fetching departments from schema: {}", schemaName);
-
-                String sql = String.format(
-                                "SELECT * FROM %s.department_location_master_table ORDER BY id", schemaName);
-                return jdbcTemplate.query(sql, DEPARTMENT_ROW_MAPPER);
-        }
-
-        /**
-         * Creates a new department in the specified schema.
-         */
-        public Optional<DepartmentResponseDTO> createDepartment(String schemaName, CreateDepartmentRequestDTO request,
-                        Integer currentUserId) {
-                validateSchemaName(schemaName);
-                log.debug("Creating department in schema: {}", schemaName);
-
-                String sql = String.format("""
-                                INSERT INTO %s.department_location_master_table
-                                    (title, department_location_config_id, parent_id, status, created_by, updated_by)
-                                VALUES (?, ?, ?, ?, ?, ?)
-                                RETURNING *
-                                """, schemaName);
-
-                List<DepartmentResponseDTO> results = jdbcTemplate.query(sql, DEPARTMENT_ROW_MAPPER,
-                                request.getTitle(),
-                                request.getDepartmentLocationConfigId(),
-                                request.getParentId(),
-                                request.getStatus(),
-                                currentUserId,
-                                currentUserId);
-                return results.stream().findFirst();
-        }
-
-        /**
          * Validates the schema name.
          */
         private void validateSchemaName(String schemaName) {
@@ -139,8 +79,8 @@ public class TenantSchemaRepository {
         public List<LanguageConfigDTO> getSupportedLanguages(String schemaName) {
                 validateSchemaName(schemaName);
                 String sql = String.format(
-                                "SELECT language_name, preference FROM %s.language_master_table WHERE status = 1 ORDER BY preference",
-                                schemaName);
+                                "SELECT language_name, preference FROM %s.language_master_table WHERE status = %d ORDER BY preference",
+                                schemaName, StatusEnum.ACTIVE.getCode());
                 return jdbcTemplate.query(sql, (rs, rowNum) -> LanguageConfigDTO.builder()
                                 .language(rs.getString("language_name"))
                                 .preference((Integer) rs.getObject("preference"))
@@ -159,18 +99,18 @@ public class TenantSchemaRepository {
                 }
                 // Mark all as inactive
                 String deactivateSql = String.format(
-                                "UPDATE %s.language_master_table SET status = 0, updated_by = ?, updated_at = NOW()",
-                                schemaName);
+                                "UPDATE %s.language_master_table SET status = %d, updated_by = ?, updated_at = NOW()",
+                                schemaName, StatusEnum.INACTIVE.getCode());
                 jdbcTemplate.update(deactivateSql, currentUserId);
 
                 // Upsert new languages
                 String upsertSql = String.format(
                                 """
                                                 INSERT INTO %s.language_master_table (language_name, preference, status, created_by, updated_by)
-                                                VALUES (?, ?, 1, ?, ?)
-                                                ON CONFLICT (language_name) DO UPDATE SET status = 1, preference = EXCLUDED.preference, updated_by = EXCLUDED.updated_by, updated_at = NOW()
+                                                VALUES (?, ?, %d, ?, ?)
+                                                ON CONFLICT (language_name) DO UPDATE SET status = %d, preference = EXCLUDED.preference, updated_by = EXCLUDED.updated_by, updated_at = NOW()
                                                 """,
-                                schemaName);
+                                schemaName, StatusEnum.ACTIVE.getCode(), StatusEnum.ACTIVE.getCode());
 
                 for (LanguageConfigDTO lang : languages) {
                         jdbcTemplate.update(upsertSql, lang.getLanguage(), lang.getPreference(), currentUserId,
@@ -244,6 +184,108 @@ public class TenantSchemaRepository {
         }
 
         /**
+         * Counts seeded records in the location master table for the given hierarchy type.
+         * Used to determine whether structural changes to the hierarchy are permitted.
+         *
+         * @param schemaName Schema name (e.g., "tenant_mp")
+         * @param regionType LGD or DEPARTMENT
+         * @return Total count of records in the corresponding master table
+         */
+        public long countSeededLocationData(String schemaName, RegionTypeEnum regionType) {
+                validateSchemaName(schemaName);
+                String tableName = regionType == RegionTypeEnum.LGD
+                                ? "lgd_location_master_table"
+                                : "department_location_master_table";
+                String sql = String.format("SELECT COUNT(*) FROM %s.%s", schemaName, tableName);
+                Long count = jdbcTemplate.queryForObject(sql, Long.class);
+                return count != null ? count : 0L;
+        }
+
+        /**
+         * Atomically checks for seeded location data and, if none exists, replaces the hierarchy
+         * configuration. Acquires a transaction-scoped PostgreSQL advisory lock keyed on the
+         * schema+regionType pair to prevent a concurrent seeding transaction from racing between
+         * the count check and the delete/insert. The lock is auto-released on commit/rollback.
+         *
+         * @param schemaName    Schema name (e.g., "tenant_mp")
+         * @param regionType    LGD or DEPARTMENT
+         * @param hierarchy     New level definitions
+         * @param currentUserId Audit user ID
+         * @throws LocationHierarchyStructureLockedException when seeded rows exist
+         */
+        public void rewriteLocationHierarchyIfNoSeededData(String schemaName, RegionTypeEnum regionType,
+                        List<LocationLevelConfigDTO> hierarchy, Integer currentUserId) {
+                validateSchemaName(schemaName);
+
+                // Advisory lock uses two int keys for better distribution and no string-concatenation SQL injection.
+                // pg_advisory_xact_lock(int, int) serialises concurrent structural-change attempts for the same
+                // tenant hierarchy and is auto-released when the surrounding transaction ends.
+                jdbcTemplate.query(
+                        "SELECT pg_advisory_xact_lock(?, ?)",
+                        ps -> {
+                            ps.setInt(1, schemaName.hashCode());
+                            ps.setInt(2, regionType.ordinal());
+                        },
+                        rs -> null);
+
+                String masterTableName = regionType == RegionTypeEnum.LGD
+                                ? "lgd_location_master_table"
+                                : "department_location_master_table";
+                String countSql = String.format("SELECT COUNT(*) FROM %s.%s", schemaName, masterTableName);
+                Long seededCount = jdbcTemplate.queryForObject(countSql, Long.class);
+                long count = seededCount != null ? seededCount : 0L;
+                if (count > 0) {
+                        throw new LocationHierarchyStructureLockedException(regionType.name(), count);
+                }
+
+                setLocationHierarchy(schemaName, regionType, hierarchy, currentUserId);
+        }
+
+        /**
+         * Updates only the level_name fields for existing hierarchy levels.
+         * Used when seeded data is present and structural changes are not allowed.
+         * Each level in the incoming list must match an existing level number in the DB.
+         *
+         * @param schemaName   Schema name (e.g., "tenant_mp")
+         * @param regionType   LGD or DEPARTMENT
+         * @param hierarchy    New level definitions (same level numbers, updated names)
+         * @param currentUserId Audit user ID
+         */
+        public void updateLevelNames(String schemaName, RegionTypeEnum regionType,
+                        List<LocationLevelConfigDTO> hierarchy, Integer currentUserId) {
+                validateSchemaName(schemaName);
+                if (hierarchy == null) {
+                        throw new InvalidConfigValueException("Hierarchy cannot be null");
+                }
+                String updateSql = String.format(
+                                """
+                                UPDATE %s.location_config_master_table
+                                SET level_name = ?, updated_by = ?, updated_at = NOW()
+                                WHERE region_type = ? AND level = ?
+                                """,
+                                schemaName);
+                for (LocationLevelConfigDTO config : hierarchy) {
+                        try {
+                                String levelNameJson = objectMapper.writeValueAsString(config.getLevelName());
+                                int rowsAffected = jdbcTemplate.update(updateSql, ps -> {
+                                        ps.setObject(1, levelNameJson, Types.OTHER);
+                                        ps.setObject(2, currentUserId);
+                                        ps.setObject(3, regionType.getCode());
+                                        ps.setInt(4, config.getLevel());
+                                });
+                                if (rowsAffected == 0) {
+                                        throw new InvalidConfigValueException(
+                                                        "No matching level found to update for regionType="
+                                                                        + regionType.getCode() + ", level=" + config.getLevel());
+                                }
+                        } catch (JsonProcessingException e) {
+                                throw new InvalidConfigValueException(
+                                                "Failed to serialize levelName for level " + config.getLevel(), e);
+                        }
+                }
+        }
+
+        /**
          * Fetches child locations by parent ID from lgd_location_master_table.
          * 
          * @param schemaName Schema name (e.g., "tenant_mp")
@@ -258,13 +300,13 @@ public class TenantSchemaRepository {
                 
                 if (parentId == null) {
                         sql = String.format(
-                                "SELECT * FROM %s.lgd_location_master_table WHERE parent_id IS NULL AND status = 1 ORDER BY title",
-                                schemaName);
+                                "SELECT * FROM %s.lgd_location_master_table WHERE parent_id IS NULL AND status = %d ORDER BY title",
+                                schemaName, StatusEnum.ACTIVE.getCode());
                         params = new Object[]{};
                 } else {
                         sql = String.format(
-                                "SELECT * FROM %s.lgd_location_master_table WHERE parent_id = ? AND status = 1 ORDER BY title",
-                                schemaName);
+                                "SELECT * FROM %s.lgd_location_master_table WHERE parent_id = ? AND status = %d ORDER BY title",
+                                schemaName, StatusEnum.ACTIVE.getCode());
                         params = new Object[]{parentId};
                 }
                 
@@ -287,13 +329,13 @@ public class TenantSchemaRepository {
                 
                 if (parentId == null) {
                         sql = String.format(
-                                "SELECT * FROM %s.department_location_master_table WHERE parent_id IS NULL AND status = 1 ORDER BY title",
-                                schemaName);
+                                "SELECT * FROM %s.department_location_master_table WHERE parent_id IS NULL AND status = %d ORDER BY title",
+                                schemaName, StatusEnum.ACTIVE.getCode());
                         params = new Object[]{};
                 } else {
                         sql = String.format(
-                                "SELECT * FROM %s.department_location_master_table WHERE parent_id = ? AND status = 1 ORDER BY title",
-                                schemaName);
+                                "SELECT * FROM %s.department_location_master_table WHERE parent_id = ? AND status = %d ORDER BY title",
+                                schemaName, StatusEnum.ACTIVE.getCode());
                         params = new Object[]{parentId};
                 }
                 

@@ -15,6 +15,6 @@ public class OperatorEscalationDetail {
     private String schemeName;
     private String schemeId;
     private String soName;
-    private int consecutiveDaysMissed;
+    private Integer consecutiveDaysMissed;
     private String lastRecordedBfmDate;
 }
