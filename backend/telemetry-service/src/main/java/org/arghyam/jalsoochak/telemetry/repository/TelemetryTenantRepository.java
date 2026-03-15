@@ -629,17 +629,63 @@ public class TelemetryTenantRepository {
             throw new IllegalArgumentException("cutoffDateExclusive is required");
         }
         String timeColumn = resolveFlowReadingTimeColumn(schemaName);
+        LocalDateTime cutoffTimeExclusive = cutoffDateExclusive.atStartOfDay();
         StringBuilder sql = new StringBuilder(String.format("""
                 SELECT confirmed_reading, created_at
                 FROM %s.flow_reading_table
                 WHERE scheme_id = ?
                   AND confirmed_reading > 0
-                  AND reading_date < ?
+                  AND %s < ?
                   AND deleted_at IS NULL
-                """, schemaName));
+                """, schemaName, timeColumn));
         List<Object> params = new ArrayList<>();
         params.add(schemeId);
-        params.add(cutoffDateExclusive);
+        params.add(cutoffTimeExclusive);
+        if (excludeReadingId != null) {
+            sql.append(" AND id <> ?");
+            params.add(excludeReadingId);
+        }
+        sql.append(" ORDER BY ").append(timeColumn).append(" DESC, created_at DESC LIMIT 1");
+        List<TelemetryConfirmedReadingSnapshot> rows = jdbcTemplate.query(
+                sql.toString(),
+                (rs, n) -> new TelemetryConfirmedReadingSnapshot(
+                        rs.getBigDecimal("confirmed_reading"),
+                        rs.getTimestamp("created_at") != null ? rs.getTimestamp("created_at").toLocalDateTime() : null
+                ),
+                params.toArray()
+        );
+        return rows.stream().findFirst();
+    }
+
+    /**
+     * Returns the latest confirmed reading for the given {@code readingDate}, based on the tenant's flow-reading
+     * timestamp column (prefer {@code observation_time}, fallback to {@code reading_at}).
+     * If there are no readings for that date, returns empty.
+     */
+    public Optional<TelemetryConfirmedReadingSnapshot> findLatestConfirmedReadingSnapshotForDate(String schemaName,
+                                                                                                 Long schemeId,
+                                                                                                 LocalDate readingDate,
+                                                                                                 Long excludeReadingId) {
+        validateSchemaName(schemaName);
+        if (readingDate == null) {
+            throw new IllegalArgumentException("readingDate is required");
+        }
+        String timeColumn = resolveFlowReadingTimeColumn(schemaName);
+        LocalDateTime startInclusive = readingDate.atStartOfDay();
+        LocalDateTime endExclusive = readingDate.plusDays(1).atStartOfDay();
+        StringBuilder sql = new StringBuilder(String.format("""
+                SELECT confirmed_reading, created_at
+                FROM %s.flow_reading_table
+                WHERE scheme_id = ?
+                  AND confirmed_reading > 0
+                  AND %s >= ?
+                  AND %s < ?
+                  AND deleted_at IS NULL
+                """, schemaName, timeColumn, timeColumn));
+        List<Object> params = new ArrayList<>();
+        params.add(schemeId);
+        params.add(startInclusive);
+        params.add(endExclusive);
         if (excludeReadingId != null) {
             sql.append(" AND id <> ?");
             params.add(excludeReadingId);

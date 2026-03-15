@@ -140,14 +140,26 @@ public class BfmReadingService {
                 .orElse(finalReading);
         BigDecimal confirmedReading = request.getReadingValue() != null ? request.getReadingValue() : finalReading;
 
-        Optional<TelemetryConfirmedReadingSnapshot> previousSnapshotOpt = telemetryTenantRepository
+        Optional<TelemetryConfirmedReadingSnapshot> latestSnapshotOpt = telemetryTenantRepository
                 .findLatestConfirmedReadingSnapshot(schemaName, request.getSchemeId(), null);
+
+        // For non-meter-replacement submissions, compare only against yesterday's confirmed reading (if any).
+        // This prevents rejecting a reading against an older historic baseline when there was no reading yesterday.
+        LocalDate yesterday = LocalDate.now().minusDays(1);
+        Optional<TelemetryConfirmedReadingSnapshot> validationBaselineOpt = isMeterReplaced
+                ? latestSnapshotOpt
+                : telemetryTenantRepository.findLatestConfirmedReadingSnapshotForDate(
+                        schemaName,
+                        request.getSchemeId(),
+                        yesterday,
+                        null
+                );
 
         // When the meter is replaced, treat the submitted reading as the new baseline.
         // That means we must not reject lower readings vs the previous meter's last confirmed reading.
-        if (!isMeterReplaced && previousSnapshotOpt.isPresent() && confirmedReading != null
-                && confirmedReading.compareTo(previousSnapshotOpt.get().confirmedReading()) < 0) {
-            TelemetryConfirmedReadingSnapshot previousSnapshot = previousSnapshotOpt.get();
+        if (!isMeterReplaced && validationBaselineOpt.isPresent() && confirmedReading != null
+                && confirmedReading.compareTo(validationBaselineOpt.get().confirmedReading()) < 0) {
+            TelemetryConfirmedReadingSnapshot previousSnapshot = validationBaselineOpt.get();
             String submittedReadingText = confirmedReading.stripTrailingZeros().toPlainString();
             String previousReadingText = previousSnapshot.confirmedReading().stripTrailingZeros().toPlainString();
             telemetryTenantRepository.createAnomalyRecord(
@@ -176,10 +188,10 @@ public class BfmReadingService {
                     .build();
         }
 
-        if (previousSnapshotOpt.isPresent() && extractedReading != null
-                && extractedReading.compareTo(previousSnapshotOpt.get().confirmedReading()) == 0
+        if (latestSnapshotOpt.isPresent() && extractedReading != null
+                && extractedReading.compareTo(latestSnapshotOpt.get().confirmedReading()) == 0
                 && request.getReadingUrl() != null && !request.getReadingUrl().isBlank()) {
-            TelemetryConfirmedReadingSnapshot previousSnapshot = previousSnapshotOpt.get();
+            TelemetryConfirmedReadingSnapshot previousSnapshot = latestSnapshotOpt.get();
             telemetryTenantRepository.createAnomalyRecord(
                     schemaName,
                     AnomalyConstants.TYPE_DUPLICATE_IMAGE_SUBMISSION,
@@ -240,7 +252,7 @@ public class BfmReadingService {
             );
         }
 
-        BigDecimal lastConfirmedReading = previousSnapshotOpt
+        BigDecimal lastConfirmedReading = latestSnapshotOpt
                 .map(TelemetryConfirmedReadingSnapshot::confirmedReading)
                 .orElse(null);
         if (lastConfirmedReading == null) {
