@@ -1,5 +1,7 @@
 package org.arghyam.jalsoochak.user.repository.records;
 
+import org.arghyam.jalsoochak.user.enums.AdminUserStatus;
+
 import java.time.LocalDateTime;
 
 public record AdminUserRow(
@@ -9,7 +11,7 @@ public record AdminUserRow(
         String phoneNumber,
         Integer tenantId,
         Integer adminLevel,
-        Integer status,
+        AdminUserStatus status,
         Integer createdBy,
         LocalDateTime createdAt
 ) {}

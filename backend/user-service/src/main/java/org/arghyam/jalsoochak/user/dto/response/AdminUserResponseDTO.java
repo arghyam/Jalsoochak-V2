@@ -19,6 +19,6 @@ public class AdminUserResponseDTO {
     private String phoneNumber;
     private String role;
     private String tenantCode;
-    private boolean active;
+    private String status;
     private LocalDateTime createdAt;
 }

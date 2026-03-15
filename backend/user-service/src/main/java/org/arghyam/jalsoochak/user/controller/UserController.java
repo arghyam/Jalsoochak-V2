@@ -1,10 +1,11 @@
 package org.arghyam.jalsoochak.user.controller;
 
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import lombok.RequiredArgsConstructor;
 import org.arghyam.jalsoochak.user.dto.common.ApiResponseDTO;
 import org.arghyam.jalsoochak.user.dto.common.PageResponseDTO;
-import org.arghyam.jalsoochak.user.exceptions.BadRequestException;
 import org.arghyam.jalsoochak.user.dto.request.ChangePasswordRequestDTO;
 import org.arghyam.jalsoochak.user.dto.request.InviteRequestDTO;
 import org.arghyam.jalsoochak.user.dto.request.UpdateProfileRequestDTO;
@@ -14,6 +15,7 @@ import org.arghyam.jalsoochak.user.util.SecurityUtils;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -27,6 +29,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api/v1/users")
 @RequiredArgsConstructor
+@Validated
 public class UserController {
 
     private final UserManagementService userManagementService;
@@ -62,10 +65,8 @@ public class UserController {
     @GetMapping("/super-users")
     @PreAuthorize("hasRole('SUPER_USER')")
     public ResponseEntity<ApiResponseDTO<PageResponseDTO<AdminUserResponseDTO>>> listSuperUsers(
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int limit) {
-        if (page < 0) throw new BadRequestException("page must be >= 0");
-        if (limit < 1 || limit > 100) throw new BadRequestException("limit must be between 1 and 100");
+            @RequestParam(defaultValue = "0") @Min(0) int page,
+            @RequestParam(defaultValue = "20") @Min(1) @Max(100) int limit) {
         return ResponseEntity.ok(ApiResponseDTO.of(200, "Super users retrieved",
                 userManagementService.listSuperUsers(page, limit)));
     }
@@ -74,11 +75,9 @@ public class UserController {
     @PreAuthorize("hasAnyRole('SUPER_USER', 'STATE_ADMIN')")
     public ResponseEntity<ApiResponseDTO<PageResponseDTO<AdminUserResponseDTO>>> listStateAdmins(
             @RequestParam(required = false) String tenantCode,
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int limit,
+            @RequestParam(defaultValue = "0") @Min(0) int page,
+            @RequestParam(defaultValue = "20") @Min(1) @Max(100) int limit,
             Authentication authentication) {
-        if (page < 0) throw new BadRequestException("page must be >= 0");
-        if (limit < 1 || limit > 100) throw new BadRequestException("limit must be between 1 and 100");
         return ResponseEntity.ok(ApiResponseDTO.of(200, "State admins retrieved",
                 userManagementService.listStateAdmins(tenantCode, authentication, page, limit)));
     }
@@ -106,7 +105,7 @@ public class UserController {
     }
 
     @PutMapping("/{id}/activate")
-    @PreAuthorize("hasRole('SUPER_USER')")
+    @PreAuthorize("hasAnyRole('SUPER_USER', 'STATE_ADMIN')")
     public ResponseEntity<ApiResponseDTO<Void>> activate(@PathVariable Long id, Authentication authentication) {
         userManagementService.activateUser(id, authentication);
         return ResponseEntity.ok(ApiResponseDTO.of(200, "User activated successfully"));

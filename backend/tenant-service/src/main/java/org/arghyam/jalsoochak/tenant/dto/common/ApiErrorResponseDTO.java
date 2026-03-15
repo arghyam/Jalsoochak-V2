@@ -1,44 +1,40 @@
 package org.arghyam.jalsoochak.tenant.dto.common;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import io.swagger.v3.oas.annotations.media.Schema;
 
-import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
 
 @Schema(description = "Standard API error response")
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public class ApiErrorResponseDTO {
 
     @Schema(description = "Timestamp of the error")
     private String timestamp;
 
-    @Schema(description = "HTTP status code", example = "404")
+    @Schema(description = "HTTP status code", example = "400")
     private int status;
 
-    @Schema(description = "HTTP error name", example = "Not Found")
+    @Schema(description = "HTTP error name", example = "Bad Request")
     private String error;
 
     @Schema(description = "Error detail message")
     private String message;
 
-    public ApiErrorResponseDTO(int status, String error, String message) {
-        this.timestamp = LocalDateTime.now().toString();
+    @Schema(description = "Field-level validation errors")
+    private Object fieldErrors;
+
+    public ApiErrorResponseDTO(int status, String error, String message, Object fieldErrors) {
+        this.timestamp = OffsetDateTime.now().toString();
         this.status = status;
         this.error = error;
         this.message = message;
+        this.fieldErrors = fieldErrors;
     }
 
-    public String getTimestamp() {
-        return timestamp;
-    }
-
-    public int getStatus() {
-        return status;
-    }
-
-    public String getError() {
-        return error;
-    }
-
-    public String getMessage() {
-        return message;
-    }
+    public String getTimestamp() { return timestamp; }
+    public int getStatus() { return status; }
+    public String getError() { return error; }
+    public String getMessage() { return message; }
+    public Object getFieldErrors() { return fieldErrors; }
 }

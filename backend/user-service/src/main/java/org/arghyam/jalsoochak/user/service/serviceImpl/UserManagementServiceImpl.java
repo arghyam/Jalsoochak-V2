@@ -12,6 +12,7 @@ import org.arghyam.jalsoochak.user.dto.request.ChangePasswordRequestDTO;
 import org.arghyam.jalsoochak.user.dto.request.InviteRequestDTO;
 import org.arghyam.jalsoochak.user.dto.request.UpdateProfileRequestDTO;
 import org.arghyam.jalsoochak.user.dto.response.AdminUserResponseDTO;
+import org.arghyam.jalsoochak.user.enums.AdminUserStatus;
 import org.arghyam.jalsoochak.user.exceptions.BadRequestException;
 import org.arghyam.jalsoochak.user.exceptions.ForbiddenAccessException;
 import org.arghyam.jalsoochak.user.exceptions.InsufficientActiveUsersException;
@@ -34,6 +35,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
+import org.springframework.web.util.UriComponentsBuilder;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -88,7 +90,7 @@ public class UserManagementServiceImpl implements UserManagementService {
         }
 
         var existingUser = userCommonRepository.findAdminUserByEmail(request.getEmail());
-        if (existingUser.isPresent() && existingUser.get().status() != 2) {
+        if (existingUser.isPresent() && existingUser.get().status() != AdminUserStatus.PENDING) {
             throw new UserAlreadyExistsException("User with this email is already registered");
         }
 
@@ -134,7 +136,12 @@ public class UserManagementServiceImpl implements UserManagementService {
         userCommonRepository.upsertToken(request.getEmail(), hash, "INVITE", metadataJson, expiresAt,
                 callerRow.id() != null ? callerRow.id().intValue() : null);
 
-        String inviteUrl = frontendProperties.baseUrl() + frontendProperties.invitePath() + "?token=" + raw;
+        String inviteUrl = UriComponentsBuilder
+                .fromHttpUrl(frontendProperties.baseUrl())
+                .path(frontendProperties.invitePath())
+                .queryParam("token", raw)
+                .build()
+                .toUriString();
         mailService.sendMailAfterCommit(() -> mailService.sendInviteMail(request.getEmail(), inviteUrl));
     }
 
@@ -144,7 +151,7 @@ public class UserManagementServiceImpl implements UserManagementService {
         AdminUserRow target = userCommonRepository.findAdminUserById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
 
-        if (target.status() != 2) {
+        if (target.status() != AdminUserStatus.PENDING) {
             throw new BadRequestException("User has already activated their account");
         }
 
@@ -190,7 +197,12 @@ public class UserManagementServiceImpl implements UserManagementService {
         userCommonRepository.upsertToken(target.email(), hash, "INVITE", metadataJson, expiresAt,
                 callerRow.id() != null ? callerRow.id().intValue() : null);
 
-        String inviteUrl = frontendProperties.baseUrl() + frontendProperties.invitePath() + "?token=" + raw;
+        String inviteUrl = UriComponentsBuilder
+                .fromHttpUrl(frontendProperties.baseUrl())
+                .path(frontendProperties.invitePath())
+                .queryParam("token", raw)
+                .build()
+                .toUriString();
         mailService.sendMailAfterCommit(() -> mailService.sendInviteMail(target.email(), inviteUrl));
     }
 
@@ -262,7 +274,7 @@ public class UserManagementServiceImpl implements UserManagementService {
 
     @Override
     public PageResponseDTO<AdminUserResponseDTO> listSuperUsers(int page, int limit) {
-        int offset = page * limit;
+        long offset = (long) page * limit;
         List<AdminUserRow> rows = userCommonRepository.listSuperUsers(offset, limit);
         long total = userCommonRepository.countSuperUsers();
         List<AdminUserResponseDTO> users = rows.stream()
@@ -281,6 +293,9 @@ public class UserManagementServiceImpl implements UserManagementService {
             if (callerTenantCode == null) {
                 throw new ForbiddenAccessException("Unable to determine caller's tenant");
             }
+            if (tenantCode != null && !tenantCode.equalsIgnoreCase(callerTenantCode)) {
+                throw new ForbiddenAccessException("State admin can only list admins within their own state");
+            }
             tenantId = userCommonRepository.findTenantIdByStateCode(callerTenantCode)
                     .orElseThrow(() -> new ForbiddenAccessException("Caller's tenant not found"));
         } else if (tenantCode != null && !tenantCode.isBlank()) {
@@ -288,7 +303,7 @@ public class UserManagementServiceImpl implements UserManagementService {
                     .orElseThrow(() -> new ResourceNotFoundException("Tenant not found for state code: " + tenantCode));
         }
 
-        int offset = page * limit;
+        long offset = (long) page * limit;
         List<AdminUserRow> rows = userCommonRepository.listStateAdminsByTenant(tenantId, offset, limit);
         long total = userCommonRepository.countStateAdminsByTenant(tenantId);
         List<AdminUserResponseDTO> users = rows.stream()
@@ -331,7 +346,7 @@ public class UserManagementServiceImpl implements UserManagementService {
             }
         }
 
-        if (user.status() == 2) {
+        if (user.status() == AdminUserStatus.PENDING) {
             throw new BadRequestException("Cannot update a user who has not completed registration");
         }
 
@@ -374,6 +389,11 @@ public class UserManagementServiceImpl implements UserManagementService {
         AdminUserRow target = userCommonRepository.findAdminUserById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
 
+        String callerUuid = SecurityUtils.getKeycloakId(caller);
+        if (callerUuid != null && callerUuid.equals(target.uuid())) {
+            throw new ForbiddenAccessException("Cannot deactivate your own account");
+        }
+
         String targetRole = userCommonRepository.findUserTypeNameById(target.adminLevel()).orElse("");
         Optional<String> callerRole = SecurityUtils.extractRole(caller);
 
@@ -386,7 +406,7 @@ public class UserManagementServiceImpl implements UserManagementService {
             }
         }
 
-        if (target.status() == 2) {
+        if (target.status() == AdminUserStatus.PENDING) {
             throw new BadRequestException("Cannot deactivate a user who has not completed registration");
         }
 
@@ -400,7 +420,6 @@ public class UserManagementServiceImpl implements UserManagementService {
             }
         }
 
-        String callerUuid = SecurityUtils.getKeycloakId(caller);
         AdminUserRow callerRow = userCommonRepository.findAdminUserByUuid(callerUuid)
                 .orElseThrow(() -> new UnauthorizedAccessException("Caller is not registered in the system"));
 
@@ -418,7 +437,7 @@ public class UserManagementServiceImpl implements UserManagementService {
         AdminUserRow target = userCommonRepository.findAdminUserById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
 
-        if (target.status() == 2) {
+        if (target.status() == AdminUserStatus.PENDING) {
             throw new BadRequestException("Cannot activate a user who has not completed registration");
         }
 

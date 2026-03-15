@@ -1,6 +1,8 @@
 package org.arghyam.jalsoochak.user.repository;
 
 import lombok.RequiredArgsConstructor;
+import org.arghyam.jalsoochak.user.enums.AdminUserStatus;
+import org.arghyam.jalsoochak.user.exceptions.BadRequestException;
 import org.arghyam.jalsoochak.user.repository.records.AdminUserRow;
 import org.arghyam.jalsoochak.user.repository.records.AdminUserTokenRow;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -244,7 +246,13 @@ public class UserCommonRepository {
 
     // --- Listing (paginated) ---
 
-    public List<AdminUserRow> listSuperUsers(int offset, int limit) {
+    public List<AdminUserRow> listSuperUsers(long offset, int limit) {
+        if (limit <= 0) {
+            throw new BadRequestException("limit must be greater than 0");
+        }
+        if (offset < 0) {
+            throw new BadRequestException("offset must be non-negative");
+        }
         String sql = """
                 SELECT id, uuid, email, phone_number, tenant_id, admin_level, status, created_by, created_at
                 FROM common_schema.tenant_admin_user_master_table
@@ -265,7 +273,13 @@ public class UserCommonRepository {
         return count != null ? count : 0L;
     }
 
-    public List<AdminUserRow> listStateAdminsByTenant(Integer tenantId, int offset, int limit) {
+    public List<AdminUserRow> listStateAdminsByTenant(Integer tenantId, long offset, int limit) {
+        if (limit <= 0) {
+            throw new BadRequestException("limit must be greater than 0");
+        }
+        if (offset < 0) {
+            throw new BadRequestException("offset must be non-negative");
+        }
         if (tenantId == null) {
             String sql = """
                     SELECT id, uuid, email, phone_number, tenant_id, admin_level, status, created_by, created_at
@@ -394,7 +408,7 @@ public class UserCommonRepository {
                 rs.getString("phone_number"),
                 rs.getInt("tenant_id"),
                 rs.getInt("admin_level"),
-                rs.getInt("status"),
+                AdminUserStatus.fromCode(rs.getInt("status")),
                 rs.getInt("created_by"),
                 createdAtTs != null ? createdAtTs.toLocalDateTime() : null
         );
