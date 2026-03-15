@@ -1,9 +1,9 @@
-
 package org.arghyam.jalsoochak.tenant.exception;
 
-import org.arghyam.jalsoochak.tenant.dto.common.ApiErrorResponseDTO;
-
+import jakarta.validation.ConstraintViolationException;
 import lombok.extern.slf4j.Slf4j;
+import org.arghyam.jalsoochak.tenant.dto.common.ApiErrorResponseDTO;
+import org.slf4j.MDC;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -12,20 +12,32 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 import java.util.List;
-
+import java.util.Map;
 
 @RestControllerAdvice
 @Slf4j
 public class GlobalExceptionHandler {
 
+    @ExceptionHandler(ConstraintViolationException.class)
+    public ResponseEntity<ApiErrorResponseDTO> handleConstraintViolation(ConstraintViolationException ex) {
+        List<Map<String, String>> fieldErrors = ex.getConstraintViolations().stream()
+                .map(v -> {
+                    String path = v.getPropertyPath().toString();
+                    String field = path.contains(".") ? path.substring(path.lastIndexOf('.') + 1) : path;
+                    return Map.of("field", field, "message", v.getMessage());
+                })
+                .toList();
+        log.warn("Constraint violation: {}", fieldErrors);
+        return build(HttpStatus.BAD_REQUEST, "Validation failed", fieldErrors);
+    }
+
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ApiErrorResponseDTO> handleValidationErrors(MethodArgumentNotValidException ex) {
-        List<String> errors = ex.getBindingResult().getFieldErrors().stream()
-                .map(fe -> fe.getField() + ": " + fe.getDefaultMessage())
+        List<Map<String, String>> fieldErrors = ex.getBindingResult().getFieldErrors().stream()
+                .map(fe -> Map.of("field", fe.getField(), "message", fe.getDefaultMessage()))
                 .toList();
-        log.warn("Validation failed: {}", errors);
-        return ResponseEntity.badRequest()
-                .body(new ApiErrorResponseDTO(400, "Bad Request", String.join("; ", errors)));
+        log.warn("Validation failed: {}", fieldErrors);
+        return build(HttpStatus.BAD_REQUEST, "Validation failed", fieldErrors);
     }
 
     @ExceptionHandler(ResourceNotFoundException.class)
@@ -66,7 +78,7 @@ public class GlobalExceptionHandler {
     }
 
     @ExceptionHandler(IllegalArgumentException.class)
-    public ResponseEntity<ApiErrorResponseDTO> handleBadRequest(IllegalArgumentException ex) {
+    public ResponseEntity<ApiErrorResponseDTO> handleIllegalArgument(IllegalArgumentException ex) {
         log.warn("Bad request: {}", ex.getMessage());
         return build(HttpStatus.BAD_REQUEST, ex.getMessage());
     }
@@ -97,8 +109,14 @@ public class GlobalExceptionHandler {
     }
 
     private ResponseEntity<ApiErrorResponseDTO> build(HttpStatus status, String message) {
-        return ResponseEntity.status(status)
-                .body(new ApiErrorResponseDTO(status.value(), status.getReasonPhrase(), message));
+        return build(status, message, null);
+    }
+
+    private ResponseEntity<ApiErrorResponseDTO> build(HttpStatus status, String message, Object fieldErrors) {
+        String requestId = MDC.get("requestId");
+        return ResponseEntity.status(status).body(
+                new ApiErrorResponseDTO(status.value(), status.getReasonPhrase(), message,
+                        requestId != null && !requestId.isBlank() ? requestId : null,
+                        fieldErrors));
     }
 }
-

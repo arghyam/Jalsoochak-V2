@@ -5,6 +5,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.springframework.core.MethodParameter;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.BindingResult;
@@ -14,6 +15,7 @@ import org.springframework.web.method.annotation.MethodArgumentTypeMismatchExcep
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
@@ -58,8 +60,14 @@ class GlobalExceptionHandlerTest {
             assertNotNull(response.getBody());
             assertEquals(400, response.getBody().getStatus());
             assertEquals("Bad Request", response.getBody().getError());
-            assertTrue(response.getBody().getMessage().contains("name: Name is required"));
-            assertTrue(response.getBody().getMessage().contains("email: Invalid email format"));
+            assertEquals("Validation failed", response.getBody().getMessage());
+            assertNotNull(response.getBody().getFieldErrors());
+            @SuppressWarnings("unchecked")
+            List<Map<String, String>> errors =
+                    (List<Map<String, String>>) response.getBody().getFieldErrors();
+            assertEquals(2, errors.size());
+            assertTrue(errors.stream().anyMatch(e -> "name".equals(e.get("field")) && "Name is required".equals(e.get("message"))));
+            assertTrue(errors.stream().anyMatch(e -> "email".equals(e.get("field")) && "Invalid email format".equals(e.get("message"))));
         }
 
         @Test
@@ -79,7 +87,11 @@ class GlobalExceptionHandlerTest {
             assertEquals(HttpStatus.BAD_REQUEST, response.getStatusCode());
             assertNotNull(response.getBody());
             assertEquals(400, response.getBody().getStatus());
-            assertEquals("", response.getBody().getMessage());
+            assertEquals("Validation failed", response.getBody().getMessage());
+            @SuppressWarnings("unchecked")
+            java.util.List<java.util.Map<String, String>> errors =
+                    (java.util.List<java.util.Map<String, String>>) response.getBody().getFieldErrors();
+            assertTrue(errors.isEmpty());
         }
     }
 
@@ -93,7 +105,7 @@ class GlobalExceptionHandlerTest {
             // Arrange
             MethodArgumentTypeMismatchException ex = mock(MethodArgumentTypeMismatchException.class);
             when(ex.getValue()).thenReturn("abc");
-            when(ex.getParameter()).thenReturn(mock(org.springframework.core.MethodParameter.class));
+            when(ex.getParameter()).thenReturn(mock(MethodParameter.class));
             when(ex.getParameter().getParameterName()).thenReturn("pageSize");
 
             // Act
@@ -185,7 +197,7 @@ class GlobalExceptionHandlerTest {
             IllegalArgumentException ex = new IllegalArgumentException("Invalid argument provided");
 
             // Act
-            ResponseEntity<ApiErrorResponseDTO> response = handler.handleBadRequest(ex);
+            ResponseEntity<ApiErrorResponseDTO> response = handler.handleIllegalArgument(ex);
 
             // Assert
             assertEquals(HttpStatus.BAD_REQUEST, response.getStatusCode());
