@@ -197,7 +197,7 @@ public class PublicPumpOperatorRepository {
         }
     }
 
-    public List<SchemePumpOperatorsDTO> listPumpOperatorsByScheme(String schemaName, List<Long> schemeIds, String schemeName) {
+    public List<SchemePumpOperatorsDTO> listPumpOperatorsByScheme(String schemaName, List<Long> schemeIds) {
         validateSchemaName(schemaName);
 
         List<Object> params = new ArrayList<>();
@@ -216,10 +216,6 @@ public class PublicPumpOperatorRepository {
                 params.add(schemeIds.get(i));
             }
             where.append(")\n");
-        }
-        if (schemeName != null && !schemeName.trim().isBlank()) {
-            where.append("\n  AND sm.scheme_name ILIKE ?\n");
-            params.add("%" + schemeName.trim() + "%");
         }
 
         String sql = String.format("""

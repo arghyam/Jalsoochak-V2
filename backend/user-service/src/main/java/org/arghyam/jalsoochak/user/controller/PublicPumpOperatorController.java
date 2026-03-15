@@ -53,18 +53,13 @@ public class PublicPumpOperatorController {
     public ResponseEntity<ApiResponseDTO<List<SchemePumpOperatorsDTO>>> listPumpOperatorsByScheme(
             @RequestParam String tenantCode,
             @RequestParam(required = false) Long schemeId,
-            @RequestParam(required = false) List<Long> schemeIds,
-            @RequestParam(required = false) String schemeName
+            @RequestParam(required = false) List<Long> schemeIds
     ) {
         List<Long> effectiveSchemeIds = schemeIds;
         if (schemeId != null) {
             effectiveSchemeIds = List.of(schemeId);
         }
-        List<SchemePumpOperatorsDTO> rows = publicPumpOperatorService.listPumpOperatorsByScheme(
-                tenantCode,
-                effectiveSchemeIds,
-                schemeName
-        );
+        List<SchemePumpOperatorsDTO> rows = publicPumpOperatorService.listPumpOperatorsByScheme(tenantCode, effectiveSchemeIds);
         return ResponseEntity.ok(ApiResponseDTO.of(200, "Pump operators retrieved", rows));
     }
 }
