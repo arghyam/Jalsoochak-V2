@@ -436,8 +436,6 @@ public class GlificSelectionService {
                 }
             }
 
-            // Intentionally no stdout prints here. Use logs if needed for production debugging.
-
             return SelectionResponse.builder()
                     .success(true)
                     .selected(responseSelectedCode)
@@ -461,7 +459,6 @@ public class GlificSelectionService {
         if (value == null || value.isBlank()) {
             return false;
         }
-        // Per current webhook contract: when LOCATION_CHECK_REQUIRED is "NO", return readingSubmissionLocationNotSelected.
         return value.trim().equalsIgnoreCase("NO");
     }
 
