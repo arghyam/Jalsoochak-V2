@@ -149,6 +149,7 @@ public class NudgeRepository {
             row.put("scheme_name", rs.getString("scheme_name"));
             row.put("last_reading_date", rs.getObject("last_reading_date"));
             row.put("days_since_last_upload", rs.getObject("days_since_last_upload"));
+            row.put("last_confirmed_reading", rs.getObject("last_confirmed_reading"));
             consumer.accept(row);
             count[0]++;
         });

@@ -42,6 +42,7 @@ public class AnalyticsKafkaConsumer {
             }
         } catch (Exception e) {
             log.error("Failed to process tenant event: {}", e.getMessage(), e);
+            throw new RuntimeException(e.getMessage(), e);
         }
     }
 
@@ -59,6 +60,7 @@ public class AnalyticsKafkaConsumer {
             }
         } catch (Exception e) {
             log.error("Failed to process user event: {}", e.getMessage(), e);
+            throw new RuntimeException(e.getMessage(), e);
         }
     }
 
@@ -84,6 +86,7 @@ public class AnalyticsKafkaConsumer {
             }
         } catch (Exception e) {
             log.error("Failed to process scheme event: {}", e.getMessage(), e);
+            throw new RuntimeException(e.getMessage(), e);
         }
     }
 
@@ -109,6 +112,7 @@ public class AnalyticsKafkaConsumer {
             }
         } catch (Exception e) {
             log.error("Failed to process telemetry event: {}", e.getMessage(), e);
+            throw new RuntimeException(e.getMessage(), e);
         }
     }
 
@@ -126,6 +130,7 @@ public class AnalyticsKafkaConsumer {
             }
         } catch (Exception e) {
             log.error("Failed to process anomaly event: {}", e.getMessage(), e);
+            throw new RuntimeException(e.getMessage(), e);
         }
     }
 
@@ -143,6 +148,7 @@ public class AnalyticsKafkaConsumer {
             }
         } catch (Exception e) {
             log.error("Failed to process common-topic event: {}", e.getMessage(), e);
+            throw new RuntimeException(e.getMessage(), e);
         }
     }
 

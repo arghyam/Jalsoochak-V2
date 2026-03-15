@@ -8,6 +8,8 @@ import org.arghyam.jalsoochak.analytics.entity.FactEscalation;
 import org.arghyam.jalsoochak.analytics.entity.FactMeterReading;
 import org.arghyam.jalsoochak.analytics.entity.FactSchemePerformance;
 import org.arghyam.jalsoochak.analytics.entity.FactWaterQuantity;
+import org.arghyam.jalsoochak.analytics.repository.AnomalyRepository;
+import org.arghyam.jalsoochak.analytics.repository.DimTenantRepository;
 import org.arghyam.jalsoochak.analytics.repository.FactEscalationRepository;
 import org.arghyam.jalsoochak.analytics.repository.FactMeterReadingRepository;
 import org.arghyam.jalsoochak.analytics.repository.FactSchemePerformanceRepository;
@@ -37,6 +39,10 @@ class FactServiceImplTest {
     private FactEscalationRepository escalationRepository;
     @Mock
     private FactSchemePerformanceRepository schemePerformanceRepository;
+    @Mock
+    private AnomalyRepository anomalyRepository;
+    @Mock
+    private DimTenantRepository dimTenantRepository;
 
     @InjectMocks
     private FactServiceImpl service;

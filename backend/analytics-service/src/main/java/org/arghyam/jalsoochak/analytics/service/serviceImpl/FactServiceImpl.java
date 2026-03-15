@@ -6,11 +6,11 @@ import org.arghyam.jalsoochak.analytics.dto.event.SchemePerformanceEvent;
 import org.arghyam.jalsoochak.analytics.dto.event.TenantEscalationEvent;
 import org.arghyam.jalsoochak.analytics.dto.event.WaterQuantityEvent;
 import org.arghyam.jalsoochak.analytics.entity.Anomaly;
+import org.arghyam.jalsoochak.analytics.entity.DimTenant;
 import org.arghyam.jalsoochak.analytics.entity.FactEscalation;
 import org.arghyam.jalsoochak.analytics.entity.FactMeterReading;
 import org.arghyam.jalsoochak.analytics.entity.FactSchemePerformance;
 import org.arghyam.jalsoochak.analytics.entity.FactWaterQuantity;
-import org.arghyam.jalsoochak.analytics.entity.DimTenant;
 import org.arghyam.jalsoochak.analytics.repository.AnomalyRepository;
 import org.arghyam.jalsoochak.analytics.repository.DimTenantRepository;
 import org.arghyam.jalsoochak.analytics.repository.FactEscalationRepository;
@@ -20,6 +20,7 @@ import org.arghyam.jalsoochak.analytics.repository.FactWaterQuantityRepository;
 import org.arghyam.jalsoochak.analytics.service.FactService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -138,6 +139,15 @@ public class FactServiceImpl implements FactService {
         // One fact_escalation_table row + one anomaly_table row per operator
         if (event.getOperators() == null) return;
         for (TenantEscalationEvent.TenantOperatorEscalationDetail op : event.getOperators()) {
+            if (op.getUserId() == null) {
+                log.warn("Skipping operator escalation row — op.userId is null (correlationId={})", op.getCorrelationId());
+                continue;
+            }
+            if (op.getConsecutiveDaysMissed() == null) {
+                log.warn("Skipping operator escalation row — consecutiveDaysMissed is null (correlationId={})", op.getCorrelationId());
+                continue;
+            }
+
             Integer schemeId = null;
             try {
                 if (op.getSchemeId() != null && !op.getSchemeId().isBlank()) {
@@ -147,19 +157,31 @@ public class FactServiceImpl implements FactService {
                 log.warn("Could not parse schemeId '{}' for operator row", op.getSchemeId());
             }
 
-            FactEscalation escalationFact = FactEscalation.builder()
-                    .tenantId(event.getTenantId())
-                    .schemeId(schemeId)
-                    .escalationType(1) // NO_SUBMISSION
-                    .message(op.getName() + " has not submitted for " + op.getConsecutiveDaysMissed() + " consecutive days")
-                    .correlationId(op.getCorrelationId())
-                    .userId(event.getOfficerId() != null ? event.getOfficerId().intValue() : null)
-                    .resolutionStatus(1) // UNRESOLVED
-                    .remark(null)
-                    .createdAt(now.toLocalDateTime())
-                    .updatedAt(now.toLocalDateTime())
-                    .build();
-            escalationRepository.save(escalationFact);
+            // Idempotency: skip if this operator event was already ingested
+            if (op.getCorrelationId() != null && escalationRepository.existsByCorrelationId(op.getCorrelationId())) {
+                log.debug("Skipping duplicate fact_escalation for correlationId={}", op.getCorrelationId());
+            } else {
+                FactEscalation escalationFact = FactEscalation.builder()
+                        .tenantId(event.getTenantId())
+                        .schemeId(schemeId)
+                        .escalationType(1) // NO_SUBMISSION
+                        .message(op.getName() + " has not submitted for " + op.getConsecutiveDaysMissed() + " consecutive days")
+                        .correlationId(op.getCorrelationId())
+                        .userId(op.getUserId())
+                        .resolutionStatus(1) // UNRESOLVED
+                        .remark(null)
+                        .createdAt(now.toLocalDateTime())
+                        .updatedAt(now.toLocalDateTime())
+                        .build();
+                escalationRepository.save(escalationFact);
+            }
+
+            if (op.getCorrelationId() != null
+                    && anomalyRepository.existsByCorrelationIdAndTypeAndSchemeIdAndTenantId(
+                            op.getCorrelationId(), 6, schemeId, event.getTenantId())) {
+                log.debug("Skipping duplicate anomaly for correlationId={}", op.getCorrelationId());
+                continue;
+            }
 
             LocalDate previousReadingDate = null;
             if (op.getLastRecordedBfmDate() != null && !op.getLastRecordedBfmDate().isBlank()
@@ -206,8 +228,13 @@ public class FactServiceImpl implements FactService {
                 .createdAt(now)
                 .updatedAt(now)
                 .build();
-        dimTenantRepository.save(stub);
-        log.info("Created dim_tenant stub [id={} stateCode={}] — full data expected via TENANT_CREATED event", tenantId, stateCode);
+        try {
+            dimTenantRepository.save(stub);
+            log.info("Created dim_tenant stub [id={} stateCode={}] — full data expected via TENANT_CREATED event", tenantId, stateCode);
+        } catch (DataIntegrityViolationException e) {
+            // Another thread inserted first — treat as success
+            log.debug("dim_tenant stub for id={} already inserted by concurrent thread, continuing", tenantId);
+        }
     }
 
     private LocalDateTime parseTimestamp(String value) {

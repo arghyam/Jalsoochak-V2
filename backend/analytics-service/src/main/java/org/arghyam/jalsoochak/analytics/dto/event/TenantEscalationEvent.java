@@ -14,7 +14,7 @@ import java.util.List;
 public class TenantEscalationEvent {
 
     private String eventType;
-    private int escalationLevel;
+    private Integer escalationLevel;
     private String officerPhone;
     private String officerName;
     private List<TenantOperatorEscalationDetail> operators;
@@ -35,7 +35,7 @@ public class TenantEscalationEvent {
         private String schemeName;
         private String schemeId;
         private String soName;
-        private int consecutiveDaysMissed;
+        private Integer consecutiveDaysMissed;
         private String lastRecordedBfmDate;
         private Integer userId;
         private Double lastConfirmedReading;

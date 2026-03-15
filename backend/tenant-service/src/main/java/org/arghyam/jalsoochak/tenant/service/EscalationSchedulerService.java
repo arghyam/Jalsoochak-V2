@@ -121,7 +121,7 @@ public class EscalationSchedulerService {
                     ? ((Number) row.get("user_id")).intValue() : null;
 
             int effectiveDays = neverUploaded ? 0 : daysSinceLastUpload;
-            LocalDate streakStart = LocalDate.now().minusDays(effectiveDays);
+            LocalDate streakStart = neverUploaded ? LocalDate.of(1970, 1, 1) : LocalDate.now().minusDays(effectiveDays);
             String opCorrelationKey = schema + ":" + schemeId + ":NO_SUBMISSION:" + streakStart;
             String opCorrelationId = UUID.nameUUIDFromBytes(
                     opCorrelationKey.getBytes(StandardCharsets.UTF_8)).toString();
@@ -149,7 +149,7 @@ public class EscalationSchedulerService {
 
         // Publish one EscalationEvent per officer
         for (OfficerGroup group : officerGroups.values()) {
-            String officerCorrelationKey = tenantId + ":" + group.officerId + ":NO_SUBMISSION";
+            String officerCorrelationKey = tenantId + ":" + (group.officerId != null ? group.officerId : group.officerPhone) + ":NO_SUBMISSION";
             String officerCorrelationId = UUID.nameUUIDFromBytes(
                     officerCorrelationKey.getBytes(StandardCharsets.UTF_8)).toString();
 

@@ -473,6 +473,7 @@ BEGIN
     EXECUTE format('CREATE INDEX idx_%1$s_flow_date         ON %1$I.flow_reading_table(reading_date)',   schema_name);
     EXECUTE format('CREATE INDEX idx_%1$s_flow_channel      ON %1$I.flow_reading_table(channel)',        schema_name);
     EXECUTE format('CREATE INDEX idx_%1$s_flow_corr         ON %1$I.flow_reading_table(correlation_id)', schema_name);
+    EXECUTE format('CREATE INDEX idx_%1$s_flow_scheme_creator_date ON %1$I.flow_reading_table(scheme_id, created_by, reading_date DESC)', schema_name);
 
     -- user_scheme_mapping_table
     EXECUTE format('CREATE INDEX idx_%1$s_usm_user          ON %1$I.user_scheme_mapping_table(user_id)',   schema_name);

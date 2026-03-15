@@ -6,4 +6,7 @@ import org.springframework.stereotype.Repository;
 
 @Repository
 public interface AnomalyRepository extends JpaRepository<Anomaly, Long> {
+
+    boolean existsByCorrelationIdAndTypeAndSchemeIdAndTenantId(
+            String correlationId, Integer type, Integer schemeId, Integer tenantId);
 }
