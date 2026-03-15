@@ -249,28 +249,57 @@ public class TelemetryTenantRepository {
                                   String meterChangeReason) {
         validateSchemaName(schemaName);
         String timeColumn = resolveFlowReadingTimeColumn(schemaName);
-        String sql = String.format("""
-                INSERT INTO %s.flow_reading_table
-                    (scheme_id, %s, reading_date, extracted_reading, confirmed_reading,
-                     correlation_id, quantity, channel, meter_change_reason, issue_report_reason, image_url, created_by, created_at, updated_by, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, 0, NULL, ?, NULL, ?, ?, NOW(), ?, NOW())
-                RETURNING id
-                """, schemaName, timeColumn);
+        boolean hasPayloadJson = columnExists(schemaName, "flow_reading_table", "payload_json");
+        String sql = hasPayloadJson
+                ? String.format("""
+                        INSERT INTO %s.flow_reading_table
+                            (scheme_id, %s, reading_date, extracted_reading, confirmed_reading, payload_json,
+                             correlation_id, quantity, channel, meter_change_reason, issue_report_reason, image_url, created_by, created_at, updated_by, updated_at)
+                        VALUES (?, ?, ?, ?, ?, jsonb_build_object('confirmed_reading', ?, 'extracted_reading', ?), ?, 0, NULL, ?, NULL, ?, ?, NOW(), ?, NOW())
+                        RETURNING id
+                        """, schemaName, timeColumn)
+                : String.format("""
+                        INSERT INTO %s.flow_reading_table
+                            (scheme_id, %s, reading_date, extracted_reading, confirmed_reading,
+                             correlation_id, quantity, channel, meter_change_reason, issue_report_reason, image_url, created_by, created_at, updated_by, updated_at)
+                        VALUES (?, ?, ?, ?, ?, ?, 0, NULL, ?, NULL, ?, ?, NOW(), ?, NOW())
+                        RETURNING id
+                        """, schemaName, timeColumn);
 
-        Number id = jdbcTemplate.queryForObject(
-                sql,
-                Number.class,
-                schemeId,
-                readingAt,
-                LocalDate.from(readingAt),
-                extractedReading,
-                confirmedReading,
-                correlationId,
-                meterChangeReason,
-                imageUrl != null ? imageUrl : "",
-                operatorId,
-                operatorId
-        );
+        Number id;
+        if (hasPayloadJson) {
+            id = jdbcTemplate.queryForObject(
+                    sql,
+                    Number.class,
+                    schemeId,
+                    readingAt,
+                    LocalDate.from(readingAt),
+                    extractedReading,
+                    confirmedReading,
+                    confirmedReading,
+                    extractedReading,
+                    correlationId,
+                    meterChangeReason,
+                    imageUrl != null ? imageUrl : "",
+                    operatorId,
+                    operatorId
+            );
+        } else {
+            id = jdbcTemplate.queryForObject(
+                    sql,
+                    Number.class,
+                    schemeId,
+                    readingAt,
+                    LocalDate.from(readingAt),
+                    extractedReading,
+                    confirmedReading,
+                    correlationId,
+                    meterChangeReason,
+                    imageUrl != null ? imageUrl : "",
+                    operatorId,
+                    operatorId
+            );
+        }
         return id != null ? id.longValue() : null;
     }
 
@@ -282,13 +311,22 @@ public class TelemetryTenantRepository {
                                               String reason) {
         validateSchemaName(schemaName);
         String timeColumn = resolveFlowReadingTimeColumn(schemaName);
-        String sql = String.format("""
-                INSERT INTO %s.flow_reading_table
-                    (scheme_id, %s, reading_date, extracted_reading, confirmed_reading,
-                     correlation_id, quantity, channel, meter_change_reason, issue_report_reason, image_url, created_by, created_at, updated_by, updated_at)
-                VALUES (?, ?, ?, 0, 0, ?, 0, NULL, ?, NULL, '', ?, NOW(), ?, NOW())
-                RETURNING id
-                """, schemaName, timeColumn);
+        boolean hasPayloadJson = columnExists(schemaName, "flow_reading_table", "payload_json");
+        String sql = hasPayloadJson
+                ? String.format("""
+                        INSERT INTO %s.flow_reading_table
+                            (scheme_id, %s, reading_date, extracted_reading, confirmed_reading, payload_json,
+                             correlation_id, quantity, channel, meter_change_reason, issue_report_reason, image_url, created_by, created_at, updated_by, updated_at)
+                        VALUES (?, ?, ?, 0, 0, jsonb_build_object('confirmed_reading', 0, 'extracted_reading', 0), ?, 0, NULL, ?, NULL, '', ?, NOW(), ?, NOW())
+                        RETURNING id
+                        """, schemaName, timeColumn)
+                : String.format("""
+                        INSERT INTO %s.flow_reading_table
+                            (scheme_id, %s, reading_date, extracted_reading, confirmed_reading,
+                             correlation_id, quantity, channel, meter_change_reason, issue_report_reason, image_url, created_by, created_at, updated_by, updated_at)
+                        VALUES (?, ?, ?, 0, 0, ?, 0, NULL, ?, NULL, '', ?, NOW(), ?, NOW())
+                        RETURNING id
+                        """, schemaName, timeColumn);
 
         Number id = jdbcTemplate.queryForObject(
                 sql,
@@ -315,27 +353,52 @@ public class TelemetryTenantRepository {
         LocalDate readingDate = LocalDate.from(readingAt);
         Optional<Long> existingId = findLatestFlowReadingRecordForDate(schemaName, schemeId, operatorId, readingDate);
         if (existingId.isPresent()) {
-            String updateSql = String.format("""
-                    UPDATE %s.flow_reading_table
-                    SET %s = ?,
-                        reading_date = ?,
-                        correlation_id = ?,
-                        issue_report_reason = ?,
-                        updated_by = ?,
-                        updated_at = NOW()
-                    WHERE id = ?
-                    """, schemaName, timeColumn);
+            boolean hasPayloadJson = columnExists(schemaName, "flow_reading_table", "payload_json");
+            String updateSql = hasPayloadJson
+                    ? String.format("""
+                            UPDATE %s.flow_reading_table
+                            SET %s = ?,
+                                reading_date = ?,
+                                correlation_id = ?,
+                                issue_report_reason = ?,
+                                payload_json = jsonb_build_object(
+                                    'confirmed_reading', COALESCE(confirmed_reading, 0),
+                                    'extracted_reading', COALESCE(extracted_reading, 0)
+                                ),
+                                updated_by = ?,
+                                updated_at = NOW()
+                            WHERE id = ?
+                            """, schemaName, timeColumn)
+                    : String.format("""
+                            UPDATE %s.flow_reading_table
+                            SET %s = ?,
+                                reading_date = ?,
+                                correlation_id = ?,
+                                issue_report_reason = ?,
+                                updated_by = ?,
+                                updated_at = NOW()
+                            WHERE id = ?
+                            """, schemaName, timeColumn);
             jdbcTemplate.update(updateSql, readingAt, readingDate, correlationId, issueReason, operatorId, existingId.get());
             return existingId.get();
         }
 
-        String insertSql = String.format("""
-                INSERT INTO %s.flow_reading_table
-                    (scheme_id, %s, reading_date, extracted_reading, confirmed_reading,
-                     correlation_id, quantity, channel, meter_change_reason, issue_report_reason, image_url, created_by, created_at, updated_by, updated_at)
-                VALUES (?, ?, ?, 0, 0, ?, 0, NULL, NULL, ?, '', ?, NOW(), ?, NOW())
-                RETURNING id
-                """, schemaName, timeColumn);
+        boolean hasPayloadJson = columnExists(schemaName, "flow_reading_table", "payload_json");
+        String insertSql = hasPayloadJson
+                ? String.format("""
+                        INSERT INTO %s.flow_reading_table
+                            (scheme_id, %s, reading_date, extracted_reading, confirmed_reading, payload_json,
+                             correlation_id, quantity, channel, meter_change_reason, issue_report_reason, image_url, created_by, created_at, updated_by, updated_at)
+                        VALUES (?, ?, ?, 0, 0, jsonb_build_object('confirmed_reading', 0, 'extracted_reading', 0), ?, 0, NULL, NULL, ?, '', ?, NOW(), ?, NOW())
+                        RETURNING id
+                        """, schemaName, timeColumn)
+                : String.format("""
+                        INSERT INTO %s.flow_reading_table
+                            (scheme_id, %s, reading_date, extracted_reading, confirmed_reading,
+                             correlation_id, quantity, channel, meter_change_reason, issue_report_reason, image_url, created_by, created_at, updated_by, updated_at)
+                        VALUES (?, ?, ?, 0, 0, ?, 0, NULL, NULL, ?, '', ?, NOW(), ?, NOW())
+                        RETURNING id
+                        """, schemaName, timeColumn);
 
         Number createdId = jdbcTemplate.queryForObject(
                 insertSql,
@@ -477,15 +540,30 @@ public class TelemetryTenantRepository {
                                                 BigDecimal readingValue,
                                                 Long updatedBy) {
         validateSchemaName(schemaName);
-        String sql = String.format("""
-                UPDATE %s.flow_reading_table
-                SET extracted_reading = ?,
-                    confirmed_reading = ?,
-                    updated_by = ?,
-                    updated_at = NOW()
-                WHERE id = ?
-                """, schemaName);
-        jdbcTemplate.update(sql, readingValue, readingValue, updatedBy, readingId);
+        boolean hasPayloadJson = columnExists(schemaName, "flow_reading_table", "payload_json");
+        String sql = hasPayloadJson
+                ? String.format("""
+                        UPDATE %s.flow_reading_table
+                        SET extracted_reading = ?,
+                            confirmed_reading = ?,
+                            payload_json = jsonb_build_object('confirmed_reading', ?, 'extracted_reading', ?),
+                            updated_by = ?,
+                            updated_at = NOW()
+                        WHERE id = ?
+                        """, schemaName)
+                : String.format("""
+                        UPDATE %s.flow_reading_table
+                        SET extracted_reading = ?,
+                            confirmed_reading = ?,
+                            updated_by = ?,
+                            updated_at = NOW()
+                        WHERE id = ?
+                        """, schemaName);
+        if (hasPayloadJson) {
+            jdbcTemplate.update(sql, readingValue, readingValue, readingValue, readingValue, updatedBy, readingId);
+        } else {
+            jdbcTemplate.update(sql, readingValue, readingValue, updatedBy, readingId);
+        }
     }
 
     public void updateMeterChangeReason(String schemaName,
@@ -711,25 +789,54 @@ public class TelemetryTenantRepository {
 
     public void updateReadingValues(String schemaName, Long readingId, BigDecimal readingValue, Long updatedBy) {
         validateSchemaName(schemaName);
-        String sql = String.format("""
-                UPDATE %s.flow_reading_table
-                SET extracted_reading = ?,
-                    confirmed_reading = ?,
-                    updated_by = ?,
-                    updated_at = NOW()
-                WHERE id = ?
-                """, schemaName);
-        jdbcTemplate.update(sql, readingValue, readingValue, updatedBy, readingId);
+        boolean hasPayloadJson = columnExists(schemaName, "flow_reading_table", "payload_json");
+        String sql = hasPayloadJson
+                ? String.format("""
+                        UPDATE %s.flow_reading_table
+                        SET extracted_reading = ?,
+                            confirmed_reading = ?,
+                            payload_json = jsonb_build_object('confirmed_reading', ?, 'extracted_reading', ?),
+                            updated_by = ?,
+                            updated_at = NOW()
+                        WHERE id = ?
+                        """, schemaName)
+                : String.format("""
+                        UPDATE %s.flow_reading_table
+                        SET extracted_reading = ?,
+                            confirmed_reading = ?,
+                            updated_by = ?,
+                            updated_at = NOW()
+                        WHERE id = ?
+                        """, schemaName);
+        if (hasPayloadJson) {
+            jdbcTemplate.update(sql, readingValue, readingValue, readingValue, readingValue, updatedBy, readingId);
+        } else {
+            jdbcTemplate.update(sql, readingValue, readingValue, updatedBy, readingId);
+        }
     }
 
     public void updateConfirmedReading(String schemaName, Long readingId, BigDecimal confirmedReading, Long updatedBy) {
         validateSchemaName(schemaName);
-        String sql = String.format("""
-                UPDATE %s.flow_reading_table
-                SET confirmed_reading = ?, updated_by = ?, updated_at = NOW()
-                WHERE id = ?
-                """, schemaName);
-        jdbcTemplate.update(sql, confirmedReading, updatedBy, readingId);
+        boolean hasPayloadJson = columnExists(schemaName, "flow_reading_table", "payload_json");
+        String sql = hasPayloadJson
+                ? String.format("""
+                        UPDATE %s.flow_reading_table
+                        SET confirmed_reading = ?,
+                            payload_json = jsonb_build_object('confirmed_reading', ?, 'extracted_reading', COALESCE(extracted_reading, 0)),
+                            updated_by = ?,
+                            updated_at = NOW()
+                        WHERE id = ?
+                        """, schemaName)
+                : String.format("""
+                        UPDATE %s.flow_reading_table
+                        SET confirmed_reading = ?, updated_by = ?, updated_at = NOW()
+                        WHERE id = ?
+                        """, schemaName);
+        if (hasPayloadJson) {
+            jdbcTemplate.update(sql, confirmedReading, confirmedReading, updatedBy, readingId);
+        } else {
+            jdbcTemplate.update(sql, confirmedReading, updatedBy, readingId);
+        }
     }
 
     public void updateReadingLocation(String schemaName,
@@ -792,31 +899,64 @@ public class TelemetryTenantRepository {
                                                Long updatedBy) {
         validateSchemaName(schemaName);
         String timeColumn = resolveFlowReadingTimeColumn(schemaName);
-        String sql = String.format("""
-                UPDATE %s.flow_reading_table
-                SET %s = ?,
-                    reading_date = ?,
-                    extracted_reading = ?,
-                    confirmed_reading = ?,
-                    correlation_id = ?,
-                    image_url = ?,
-                    meter_change_reason = ?,
-                    updated_by = ?,
-                    updated_at = NOW()
-                WHERE id = ?
-                """, schemaName, timeColumn);
-        jdbcTemplate.update(
-                sql,
-                readingAt,
-                LocalDate.from(readingAt),
-                extractedReading,
-                confirmedReading,
-                correlationId,
-                imageUrl != null ? imageUrl : "",
-                meterChangeReason,
-                updatedBy,
-                readingId
-        );
+        boolean hasPayloadJson = columnExists(schemaName, "flow_reading_table", "payload_json");
+        String sql = hasPayloadJson
+                ? String.format("""
+                        UPDATE %s.flow_reading_table
+                        SET %s = ?,
+                            reading_date = ?,
+                            extracted_reading = ?,
+                            confirmed_reading = ?,
+                            payload_json = jsonb_build_object('confirmed_reading', ?, 'extracted_reading', ?),
+                            correlation_id = ?,
+                            image_url = ?,
+                            meter_change_reason = ?,
+                            updated_by = ?,
+                            updated_at = NOW()
+                        WHERE id = ?
+                        """, schemaName, timeColumn)
+                : String.format("""
+                        UPDATE %s.flow_reading_table
+                        SET %s = ?,
+                            reading_date = ?,
+                            extracted_reading = ?,
+                            confirmed_reading = ?,
+                            correlation_id = ?,
+                            image_url = ?,
+                            meter_change_reason = ?,
+                            updated_by = ?,
+                            updated_at = NOW()
+                        WHERE id = ?
+                        """, schemaName, timeColumn);
+        if (hasPayloadJson) {
+            jdbcTemplate.update(
+                    sql,
+                    readingAt,
+                    LocalDate.from(readingAt),
+                    extractedReading,
+                    confirmedReading,
+                    confirmedReading,
+                    extractedReading,
+                    correlationId,
+                    imageUrl != null ? imageUrl : "",
+                    meterChangeReason,
+                    updatedBy,
+                    readingId
+            );
+        } else {
+            jdbcTemplate.update(
+                    sql,
+                    readingAt,
+                    LocalDate.from(readingAt),
+                    extractedReading,
+                    confirmedReading,
+                    correlationId,
+                    imageUrl != null ? imageUrl : "",
+                    meterChangeReason,
+                    updatedBy,
+                    readingId
+            );
+        }
     }
 
     private Optional<TelemetryOperator> findOperatorByPhone(String schemaName, String rawPhoneNumber, String normalizedPhone) {
