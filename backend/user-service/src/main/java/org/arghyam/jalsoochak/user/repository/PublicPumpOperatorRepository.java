@@ -77,7 +77,10 @@ public class PublicPumpOperatorRepository {
                 ) rs ON true
                 LEFT JOIN LATERAL (
                     WITH bounds AS (
+                        -- Guard: if there are no readings, rs.first_submission_date is NULL.
+                        -- In that case we must not evaluate generate_series/date math with NULL bounds.
                         SELECT rs.first_submission_date AS start_date
+                        WHERE rs.first_submission_date IS NOT NULL
                     ),
                     days AS (
                         -- Generate all dates from first submission date to today (inclusive) using integer offsets.
@@ -106,7 +109,7 @@ public class PublicPumpOperatorRepository {
                             WHERE reported.d IS NULL
                         ) AS missed_submission_days
                     FROM bounds
-                ) comp ON rs.first_submission_date IS NOT NULL
+                ) comp ON true
                 WHERE u.deleted_at IS NULL
                   AND u.id = ?
                   AND upper(COALESCE(ut.c_name, '')) = 'PUMP_OPERATOR'

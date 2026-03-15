@@ -6,9 +6,9 @@ import org.arghyam.jalsoochak.tenant.dto.internal.DateFormatConfigDTO;
 import org.arghyam.jalsoochak.tenant.dto.internal.GlificMessagesConfigDTO;
 import org.arghyam.jalsoochak.tenant.dto.internal.MessageBrokerConfigDTO;
 import org.arghyam.jalsoochak.tenant.dto.internal.LanguageListConfigDTO;
-import org.arghyam.jalsoochak.tenant.dto.internal.LocationConfigDTO;
 import org.arghyam.jalsoochak.tenant.dto.internal.ReasonListConfigDTO;
 import org.arghyam.jalsoochak.tenant.dto.internal.SimpleConfigValueDTO;
+import org.arghyam.jalsoochak.tenant.dto.internal.WaterSupplyThresholdConfigDTO;
 import org.arghyam.jalsoochak.tenant.dto.internal.StateITSystemConfigDTO;
 import org.arghyam.jalsoochak.tenant.dto.internal.TimeSettingsConfigDTO;
 import org.arghyam.jalsoochak.tenant.dto.internal.NudgeTimingConfigDTO;
@@ -97,11 +97,11 @@ public enum TenantConfigKeyEnum implements ConfigKey {
     WATER_NORM(ConfigType.GENERIC, SimpleConfigValueDTO.class),
 
     /**
-     * Minimum Water Quantity Supply threshold.
-     * Quantity (in litres or kilo-liters) below which water supply for a day
-     * is considered as No Supply.
+     * Tenant-level Water Quantity Supply Threshold.
+     * Percentage thresholds for undersupply and oversupply relative to Water Norm,
+     * overriding the system-level default for this tenant.
      */
-    TENANT_WATER_QUANTITY_SUPPLY_THRESHOLD(ConfigType.GENERIC, SimpleConfigValueDTO.class),
+    TENANT_WATER_QUANTITY_SUPPLY_THRESHOLD(ConfigType.GENERIC, WaterSupplyThresholdConfigDTO.class),
 
     /**
      * Pump Operator Reminder Nudge Configuration.
@@ -146,21 +146,7 @@ public enum TenantConfigKeyEnum implements ConfigKey {
      * Positive numeric value (decimals allowed) used as multiplier for
      * calculating family members count for FHTC/Household.
      */
-    AVERAGE_MEMBERS_PER_HOUSEHOLD(ConfigType.GENERIC, SimpleConfigValueDTO.class),
-
-    /**
-     * LGD (Local Government Directory) location hierarchy configuration.
-     * Stored in tenant-specific location_config_master_table with region_type LGD.
-     * Default: System level LGD Hierarchy, can be overridden at tenant level.
-     */
-    LGD_LOCATION_HIERARCHY(ConfigType.SPECIALIZED, LocationConfigDTO.class),
-
-    /**
-     * Department location hierarchy configuration.
-     * Stored in tenant-specific location_config_master_table with region_type DEPARTMENT.
-     * Default: System level DEPT Hierarchy, can be overridden at tenant level.
-     */
-    DEPT_LOCATION_HIERARCHY(ConfigType.SPECIALIZED, LocationConfigDTO.class);
+    AVERAGE_MEMBERS_PER_HOUSEHOLD(ConfigType.GENERIC, SimpleConfigValueDTO.class);
 
     private final ConfigType type;
     private final Class<? extends ConfigValueDTO> dtoClass;

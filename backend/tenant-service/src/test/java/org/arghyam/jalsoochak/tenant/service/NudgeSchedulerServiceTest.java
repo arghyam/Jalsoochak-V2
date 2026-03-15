@@ -10,9 +10,11 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.time.LocalDate;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Consumer;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -42,14 +44,12 @@ class NudgeSchedulerServiceTest {
 
     @Test
     void processNudgesForTenant_publishesNudgeEvent_forOperatorWithoutUploadToday() {
-        when(nudgeRepository.findUsersWithNoUploadToday(SCHEMA)).thenReturn(
-                List.of(Map.of(
-                        "phone_number", "919876543210",
-                        "name", "Ramesh Kumar",
-                        "scheme_id", 42,
-                        "language_id", 1
-                ))
-        );
+        stubStream(SCHEMA, Map.of(
+                "phone_number", "919876543210",
+                "name", "Ramesh Kumar",
+                "scheme_id", 42,
+                "language_id", 1
+        ));
 
         nudgeSchedulerService.processNudgesForTenant(SCHEMA, TENANT_ID);
 
@@ -66,10 +66,15 @@ class NudgeSchedulerServiceTest {
     }
 
     @Test
-    void processNudgesForTenant_skipsOperator_withBlankPhoneNumber() {
-        when(nudgeRepository.findUsersWithNoUploadToday(SCHEMA)).thenReturn(
-                List.of(Map.of("phone_number", "", "name", "No Phone", "scheme_id", 1, "language_id", 0))
-        );
+    void processNudgesForTenant_skipsOperator_withBlankPhoneAndNoWhatsappId() {
+        Map<String, Object> row = new HashMap<>();
+        row.put("phone_number", "");
+        row.put("name", "No Phone");
+        row.put("scheme_id", 1);
+        row.put("language_id", 0);
+        row.put("whatsapp_connection_id", null);
+
+        stubStream(SCHEMA, row);
 
         nudgeSchedulerService.processNudgesForTenant(SCHEMA, TENANT_ID);
 
@@ -77,26 +82,46 @@ class NudgeSchedulerServiceTest {
     }
 
     @Test
-    void processNudgesForTenant_skipsOperator_withNullPhoneNumber() {
-        Map<String, Object> rowWithNullPhone = new HashMap<>();
-        rowWithNullPhone.put("phone_number", null);
-        rowWithNullPhone.put("name", "Null Phone");
-        rowWithNullPhone.put("scheme_id", 1);
-        rowWithNullPhone.put("language_id", 0);
+    void processNudgesForTenant_skipsOperator_withNullPhoneAndZeroWhatsappId() {
+        Map<String, Object> row = new HashMap<>();
+        row.put("phone_number", null);
+        row.put("name", "Null Phone");
+        row.put("scheme_id", 1);
+        row.put("language_id", 0);
+        row.put("whatsapp_connection_id", 0);
 
-        when(nudgeRepository.findUsersWithNoUploadToday(SCHEMA)).thenReturn(List.of(rowWithNullPhone));
+        stubStream(SCHEMA, row);
 
         nudgeSchedulerService.processNudgesForTenant(SCHEMA, TENANT_ID);
 
         verifyNoInteractions(kafkaProducer);
+    }
+
+    @Test
+    void processNudgesForTenant_publishesEvent_whenPhoneBlankButWhatsappConnectionIdPresent() {
+        Map<String, Object> row = new HashMap<>();
+        row.put("phone_number", "");
+        row.put("name", "No Phone Op");
+        row.put("scheme_id", 7);
+        row.put("language_id", 2);
+        row.put("user_id", 55);
+        row.put("whatsapp_connection_id", 123L);
+
+        stubStream(SCHEMA, row);
+
+        nudgeSchedulerService.processNudgesForTenant(SCHEMA, TENANT_ID);
+
+        ArgumentCaptor<NudgeEvent> captor = ArgumentCaptor.forClass(NudgeEvent.class);
+        verify(kafkaProducer).publishJson(eq("common-topic"), captor.capture());
+        assertThat(captor.getValue().getWhatsappConnectionId()).isEqualTo(123L);
     }
 
     @Test
     void processNudgesForTenant_publishesMultipleEvents_forMultipleOperators() {
-        when(nudgeRepository.findUsersWithNoUploadToday(SCHEMA)).thenReturn(List.of(
+        stubStream(SCHEMA,
                 Map.of("phone_number", "911111111111", "name", "Op A", "scheme_id", 1, "language_id", 0),
                 Map.of("phone_number", "912222222222", "name", "Op B", "scheme_id", 2, "language_id", 0)
-        ));
+        );
 
         nudgeSchedulerService.processNudgesForTenant(SCHEMA, TENANT_ID);
 
@@ -111,7 +136,7 @@ class NudgeSchedulerServiceTest {
         rowNullLang.put("scheme_id", 99);
         rowNullLang.put("language_id", null);
 
-        when(nudgeRepository.findUsersWithNoUploadToday(SCHEMA)).thenReturn(List.of(rowNullLang));
+        stubStream(SCHEMA, rowNullLang);
 
         nudgeSchedulerService.processNudgesForTenant(SCHEMA, TENANT_ID);
 
@@ -128,12 +153,26 @@ class NudgeSchedulerServiceTest {
         rowNullScheme.put("scheme_id", null);
         rowNullScheme.put("language_id", 0);
 
-        when(nudgeRepository.findUsersWithNoUploadToday(SCHEMA)).thenReturn(List.of(rowNullScheme));
+        stubStream(SCHEMA, rowNullScheme);
 
         nudgeSchedulerService.processNudgesForTenant(SCHEMA, TENANT_ID);
 
         ArgumentCaptor<NudgeEvent> captor = ArgumentCaptor.forClass(NudgeEvent.class);
         verify(kafkaProducer).publishJson(eq("common-topic"), captor.capture());
         assertThat(captor.getValue().getSchemeId()).isEqualTo("");
+    }
+
+    // ── helpers ─────────────────────────────────────────────────────────────────
+
+    @SafeVarargs
+    private void stubStream(String schema, Map<String, Object>... rows) {
+        doAnswer(inv -> {
+            @SuppressWarnings("unchecked")
+            Consumer<Map<String, Object>> consumer = inv.getArgument(2);
+            for (Map<String, Object> row : rows) {
+                consumer.accept(row);
+            }
+            return rows.length;
+        }).when(nudgeRepository).streamUsersWithNoUploadToday(eq(schema), any(LocalDate.class), any());
     }
 }

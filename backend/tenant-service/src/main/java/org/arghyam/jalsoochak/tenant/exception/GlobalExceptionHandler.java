@@ -71,6 +71,13 @@ public class GlobalExceptionHandler {
         return build(HttpStatus.BAD_REQUEST, ex.getMessage());
     }
 
+    @ExceptionHandler(LocationHierarchyStructureLockedException.class)
+    public ResponseEntity<ApiErrorResponseDTO> handleLocationHierarchyStructureLocked(
+            LocationHierarchyStructureLockedException ex) {
+        log.warn("Location hierarchy structure locked: {}", ex.getMessage());
+        return build(HttpStatus.CONFLICT, ex.getMessage());
+    }
+
     @ExceptionHandler(IllegalStateException.class)
     public ResponseEntity<ApiErrorResponseDTO> handleConflict(IllegalStateException ex) {
         log.warn("Conflict: {}", ex.getMessage());

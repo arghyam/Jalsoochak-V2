@@ -89,8 +89,10 @@ public class EscalationPdfService {
                 y = writeLabelValue(cs, boldFont, regularFont, "   Scheme Name:", op.getSchemeName(), y);
                 y = writeLabelValue(cs, boldFont, regularFont, "   Scheme ID:", op.getSchemeId(), y);
                 y = writeLabelValue(cs, boldFont, regularFont, "   SO Name:", op.getSoName(), y);
+                String daysMissedText = op.getConsecutiveDaysMissed() != null
+                        ? String.valueOf(op.getConsecutiveDaysMissed()) : "Never";
                 y = writeLabelValue(cs, boldFont, regularFont, "   Consecutive Days Missed:",
-                        String.valueOf(op.getConsecutiveDaysMissed()), y);
+                        daysMissedText, y);
                 String bfmDate = (op.getLastRecordedBfmDate() == null || op.getLastRecordedBfmDate().isBlank())
                         ? "Never" : op.getLastRecordedBfmDate();
                 y = writeLabelValue(cs, boldFont, regularFont, "   Last Recorded BFM Date:", bfmDate, y);
