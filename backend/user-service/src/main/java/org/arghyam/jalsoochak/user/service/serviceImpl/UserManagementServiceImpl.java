@@ -282,7 +282,7 @@ public class UserManagementServiceImpl implements UserManagementService {
             if (callerTenantCode == null) {
                 throw new ForbiddenAccessException("Unable to determine caller's tenant");
             }
-            if (!tenantCode.equalsIgnoreCase(callerTenantCode)) {
+            if (tenantCode != null && !tenantCode.equalsIgnoreCase(callerTenantCode)) {
                 throw new ForbiddenAccessException("State admin can only list admins within their own state");
             }
             tenantId = userCommonRepository.findTenantIdByStateCode(callerTenantCode)
