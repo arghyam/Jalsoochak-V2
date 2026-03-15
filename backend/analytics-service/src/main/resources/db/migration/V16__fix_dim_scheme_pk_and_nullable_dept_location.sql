@@ -32,6 +32,9 @@ ALTER TABLE analytics_schema.fact_scheme_performance_table
 ALTER TABLE analytics_schema.dim_user_scheme_mapping_table
     DROP CONSTRAINT IF EXISTS dim_user_scheme_mapping_table_scheme_id_fkey;
 
+ALTER TABLE analytics_schema.dim_operator_attendance_table
+    DROP CONSTRAINT IF EXISTS dim_operator_attendance_table_scheme_id_fkey;
+
 -- Step 2: Drop the primary key on scheme_id
 ALTER TABLE analytics_schema.dim_scheme_table
     DROP CONSTRAINT IF EXISTS dim_scheme_table_pkey;
