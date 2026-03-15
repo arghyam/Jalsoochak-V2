@@ -108,8 +108,6 @@ public class NudgeRepository {
                       CASE
                         WHEN MAX(fr.reading_date) IS NULL THEN NULL
                         ELSE CAST(? AS DATE) - MAX(fr.reading_date)
-                      END AS days_since_last_upload
-                        ELSE CURRENT_DATE - MAX(fr.reading_date)
                       END AS days_since_last_upload,
                       (SELECT fr2.confirmed_reading
                          FROM %s.flow_reading_table fr2
@@ -131,7 +129,7 @@ public class NudgeRepository {
                 ) sub
                 WHERE days_since_last_upload IS NULL
                    OR days_since_last_upload >= ?
-                """, schema, schema, schema, schema);
+                """, schema, schema, schema, schema, schema);
         log.debug("streamUsersWithMissedDays – schema={}, minMissedDays={}", schema, minMissedDays);
         int[] count = {0};
         jdbcTemplate.query(con -> {
