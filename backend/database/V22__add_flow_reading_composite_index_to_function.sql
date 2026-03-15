@@ -26,8 +26,8 @@ BEGIN
     patched_definition := replace(fn_definition, anchor, anchor || new_line);
 
     IF patched_definition = fn_definition THEN
-        RAISE NOTICE 'Anchor not found in function body. Skipping patch.';
-        RETURN;
+        RAISE EXCEPTION 'V22 patch failed: anchor text not found in create_tenant_schema() body. '
+            'Migration cannot proceed safely — inspect the function definition manually.';
     END IF;
 
     EXECUTE patched_definition;

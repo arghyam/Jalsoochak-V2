@@ -35,6 +35,12 @@ import java.util.UUID;
 @Slf4j
 public class FactServiceImpl implements FactService {
 
+    /**
+     * Sentinel value used when an operator has never uploaded a reading.
+     * Must match the value produced by EscalationSchedulerService (tenant-service).
+     */
+    public static final String LAST_RECORDED_BFM_DATE_NEVER = "Never";
+
     private final FactMeterReadingRepository meterReadingRepository;
     private final FactWaterQuantityRepository waterQuantityRepository;
     private final FactEscalationRepository escalationRepository;
@@ -191,7 +197,7 @@ public class FactServiceImpl implements FactService {
 
             LocalDate previousReadingDate = null;
             if (op.getLastRecordedBfmDate() != null && !op.getLastRecordedBfmDate().isBlank()
-                    && !"Never".equalsIgnoreCase(op.getLastRecordedBfmDate())) {
+                    && !LAST_RECORDED_BFM_DATE_NEVER.equalsIgnoreCase(op.getLastRecordedBfmDate())) {
                 previousReadingDate = parseDate(op.getLastRecordedBfmDate());
             }
 
