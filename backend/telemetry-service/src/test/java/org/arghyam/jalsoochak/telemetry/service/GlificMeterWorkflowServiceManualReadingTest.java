@@ -58,7 +58,7 @@ class GlificMeterWorkflowServiceManualReadingTest {
     private GlificMeterWorkflowService service;
 
     @Test
-    void manualReadingUpdatesTodaysReadingAndSetsExtractedWhenZero() {
+    void manualReadingUpdatesTodaysReadingByUpdatingConfirmedOnly() {
         TelemetryOperatorWithSchema operatorWithSchema = new TelemetryOperatorWithSchema(
                 "tenant_test",
                 new TelemetryOperator(1L, 1, "op", "op@example.com", "919999999999", null)
@@ -114,8 +114,8 @@ class GlificMeterWorkflowServiceManualReadingTest {
         assertEquals(new BigDecimal("123"), resp.getMeterReading());
         assertEquals("bfm-1", resp.getCorrelationId());
 
-        verify(telemetryTenantRepository).updateReadingValues("tenant_test", 99L, new BigDecimal("123"), 1L);
-        verify(telemetryTenantRepository, never()).updateConfirmedReading(anyString(), anyLong(), any(), anyLong());
+        verify(telemetryTenantRepository).updateConfirmedReading("tenant_test", 99L, new BigDecimal("123"), 1L);
+        verify(telemetryTenantRepository, never()).updateReadingValues(anyString(), anyLong(), any(), anyLong());
         verify(telemetryTenantRepository, never()).createFlowReading(anyString(), anyLong(), anyLong(), any(), any(), any(), anyString(), anyString(), any());
     }
 
@@ -278,7 +278,7 @@ class GlificMeterWorkflowServiceManualReadingTest {
 
         verify(telemetryTenantRepository).findLatestConfirmedReadingSnapshotBeforeDate("tenant_test", 10L, LocalDate.now(), null);
         verify(telemetryTenantRepository, never()).findLatestConfirmedReadingSnapshot("tenant_test", 10L, null);
-        verify(telemetryTenantRepository).updateReadingValues("tenant_test", 99L, new BigDecimal("1000"), 1L);
+        verify(telemetryTenantRepository).updateConfirmedReading("tenant_test", 99L, new BigDecimal("1000"), 1L);
     }
 
     @Test
@@ -339,7 +339,7 @@ class GlificMeterWorkflowServiceManualReadingTest {
         assertEquals(new BigDecimal("100"), resp.getMeterReading());
         assertEquals("bfm-55", resp.getCorrelationId());
 
-        verify(telemetryTenantRepository).updateReadingValues("tenant_test", 55L, new BigDecimal("100"), 1L);
+        verify(telemetryTenantRepository).updateConfirmedReading("tenant_test", 55L, new BigDecimal("100"), 1L);
         verify(telemetryTenantRepository).updateMeterChangeReason("tenant_test", 55L, "METER_REPLACED", 1L);
         verify(telemetryTenantRepository, never()).createFlowReading(anyString(), anyLong(), anyLong(), any(), any(), any(), anyString(), anyString(), any());
     }
