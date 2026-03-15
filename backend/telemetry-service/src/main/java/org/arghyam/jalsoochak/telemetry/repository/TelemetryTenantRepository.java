@@ -189,6 +189,40 @@ public class TelemetryTenantRepository {
         jdbcTemplate.update(sql, channel, schemeId);
     }
 
+    public boolean schemeHasLatitudeAndLongitude(String schemaName, Long schemeId) {
+        validateSchemaName(schemaName);
+        if (schemeId == null) {
+            return false;
+        }
+
+        String latColumn = resolveSelectColumn(
+                schemaName,
+                "scheme_master_table",
+                "latitude",
+                "NULL::double precision AS latitude"
+        );
+        String lonColumn = resolveSelectColumn(
+                schemaName,
+                "scheme_master_table",
+                "longitude",
+                "NULL::double precision AS longitude"
+        );
+        String sql = String.format("""
+                SELECT latitude, longitude
+                FROM %s.scheme_master_table
+                WHERE id = ?
+                LIMIT 1
+                """, schemaName);
+        sql = sql.replace("latitude", latColumn).replace("longitude", lonColumn);
+
+        List<Boolean> rows = jdbcTemplate.query(sql, (rs, n) -> {
+            Object lat = rs.getObject("latitude");
+            Object lon = rs.getObject("longitude");
+            return lat != null && lon != null;
+        }, schemeId);
+        return rows.stream().findFirst().orElse(false);
+    }
+
     public boolean isOperatorMappedToScheme(String schemaName, Long operatorId, Long schemeId) {
         validateSchemaName(schemaName);
         String sql = String.format("""
