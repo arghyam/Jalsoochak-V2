@@ -216,6 +216,72 @@ class GlificMeterWorkflowServiceManualReadingTest {
     }
 
     @Test
+    void manualReadingWhenIsManualReadingFalseIgnoresTodaysSnapshotForLowerReadingValidation() {
+        TelemetryOperatorWithSchema operatorWithSchema = new TelemetryOperatorWithSchema(
+                "tenant_test",
+                new TelemetryOperator(1L, 1, "op", "op@example.com", "919999999999", null)
+        );
+
+        when(operatorContextService.resolveOperatorWithSchema("919999999999")).thenReturn(operatorWithSchema);
+        when(operatorContextService.resolveOperatorLanguage(operatorWithSchema, 1)).thenReturn("en");
+        when(localizationService.normalizeLanguageKey("en")).thenReturn("english");
+
+        when(telemetryTenantRepository.findFirstSchemeForUser("tenant_test", 1L)).thenReturn(Optional.of(10L));
+        when(telemetryTenantRepository.findLatestPendingMeterChangeRecord("tenant_test", 10L, 1L))
+                .thenReturn(Optional.empty());
+
+        // "Latest" snapshot might be from today and much higher, but isManualReading=false should ignore it.
+        when(telemetryTenantRepository.findLatestConfirmedReadingSnapshotBeforeDate("tenant_test", 10L, LocalDate.now(), null))
+                .thenReturn(Optional.of(new TelemetryConfirmedReadingSnapshot(new BigDecimal("500"), LocalDateTime.now().minusDays(1))));
+
+        when(telemetryTenantRepository.findLatestFlowReadingForDate("tenant_test", 10L, 1L, LocalDate.now()))
+                .thenReturn(Optional.of(new TelemetryFlowReadingDetails(
+                        99L,
+                        "bfm-1",
+                        1L,
+                        BigDecimal.ZERO,
+                        BigDecimal.ZERO
+                )));
+
+        when(telemetryTenantRepository.countAnomaliesByTypeForToday(anyString(), anyLong(), anyLong(), anyInt())).thenReturn(0);
+        when(telemetryTenantRepository.findAnomalyDatesByType(anyString(), anyLong(), anyLong(), anyInt(), anyInt())).thenReturn(List.of());
+        doNothing().when(telemetryTenantRepository).createAnomalyRecord(
+                anyString(),
+                anyInt(),
+                anyLong(),
+                anyLong(),
+                ArgumentMatchers.<BigDecimal>any(),
+                ArgumentMatchers.<BigDecimal>any(),
+                ArgumentMatchers.<BigDecimal>any(),
+                anyInt(),
+                ArgumentMatchers.<BigDecimal>any(),
+                ArgumentMatchers.<LocalDateTime>any(),
+                anyInt(),
+                anyString(),
+                anyInt()
+        );
+
+        when(tenantConfigRepository.findManualReadingConfirmationTemplate(anyInt(), anyString())).thenReturn(Optional.empty());
+
+        CreateReadingResponse resp = service.manualReadingMessage(ManualReadingRequest.builder()
+                .contactId("919999999999")
+                .manualReading("1000")
+                .isManualReading(false)
+                .isMeterReplaced(false)
+                .build());
+
+        assertNotNull(resp);
+        assertEquals(true, resp.isSuccess());
+        assertEquals("CONFIRMED", resp.getQualityStatus());
+        assertEquals(new BigDecimal("1000"), resp.getMeterReading());
+        assertEquals("bfm-1", resp.getCorrelationId());
+
+        verify(telemetryTenantRepository).findLatestConfirmedReadingSnapshotBeforeDate("tenant_test", 10L, LocalDate.now(), null);
+        verify(telemetryTenantRepository, never()).findLatestConfirmedReadingSnapshot("tenant_test", 10L, null);
+        verify(telemetryTenantRepository).updateReadingValues("tenant_test", 99L, new BigDecimal("1000"), 1L);
+    }
+
+    @Test
     void manualReadingAcceptsLowerReadingWhenMeterReplacedAndRecordsReason() {
         TelemetryOperatorWithSchema operatorWithSchema = new TelemetryOperatorWithSchema(
                 "tenant_test",

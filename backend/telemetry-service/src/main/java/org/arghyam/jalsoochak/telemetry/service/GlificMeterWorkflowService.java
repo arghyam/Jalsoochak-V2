@@ -580,8 +580,18 @@ public class GlificMeterWorkflowService {
                     ? request.getCorrelationId().trim()
                     : "manual-" + UUID.randomUUID();
 
-            Optional<TelemetryConfirmedReadingSnapshot> previousSnapshotOpt = telemetryTenantRepository
-                    .findLatestConfirmedReadingSnapshot(operatorWithSchema.schemaName(), schemeId, null);
+            // Default behavior (null/true) keeps current validation: compare against latest confirmed reading,
+            // including today's submissions. When false, ignore today's readings and only compare against the
+            // latest confirmed reading strictly before today.
+            boolean isManualReading = !Boolean.FALSE.equals(request.getIsManualReading());
+            Optional<TelemetryConfirmedReadingSnapshot> previousSnapshotOpt = isManualReading
+                    ? telemetryTenantRepository.findLatestConfirmedReadingSnapshot(operatorWithSchema.schemaName(), schemeId, null)
+                    : telemetryTenantRepository.findLatestConfirmedReadingSnapshotBeforeDate(
+                            operatorWithSchema.schemaName(),
+                            schemeId,
+                            LocalDate.now(),
+                            null
+                    );
 
             // When the meter is replaced, treat the submitted reading as the new baseline.
             // That means we must not reject lower readings vs the previous meter's last confirmed reading.
