@@ -1,14 +1,15 @@
 package org.arghyam.jalsoochak.user.service.serviceImpl;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import jakarta.ws.rs.core.Response;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
 import org.arghyam.jalsoochak.user.clients.KeycloakClient;
 import org.arghyam.jalsoochak.user.clients.KeycloakTokenResponse;
 import org.arghyam.jalsoochak.user.config.KeycloakProvider;
 import org.arghyam.jalsoochak.user.config.properties.FrontendProperties;
-import org.arghyam.jalsoochak.user.config.properties.InviteProperties;
 import org.arghyam.jalsoochak.user.config.properties.PasswordResetProperties;
 import org.arghyam.jalsoochak.user.dto.internal.AuthResult;
 import org.arghyam.jalsoochak.user.dto.request.ActivateAccountRequestDTO;
@@ -17,33 +18,34 @@ import org.arghyam.jalsoochak.user.dto.request.LoginRequestDTO;
 import org.arghyam.jalsoochak.user.dto.request.ResetPasswordRequestDTO;
 import org.arghyam.jalsoochak.user.dto.response.InviteInfoResponseDTO;
 import org.arghyam.jalsoochak.user.dto.response.TokenResponseDTO;
+import org.arghyam.jalsoochak.user.enums.AdminUserStatus;
 import org.arghyam.jalsoochak.user.exceptions.AccountDeactivatedException;
 import org.arghyam.jalsoochak.user.exceptions.BadRequestException;
 import org.arghyam.jalsoochak.user.exceptions.InvalidCredentialsException;
 import org.arghyam.jalsoochak.user.exceptions.KeycloakOperationException;
 import org.arghyam.jalsoochak.user.exceptions.ResourceNotFoundException;
 import org.arghyam.jalsoochak.user.exceptions.UserAlreadyExistsException;
-import org.arghyam.jalsoochak.user.enums.AdminUserStatus;
 import org.arghyam.jalsoochak.user.repository.TenantUserRecord;
 import org.arghyam.jalsoochak.user.repository.UserCommonRepository;
 import org.arghyam.jalsoochak.user.repository.UserTenantRepository;
 import org.arghyam.jalsoochak.user.repository.records.AdminUserRow;
 import org.arghyam.jalsoochak.user.repository.records.AdminUserTokenRow;
 import org.arghyam.jalsoochak.user.service.AuthService;
-import org.arghyam.jalsoochak.user.util.SecurityUtils;
 import org.arghyam.jalsoochak.user.service.KeycloakAdminHelper;
 import org.arghyam.jalsoochak.user.service.MailService;
 import org.arghyam.jalsoochak.user.service.TokenService;
+import org.arghyam.jalsoochak.user.util.SecurityUtils;
 import org.keycloak.representations.idm.CredentialRepresentation;
 import org.keycloak.representations.idm.UserRepresentation;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.util.UriComponentsBuilder;
 
-import java.time.Instant;
-import java.time.temporal.ChronoUnit;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
+import jakarta.ws.rs.core.Response;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 @Service
@@ -56,7 +58,6 @@ public class AuthServiceImpl implements AuthService {
     private final UserTenantRepository userTenantRepository;
     private final MailService mailService;
     private final KeycloakAdminHelper keycloakAdminHelper;
-    private final InviteProperties inviteProperties;
     private final PasswordResetProperties passwordResetProperties;
     private final FrontendProperties frontendProperties;
     private final TokenService tokenService;
@@ -227,7 +228,12 @@ public class AuthServiceImpl implements AuthService {
         String hash = tokenService.hash(raw);
         Instant expiresAt = Instant.now().plus(passwordResetProperties.expiryMinutes(), ChronoUnit.MINUTES);
         userCommonRepository.upsertToken(request.getEmail(), hash, "RESET", null, expiresAt, null);
-        String resetUrl = frontendProperties.baseUrl() + frontendProperties.resetPath() + "?token=" + raw;
+        String resetUrl = UriComponentsBuilder
+                .fromHttpUrl(frontendProperties.baseUrl())
+                .path(frontendProperties.resetPath())
+                .queryParam("token", raw)
+                .build()
+                .toUriString();
         mailService.sendMailAfterCommit(() -> mailService.sendPasswordResetMail(request.getEmail(), resetUrl));
     }
 

@@ -35,6 +35,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
+import org.springframework.web.util.UriComponentsBuilder;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -135,7 +136,12 @@ public class UserManagementServiceImpl implements UserManagementService {
         userCommonRepository.upsertToken(request.getEmail(), hash, "INVITE", metadataJson, expiresAt,
                 callerRow.id() != null ? callerRow.id().intValue() : null);
 
-        String inviteUrl = frontendProperties.baseUrl() + frontendProperties.invitePath() + "?token=" + raw;
+        String inviteUrl = UriComponentsBuilder
+                .fromHttpUrl(frontendProperties.baseUrl())
+                .path(frontendProperties.invitePath())
+                .queryParam("token", raw)
+                .build()
+                .toUriString();
         mailService.sendMailAfterCommit(() -> mailService.sendInviteMail(request.getEmail(), inviteUrl));
     }
 
@@ -191,7 +197,12 @@ public class UserManagementServiceImpl implements UserManagementService {
         userCommonRepository.upsertToken(target.email(), hash, "INVITE", metadataJson, expiresAt,
                 callerRow.id() != null ? callerRow.id().intValue() : null);
 
-        String inviteUrl = frontendProperties.baseUrl() + frontendProperties.invitePath() + "?token=" + raw;
+        String inviteUrl = UriComponentsBuilder
+                .fromHttpUrl(frontendProperties.baseUrl())
+                .path(frontendProperties.invitePath())
+                .queryParam("token", raw)
+                .build()
+                .toUriString();
         mailService.sendMailAfterCommit(() -> mailService.sendInviteMail(target.email(), inviteUrl));
     }
 
