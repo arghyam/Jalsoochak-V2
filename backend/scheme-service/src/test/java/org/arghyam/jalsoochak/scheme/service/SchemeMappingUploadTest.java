@@ -63,6 +63,7 @@ class SchemeMappingUploadTest {
                 .issuedAt(Instant.now())
                 .expiresAt(Instant.now().plusSeconds(3600))
                 .claim("email", "admin@example.com")
+                .claim("tenant_state_code", "ka")
                 .build();
         JwtAuthenticationToken auth = new JwtAuthenticationToken(jwt, Collections.emptyList());
 
