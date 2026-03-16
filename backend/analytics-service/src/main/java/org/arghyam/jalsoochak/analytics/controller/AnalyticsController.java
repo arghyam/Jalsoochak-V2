@@ -12,6 +12,7 @@ import org.arghyam.jalsoochak.analytics.dto.response.OutageReasonSchemeCountResp
 import org.arghyam.jalsoochak.analytics.dto.response.PeriodicWaterQuantityResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.RegionWiseWaterQuantityResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.ReadingSubmissionRateResponse;
+import org.arghyam.jalsoochak.analytics.dto.response.SchemeStatusAndTopReportingResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.TenantDetailsResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.UserOutageReasonSchemeCountResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.UserSubmissionStatusResponse;
@@ -241,6 +242,30 @@ public class AnalyticsController {
             return ResponseEntity.ok(schemeRegularityService.getSchemeStatusCountByLgd(lgdId));
         }
         return ResponseEntity.ok(schemeRegularityService.getSchemeStatusCountByDepartment(departmentId));
+    }
+
+    @GetMapping("/schemes/dashboard")
+    @Operation(summary = "Get active/inactive scheme count and top-N schemes by reporting rate for a parent LGD or parent department")
+    public ResponseEntity<SchemeStatusAndTopReportingResponse> getSchemeStatusAndTopReportingRate(
+            @RequestParam(name = "start_date") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam(name = "end_date") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
+            @RequestParam(name = "parent_lgd_id", required = false) Integer parentLgdId,
+            @RequestParam(name = "parent_department_id", required = false) Integer parentDepartmentId,
+            @RequestParam(name = "scheme_count", required = false, defaultValue = "10") Integer schemeCount) {
+        if (parentLgdId != null && parentDepartmentId != null) {
+            throw new IllegalArgumentException("Provide either parent_lgd_id or parent_department_id, not both");
+        }
+        if (parentLgdId == null && parentDepartmentId == null) {
+            throw new IllegalArgumentException("Provide either parent_lgd_id or parent_department_id");
+        }
+        if (parentLgdId != null) {
+            return ResponseEntity.ok(
+                    schemeRegularityService.getSchemeStatusAndTopReportingByLgd(
+                            parentLgdId, startDate, endDate, schemeCount));
+        }
+        return ResponseEntity.ok(
+                schemeRegularityService.getSchemeStatusAndTopReportingByDepartment(
+                        parentDepartmentId, startDate, endDate, schemeCount));
     }
 
 

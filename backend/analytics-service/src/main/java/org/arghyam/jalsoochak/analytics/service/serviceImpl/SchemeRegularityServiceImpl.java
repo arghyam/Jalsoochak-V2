@@ -7,6 +7,7 @@ import org.arghyam.jalsoochak.analytics.dto.response.OutageReasonSchemeCountResp
 import org.arghyam.jalsoochak.analytics.dto.response.PeriodicWaterQuantityResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.RegionWiseWaterQuantityResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.ReadingSubmissionRateResponse;
+import org.arghyam.jalsoochak.analytics.dto.response.SchemeStatusAndTopReportingResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.UserOutageReasonSchemeCountResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.UserSubmissionStatusResponse;
 import org.arghyam.jalsoochak.analytics.enums.OutageReason;
@@ -45,6 +46,7 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
     private static final String SCHEME_REGULARITY_CACHE_PREFIX = ":scheme_regularity";
     private static final String READING_SUBMISSION_RATE_CACHE_PREFIX = ":reading_submission_rate";
     private static final String NATIONAL_DASHBOARD_CACHE_PREFIX = ":national:dashboard";
+    private static final int DEFAULT_TOP_SCHEME_COUNT = 10;
     private static final String DEBUG_LOG_PATH = "/home/beehyv/Desktop/Codes/jalSoochak/JalSoochak_New/.cursor/debug.log";
 
     private final SchemeRegularityRepository schemeRegularityRepository;
@@ -1208,6 +1210,80 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
                 count.inactiveSchemeCount() == null ? 0 : count.inactiveSchemeCount());
     }
 
+    @Override
+    public SchemeStatusAndTopReportingResponse getSchemeStatusAndTopReportingByLgd(
+            Integer parentLgdId, LocalDate startDate, LocalDate endDate, Integer topSchemeCount) {
+        validateLgdInput(parentLgdId);
+        validateDateRange(startDate, endDate);
+        topSchemeCount = topSchemeCount == null ? DEFAULT_TOP_SCHEME_COUNT : topSchemeCount;
+        validateTopSchemeCount(topSchemeCount);
+        int daysInRange = (int) ChronoUnit.DAYS.between(startDate, endDate) + 1;
+
+        SchemeRegularityRepository.SchemeStatusCount statusCount =
+                schemeRegularityRepository.getSchemeStatusCountByLgd(parentLgdId);
+        List<SchemeRegularityRepository.SchemeSubmissionMetrics> topSchemes =
+                schemeRegularityRepository.getTopSchemeSubmissionMetricsByLgd(
+                        parentLgdId, startDate, endDate, topSchemeCount);
+
+        return SchemeStatusAndTopReportingResponse.builder()
+                .parentLgdId(parentLgdId)
+                .parentDepartmentId(null)
+                .startDate(startDate)
+                .endDate(endDate)
+                .daysInRange(daysInRange)
+                .activeSchemeCount(statusCount.activeSchemeCount() == null ? 0 : statusCount.activeSchemeCount())
+                .inactiveSchemeCount(statusCount.inactiveSchemeCount() == null ? 0 : statusCount.inactiveSchemeCount())
+                .topSchemeCount(topSchemes.size())
+                .topSchemes(topSchemes.stream()
+                        .map(metric -> SchemeStatusAndTopReportingResponse.TopReportingScheme.builder()
+                                .schemeId(metric.schemeId())
+                                .schemeName(metric.schemeName())
+                                .statusCode(metric.status())
+                                .status(resolveSchemeStatus(metric.status()))
+                                .submissionDays(metric.submissionDays())
+                                .reportingRate(calculateReportingRate(metric.submissionDays(), daysInRange))
+                                .build())
+                        .toList())
+                .build();
+    }
+
+    @Override
+    public SchemeStatusAndTopReportingResponse getSchemeStatusAndTopReportingByDepartment(
+            Integer parentDepartmentId, LocalDate startDate, LocalDate endDate, Integer topSchemeCount) {
+        validateDepartmentInput(parentDepartmentId);
+        validateDateRange(startDate, endDate);
+        topSchemeCount = topSchemeCount == null ? DEFAULT_TOP_SCHEME_COUNT : topSchemeCount;
+        validateTopSchemeCount(topSchemeCount);
+        int daysInRange = (int) ChronoUnit.DAYS.between(startDate, endDate) + 1;
+
+        SchemeRegularityRepository.SchemeStatusCount statusCount =
+                schemeRegularityRepository.getSchemeStatusCountByDepartment(parentDepartmentId);
+        List<SchemeRegularityRepository.SchemeSubmissionMetrics> topSchemes =
+                schemeRegularityRepository.getTopSchemeSubmissionMetricsByDepartment(
+                        parentDepartmentId, startDate, endDate, topSchemeCount);
+
+        return SchemeStatusAndTopReportingResponse.builder()
+                .parentLgdId(null)
+                .parentDepartmentId(parentDepartmentId)
+                .startDate(startDate)
+                .endDate(endDate)
+                .daysInRange(daysInRange)
+                .activeSchemeCount(statusCount.activeSchemeCount() == null ? 0 : statusCount.activeSchemeCount())
+                .inactiveSchemeCount(statusCount.inactiveSchemeCount() == null ? 0 : statusCount.inactiveSchemeCount())
+                .topSchemeCount(topSchemes.size())
+                .topSchemes(topSchemes.stream()
+                        .map(metric -> SchemeStatusAndTopReportingResponse.TopReportingScheme.builder()
+                                .schemeId(metric.schemeId())
+                                .schemeName(metric.schemeName())
+                                .statusCode(metric.status())
+                                .status(resolveSchemeStatus(metric.status()))
+                                .submissionDays(metric.submissionDays())
+                                .reportingRate(calculateReportingRate(metric.submissionDays(), daysInRange))
+                                .build())
+                        .toList())
+                .build();
+    }
+
     private void validateLgdInput(Integer lgdId) {
         if (lgdId == null || lgdId <= 0) {
             throw new IllegalArgumentException("lgd_id must be a positive integer");
@@ -1239,6 +1315,32 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
         if (endDate.isBefore(startDate)) {
             throw new IllegalArgumentException("end_date must be on or after start_date");
         }
+    }
+
+    private void validateTopSchemeCount(Integer topSchemeCount) {
+        if (topSchemeCount == null || topSchemeCount <= 0) {
+            throw new IllegalArgumentException("scheme_count must be a positive integer");
+        }
+    }
+
+    private BigDecimal calculateReportingRate(Integer submissionDays, Integer daysInRange) {
+        if (submissionDays == null || daysInRange == null || daysInRange <= 0) {
+            return BigDecimal.ZERO;
+        }
+        return BigDecimal.valueOf(submissionDays)
+                .divide(BigDecimal.valueOf(daysInRange), 4, RoundingMode.HALF_UP);
+    }
+
+    private String resolveSchemeStatus(Integer statusCode) {
+        if (statusCode == null) {
+            return "unknown";
+        }
+        for (SchemeStatus value : SchemeStatus.values()) {
+            if (value.getCode() == statusCode) {
+                return value.name().toLowerCase();
+            }
+        }
+        return "unknown";
     }
 
     private void validateScaleInput(PeriodScale scale) {

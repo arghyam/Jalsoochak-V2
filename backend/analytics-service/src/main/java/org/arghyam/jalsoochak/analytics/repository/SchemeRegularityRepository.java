@@ -893,6 +893,119 @@ public class SchemeRegularityRepository {
         return new SchemeStatusCount(activeSchemeCount, inactiveSchemeCount);
     }
 
+    public List<SchemeSubmissionMetrics> getTopSchemeSubmissionMetricsByLgd(
+            Integer parentLgdId, LocalDate startDate, LocalDate endDate, Integer topSchemeCount) {
+        Integer lgdLevel = getLgdLevel(parentLgdId);
+        if (lgdLevel == null) {
+            throw new IllegalArgumentException("parent_lgd_id not found in dim_lgd_location_table: " + parentLgdId);
+        }
+        String schemeLgdColumn = resolveSchemeLgdColumn(lgdLevel);
+
+        String sql = String.format("""
+                WITH schemes_in_scope AS (
+                    SELECT
+                        s.scheme_id,
+                        s.scheme_name,
+                        s.status
+                    FROM analytics_schema.dim_scheme_table s
+                    WHERE s.%1$s = ?
+                ),
+                scheme_submission_days AS (
+                    SELECT
+                        m.scheme_id,
+                        COUNT(DISTINCT m.reading_date)::int AS submission_days
+                    FROM analytics_schema.fact_meter_reading_table m
+                    JOIN schemes_in_scope ss
+                        ON ss.scheme_id = m.scheme_id
+                    WHERE m.reading_date BETWEEN ? AND ?
+                      AND m.confirmed_reading >= 0
+                    GROUP BY m.scheme_id
+                )
+                SELECT
+                    ss.scheme_id,
+                    ss.scheme_name,
+                    ss.status,
+                    COALESCE(sd.submission_days, 0)::int AS submission_days
+                FROM schemes_in_scope ss
+                LEFT JOIN scheme_submission_days sd
+                    ON sd.scheme_id = ss.scheme_id
+                ORDER BY
+                    (COALESCE(sd.submission_days, 0)::numeric / ?) DESC,
+                    ss.scheme_id ASC
+                LIMIT ?
+                """, schemeLgdColumn);
+
+        return jdbcTemplate.query(
+                sql,
+                (rs, rowNum) -> new SchemeSubmissionMetrics(
+                        rs.getInt("scheme_id"),
+                        rs.getString("scheme_name"),
+                        (Integer) rs.getObject("status"),
+                        rs.getInt("submission_days")),
+                parentLgdId,
+                startDate,
+                endDate,
+                ChronoUnit.DAYS.between(startDate, endDate) + 1,
+                topSchemeCount);
+    }
+
+    public List<SchemeSubmissionMetrics> getTopSchemeSubmissionMetricsByDepartment(
+            Integer parentDepartmentId, LocalDate startDate, LocalDate endDate, Integer topSchemeCount) {
+        Integer departmentLevel = getDepartmentLevel(parentDepartmentId);
+        if (departmentLevel == null) {
+            throw new IllegalArgumentException(
+                    "parent_department_id not found in dim_department_location_table: " + parentDepartmentId);
+        }
+        String schemeDepartmentColumn = resolveSchemeDepartmentColumn(departmentLevel);
+
+        String sql = String.format("""
+                WITH schemes_in_scope AS (
+                    SELECT
+                        s.scheme_id,
+                        s.scheme_name,
+                        s.status
+                    FROM analytics_schema.dim_scheme_table s
+                    WHERE s.%1$s = ?
+                ),
+                scheme_submission_days AS (
+                    SELECT
+                        m.scheme_id,
+                        COUNT(DISTINCT m.reading_date)::int AS submission_days
+                    FROM analytics_schema.fact_meter_reading_table m
+                    JOIN schemes_in_scope ss
+                        ON ss.scheme_id = m.scheme_id
+                    WHERE m.reading_date BETWEEN ? AND ?
+                      AND m.confirmed_reading >= 0
+                    GROUP BY m.scheme_id
+                )
+                SELECT
+                    ss.scheme_id,
+                    ss.scheme_name,
+                    ss.status,
+                    COALESCE(sd.submission_days, 0)::int AS submission_days
+                FROM schemes_in_scope ss
+                LEFT JOIN scheme_submission_days sd
+                    ON sd.scheme_id = ss.scheme_id
+                ORDER BY
+                    (COALESCE(sd.submission_days, 0)::numeric / ?) DESC,
+                    ss.scheme_id ASC
+                LIMIT ?
+                """, schemeDepartmentColumn);
+
+        return jdbcTemplate.query(
+                sql,
+                (rs, rowNum) -> new SchemeSubmissionMetrics(
+                        rs.getInt("scheme_id"),
+                        rs.getString("scheme_name"),
+                        (Integer) rs.getObject("status"),
+                        rs.getInt("submission_days")),
+                parentDepartmentId,
+                startDate,
+                endDate,
+                ChronoUnit.DAYS.between(startDate, endDate) + 1,
+                topSchemeCount);
+    }
+
     public List<SchemeWaterSupplyMetrics> getAverageWaterSupplyPerCurrentRegion(
             Integer tenantId, LocalDate startDate, LocalDate endDate) {
         long daysInRange = ChronoUnit.DAYS.between(startDate, endDate) + 1;
@@ -1684,6 +1797,13 @@ public class SchemeRegularityRepository {
     }
 
     public record SchemeStatusCount(Integer activeSchemeCount, Integer inactiveSchemeCount) {
+    }
+
+    public record SchemeSubmissionMetrics(
+            Integer schemeId,
+            String schemeName,
+            Integer status,
+            Integer submissionDays) {
     }
 
     public record SubmissionStatusCount(Integer compliantSubmissionCount, Integer anomalousSubmissionCount) {
