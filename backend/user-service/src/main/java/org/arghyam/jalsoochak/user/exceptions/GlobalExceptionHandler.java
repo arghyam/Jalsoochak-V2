@@ -89,7 +89,17 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(KeycloakOperationException.class)
     public ResponseEntity<ApiErrorResponseDTO> handleKeycloakOperation(KeycloakOperationException ex) {
         log.error("Keycloak operation failed: {}", ex.getMessage(), ex);
-        return build(HttpStatus.INTERNAL_SERVER_ERROR, "An identity provider error occurred");
+        Integer statusCode = ex.getStatusCode();
+        HttpStatus httpStatus = HttpStatus.INTERNAL_SERVER_ERROR;
+        if (statusCode != null) {
+            try {
+                httpStatus = HttpStatus.valueOf(statusCode);
+            } catch (IllegalArgumentException ignored) {
+                // fall back to 500
+            }
+        }
+        String message = statusCode != null ? ex.getMessage() : "An identity provider error occurred";
+        return build(httpStatus, message);
     }
 
     @ExceptionHandler(ResourceNotFoundException.class)

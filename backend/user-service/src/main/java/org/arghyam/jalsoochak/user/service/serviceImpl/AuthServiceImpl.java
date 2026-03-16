@@ -35,6 +35,7 @@ import org.arghyam.jalsoochak.user.service.KeycloakAdminHelper;
 import org.arghyam.jalsoochak.user.service.MailService;
 import org.arghyam.jalsoochak.user.service.TokenService;
 import org.arghyam.jalsoochak.user.util.SecurityUtils;
+import org.keycloak.admin.client.resource.UserResource;
 import org.keycloak.representations.idm.CredentialRepresentation;
 import org.keycloak.representations.idm.UserRepresentation;
 import org.springframework.stereotype.Service;
@@ -174,19 +175,7 @@ public class AuthServiceImpl implements AuthService {
             cred.setType(CredentialRepresentation.PASSWORD);
             cred.setValue(request.getPassword());
             cred.setTemporary(false);
-            try {
-                usersResource.get(keycloakUuid).resetPassword(cred);
-            } catch (WebApplicationException wae) {
-                Response resp = wae.getResponse();
-                if (resp == null) {
-                    throw new KeycloakOperationException("Failed to reset password: no HTTP response available");
-                }
-                int status = resp.getStatus();
-                if (status == 400) {
-                    throw new BadRequestException("Password does not meet the required policy");
-                }
-                throw new KeycloakOperationException("Failed to reset password: HTTP " + status);
-            }
+            resetKeycloakPassword(usersResource.get(keycloakUuid), cred);
 
             keycloakAdminHelper.assignRoleToUser(keycloakUuid, role);
 
@@ -272,9 +261,14 @@ public class AuthServiceImpl implements AuthService {
         cred.setType(CredentialRepresentation.PASSWORD);
         cred.setValue(request.getNewPassword());
         cred.setTemporary(false);
+        resetKeycloakPassword(
+                keycloakProvider.getAdminInstance().realm(keycloakProvider.getRealm()).users().get(user.uuid()),
+                cred);
+    }
+
+    private void resetKeycloakPassword(UserResource userResource, CredentialRepresentation cred) {
         try {
-            keycloakProvider.getAdminInstance().realm(keycloakProvider.getRealm())
-                    .users().get(user.uuid()).resetPassword(cred);
+            userResource.resetPassword(cred);
         } catch (WebApplicationException wae) {
             Response resp = wae.getResponse();
             if (resp == null) {
@@ -284,7 +278,7 @@ public class AuthServiceImpl implements AuthService {
             if (status == 400) {
                 throw new BadRequestException("Password does not meet the required policy");
             }
-            throw new KeycloakOperationException("Failed to reset password: HTTP " + status);
+            throw new KeycloakOperationException("Failed to reset password: HTTP " + status, status);
         }
     }
 

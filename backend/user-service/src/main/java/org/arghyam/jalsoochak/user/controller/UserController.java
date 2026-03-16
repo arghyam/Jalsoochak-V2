@@ -54,7 +54,8 @@ public class UserController {
     @PreAuthorize("hasAnyRole('SUPER_USER', 'STATE_ADMIN')")
     public ResponseEntity<ApiResponseDTO<Void>> inviteUser(@Valid @RequestBody InviteRequestDTO request,
                                                            Authentication authentication) {
-        log.info("POST /api/v1/users/invite – role={}, tenantCode={}", request.getRole(), request.getTenantCode());
+        log.info("POST /api/v1/users/invite – role={}", request.getRole());
+        log.debug("POST /api/v1/users/invite – tenantCode={}", request.getTenantCode());
         userManagementService.inviteUser(request, authentication);
         return ResponseEntity.ok(ApiResponseDTO.of(200, "Invitation sent successfully"));
     }
@@ -129,7 +130,8 @@ public class UserController {
             @Parameter(description = "Zero-based page number") @RequestParam(defaultValue = "0") @Min(0) int page,
             @Parameter(description = "Page size (1–100)") @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size,
             Authentication authentication) {
-        log.info("GET /api/v1/users/state-admins – tenantCode={}, page={}, size={}", tenantCode, page, size);
+        log.info("GET /api/v1/users/state-admins – page={}, size={}", page, size);
+        log.debug("GET /api/v1/users/state-admins – tenantCode={}", tenantCode);
         return ResponseEntity.ok(ApiResponseDTO.of(200, "State admins retrieved",
                 userManagementService.listStateAdmins(tenantCode, authentication, page, size)));
     }
@@ -145,7 +147,8 @@ public class UserController {
     public ResponseEntity<ApiResponseDTO<AdminUserResponseDTO>> getUserById(
             @Parameter(description = "User ID") @PathVariable Long id,
             Authentication authentication) {
-        log.info("GET /api/v1/users/{}", id);
+        log.info("GET /api/v1/users/[id]");
+        log.debug("GET /api/v1/users/{}", id);
         return ResponseEntity.ok(ApiResponseDTO.of(200, "User retrieved", userManagementService.getUserById(id, authentication)));
     }
 
@@ -162,23 +165,26 @@ public class UserController {
             @Parameter(description = "User ID") @PathVariable Long id,
             Authentication authentication,
             @Valid @RequestBody UpdateProfileRequestDTO request) {
-        log.info("PATCH /api/v1/users/{}", id);
+        log.info("PATCH /api/v1/users/[id]");
+        log.debug("PATCH /api/v1/users/{}", id);
         return ResponseEntity.ok(ApiResponseDTO.of(200, "User updated", userManagementService.updateUserById(id, authentication, request)));
     }
 
     @Operation(summary = "Deactivate user")
     @ApiResponses({
         @ApiResponse(responseCode = "200", description = "User deactivated"),
-        @ApiResponse(responseCode = "400", description = "User is PENDING or is the last active admin in their role"),
+        @ApiResponse(responseCode = "400", description = "User is PENDING"),
         @ApiResponse(responseCode = "403", description = "Self-deactivation or cross-state attempt"),
-        @ApiResponse(responseCode = "404", description = "User not found")
+        @ApiResponse(responseCode = "404", description = "User not found"),
+        @ApiResponse(responseCode = "409", description = "User is the last active admin in their role")
     })
     @PutMapping("/{id}/deactivate")
     @PreAuthorize("hasAnyRole('SUPER_USER', 'STATE_ADMIN')")
     public ResponseEntity<ApiResponseDTO<Void>> deactivate(
             @Parameter(description = "User ID") @PathVariable Long id,
             Authentication authentication) {
-        log.info("PUT /api/v1/users/{}/deactivate", id);
+        log.info("PUT /api/v1/users/[id]/deactivate");
+        log.debug("PUT /api/v1/users/{}/deactivate", id);
         userManagementService.deactivateUser(id, authentication);
         return ResponseEntity.ok(ApiResponseDTO.of(200, "User deactivated successfully"));
     }
@@ -187,7 +193,7 @@ public class UserController {
     @ApiResponses({
         @ApiResponse(responseCode = "200", description = "User activated"),
         @ApiResponse(responseCode = "400", description = "User is PENDING"),
-        @ApiResponse(responseCode = "403", description = "STATE_ADMIN attempted cross-state activation"),
+        @ApiResponse(responseCode = "401", description = "Unauthorized cross-state activation attempt"),
         @ApiResponse(responseCode = "404", description = "User not found")
     })
     @PutMapping("/{id}/activate")
@@ -195,7 +201,8 @@ public class UserController {
     public ResponseEntity<ApiResponseDTO<Void>> activate(
             @Parameter(description = "User ID") @PathVariable Long id,
             Authentication authentication) {
-        log.info("PUT /api/v1/users/{}/activate", id);
+        log.info("PUT /api/v1/users/[id]/activate");
+        log.debug("PUT /api/v1/users/{}/activate", id);
         userManagementService.activateUser(id, authentication);
         return ResponseEntity.ok(ApiResponseDTO.of(200, "User activated successfully"));
     }
@@ -212,7 +219,8 @@ public class UserController {
     public ResponseEntity<ApiResponseDTO<Void>> reinvite(
             @Parameter(description = "User ID") @PathVariable Long id,
             Authentication authentication) {
-        log.info("POST /api/v1/users/{}/reinvite", id);
+        log.info("POST /api/v1/users/[id]/reinvite");
+        log.debug("POST /api/v1/users/{}/reinvite", id);
         userManagementService.reinviteUser(id, authentication);
         return ResponseEntity.ok(ApiResponseDTO.of(200, "Invitation resent successfully"));
     }
