@@ -16,5 +16,6 @@ public sealed interface ConfigValueDTO permits
         TimeSettingsConfigDTO,
         NudgeTimingConfigDTO,
         EscalationRulesConfigDTO,
-        GlificMessagesConfigDTO {
+        GlificMessagesConfigDTO,
+        WaterSupplyThresholdConfigDTO {
 }

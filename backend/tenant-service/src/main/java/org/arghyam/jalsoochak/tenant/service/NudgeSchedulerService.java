@@ -10,7 +10,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
-import java.util.List;
+import java.time.LocalDate;
 import java.util.Map;
 
 /**
@@ -32,14 +32,11 @@ public class NudgeSchedulerService {
     private final KafkaProducer kafkaProducer;
 
     public void processNudgesForTenant(String schema, int tenantId) {
-        List<Map<String, Object>> users = nudgeRepository.findUsersWithNoUploadToday(schema);
-        log.info("[NudgeJob] schema={} → {} users have no upload today", schema, users.size());
-
-        for (Map<String, Object> row : users) {
+        int total = nudgeRepository.streamUsersWithNoUploadToday(schema, LocalDate.now(), row -> {
             String phone = (String) row.get("phone_number");
-            if (phone == null || phone.isBlank()) {
-                continue;
-            }
+            long whatsappId = row.get("whatsapp_connection_id") != null
+                    ? ((Number) row.get("whatsapp_connection_id")).longValue() : 0L;
+            if ((phone == null || phone.isBlank()) && whatsappId == 0L) return;
             NudgeEvent event = NudgeEvent.builder()
                     .eventType("NUDGE")
                     .recipientPhone(phone)
@@ -48,12 +45,12 @@ public class NudgeSchedulerService {
                     .tenantId(tenantId)
                     .languageId(row.get("language_id") != null ? ((Number) row.get("language_id")).intValue() : 0)
                     .userId(row.get("user_id") != null ? ((Number) row.get("user_id")).longValue() : 0L)
-                    .whatsappConnectionId(row.get("whatsapp_connection_id") != null
-                            ? ((Number) row.get("whatsapp_connection_id")).longValue() : 0L)
+                    .whatsappConnectionId(whatsappId)
                     .tenantSchema(schema)
                     .build();
             kafkaProducer.publishJson(COMMON_TOPIC, event);
-            log.debug("[NudgeJob] Published NudgeEvent for phone={}", phone);
-        }
+            log.debug("[NudgeJob] Published NudgeEvent for userId={}", row.get("user_id"));
+        });
+        log.info("[NudgeJob] schema={} → {} users have no upload today", schema, total);
     }
 }

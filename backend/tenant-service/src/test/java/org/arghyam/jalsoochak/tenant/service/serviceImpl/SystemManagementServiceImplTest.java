@@ -20,6 +20,7 @@ import java.util.Set;
 import org.arghyam.jalsoochak.tenant.dto.internal.ConfigDTO;
 import org.arghyam.jalsoochak.tenant.dto.internal.ConfigValueDTO;
 import org.arghyam.jalsoochak.tenant.dto.internal.SimpleConfigValueDTO;
+import org.arghyam.jalsoochak.tenant.dto.internal.WaterSupplyThresholdConfigDTO;
 import org.arghyam.jalsoochak.tenant.dto.request.SetSystemConfigRequestDTO;
 import org.arghyam.jalsoochak.tenant.dto.response.SystemConfigResponseDTO;
 import org.arghyam.jalsoochak.tenant.enums.SystemConfigKeyEnum;
@@ -75,7 +76,7 @@ class SystemManagementServiceImplTest {
             List<ConfigDTO> configs = List.of(
                     ConfigDTO.builder()
                             .configKey(SystemConfigKeyEnum.WATER_QUANTITY_SUPPLY_THRESHOLD.name())
-                            .configValue("{\"value\": \"80\"}")
+                            .configValue("{\"undersupplyThresholdPercent\": 20.0, \"oversupplyThresholdPercent\": 30.0}")
                             .build());
             when(tenantCommonRepository.findConfigsByTenantId(0)).thenReturn(configs);
 
@@ -84,8 +85,9 @@ class SystemManagementServiceImplTest {
             assertNotNull(result);
             ConfigValueDTO configValue = result.getConfigs().get(SystemConfigKeyEnum.WATER_QUANTITY_SUPPLY_THRESHOLD);
             assertNotNull(configValue);
-            assertTrue(configValue instanceof SimpleConfigValueDTO);
-            assertEquals("80", ((SimpleConfigValueDTO) configValue).getValue());
+            assertTrue(configValue instanceof WaterSupplyThresholdConfigDTO);
+            assertEquals(20.0, ((WaterSupplyThresholdConfigDTO) configValue).getUndersupplyThresholdPercent());
+            assertEquals(30.0, ((WaterSupplyThresholdConfigDTO) configValue).getOversupplyThresholdPercent());
         }
 
         @Test
@@ -94,7 +96,7 @@ class SystemManagementServiceImplTest {
             List<ConfigDTO> configs = List.of(
                     ConfigDTO.builder()
                             .configKey(SystemConfigKeyEnum.WATER_QUANTITY_SUPPLY_THRESHOLD.name())
-                            .configValue("{\"value\": \"80\"}")
+                            .configValue("{\"undersupplyThresholdPercent\": 20.0, \"oversupplyThresholdPercent\": 30.0}")
                             .build(),
                     ConfigDTO.builder()
                             .configKey(SystemConfigKeyEnum.LOCATION_AFFINITY_THRESHOLD.name())
@@ -141,7 +143,7 @@ class SystemManagementServiceImplTest {
             List<ConfigDTO> configs = List.of(
                     ConfigDTO.builder()
                             .configKey(SystemConfigKeyEnum.WATER_QUANTITY_SUPPLY_THRESHOLD.name())
-                            .configValue("not-valid-json{{{")
+                            .configValue("not-valid-json{{{") // malformed JSON
                             .build());
             when(tenantCommonRepository.findConfigsByTenantId(0)).thenReturn(configs);
 
@@ -154,7 +156,7 @@ class SystemManagementServiceImplTest {
             List<ConfigDTO> configs = List.of(
                     ConfigDTO.builder()
                             .configKey(SystemConfigKeyEnum.WATER_QUANTITY_SUPPLY_THRESHOLD.name())
-                            .configValue("{\"value\": \"80\"}")
+                            .configValue("{\"undersupplyThresholdPercent\": 20.0, \"oversupplyThresholdPercent\": 30.0}")
                             .build(),
                     ConfigDTO.builder()
                             .configKey(SystemConfigKeyEnum.LOCATION_AFFINITY_THRESHOLD.name())
@@ -165,8 +167,8 @@ class SystemManagementServiceImplTest {
             SystemConfigResponseDTO result = systemManagementService.getSystemConfigs(null);
 
             assertEquals(2, result.getConfigs().size());
-            assertEquals("80", ((SimpleConfigValueDTO) result.getConfigs()
-                    .get(SystemConfigKeyEnum.WATER_QUANTITY_SUPPLY_THRESHOLD)).getValue());
+            assertEquals(20.0, ((WaterSupplyThresholdConfigDTO) result.getConfigs()
+                    .get(SystemConfigKeyEnum.WATER_QUANTITY_SUPPLY_THRESHOLD)).getUndersupplyThresholdPercent());
             assertEquals("100", ((SimpleConfigValueDTO) result.getConfigs()
                     .get(SystemConfigKeyEnum.LOCATION_AFFINITY_THRESHOLD)).getValue());
         }
@@ -181,12 +183,12 @@ class SystemManagementServiceImplTest {
         void setSystemConfigs_Success() throws Exception {
             Map<SystemConfigKeyEnum, JsonNode> newConfigs = new HashMap<>();
             newConfigs.put(SystemConfigKeyEnum.WATER_QUANTITY_SUPPLY_THRESHOLD,
-                    objectMapper.readTree("{\"value\": \"80\"}"));
+                    objectMapper.readTree("{\"undersupplyThresholdPercent\": 20.0, \"oversupplyThresholdPercent\": 30.0}"));
             SetSystemConfigRequestDTO request = SetSystemConfigRequestDTO.builder().configs(newConfigs).build();
 
             ConfigDTO savedConfig = ConfigDTO.builder()
                     .configKey(SystemConfigKeyEnum.WATER_QUANTITY_SUPPLY_THRESHOLD.name())
-                    .configValue("{\"value\": \"80\"}")
+                    .configValue("{\"undersupplyThresholdPercent\": 20.0, \"oversupplyThresholdPercent\": 30.0}")
                     .build();
 
             when(SecurityUtils.getCurrentUserUuid()).thenReturn("admin-uuid");
@@ -200,8 +202,9 @@ class SystemManagementServiceImplTest {
             assertNotNull(result);
             ConfigValueDTO configValue = result.getConfigs().get(SystemConfigKeyEnum.WATER_QUANTITY_SUPPLY_THRESHOLD);
             assertNotNull(configValue);
-            assertTrue(configValue instanceof SimpleConfigValueDTO);
-            assertEquals("80", ((SimpleConfigValueDTO) configValue).getValue());
+            assertTrue(configValue instanceof WaterSupplyThresholdConfigDTO);
+            assertEquals(20.0, ((WaterSupplyThresholdConfigDTO) configValue).getUndersupplyThresholdPercent());
+            assertEquals(30.0, ((WaterSupplyThresholdConfigDTO) configValue).getOversupplyThresholdPercent());
         }
 
         @Test
@@ -209,7 +212,7 @@ class SystemManagementServiceImplTest {
         void setSystemConfigs_RepositoryFailure_ThrowsRuntimeException() throws Exception {
             Map<SystemConfigKeyEnum, JsonNode> newConfigs = new HashMap<>();
             newConfigs.put(SystemConfigKeyEnum.WATER_QUANTITY_SUPPLY_THRESHOLD,
-                    objectMapper.readTree("{\"value\": \"80\"}"));
+                    objectMapper.readTree("{\"undersupplyThresholdPercent\": 20.0, \"oversupplyThresholdPercent\": 30.0}"));
             SetSystemConfigRequestDTO request = SetSystemConfigRequestDTO.builder().configs(newConfigs).build();
 
             when(SecurityUtils.getCurrentUserUuid()).thenReturn("admin-uuid");
@@ -225,7 +228,7 @@ class SystemManagementServiceImplTest {
         @DisplayName("Should throw InvalidConfigValueException when input JSON is wrong type")
         void setSystemConfigs_MalformedInput_ThrowsInvalidConfigValueException() throws Exception {
             Map<SystemConfigKeyEnum, JsonNode> newConfigs = new HashMap<>();
-            // Array is not compatible with SimpleConfigValueDTO (expects object)
+            // Array is not compatible with WaterSupplyThresholdConfigDTO (expects object)
             newConfigs.put(SystemConfigKeyEnum.WATER_QUANTITY_SUPPLY_THRESHOLD,
                     objectMapper.readTree("[1, 2, 3]"));
             SetSystemConfigRequestDTO request = SetSystemConfigRequestDTO.builder().configs(newConfigs).build();
@@ -241,12 +244,12 @@ class SystemManagementServiceImplTest {
         void setSystemConfigs_UserNotFound_UsesNullUserId() throws Exception {
             Map<SystemConfigKeyEnum, JsonNode> newConfigs = new HashMap<>();
             newConfigs.put(SystemConfigKeyEnum.WATER_QUANTITY_SUPPLY_THRESHOLD,
-                    objectMapper.readTree("{\"value\": \"80\"}"));
+                    objectMapper.readTree("{\"undersupplyThresholdPercent\": 20.0, \"oversupplyThresholdPercent\": 30.0}"));
             SetSystemConfigRequestDTO request = SetSystemConfigRequestDTO.builder().configs(newConfigs).build();
 
             ConfigDTO savedConfig = ConfigDTO.builder()
                     .configKey(SystemConfigKeyEnum.WATER_QUANTITY_SUPPLY_THRESHOLD.name())
-                    .configValue("{\"value\": \"80\"}")
+                    .configValue("{\"undersupplyThresholdPercent\": 20.0, \"oversupplyThresholdPercent\": 30.0}")
                     .build();
 
             when(SecurityUtils.getCurrentUserUuid()).thenReturn("unknown-uuid");

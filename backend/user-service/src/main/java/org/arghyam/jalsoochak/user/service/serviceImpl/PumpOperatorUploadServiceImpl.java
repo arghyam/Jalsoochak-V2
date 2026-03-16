@@ -55,20 +55,16 @@ public class PumpOperatorUploadServiceImpl implements PumpOperatorUploadService 
             "last_name",
             "full_name",
             "phone_number",
-            "alternate_number",
             "person_type",
-            "state_scheme_id",
-            "center_scheme_id"
+            "state_scheme_id"
     );
     private static final List<String> EXPECTED_HEADERS_V1 = List.of(
             "first_name",
             "last_name",
             "full_name",
             "phone_number",
-            "alternate_number",
             "person_type_id",
-            "state_scheme_id",
-            "center_scheme_id"
+            "state_scheme_id"
     );
     private static final List<List<String>> ALLOWED_HEADER_VARIANTS = List.of(EXPECTED_HEADERS_V2, EXPECTED_HEADERS_V1);
 
@@ -395,14 +391,6 @@ public class PumpOperatorUploadServiceImpl implements PumpOperatorUploadService 
             LongHashSet seenPhones,
             List<UploadErrorDTO> errors
     ) {
-        if (row.firstName().isBlank()) {
-            errors.add(err(row.rowNumber(), "first_name", "First name is required"));
-            return;
-        }
-        if (row.lastName().isBlank()) {
-            errors.add(err(row.rowNumber(), "last_name", "Last name is required"));
-            return;
-        }
         if (row.fullName().isBlank()) {
             errors.add(err(row.rowNumber(), "full_name", "Full name is required"));
             return;
@@ -431,17 +419,6 @@ public class PumpOperatorUploadServiceImpl implements PumpOperatorUploadService 
             return;
         }
 
-        if (!row.alternateNumber().isBlank()) {
-            if (row.alternateNumber().startsWith("+")) {
-                errors.add(err(row.rowNumber(), "alternate_number", "Alternate number must not start with '+'"));
-                return;
-            }
-            if (!row.alternateNumber().matches("^9\\d{9}$")) {
-                errors.add(err(row.rowNumber(), "alternate_number", "Alternate number must be a valid 10-digit Indian number starting with 9"));
-                return;
-            }
-        }
-
         if (row.personType().isBlank()) {
             errors.add(err(row.rowNumber(), "person_type", "person_type is required"));
             return;
@@ -455,20 +432,16 @@ public class PumpOperatorUploadServiceImpl implements PumpOperatorUploadService 
             errors.add(err(row.rowNumber(), "state_scheme_id", "state_scheme_id is required"));
             return;
         }
-        if (row.centreSchemeId().isBlank()) {
-            errors.add(err(row.rowNumber(), "center_scheme_id", "center_scheme_id is required"));
-            return;
-        }
 
-        String schemeKey = row.stateSchemeId() + "|" + row.centreSchemeId();
+        String schemeKey = row.stateSchemeId();
         Integer schemeId = schemeIdCache.get(schemeKey);
         if (schemeId == null) {
-            Integer found = userUploadRepository.findSchemeId(schemaName, blankToNull(row.stateSchemeId()), blankToNull(row.centreSchemeId()));
+            Integer found = userUploadRepository.findSchemeId(schemaName, blankToNull(row.stateSchemeId()), null);
             schemeId = found != null ? found : -1;
             schemeIdCache.put(schemeKey, schemeId);
         }
         if (schemeId < 0) {
-            errors.add(err(row.rowNumber(), "scheme", "Invalid state_scheme_id/center_scheme_id (scheme not found)"));
+            errors.add(err(row.rowNumber(), "state_scheme_id", "Invalid state_scheme_id (scheme not found)"));
         }
     }
 
@@ -497,10 +470,8 @@ public class PumpOperatorUploadServiceImpl implements PumpOperatorUploadService 
                 normalizeValue(v.get("last_name")),
                 normalizeValue(v.get("full_name")),
                 normalizeValue(v.get("phone_number")),
-                normalizeValue(v.get("alternate_number")),
                 personTypeInFile,
-                normalizeValue(v.get("state_scheme_id")),
-                normalizeValue(v.get("center_scheme_id"))
+                normalizeValue(v.get("state_scheme_id"))
         );
     }
 

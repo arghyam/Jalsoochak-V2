@@ -1,5 +1,7 @@
 package org.arghyam.jalsoochak.telemetry.service;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.arghyam.jalsoochak.telemetry.dto.requests.IntroRequest;
 import org.arghyam.jalsoochak.telemetry.dto.requests.IssueReportRequest;
@@ -19,6 +21,7 @@ import org.arghyam.jalsoochak.telemetry.repository.TelemetryTenantRepository;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -88,17 +91,20 @@ public class GlificMeterWorkflowService {
     private final TenantConfigRepository tenantConfigRepository;
     private final GlificMessageTemplatesService templatesService;
     private final TelemetryTenantRepository telemetryTenantRepository;
+    private final ObjectMapper objectMapper;
 
     public GlificMeterWorkflowService(GlificOperatorContextService operatorContextService,
                                       GlificLocalizationService localizationService,
                                       TenantConfigRepository tenantConfigRepository,
                                       GlificMessageTemplatesService templatesService,
-                                      TelemetryTenantRepository telemetryTenantRepository) {
+                                      TelemetryTenantRepository telemetryTenantRepository,
+                                      ObjectMapper objectMapper) {
         this.operatorContextService = operatorContextService;
         this.localizationService = localizationService;
         this.tenantConfigRepository = tenantConfigRepository;
         this.templatesService = templatesService;
         this.telemetryTenantRepository = telemetryTenantRepository;
+        this.objectMapper = objectMapper;
     }
 
     public IntroResponse meterChangeMessage(IntroRequest request) {
@@ -542,6 +548,7 @@ public class GlificMeterWorkflowService {
             if (request.getManualReading() == null || request.getManualReading().isBlank()) {
                 throw new IllegalStateException("manualReading is required");
             }
+            boolean isMeterReplaced = Boolean.TRUE.equals(request.getIsMeterReplaced());
 
             String normalizedReading = request.getManualReading().trim().replace(",", "");
             if (!normalizedReading.matches("^\\d+(\\.\\d+)?$")) {
@@ -573,10 +580,26 @@ public class GlificMeterWorkflowService {
                     ? request.getCorrelationId().trim()
                     : "manual-" + UUID.randomUUID();
 
-            Optional<TelemetryConfirmedReadingSnapshot> previousSnapshotOpt = telemetryTenantRepository
-                    .findLatestConfirmedReadingSnapshot(operatorWithSchema.schemaName(), schemeId, null);
+            // Validation baseline:
+            // - If the meter is not replaced, compare only against yesterday's confirmed reading (if any).
+            //   This avoids rejecting a "today" reading against an older historic reading when there was no
+            //   reading yesterday.
+            // - If the meter is replaced, we still load the latest snapshot for anomaly/audit context, but we
+            //   do not reject lower readings vs the previous meter's baseline.
+            LocalDate today = LocalDate.now();
+            LocalDate yesterday = today.minusDays(1);
+            Optional<TelemetryConfirmedReadingSnapshot> previousSnapshotOpt = isMeterReplaced
+                    ? telemetryTenantRepository.findLatestConfirmedReadingSnapshot(operatorWithSchema.schemaName(), schemeId, null)
+                    : telemetryTenantRepository.findLatestConfirmedReadingSnapshotForDate(
+                            operatorWithSchema.schemaName(),
+                            schemeId,
+                            yesterday,
+                            null
+                    );
 
-            if (previousSnapshotOpt.isPresent()
+            // When the meter is replaced, treat the submitted reading as the new baseline.
+            // That means we must not reject lower readings vs the previous meter's last confirmed reading.
+            if (!isMeterReplaced && previousSnapshotOpt.isPresent()
                     && manualReadingValue.compareTo(previousSnapshotOpt.get().confirmedReading()) < 0) {
                 TelemetryConfirmedReadingSnapshot previousSnapshot = previousSnapshotOpt.get();
                 String submittedReadingText = manualReadingValue.stripTrailingZeros().toPlainString();
@@ -611,36 +634,45 @@ public class GlificMeterWorkflowService {
             }
 
             if (pendingOpt.isPresent()) {
-                telemetryTenantRepository.updatePendingMeterChangeReading(
+                // Manual reading submissions should only update confirmed_reading (never extracted_reading).
+                telemetryTenantRepository.updateConfirmedReading(
                         operatorWithSchema.schemaName(),
                         pendingOpt.get().id(),
                         manualReadingValue,
                         operatorWithSchema.operator().id()
                 );
+                if (isMeterReplaced) {
+                    telemetryTenantRepository.updateMeterChangeReason(
+                            operatorWithSchema.schemaName(),
+                            pendingOpt.get().id(),
+                            "METER_REPLACED",
+                            operatorWithSchema.operator().id()
+                    );
+                }
                 correlationId = pendingOpt.get().correlationId();
             } else {
                 Optional<TelemetryFlowReadingDetails> todaysFlowOpt = telemetryTenantRepository.findLatestFlowReadingForDate(
                         operatorWithSchema.schemaName(),
                         schemeId,
                         operatorWithSchema.operator().id(),
-                        LocalDate.now()
+                        today
                 );
 
                 if (todaysFlowOpt.isPresent()) {
                     TelemetryFlowReadingDetails todaysFlow = todaysFlowOpt.get();
-                    BigDecimal extracted = todaysFlow.extractedReading();
-                    if (extracted == null || extracted.compareTo(BigDecimal.ZERO) <= 0) {
-                        telemetryTenantRepository.updateReadingValues(
+                    // Manual reading submissions should only update confirmed_reading (never extracted_reading),
+                    // regardless of whether extracted_reading exists for today's row.
+                    telemetryTenantRepository.updateConfirmedReading(
+                            operatorWithSchema.schemaName(),
+                            todaysFlow.id(),
+                            manualReadingValue,
+                            operatorWithSchema.operator().id()
+                    );
+                    if (isMeterReplaced) {
+                        telemetryTenantRepository.updateMeterChangeReason(
                                 operatorWithSchema.schemaName(),
                                 todaysFlow.id(),
-                                manualReadingValue,
-                                operatorWithSchema.operator().id()
-                        );
-                    } else {
-                        telemetryTenantRepository.updateConfirmedReading(
-                                operatorWithSchema.schemaName(),
-                                todaysFlow.id(),
-                                manualReadingValue,
+                                "METER_REPLACED",
                                 operatorWithSchema.operator().id()
                         );
                     }
@@ -654,11 +686,11 @@ public class GlificMeterWorkflowService {
                             schemeId,
                             operatorWithSchema.operator().id(),
                             LocalDateTime.now(),
-                            manualReadingValue,
+                            BigDecimal.ZERO,
                             manualReadingValue,
                             correlationId,
                             "",
-                            request.getMeterChangeReason()
+                            isMeterReplaced ? "METER_REPLACED" : request.getMeterChangeReason()
                     );
                 }
             }
@@ -851,14 +883,115 @@ public class GlificMeterWorkflowService {
 
             TelemetryOperatorWithSchema operatorWithSchema = operatorContextService.resolveOperatorWithSchema(request.getContactId());
             Long operatorId = operatorWithSchema.operator().id();
+            Integer tenantId = operatorWithSchema.operator().tenantId();
+            if (tenantId == null) {
+                throw new IllegalStateException("Operator tenant could not be resolved");
+            }
+            String languageKey = localizationService.normalizeLanguageKey(
+                    operatorContextService.resolveOperatorLanguage(operatorWithSchema, tenantId)
+            );
 
             Long schemeId = telemetryTenantRepository
                     .findFirstSchemeForUser(operatorWithSchema.schemaName(), operatorId)
                     .orElseThrow(() -> new IllegalStateException("Operator is not mapped to any scheme"));
 
-            TelemetryReadingRecord previousDayRecord = telemetryTenantRepository
-                    .findLatestCompletedReadingForPreviousDay(operatorWithSchema.schemaName(), schemeId, operatorId)
+            LocalDate today = LocalDate.now();
+            LocalDate previousDay = today.minusDays(1);
+            LocalDate twoDaysAgo = today.minusDays(2);
+
+            // Use the richer lookup so we can validate bounds before updating.
+            TelemetryFlowReadingDetails previousDayRecord = telemetryTenantRepository
+                    .findLatestFlowReadingForDate(operatorWithSchema.schemaName(), schemeId, operatorId, previousDay)
+                    .filter(r -> r.confirmedReading() != null && r.confirmedReading().compareTo(BigDecimal.ZERO) > 0)
                     .orElseThrow(() -> new IllegalStateException("No previous day reading found to update"));
+
+            Optional<TelemetryFlowReadingDetails> twoDaysAgoOpt = telemetryTenantRepository
+                    .findLatestFlowReadingForDate(operatorWithSchema.schemaName(), schemeId, operatorId, twoDaysAgo)
+                    .filter(r -> r.confirmedReading() != null && r.confirmedReading().compareTo(BigDecimal.ZERO) > 0);
+
+            Optional<TelemetryFlowReadingDetails> todayOpt = telemetryTenantRepository
+                    .findLatestFlowReadingForDate(operatorWithSchema.schemaName(), schemeId, operatorId, today)
+                    .filter(r -> r.confirmedReading() != null && r.confirmedReading().compareTo(BigDecimal.ZERO) > 0);
+
+            // Hard bounds: keep readings monotonic across days when those adjacent readings exist.
+            if (twoDaysAgoOpt.isPresent()) {
+                BigDecimal twoDaysAgoReading = twoDaysAgoOpt.get().confirmedReading();
+                if (readingValue.compareTo(twoDaysAgoReading) < 0) {
+                    return CreateReadingResponse.builder()
+                            .success(false)
+                            .message(localizationService.localizeMessage(
+                                    "Reading cannot be less than the reading from " + twoDaysAgo + " (" + toPlain(twoDaysAgoReading) + ").",
+                                    languageKey
+                            ))
+                            .qualityStatus("REJECTED")
+                            .correlationId(request.getContactId())
+                            .meterReading(readingValue)
+                            .build();
+                }
+            }
+            if (todayOpt.isPresent()) {
+                BigDecimal todaysReading = todayOpt.get().confirmedReading();
+                if (readingValue.compareTo(todaysReading) > 0) {
+                    return CreateReadingResponse.builder()
+                            .success(false)
+                            .message(localizationService.localizeMessage(
+                                    "Reading cannot be greater than today's reading (" + toPlain(todaysReading) + ").",
+                                    languageKey
+                            ))
+                            .qualityStatus("REJECTED")
+                            .correlationId(request.getContactId())
+                            .meterReading(readingValue)
+                            .build();
+                }
+            }
+
+            // Threshold bounds (water quantity implied by the reading deltas).
+            // Effective thresholds:
+            // - Prefer tenant-specific TENANT_WATER_QUANTITY_SUPPLY_THRESHOLD, else fall back to system-level WATER_QUANTITY_SUPPLY_THRESHOLD (tenant_id=0).
+            Optional<WaterSupplyThreshold> thresholdOpt = loadWaterSupplyThreshold(tenantId);
+            Optional<BigDecimal> waterNormOpt = loadWaterNorm(tenantId);
+            if (thresholdOpt.isPresent() && waterNormOpt.isPresent() && twoDaysAgoOpt.isPresent()) {
+                WaterSupplyThreshold threshold = thresholdOpt.get();
+                BigDecimal waterNorm = waterNormOpt.get();
+                BigDecimal minAllowedQty = waterNorm
+                        .multiply(BigDecimal.valueOf(100.0d - threshold.undersupplyThresholdPercent()))
+                        .divide(BigDecimal.valueOf(100.0d), 6, RoundingMode.HALF_UP);
+                BigDecimal maxAllowedQty = waterNorm
+                        .multiply(BigDecimal.valueOf(100.0d + threshold.oversupplyThresholdPercent()))
+                        .divide(BigDecimal.valueOf(100.0d), 6, RoundingMode.HALF_UP);
+
+                BigDecimal qtyForPreviousDay = readingValue.subtract(twoDaysAgoOpt.get().confirmedReading());
+                if (qtyForPreviousDay.compareTo(minAllowedQty) < 0 || qtyForPreviousDay.compareTo(maxAllowedQty) > 0) {
+                    return CreateReadingResponse.builder()
+                            .success(false)
+                            .message(localizationService.localizeMessage(
+                                    "Updated reading implies water quantity for " + previousDay + " (" + toPlain(qtyForPreviousDay)
+                                            + ") outside allowed range [" + toPlain(minAllowedQty) + ", " + toPlain(maxAllowedQty) + "].",
+                                    languageKey
+                            ))
+                            .qualityStatus("REJECTED")
+                            .correlationId(request.getContactId())
+                            .meterReading(readingValue)
+                            .build();
+                }
+
+                if (todayOpt.isPresent()) {
+                    BigDecimal qtyForToday = todayOpt.get().confirmedReading().subtract(readingValue);
+                    if (qtyForToday.compareTo(minAllowedQty) < 0 || qtyForToday.compareTo(maxAllowedQty) > 0) {
+                        return CreateReadingResponse.builder()
+                                .success(false)
+                                .message(localizationService.localizeMessage(
+                                        "Updated reading implies water quantity for " + today + " (" + toPlain(qtyForToday)
+                                                + ") outside allowed range [" + toPlain(minAllowedQty) + ", " + toPlain(maxAllowedQty) + "].",
+                                        languageKey
+                                ))
+                                .qualityStatus("REJECTED")
+                                .correlationId(request.getContactId())
+                                .meterReading(readingValue)
+                                .build();
+                    }
+                }
+            }
 
             telemetryTenantRepository.updateReadingValues(
                     operatorWithSchema.schemaName(),
@@ -888,6 +1021,75 @@ public class GlificMeterWorkflowService {
                     .correlationId(request.getContactId())
                     .build();
         }
+    }
+
+    private Optional<BigDecimal> loadWaterNorm(Integer tenantId) {
+        if (tenantId == null) {
+            return Optional.empty();
+        }
+        return tenantConfigRepository.findConfigValue(tenantId, "WATER_NORM")
+                .flatMap(raw -> {
+                    try {
+                        JsonNode root = objectMapper.readTree(raw);
+                        String value = root != null ? root.path("value").asText(null) : null;
+                        if (value == null || value.isBlank()) {
+                            return Optional.empty();
+                        }
+                        // WATER_NORM is stored as string; tolerate commas/spaces.
+                        String normalized = value.trim().replace(",", "");
+                        if (!normalized.matches("^\\d+(\\.\\d+)?$")) {
+                            return Optional.empty();
+                        }
+                        BigDecimal norm = new BigDecimal(normalized);
+                        return norm.compareTo(BigDecimal.ZERO) > 0 ? Optional.of(norm) : Optional.empty();
+                    } catch (Exception e) {
+                        log.warn("Invalid WATER_NORM config for tenantId {}: {}", tenantId, e.getMessage());
+                        return Optional.empty();
+                    }
+                });
+    }
+
+    private Optional<WaterSupplyThreshold> loadWaterSupplyThreshold(Integer tenantId) {
+        if (tenantId == null) {
+            return Optional.empty();
+        }
+        // Tenant override first, then system default (tenant_id = 0).
+        Optional<String> rawOpt = tenantConfigRepository.findConfigValue(tenantId, "TENANT_WATER_QUANTITY_SUPPLY_THRESHOLD")
+                .or(() -> tenantConfigRepository.findConfigValue(0, "WATER_QUANTITY_SUPPLY_THRESHOLD"));
+        if (rawOpt.isEmpty()) {
+            return Optional.empty();
+        }
+        try {
+            JsonNode root = objectMapper.readTree(rawOpt.get());
+            if (root == null || root.isNull() || !root.isObject()) {
+                return Optional.empty();
+            }
+            double under = root.path("undersupplyThresholdPercent").asDouble(Double.NaN);
+            double over = root.path("oversupplyThresholdPercent").asDouble(Double.NaN);
+            if (!Double.isFinite(under) || !Double.isFinite(over)) {
+                return Optional.empty();
+            }
+            if (under < 0.0d || under > 100.0d) {
+                return Optional.empty();
+            }
+            if (over < 0.0d || over > 1000.0d) {
+                return Optional.empty();
+            }
+            return Optional.of(new WaterSupplyThreshold(under, over));
+        } catch (Exception e) {
+            log.warn("Invalid WATER_QUANTITY_SUPPLY_THRESHOLD config for tenantId {}: {}", tenantId, e.getMessage());
+            return Optional.empty();
+        }
+    }
+
+    private static String toPlain(BigDecimal value) {
+        if (value == null) {
+            return "";
+        }
+        return value.stripTrailingZeros().toPlainString();
+    }
+
+    private record WaterSupplyThreshold(double undersupplyThresholdPercent, double oversupplyThresholdPercent) {
     }
 
     private Optional<String> resolveSelection(String rawSelection, List<String> options) {

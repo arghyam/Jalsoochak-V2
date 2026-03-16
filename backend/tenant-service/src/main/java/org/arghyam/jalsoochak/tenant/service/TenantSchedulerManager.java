@@ -3,6 +3,7 @@ package org.arghyam.jalsoochak.tenant.service;
 import org.arghyam.jalsoochak.tenant.config.EscalationScheduleConfig;
 import org.arghyam.jalsoochak.tenant.config.NudgeScheduleConfig;
 import org.arghyam.jalsoochak.tenant.dto.response.TenantResponseDTO;
+import org.arghyam.jalsoochak.tenant.enums.TenantStatusEnum;
 import org.arghyam.jalsoochak.tenant.repository.TenantCommonRepository;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
@@ -12,6 +13,7 @@ import org.springframework.scheduling.support.CronTrigger;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
+import java.util.TimeZone;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ScheduledFuture;
 
@@ -45,7 +47,7 @@ public class TenantSchedulerManager {
     public void loadAndScheduleAll() {
         List<TenantResponseDTO> tenants = tenantCommonRepository.findAll();
         tenants.stream()
-            .filter(t -> "ACTIVE".equalsIgnoreCase(t.getStatus()))
+            .filter(t -> TenantStatusEnum.ACTIVE.name().equals(t.getStatus()))
             .forEach(t -> {
                 Integer tenantId = t.getId();
                 String stateCode = t.getStateCode();
@@ -102,7 +104,7 @@ public class TenantSchedulerManager {
                                 log.error("[Scheduler] Nudge job failed for tenant={}: {}", tenantId, e.getMessage(), e);
                             }
                         },
-                        new CronTrigger(nudgeCron)));
+                        new CronTrigger(nudgeCron, TimeZone.getTimeZone("Asia/Kolkata"))));
 
         futures.put("escalation_" + tenantId,
                 taskScheduler.schedule(
@@ -113,7 +115,7 @@ public class TenantSchedulerManager {
                                 log.error("[Scheduler] Escalation job failed for tenant={}: {}", tenantId, e.getMessage(), e);
                             }
                         },
-                        new CronTrigger(escalCron)));
+                        new CronTrigger(escalCron, TimeZone.getTimeZone("Asia/Kolkata"))));
 
         log.info("[Scheduler] Tenant {} ({}): nudge={}, escalation={}", tenantId, stateCode, nudgeCron, escalCron);
     }

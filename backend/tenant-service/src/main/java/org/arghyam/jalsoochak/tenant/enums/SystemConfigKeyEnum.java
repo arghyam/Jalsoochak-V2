@@ -3,6 +3,7 @@ package org.arghyam.jalsoochak.tenant.enums;
 import org.arghyam.jalsoochak.tenant.dto.internal.ChannelListConfigDTO;
 import org.arghyam.jalsoochak.tenant.dto.internal.ConfigValueDTO;
 import org.arghyam.jalsoochak.tenant.dto.internal.SimpleConfigValueDTO;
+import org.arghyam.jalsoochak.tenant.dto.internal.WaterSupplyThresholdConfigDTO;
 
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
@@ -26,10 +27,10 @@ public enum SystemConfigKeyEnum implements ConfigKey {
 
     /**
      * Water Quantity Supply Threshold.
-     * Percentage deviation from Water Norm above which supply is marked as inadequate.
+     * Default platform-level percentage thresholds for undersupply and oversupply relative to Water Norm.
      * Managed by Super User.
      */
-    WATER_QUANTITY_SUPPLY_THRESHOLD(SimpleConfigValueDTO.class),
+    WATER_QUANTITY_SUPPLY_THRESHOLD(WaterSupplyThresholdConfigDTO.class),
 
     /**
      * BFM Image Reading Confidence Level Threshold.

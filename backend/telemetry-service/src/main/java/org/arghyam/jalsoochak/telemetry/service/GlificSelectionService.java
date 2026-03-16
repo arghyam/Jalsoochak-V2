@@ -1,6 +1,8 @@
 package org.arghyam.jalsoochak.telemetry.service;
 
 import lombok.extern.slf4j.Slf4j;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.arghyam.jalsoochak.telemetry.dto.requests.IntroRequest;
 import org.arghyam.jalsoochak.telemetry.dto.requests.SelectedChannelRequest;
 import org.arghyam.jalsoochak.telemetry.dto.requests.SelectedItemRequest;
@@ -38,6 +40,7 @@ public class GlificSelectionService {
     private final TelemetryTenantRepository telemetryTenantRepository;
     private final UserLanguagePreferenceRepository userLanguagePreferenceRepository;
     private final GlificContactSyncService glificContactSyncService;
+    private final ObjectMapper objectMapper;
 
     public GlificSelectionService(GlificOperatorContextService operatorContextService,
                                   GlificLocalizationService localizationService,
@@ -45,7 +48,8 @@ public class GlificSelectionService {
                                   GlificMessageTemplatesService templatesService,
                                   TelemetryTenantRepository telemetryTenantRepository,
                                   UserLanguagePreferenceRepository userLanguagePreferenceRepository,
-                                  GlificContactSyncService glificContactSyncService) {
+                                  GlificContactSyncService glificContactSyncService,
+                                  ObjectMapper objectMapper) {
         this.operatorContextService = operatorContextService;
         this.localizationService = localizationService;
         this.tenantConfigRepository = tenantConfigRepository;
@@ -53,6 +57,7 @@ public class GlificSelectionService {
         this.telemetryTenantRepository = telemetryTenantRepository;
         this.userLanguagePreferenceRepository = userLanguagePreferenceRepository;
         this.glificContactSyncService = glificContactSyncService;
+        this.objectMapper = objectMapper;
     }
 
     public IntroResponse languageSelectionMessage(IntroRequest request) {
@@ -422,9 +427,26 @@ public class GlificSelectionService {
                     .replace("{item}", selectedItemLabel)
                     .replace("{selected}", selectedCode);
 
+            String responseSelectedCode = selectedCode;
+            if ("readingSubmission".equals(selectedCode)) {
+                boolean isFirstOptionSelected = selectedIndex == 0;
+                boolean locationCheckRequiredYes = isLocationCheckRequiredYes(tenantId);
+                Long schemeId = telemetryTenantRepository
+                        .findFirstSchemeForUser(operatorWithSchema.schemaName(), operatorWithSchema.operator().id())
+                        .orElse(null);
+                boolean schemeHasLatLng = schemeId != null
+                        && telemetryTenantRepository.schemeHasLatitudeAndLongitude(operatorWithSchema.schemaName(), schemeId);
+
+                // Only allow the "readingSubmission" selection to flow through when:
+                // 1 is selected, LOCATION_CHECK_REQUIRED is YES, and scheme has latitude + longitude.
+                if (!(isFirstOptionSelected && locationCheckRequiredYes && schemeHasLatLng)) {
+                    responseSelectedCode = "readingSubmissionLocationNotSelected";
+                }
+            }
+
             return SelectionResponse.builder()
                     .success(true)
-                    .selected(selectedCode)
+                    .selected(responseSelectedCode)
                     .message(message)
                     .build();
         } catch (Exception e) {
@@ -437,6 +459,37 @@ public class GlificSelectionService {
                     .message(localizationService.resolveUserFacingErrorMessage(e, "Item selection could not be saved.", languageKey))
                     .build();
         }
+    }
+
+    private boolean isLocationCheckRequiredYes(Integer tenantId) {
+        String raw = tenantConfigRepository.findConfigValue(tenantId, "LOCATION_CHECK_REQUIRED").orElse(null);
+        String value = extractSimpleConfigValue(raw).orElse(raw == null ? null : raw.trim());
+        if (value == null || value.isBlank()) {
+            return false;
+        }
+        return value.trim().equalsIgnoreCase("YES");
+    }
+
+    private Optional<String> extractSimpleConfigValue(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return Optional.empty();
+        }
+        try {
+            JsonNode node = objectMapper.readTree(raw);
+            if (node == null) {
+                return Optional.empty();
+            }
+            if (node.isTextual()) {
+                return Optional.ofNullable(node.asText());
+            }
+            JsonNode valueNode = node.get("value");
+            if (valueNode != null && !valueNode.isNull()) {
+                return Optional.ofNullable(valueNode.asText());
+            }
+        } catch (Exception ignored) {
+            // Fall back to raw string value.
+        }
+        return Optional.empty();
     }
 
     private Optional<String> resolveSelection(String rawSelection, List<String> options) {
