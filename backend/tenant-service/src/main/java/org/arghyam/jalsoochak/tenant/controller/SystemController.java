@@ -36,7 +36,7 @@ public class SystemController {
     /**
      * 1. Get system configurations
      */
-    @Operation(summary = "Get system configurations", description = "Retrieves global platform settings. Super Admin only.")
+    @Operation(summary = "Get system configurations", description = "Retrieves global platform settings. Super User only.")
     @ApiResponses(value = {
             @ApiResponse(responseCode = "200", description = "System configurations retrieved successfully"),
             @ApiResponse(responseCode = "403", description = "Forbidden to access this resource"),
@@ -54,7 +54,7 @@ public class SystemController {
     /**
      * 2. Update system configurations
      */
-    @Operation(summary = "Set system configurations", description = "Updates global system settings. Super Admin only.")
+    @Operation(summary = "Set system configurations", description = "Updates global system settings. Super User only.")
     @ApiResponses(value = {
             @ApiResponse(responseCode = "200", description = "System configurations set successfully"),
             @ApiResponse(responseCode = "403", description = "Forbidden to access this resource"),

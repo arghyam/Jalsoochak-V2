@@ -37,8 +37,6 @@ keycloak:
   realm: jalsoochak-realm
   auth-server-url: https://jalsoochak.beehyv.com/keycloak
   resource: ${KEYCLOAK_CLIENT_ID}
-  credentials:
-    secret: ${KEYCLOAK_CLIENT_SECRET}
 
 eureka:
   client:

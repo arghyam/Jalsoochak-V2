@@ -17,7 +17,6 @@ import org.arghyam.jalsoochak.user.service.TenantStaffService;
 import org.arghyam.jalsoochak.user.util.TenantSchemaResolver;
 import org.keycloak.representations.idm.UserRepresentation;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.util.HashMap;
 import java.util.List;
@@ -63,7 +62,6 @@ public class TenantStaffServiceImpl implements TenantStaffService {
     }
 
     @Override
-    @Transactional
     public TenantStaffResponseDTO updateStaffRole(Long id, UpdateStaffRoleRequestDTO request) {
         List<String> allowed = List.of("SECTION_OFFICER", "DISTRICT_OFFICER");
         if (!allowed.contains(request.newRole())) {
@@ -79,6 +77,11 @@ public class TenantStaffServiceImpl implements TenantStaffService {
             throw new IllegalArgumentException("User already has role: " + request.newRole());
         }
 
+        // Look up DB type ID before touching Keycloak — fail fast if role is unknown
+        Long newUserTypeId = userCommonRepository.findUserTypeIdByName(request.newRole())
+                .map(Integer::longValue)
+                .orElseThrow(() -> new ResourceNotFoundException("Unknown role: " + request.newRole()));
+
         String keycloakUuid = user.keycloakUuid();
         var usersResource = keycloakProvider.getAdminInstance().realm(keycloakProvider.getRealm()).users();
 
@@ -92,6 +95,8 @@ public class TenantStaffServiceImpl implements TenantStaffService {
             attrs.put("user_type", List.of(request.newRole()));
             rep.setAttributes(attrs);
             usersResource.get(keycloakUuid).update(rep);
+
+            userTenantRepository.updateUserRole(schema, id, newUserTypeId);
         } catch (Exception e) {
             try {
                 keycloakAdminHelper.assignRoleToUser(keycloakUuid, currentRole);
@@ -107,11 +112,6 @@ public class TenantStaffServiceImpl implements TenantStaffService {
             }
             throw e;
         }
-
-        Long newUserTypeId = userCommonRepository.findUserTypeIdByName(request.newRole())
-                .map(Integer::longValue)
-                .orElseThrow(() -> new ResourceNotFoundException("Unknown role: " + request.newRole()));
-        userTenantRepository.updateUserRole(schema, id, newUserTypeId);
 
         return tenantStaffRepository.findStaffById(schema, id)
                 .orElseThrow(() -> new ResourceNotFoundException("Staff not found after update: " + id));

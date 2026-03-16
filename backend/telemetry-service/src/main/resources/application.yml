@@ -66,11 +66,11 @@ media-download:
     initial-backoff-ms: ${MEDIA_DOWNLOAD_RETRY_INITIAL_BACKOFF_MS:300}
 
 keycloak:
-  realm: jalsoochak-realm
-  auth-server-url: https://jalsoochak.beehyv.com/keycloak
-  resource: ${KEYCLOAK_CLIENT_ID}
+  realm: ${KEYCLOAK_REALM:jalsoochak-realm}
+  auth-server-url: ${KEYCLOAK_AUTH_SERVER_URL:https://jalsoochak.beehyv.com/keycloak}
+  resource: ${KEYCLOAK_CLIENT_ID:}
   credentials:
-    secret: ${KEYCLOAK_CLIENT_SECRET}
+    secret: ${KEYCLOAK_CLIENT_SECRET:}
 
 eureka:
   client:

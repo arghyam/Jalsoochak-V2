@@ -26,11 +26,10 @@ public class SecurityConfig {
                                 "/user/api/v1/auth/reset-password",
                                 "/user/api/v1/public/**"
                         ).permitAll()
-                        // Gateway and service health / metrics
+                        // Gateway and service health
                         .pathMatchers(
                                 "/actuator/health",
-                                "/actuator/info",
-                                "/actuator/prometheus"
+                                "/actuator/info"
                         ).permitAll()
                         // All other routes require a valid JWT
                         .anyExchange().authenticated()

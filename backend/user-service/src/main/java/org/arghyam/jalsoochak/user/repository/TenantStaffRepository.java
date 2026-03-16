@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import org.arghyam.jalsoochak.user.dto.response.RoleCountDTO;
 import org.arghyam.jalsoochak.user.dto.response.TenantStaffResponseDTO;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Repository;
 
 import java.util.ArrayList;
@@ -16,6 +17,16 @@ import java.util.Optional;
 public class TenantStaffRepository {
 
     private final JdbcTemplate jdbcTemplate;
+
+    private final RowMapper<TenantStaffResponseDTO> staffRowMapper = (rs, rowNum) -> TenantStaffResponseDTO.builder()
+            .id(rs.getLong("id"))
+            .uuid(rs.getString("uuid"))
+            .title(rs.getString("title"))
+            .email(rs.getString("email"))
+            .phoneNumber(rs.getString("phone_number"))
+            .status((Integer) rs.getObject("status"))
+            .role(rs.getString("role"))
+            .build();
 
     private void validateSchemaName(String schemaName) {
         if (schemaName == null || !schemaName.matches("^[a-z_][a-z0-9_]*$")) {
@@ -59,15 +70,7 @@ public class TenantStaffRepository {
         args.add(limit);
         args.add(offset);
 
-        return jdbcTemplate.query(sql, (rs, rowNum) -> TenantStaffResponseDTO.builder()
-                .id(rs.getLong("id"))
-                .uuid(rs.getString("uuid"))
-                .title(rs.getString("title"))
-                .email(rs.getString("email"))
-                .phoneNumber(rs.getString("phone_number"))
-                .status((Integer) rs.getObject("status"))
-                .role(rs.getString("role"))
-                .build(), args.toArray());
+        return jdbcTemplate.query(sql, staffRowMapper, args.toArray());
     }
 
     public Optional<TenantStaffResponseDTO> findStaffById(String schemaName, Long id) {
@@ -88,15 +91,7 @@ public class TenantStaffRepository {
                   AND u.id = ?
                 """, schemaName);
 
-        List<TenantStaffResponseDTO> rows = jdbcTemplate.query(sql, (rs, rowNum) -> TenantStaffResponseDTO.builder()
-                .id(rs.getLong("id"))
-                .uuid(rs.getString("uuid"))
-                .title(rs.getString("title"))
-                .email(rs.getString("email"))
-                .phoneNumber(rs.getString("phone_number"))
-                .status((Integer) rs.getObject("status"))
-                .role(rs.getString("role"))
-                .build(), id);
+        List<TenantStaffResponseDTO> rows = jdbcTemplate.query(sql, staffRowMapper, id);
 
         return rows.stream().findFirst();
     }
