@@ -2,9 +2,9 @@ package org.arghyam.jalsoochak.user.dto.request;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
-import jakarta.validation.constraints.Size;
 import lombok.Getter;
 import lombok.Setter;
+import org.arghyam.jalsoochak.user.validation.ValidPassword;
 
 @Getter
 @Setter
@@ -13,7 +13,7 @@ public class ActivateAccountRequestDTO {
     private String inviteToken;
 
     @NotBlank(message = "Password is required")
-    @Size(min = 8, message = "Password must be at least 8 characters")
+    @ValidPassword
     private String password;
 
     @NotBlank(message = "First name is required")

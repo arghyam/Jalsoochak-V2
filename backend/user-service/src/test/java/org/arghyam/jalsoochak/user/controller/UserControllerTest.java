@@ -512,20 +512,20 @@ class UserControllerTest {
         }
 
         @Test
-        @DisplayName("Should return 400 when limit is zero")
+        @DisplayName("Should return 400 when size is zero")
         void listSuperUsers_zeroLimit_returns400() throws Exception {
             mockMvc.perform(get("/api/v1/users/super-users")
-                            .param("limit", "0")
+                            .param("size", "0")
                             .with(mockJwt()))
                     .andExpect(status().isBadRequest())
                     .andExpect(jsonPath("$.status").value(400));
         }
 
         @Test
-        @DisplayName("Should return 400 when limit exceeds 100")
+        @DisplayName("Should return 400 when size exceeds 100")
         void listSuperUsers_limitOver100_returns400() throws Exception {
             mockMvc.perform(get("/api/v1/users/super-users")
-                            .param("limit", "101")
+                            .param("size", "101")
                             .with(mockJwt()))
                     .andExpect(status().isBadRequest())
                     .andExpect(jsonPath("$.status").value(400));
@@ -549,10 +549,10 @@ class UserControllerTest {
         }
 
         @Test
-        @DisplayName("Should return 400 when limit exceeds 100")
+        @DisplayName("Should return 400 when size exceeds 100")
         void listStateAdmins_limitOver100_returns400() throws Exception {
             mockMvc.perform(get("/api/v1/users/state-admins")
-                            .param("limit", "101")
+                            .param("size", "101")
                             .with(mockJwt()))
                     .andExpect(status().isBadRequest())
                     .andExpect(jsonPath("$.status").value(400));
