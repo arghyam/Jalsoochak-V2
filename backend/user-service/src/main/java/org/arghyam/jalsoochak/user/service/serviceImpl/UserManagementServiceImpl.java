@@ -64,6 +64,7 @@ public class UserManagementServiceImpl implements UserManagementService {
     @Override
     @Transactional
     public void inviteUser(InviteRequestDTO request, Authentication caller) {
+        log.info("inviteUser – role={}, tenantCode={}", request.getRole(), request.getTenantCode());
         String callerUuid = SecurityUtils.getKeycloakId(caller);
         AdminUserRow callerRow = userCommonRepository.findAdminUserByUuid(callerUuid)
                 .orElseThrow(() -> new UnauthorizedAccessException("Caller is not registered in the system"));
@@ -148,6 +149,7 @@ public class UserManagementServiceImpl implements UserManagementService {
     @Override
     @Transactional
     public void reinviteUser(Long id, Authentication caller) {
+        log.info("reinviteUser – id={}", id);
         AdminUserRow target = userCommonRepository.findAdminUserById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
 
@@ -216,13 +218,18 @@ public class UserManagementServiceImpl implements UserManagementService {
     @Override
     @Transactional
     public AdminUserResponseDTO updateMe(String keycloakId, UpdateProfileRequestDTO request) {
+        log.info("updateMe – keycloakId={}", keycloakId);
         AdminUserRow user = userCommonRepository.findAdminUserByUuid(keycloakId)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
 
+        if (user.status() == AdminUserStatus.INACTIVE) {
+            throw new BadRequestException("Cannot update a deactivated user");
+        }
+
         var usersResource = keycloakProvider.getAdminInstance().realm(keycloakProvider.getRealm()).users();
         UserRepresentation rep = usersResource.get(keycloakId).toRepresentation();
-        if (request.getFirstName() != null) rep.setFirstName(request.getFirstName());
-        if (request.getLastName() != null) rep.setLastName(request.getLastName());
+        if (request.getFirstName() != null && !request.getFirstName().isBlank()) rep.setFirstName(request.getFirstName());
+        if (request.getLastName() != null && !request.getLastName().isBlank()) rep.setLastName(request.getLastName());
 
         if (request.getPhoneNumber() != null) {
             userCommonRepository.updateAdminUserProfile(user.id(), request.getPhoneNumber(), user.id());
@@ -237,8 +244,10 @@ public class UserManagementServiceImpl implements UserManagementService {
                 String phoneToSet = request.getPhoneNumber() != null ? request.getPhoneNumber()
                         : userTenantRepository.findUserByEmail(schema, user.email())
                                 .map(r -> r.phoneNumber()).orElse(null);
+                String fn = rep.getFirstName() != null ? rep.getFirstName() : "";
+                String ln = rep.getLastName() != null ? rep.getLastName() : "";
                 userTenantRepository.updateUserProfile(schema, user.id(),
-                        rep.getFirstName() + " " + rep.getLastName(), phoneToSet);
+                        (fn + " " + ln).trim(), phoneToSet);
             }
         }
 
@@ -250,6 +259,7 @@ public class UserManagementServiceImpl implements UserManagementService {
 
     @Override
     public void changePassword(String keycloakId, ChangePasswordRequestDTO request) {
+        log.info("changePassword – keycloakId={}", keycloakId);
         AdminUserRow user = userCommonRepository.findAdminUserByUuid(keycloakId)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
 
@@ -333,8 +343,16 @@ public class UserManagementServiceImpl implements UserManagementService {
     @Override
     @Transactional
     public AdminUserResponseDTO updateUserById(Long id, Authentication caller, UpdateProfileRequestDTO request) {
+        log.info("updateUserById – id={}", id);
         AdminUserRow user = userCommonRepository.findAdminUserById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+
+        if (user.status() == AdminUserStatus.PENDING) {
+            throw new BadRequestException("Cannot update a user who has not completed registration");
+        }
+        if (user.status() == AdminUserStatus.INACTIVE) {
+            throw new BadRequestException("Cannot update a deactivated user");
+        }
 
         Optional<String> callerRole = SecurityUtils.extractRole(caller);
         if (callerRole.map("STATE_ADMIN"::equals).orElse(false)) {
@@ -346,18 +364,14 @@ public class UserManagementServiceImpl implements UserManagementService {
             }
         }
 
-        if (user.status() == AdminUserStatus.PENDING) {
-            throw new BadRequestException("Cannot update a user who has not completed registration");
-        }
-
         String callerUuid = SecurityUtils.getKeycloakId(caller);
         AdminUserRow callerRow = userCommonRepository.findAdminUserByUuid(callerUuid)
                 .orElseThrow(() -> new UnauthorizedAccessException("Caller is not registered in the system"));
 
         var usersResource = keycloakProvider.getAdminInstance().realm(keycloakProvider.getRealm()).users();
         UserRepresentation rep = usersResource.get(user.uuid()).toRepresentation();
-        if (request.getFirstName() != null) rep.setFirstName(request.getFirstName());
-        if (request.getLastName() != null) rep.setLastName(request.getLastName());
+        if (request.getFirstName() != null && !request.getFirstName().isBlank()) rep.setFirstName(request.getFirstName());
+        if (request.getLastName() != null && !request.getLastName().isBlank()) rep.setLastName(request.getLastName());
 
         if (request.getPhoneNumber() != null) {
             userCommonRepository.updateAdminUserProfile(user.id(), request.getPhoneNumber(), callerRow.id());
@@ -372,8 +386,10 @@ public class UserManagementServiceImpl implements UserManagementService {
                 String phoneToSet = request.getPhoneNumber() != null ? request.getPhoneNumber()
                         : userTenantRepository.findUserById(schema, user.id())
                                 .map(r -> r.phoneNumber()).orElse(null);
+                String fn = rep.getFirstName() != null ? rep.getFirstName() : "";
+                String ln = rep.getLastName() != null ? rep.getLastName() : "";
                 userTenantRepository.updateUserProfile(schema, user.id(),
-                        rep.getFirstName() + " " + rep.getLastName(), phoneToSet);
+                        (fn + " " + ln).trim(), phoneToSet);
             }
         }
 
@@ -386,6 +402,7 @@ public class UserManagementServiceImpl implements UserManagementService {
     @Override
     @Transactional
     public void deactivateUser(Long id, Authentication caller) {
+        log.info("deactivateUser – id={}", id);
         AdminUserRow target = userCommonRepository.findAdminUserById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
 
@@ -434,6 +451,7 @@ public class UserManagementServiceImpl implements UserManagementService {
     @Override
     @Transactional
     public void activateUser(Long id, Authentication caller) {
+        log.info("activateUser – id={}", id);
         AdminUserRow target = userCommonRepository.findAdminUserById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
 
