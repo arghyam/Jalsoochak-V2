@@ -7,6 +7,7 @@ import org.arghyam.jalsoochak.analytics.entity.FactMeterReading;
 import org.arghyam.jalsoochak.analytics.entity.FactSchemePerformance;
 import org.arghyam.jalsoochak.analytics.dto.response.AverageSchemeRegularityResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.AverageWaterSupplyResponse;
+import org.arghyam.jalsoochak.analytics.dto.response.NationalDashboardResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.OutageReasonSchemeCountResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.PeriodicWaterQuantityResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.RegionWiseWaterQuantityResponse;
@@ -395,6 +396,14 @@ public class AnalyticsController {
         response.setSchemeCount(null);
         response.setSchemes(null);
         return ResponseEntity.ok(response);
+    }
+
+    @GetMapping("/national/dashboard")
+    @Operation(summary = "Get national dashboard aggregates with state-wise metrics and overall outage distribution")
+    public ResponseEntity<NationalDashboardResponse> getNationalDashboard(
+            @RequestParam(name = "start_date") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam(name = "end_date") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
+        return ResponseEntity.ok(schemeRegularityService.getNationalDashboard(startDate, endDate));
     }
 
     @PostMapping("/date-dimension/populate")

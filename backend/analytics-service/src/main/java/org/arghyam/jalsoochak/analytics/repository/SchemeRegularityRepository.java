@@ -508,7 +508,7 @@ public class SchemeRegularityRepository {
                 )
                 SELECT
                     f.outage_reason,
-                    COUNT(DISTINCT f.scheme_id)::int AS scheme_count
+                    COUNT(DISTINCT (f.scheme_id, f.date))::int AS scheme_count
                 FROM analytics_schema.fact_water_quantity_table f
                 JOIN schemes_in_lgd sl
                     ON sl.scheme_id = f.scheme_id
@@ -544,7 +544,7 @@ public class SchemeRegularityRepository {
                 )
                 SELECT
                     f.outage_reason,
-                    COUNT(DISTINCT f.scheme_id)::int AS scheme_count
+                    COUNT(DISTINCT (f.scheme_id, f.date))::int AS scheme_count
                 FROM analytics_schema.fact_water_quantity_table f
                 JOIN schemes_in_department sd
                     ON sd.scheme_id = f.scheme_id
@@ -574,7 +574,7 @@ public class SchemeRegularityRepository {
                 )
                 SELECT
                     f.outage_reason,
-                    COUNT(DISTINCT f.scheme_id)::int AS scheme_count
+                    COUNT(DISTINCT (f.scheme_id, f.date))::int AS scheme_count
                 FROM analytics_schema.fact_water_quantity_table f
                 JOIN user_schemes us
                     ON us.scheme_id = f.scheme_id
@@ -605,7 +605,7 @@ public class SchemeRegularityRepository {
                 SELECT
                     f.date,
                     f.outage_reason,
-                    COUNT(DISTINCT f.scheme_id)::int AS scheme_count
+                    COUNT(DISTINCT (f.scheme_id, f.date))::int AS scheme_count
                 FROM analytics_schema.fact_water_quantity_table f
                 JOIN user_schemes us
                     ON us.scheme_id = f.scheme_id
@@ -781,7 +781,7 @@ public class SchemeRegularityRepository {
                 SELECT
                     ss.child_lgd_id AS lgd_id,
                     f.outage_reason,
-                    COUNT(DISTINCT f.scheme_id)::int AS scheme_count
+                    COUNT(DISTINCT (f.scheme_id, f.date))::int AS scheme_count
                 FROM schemes_in_scope ss
                 JOIN analytics_schema.fact_water_quantity_table f
                     ON f.scheme_id = ss.scheme_id
@@ -827,7 +827,7 @@ public class SchemeRegularityRepository {
                 SELECT
                     ss.child_department_id AS department_id,
                     f.outage_reason,
-                    COUNT(DISTINCT f.scheme_id)::int AS scheme_count
+                    COUNT(DISTINCT (f.scheme_id, f.date))::int AS scheme_count
                 FROM schemes_in_scope ss
                 JOIN analytics_schema.fact_water_quantity_table f
                     ON f.scheme_id = ss.scheme_id
@@ -993,6 +993,110 @@ public class SchemeRegularityRepository {
                         rs.getLong("total_water_supplied_liters"),
                         rs.getInt("scheme_count"),
                         rs.getBigDecimal("avg_water_supply_per_scheme")),
+                startDate,
+                endDate);
+    }
+
+    public List<StateSchemeRegularityMetrics> getStateWiseRegularityMetrics(
+            LocalDate startDate, LocalDate endDate) {
+        String sql = """
+                WITH supply_days_by_scheme AS (
+                    SELECT
+                        m.tenant_id,
+                        m.scheme_id,
+                        COUNT(DISTINCT m.reading_date)::int AS supply_days
+                    FROM analytics_schema.fact_meter_reading_table m
+                    WHERE m.reading_date BETWEEN ? AND ?
+                      AND m.confirmed_reading > 0
+                    GROUP BY m.tenant_id, m.scheme_id
+                )
+                SELECT
+                    t.tenant_id,
+                    t.state_code,
+                    t.title,
+                    COALESCE(COUNT(s.scheme_id), 0)::int AS scheme_count,
+                    COALESCE(SUM(sd.supply_days), 0)::int AS total_supply_days
+                FROM analytics_schema.dim_tenant_table t
+                LEFT JOIN analytics_schema.dim_scheme_table s
+                    ON s.tenant_id = t.tenant_id
+                LEFT JOIN supply_days_by_scheme sd
+                    ON sd.tenant_id = s.tenant_id
+                    AND sd.scheme_id = s.scheme_id
+                GROUP BY t.tenant_id, t.state_code, t.title
+                ORDER BY t.tenant_id
+                """;
+
+        return jdbcTemplate.query(
+                sql,
+                (rs, rowNum) -> new StateSchemeRegularityMetrics(
+                        rs.getInt("tenant_id"),
+                        rs.getString("state_code"),
+                        rs.getString("title"),
+                        rs.getInt("scheme_count"),
+                        rs.getInt("total_supply_days")),
+                startDate,
+                endDate);
+    }
+
+    public List<StateReadingSubmissionMetrics> getStateWiseReadingSubmissionMetrics(
+            LocalDate startDate, LocalDate endDate) {
+        String sql = """
+                WITH submission_days_by_scheme AS (
+                    SELECT
+                        m.tenant_id,
+                        m.scheme_id,
+                        COUNT(DISTINCT m.reading_date)::int AS submission_days
+                    FROM analytics_schema.fact_meter_reading_table m
+                    WHERE m.reading_date BETWEEN ? AND ?
+                      AND m.confirmed_reading >= 0
+                    GROUP BY m.tenant_id, m.scheme_id
+                )
+                SELECT
+                    t.tenant_id,
+                    t.state_code,
+                    t.title,
+                    COALESCE(COUNT(s.scheme_id), 0)::int AS scheme_count,
+                    COALESCE(SUM(sd.submission_days), 0)::int AS total_submission_days
+                FROM analytics_schema.dim_tenant_table t
+                LEFT JOIN analytics_schema.dim_scheme_table s
+                    ON s.tenant_id = t.tenant_id
+                LEFT JOIN submission_days_by_scheme sd
+                    ON sd.tenant_id = s.tenant_id
+                    AND sd.scheme_id = s.scheme_id
+                GROUP BY t.tenant_id, t.state_code, t.title
+                ORDER BY t.tenant_id
+                """;
+
+        return jdbcTemplate.query(
+                sql,
+                (rs, rowNum) -> new StateReadingSubmissionMetrics(
+                        rs.getInt("tenant_id"),
+                        rs.getString("state_code"),
+                        rs.getString("title"),
+                        rs.getInt("scheme_count"),
+                        rs.getInt("total_submission_days")),
+                startDate,
+                endDate);
+    }
+
+    public List<OutageReasonSchemeCount> getOverallOutageReasonSchemeCount(
+            LocalDate startDate, LocalDate endDate) {
+        String sql = """
+                SELECT
+                    f.outage_reason,
+                    COUNT(DISTINCT (f.scheme_id, f.date))::int AS scheme_count
+                FROM analytics_schema.fact_water_quantity_table f
+                WHERE f.outage_reason IS NOT NULL
+                  AND f.date BETWEEN ? AND ?
+                GROUP BY f.outage_reason
+                ORDER BY f.outage_reason
+                """;
+
+        return jdbcTemplate.query(
+                sql,
+                (rs, rowNum) -> new OutageReasonSchemeCount(
+                        (Integer) rs.getObject("outage_reason"),
+                        rs.getInt("scheme_count")),
                 startDate,
                 endDate);
     }
@@ -1541,6 +1645,22 @@ public class SchemeRegularityRepository {
             Integer schemeCount,
             Integer totalSubmissionDays,
             BigDecimal readingSubmissionRate) {
+    }
+
+    public record StateSchemeRegularityMetrics(
+            Integer tenantId,
+            String stateCode,
+            String title,
+            Integer schemeCount,
+            Integer totalSupplyDays) {
+    }
+
+    public record StateReadingSubmissionMetrics(
+            Integer tenantId,
+            String stateCode,
+            String title,
+            Integer schemeCount,
+            Integer totalSubmissionDays) {
     }
 
     private record PeriodSqlParts(

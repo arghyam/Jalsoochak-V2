@@ -2,6 +2,7 @@ package org.arghyam.jalsoochak.analytics.service.serviceImpl;
 
 import org.arghyam.jalsoochak.analytics.dto.response.AverageSchemeRegularityResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.AverageWaterSupplyResponse;
+import org.arghyam.jalsoochak.analytics.dto.response.NationalDashboardResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.OutageReasonSchemeCountResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.PeriodicWaterQuantityResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.RegionWiseWaterQuantityResponse;
@@ -43,6 +44,7 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
     private static final Duration SCHEME_REGULARITY_CACHE_TTL = Duration.ofHours(24);
     private static final String SCHEME_REGULARITY_CACHE_PREFIX = ":scheme_regularity";
     private static final String READING_SUBMISSION_RATE_CACHE_PREFIX = ":reading_submission_rate";
+    private static final String NATIONAL_DASHBOARD_CACHE_PREFIX = ":national:dashboard";
     private static final String DEBUG_LOG_PATH = "/home/beehyv/Desktop/Codes/jalSoochak/JalSoochak_New/.cursor/debug.log";
 
     private final SchemeRegularityRepository schemeRegularityRepository;
@@ -664,6 +666,91 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
                 .schemes(List.of())
                 .childRegionCount(childRegions.size())
                 .childRegions(childRegions)
+                .build();
+        writeToCache(cacheKey, response);
+        return response;
+    }
+
+    @Override
+    public NationalDashboardResponse getNationalDashboard(LocalDate startDate, LocalDate endDate) {
+        validateDateRange(startDate, endDate);
+
+        String cacheKey = NATIONAL_DASHBOARD_CACHE_PREFIX
+                + ":start:" + startDate
+                + ":end:" + endDate
+                + ":v1";
+        NationalDashboardResponse cached = readFromCache(cacheKey, NationalDashboardResponse.class);
+        if (cached != null) {
+            return cached;
+        }
+
+        int daysInRange = (int) ChronoUnit.DAYS.between(startDate, endDate) + 1;
+        List<SchemeRegularityRepository.ChildRegionWaterSupplyMetrics> quantityMetrics =
+                schemeRegularityRepository.getAverageWaterSupplyPerNation(startDate, endDate);
+        List<SchemeRegularityRepository.StateSchemeRegularityMetrics> regularityMetrics =
+                schemeRegularityRepository.getStateWiseRegularityMetrics(startDate, endDate);
+        List<SchemeRegularityRepository.StateReadingSubmissionMetrics> submissionMetrics =
+                schemeRegularityRepository.getStateWiseReadingSubmissionMetrics(startDate, endDate);
+        List<SchemeRegularityRepository.OutageReasonSchemeCount> outageRows =
+                schemeRegularityRepository.getOverallOutageReasonSchemeCount(startDate, endDate);
+
+        List<NationalDashboardResponse.StateQuantityPerformance> stateWiseQuantityPerformance = quantityMetrics.stream()
+                .map(metric -> NationalDashboardResponse.StateQuantityPerformance.builder()
+                        .tenantId(metric.tenantId())
+                        .stateCode(metric.stateCode())
+                        .stateTitle(metric.title())
+                        .schemeCount(metric.schemeCount())
+                        .totalHouseholdCount(metric.totalHouseholdCount())
+                        .totalWaterSuppliedLiters(metric.totalWaterSuppliedLiters())
+                        .avgWaterSupplyPerScheme(metric.avgWaterSupplyPerScheme())
+                        .build())
+                .toList();
+
+        List<NationalDashboardResponse.StateRegularity> stateWiseRegularity = regularityMetrics.stream()
+                .map(metric -> {
+                    BigDecimal averageRegularity = BigDecimal.ZERO;
+                    if (metric.schemeCount() > 0 && daysInRange > 0) {
+                        averageRegularity = BigDecimal.valueOf(metric.totalSupplyDays())
+                                .divide(BigDecimal.valueOf((long) metric.schemeCount() * daysInRange), 4, RoundingMode.HALF_UP);
+                    }
+                    return NationalDashboardResponse.StateRegularity.builder()
+                            .tenantId(metric.tenantId())
+                            .stateCode(metric.stateCode())
+                            .stateTitle(metric.title())
+                            .schemeCount(metric.schemeCount())
+                            .totalSupplyDays(metric.totalSupplyDays())
+                            .averageRegularity(averageRegularity)
+                            .build();
+                })
+                .toList();
+
+        List<NationalDashboardResponse.StateReadingSubmissionRate> stateWiseReadingSubmissionRate = submissionMetrics.stream()
+                .map(metric -> {
+                    BigDecimal readingSubmissionRate = BigDecimal.ZERO;
+                    if (metric.schemeCount() > 0 && daysInRange > 0) {
+                        readingSubmissionRate = BigDecimal.valueOf(metric.totalSubmissionDays())
+                                .divide(BigDecimal.valueOf((long) metric.schemeCount() * daysInRange), 4, RoundingMode.HALF_UP);
+                    }
+                    return NationalDashboardResponse.StateReadingSubmissionRate.builder()
+                            .tenantId(metric.tenantId())
+                            .stateCode(metric.stateCode())
+                            .stateTitle(metric.title())
+                            .schemeCount(metric.schemeCount())
+                            .totalSubmissionDays(metric.totalSubmissionDays())
+                            .readingSubmissionRate(readingSubmissionRate)
+                            .build();
+                })
+                .toList();
+
+        Map<String, Integer> overallOutageReasonDistribution = buildReasonCountMap(outageRows);
+        NationalDashboardResponse response = NationalDashboardResponse.builder()
+                .startDate(startDate)
+                .endDate(endDate)
+                .daysInRange(daysInRange)
+                .stateWiseQuantityPerformance(stateWiseQuantityPerformance)
+                .stateWiseRegularity(stateWiseRegularity)
+                .stateWiseReadingSubmissionRate(stateWiseReadingSubmissionRate)
+                .overallOutageReasonDistribution(overallOutageReasonDistribution)
                 .build();
         writeToCache(cacheKey, response);
         return response;
