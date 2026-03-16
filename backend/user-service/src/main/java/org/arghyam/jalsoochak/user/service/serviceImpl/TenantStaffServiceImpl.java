@@ -25,6 +25,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 @Slf4j
 @Service
@@ -83,7 +84,7 @@ public class TenantStaffServiceImpl implements TenantStaffService {
                 .orElseThrow(() -> new ResourceNotFoundException("User not found: " + id));
 
         String currentRole = user.cName();
-        if (currentRole.equals(request.newRole())) {
+        if (Objects.equals(currentRole, request.newRole())) {
             throw new IllegalArgumentException("User already has role: " + request.newRole());
         }
 

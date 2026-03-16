@@ -1,5 +1,6 @@
 package org.arghyam.jalsoochak.telemetry.config;
 
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.convert.converter.Converter;
 import org.springframework.security.authentication.AbstractAuthenticationToken;
@@ -19,6 +20,7 @@ import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+@Slf4j
 @Component
 public class JwtAuthConverter implements Converter<Jwt, AbstractAuthenticationToken> {
 
@@ -27,6 +29,9 @@ public class JwtAuthConverter implements Converter<Jwt, AbstractAuthenticationTo
 
     public JwtAuthConverter(@Value("${keycloak.resource:}") String keycloakClientId) {
         this.keycloakClientId = keycloakClientId == null ? "" : keycloakClientId.trim();
+        if (this.keycloakClientId.isBlank()) {
+            log.warn("keycloak.resource (KEYCLOAK_CLIENT_ID) is not set — client-level roles will be unavailable");
+        }
     }
 
     @Override
