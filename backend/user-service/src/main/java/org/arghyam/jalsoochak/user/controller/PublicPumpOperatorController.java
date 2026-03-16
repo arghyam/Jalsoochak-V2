@@ -54,16 +54,35 @@ public class PublicPumpOperatorController {
             @RequestParam String tenantCode,
             @RequestParam(required = false) Long schemeId,
             @RequestParam(required = false) List<Long> schemeIds,
-            @RequestParam(required = false) String schemeName
+            @RequestParam(required = false) String schemeName,
+            @RequestParam(required = false) Integer page,
+            @RequestParam(required = false) Integer size
     ) {
         List<Long> effectiveSchemeIds = schemeIds;
         if (schemeId != null) {
             effectiveSchemeIds = List.of(schemeId);
         }
+
+        // Backwards-compatible: only paginate when caller provides page and/or size.
+        Integer effectivePage = null;
+        Integer effectiveSize = null;
+        if (page != null || size != null) {
+            effectivePage = page == null ? 0 : page;
+            effectiveSize = size == null ? 20 : size;
+            if (effectivePage < 0) {
+                throw new IllegalArgumentException("page must be >= 0");
+            }
+            if (effectiveSize < 1 || effectiveSize > 500) {
+                throw new IllegalArgumentException("size must be between 1 and 500");
+            }
+        }
+
         List<SchemePumpOperatorsDTO> rows = publicPumpOperatorService.listPumpOperatorsByScheme(
                 tenantCode,
                 effectiveSchemeIds,
-                schemeName
+                schemeName,
+                effectivePage,
+                effectiveSize
         );
         return ResponseEntity.ok(ApiResponseDTO.of(200, "Pump operators retrieved", rows));
     }

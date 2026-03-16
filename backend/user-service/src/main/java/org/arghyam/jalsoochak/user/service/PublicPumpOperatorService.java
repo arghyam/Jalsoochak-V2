@@ -15,5 +15,11 @@ public interface PublicPumpOperatorService {
 
     List<PumpOperatorReadingComplianceRowDTO> listReadingCompliance(String tenantCode);
 
-    List<SchemePumpOperatorsDTO> listPumpOperatorsByScheme(String tenantCode, List<Long> schemeIds, String schemeName);
+    List<SchemePumpOperatorsDTO> listPumpOperatorsByScheme(
+            String tenantCode,
+            List<Long> schemeIds,
+            String schemeName,
+            Integer page,
+            Integer size
+    );
 }
