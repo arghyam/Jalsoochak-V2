@@ -109,10 +109,10 @@ public class UserController {
     @PreAuthorize("hasRole('SUPER_USER')")
     public ResponseEntity<ApiResponseDTO<PageResponseDTO<AdminUserResponseDTO>>> listSuperUsers(
             @Parameter(description = "Zero-based page number") @RequestParam(defaultValue = "0") @Min(0) int page,
-            @Parameter(description = "Page size (1–100)") @RequestParam(defaultValue = "20") @Min(1) @Max(100) int limit) {
-        log.info("GET /api/v1/users/super-users – page={}, limit={}", page, limit);
+            @Parameter(description = "Page size (1–100)") @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size) {
+        log.info("GET /api/v1/users/super-users – page={}, size={}", page, size);
         return ResponseEntity.ok(ApiResponseDTO.of(200, "Super users retrieved",
-                userManagementService.listSuperUsers(page, limit)));
+                userManagementService.listSuperUsers(page, size)));
     }
 
     @Operation(summary = "List state admins",
@@ -127,11 +127,11 @@ public class UserController {
     public ResponseEntity<ApiResponseDTO<PageResponseDTO<AdminUserResponseDTO>>> listStateAdmins(
             @Parameter(description = "Tenant state code filter (optional for SUPER_USER)") @RequestParam(required = false) String tenantCode,
             @Parameter(description = "Zero-based page number") @RequestParam(defaultValue = "0") @Min(0) int page,
-            @Parameter(description = "Page size (1–100)") @RequestParam(defaultValue = "20") @Min(1) @Max(100) int limit,
+            @Parameter(description = "Page size (1–100)") @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size,
             Authentication authentication) {
-        log.info("GET /api/v1/users/state-admins – tenantCode={}, page={}, limit={}", tenantCode, page, limit);
+        log.info("GET /api/v1/users/state-admins – tenantCode={}, page={}, size={}", tenantCode, page, size);
         return ResponseEntity.ok(ApiResponseDTO.of(200, "State admins retrieved",
-                userManagementService.listStateAdmins(tenantCode, authentication, page, limit)));
+                userManagementService.listStateAdmins(tenantCode, authentication, page, size)));
     }
 
     @Operation(summary = "Get user by ID")

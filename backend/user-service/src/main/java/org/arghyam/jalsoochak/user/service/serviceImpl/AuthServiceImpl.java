@@ -177,7 +177,11 @@ public class AuthServiceImpl implements AuthService {
             try {
                 usersResource.get(keycloakUuid).resetPassword(cred);
             } catch (WebApplicationException wae) {
-                int status = wae.getResponse().getStatus();
+                Response resp = wae.getResponse();
+                if (resp == null) {
+                    throw new KeycloakOperationException("Failed to reset password: no HTTP response available");
+                }
+                int status = resp.getStatus();
                 if (status == 400) {
                     throw new BadRequestException("Password does not meet the required policy");
                 }
@@ -272,7 +276,15 @@ public class AuthServiceImpl implements AuthService {
             keycloakProvider.getAdminInstance().realm(keycloakProvider.getRealm())
                     .users().get(user.uuid()).resetPassword(cred);
         } catch (WebApplicationException wae) {
-            throw new BadRequestException("Password does not meet the required policy");
+            Response resp = wae.getResponse();
+            if (resp == null) {
+                throw new KeycloakOperationException("Failed to reset password: no HTTP response available");
+            }
+            int status = resp.getStatus();
+            if (status == 400) {
+                throw new BadRequestException("Password does not meet the required policy");
+            }
+            throw new KeycloakOperationException("Failed to reset password: HTTP " + status);
         }
     }
 

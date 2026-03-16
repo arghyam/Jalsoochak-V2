@@ -231,27 +231,10 @@ public class UserManagementServiceImpl implements UserManagementService {
 
         var usersResource = keycloakProvider.getAdminInstance().realm(keycloakProvider.getRealm()).users();
         UserRepresentation rep = usersResource.get(keycloakId).toRepresentation();
-        if (request.getFirstName() != null && !request.getFirstName().isBlank()) rep.setFirstName(request.getFirstName());
-        if (request.getLastName() != null && !request.getLastName().isBlank()) rep.setLastName(request.getLastName());
+        applyNameUpdatesAndSyncProfile(user, request, rep);
 
         if (request.getPhoneNumber() != null) {
             userCommonRepository.updateAdminUserProfile(user.id(), request.getPhoneNumber(), user.id());
-        }
-
-        String roleName = userCommonRepository.findUserTypeNameById(user.adminLevel()).orElse(null);
-        if ("STATE_ADMIN".equals(roleName)
-                && (request.getPhoneNumber() != null || request.getFirstName() != null || request.getLastName() != null)) {
-            String tenantCode = userCommonRepository.findTenantStateCodeById(user.tenantId()).orElse(null);
-            if (tenantCode != null) {
-                String schema = "tenant_" + tenantCode.toLowerCase();
-                String phoneToSet = request.getPhoneNumber() != null ? request.getPhoneNumber()
-                        : userTenantRepository.findUserByEmail(schema, user.email())
-                                .map(r -> r.phoneNumber()).orElse(null);
-                String fn = rep.getFirstName() != null ? rep.getFirstName() : "";
-                String ln = rep.getLastName() != null ? rep.getLastName() : "";
-                userTenantRepository.updateUserProfile(schema, user.id(),
-                        (fn + " " + ln).trim(), phoneToSet);
-            }
         }
 
         usersResource.get(keycloakId).update(rep);
@@ -352,13 +335,6 @@ public class UserManagementServiceImpl implements UserManagementService {
         AdminUserRow user = userCommonRepository.findAdminUserById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
 
-        if (user.status() == AdminUserStatus.PENDING) {
-            throw new BadRequestException("Cannot update a user who has not completed registration");
-        }
-        if (user.status() == AdminUserStatus.INACTIVE) {
-            throw new BadRequestException("Cannot update a deactivated user");
-        }
-
         Optional<String> callerRole = SecurityUtils.extractRole(caller);
         if (callerRole.map("STATE_ADMIN"::equals).orElse(false)) {
             String callerTenantCode = SecurityUtils.extractTenantCode(caller);
@@ -369,18 +345,35 @@ public class UserManagementServiceImpl implements UserManagementService {
             }
         }
 
+        if (user.status() == AdminUserStatus.PENDING) {
+            throw new BadRequestException("Cannot update a user who has not completed registration");
+        }
+        if (user.status() == AdminUserStatus.INACTIVE) {
+            throw new BadRequestException("Cannot update a deactivated user");
+        }
+
         String callerUuid = SecurityUtils.getKeycloakId(caller);
         AdminUserRow callerRow = userCommonRepository.findAdminUserByUuid(callerUuid)
                 .orElseThrow(() -> new UnauthorizedAccessException("Caller is not registered in the system"));
 
         var usersResource = keycloakProvider.getAdminInstance().realm(keycloakProvider.getRealm()).users();
         UserRepresentation rep = usersResource.get(user.uuid()).toRepresentation();
-        if (request.getFirstName() != null && !request.getFirstName().isBlank()) rep.setFirstName(request.getFirstName());
-        if (request.getLastName() != null && !request.getLastName().isBlank()) rep.setLastName(request.getLastName());
+        applyNameUpdatesAndSyncProfile(user, request, rep);
 
         if (request.getPhoneNumber() != null) {
             userCommonRepository.updateAdminUserProfile(user.id(), request.getPhoneNumber(), callerRow.id());
         }
+
+        usersResource.get(user.uuid()).update(rep);
+
+        return keycloakAdminHelper.buildAdminUserResponse(
+                userCommonRepository.findAdminUserById(id).orElse(user));
+    }
+
+    private void applyNameUpdatesAndSyncProfile(AdminUserRow user, UpdateProfileRequestDTO request,
+            UserRepresentation rep) {
+        if (request.getFirstName() != null && !request.getFirstName().isBlank()) rep.setFirstName(request.getFirstName());
+        if (request.getLastName() != null && !request.getLastName().isBlank()) rep.setLastName(request.getLastName());
 
         String roleName = userCommonRepository.findUserTypeNameById(user.adminLevel()).orElse(null);
         if ("STATE_ADMIN".equals(roleName)
@@ -393,15 +386,9 @@ public class UserManagementServiceImpl implements UserManagementService {
                                 .map(r -> r.phoneNumber()).orElse(null);
                 String fn = rep.getFirstName() != null ? rep.getFirstName() : "";
                 String ln = rep.getLastName() != null ? rep.getLastName() : "";
-                userTenantRepository.updateUserProfile(schema, user.id(),
-                        (fn + " " + ln).trim(), phoneToSet);
+                userTenantRepository.updateUserProfile(schema, user.id(), (fn + " " + ln).trim(), phoneToSet);
             }
         }
-
-        usersResource.get(user.uuid()).update(rep);
-
-        return keycloakAdminHelper.buildAdminUserResponse(
-                userCommonRepository.findAdminUserById(id).orElse(user));
     }
 
     @Override
