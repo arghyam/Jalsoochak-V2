@@ -17,6 +17,10 @@ public class SchemeStatusAndTopReportingResponse {
 
     private Integer parentLgdId;
     private Integer parentDepartmentId;
+    private String parentLgdCName;
+    private String parentDepartmentCName;
+    private String parentLgdTitle;
+    private String parentDepartmentTitle;
     private LocalDate startDate;
     private LocalDate endDate;
     private Integer daysInRange;
@@ -36,5 +40,12 @@ public class SchemeStatusAndTopReportingResponse {
         private String status;
         private Integer submissionDays;
         private BigDecimal reportingRate;
+        private Long totalWaterSupplied;
+        private Integer immediateParentLgdId;
+        private String immediateParentLgdCName;
+        private String immediateParentLgdTitle;
+        private Integer immediateParentDepartmentId;
+        private String immediateParentDepartmentCName;
+        private String immediateParentDepartmentTitle;
     }
 }
