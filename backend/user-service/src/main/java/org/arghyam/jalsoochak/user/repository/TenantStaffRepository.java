@@ -9,6 +9,7 @@ import org.springframework.stereotype.Repository;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 
 @Repository
 @RequiredArgsConstructor
@@ -67,6 +68,37 @@ public class TenantStaffRepository {
                 .status((Integer) rs.getObject("status"))
                 .role(rs.getString("role"))
                 .build(), args.toArray());
+    }
+
+    public Optional<TenantStaffResponseDTO> findStaffById(String schemaName, Long id) {
+        validateSchemaName(schemaName);
+
+        String sql = String.format("""
+                SELECT u.id,
+                       u.uuid,
+                       u.title,
+                       u.email,
+                       u.phone_number,
+                       u.status,
+                       ut.c_name AS role
+                FROM %s.user_table u
+                LEFT JOIN common_schema.user_type_master_table ut
+                  ON ut.id = u.user_type
+                WHERE u.deleted_at IS NULL
+                  AND u.id = ?
+                """, schemaName);
+
+        List<TenantStaffResponseDTO> rows = jdbcTemplate.query(sql, (rs, rowNum) -> TenantStaffResponseDTO.builder()
+                .id(rs.getLong("id"))
+                .uuid(rs.getString("uuid"))
+                .title(rs.getString("title"))
+                .email(rs.getString("email"))
+                .phoneNumber(rs.getString("phone_number"))
+                .status((Integer) rs.getObject("status"))
+                .role(rs.getString("role"))
+                .build(), id);
+
+        return rows.stream().findFirst();
     }
 
     public long countStaff(String schemaName, String role, Integer status, String name) {

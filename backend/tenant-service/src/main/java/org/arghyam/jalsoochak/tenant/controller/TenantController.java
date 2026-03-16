@@ -20,6 +20,7 @@ import org.arghyam.jalsoochak.tenant.enums.TenantConfigKeyEnum;
 import org.arghyam.jalsoochak.tenant.service.TenantManagementService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -64,8 +65,7 @@ public class TenantController {
                         @ApiResponse(responseCode = "409", description = "Tenant with the given state code already exists"),
                         @ApiResponse(responseCode = "500", description = "Internal server error during tenant creation")
         })
-        // TODO: Change this to permission / role based authorization for SUPER_ADMIN
-        // @PreAuthorize("hasAuthority('tenant.create')")
+        @PreAuthorize("hasRole('SUPER_USER')")
         @PostMapping
         public ResponseEntity<ApiResponseDTO<TenantResponseDTO>> createTenant(
                         @Valid @RequestBody CreateTenantRequestDTO request) {
@@ -98,9 +98,6 @@ public class TenantController {
                         @ApiResponse(responseCode = "200", description = "Paginated list of tenants"),
                         @ApiResponse(responseCode = "500", description = "Internal server error")
         })
-        // TODO: Change this to permission / role based authorization for SUPER_ADMIN &
-        // TENANT_ADMIN
-        // @PreAuthorize("hasAuthority('tenant.read')")
         @GetMapping
         public ResponseEntity<ApiResponseDTO<PageResponseDTO<TenantResponseDTO>>> getAllTenants(
                         @Parameter(description = "Page number (0-indexed)", example = "0") @RequestParam(defaultValue = "0") @Min(0) int page,
@@ -120,8 +117,7 @@ public class TenantController {
                         @ApiResponse(responseCode = "404", description = "Tenant with given tenantId does not exist"),
                         @ApiResponse(responseCode = "500", description = "Internal server error")
         })
-        // TODO: Change this to permission / role based authorization for SUPER_ADMIN
-        // @PreAuthorize("hasAuthority('tenant.update')")
+        @PreAuthorize("hasRole('SUPER_USER')")
         @PutMapping("/{tenantId}")
         public ResponseEntity<ApiResponseDTO<TenantResponseDTO>> updateTenant(
                         @PathVariable Integer tenantId,
@@ -141,8 +137,7 @@ public class TenantController {
                         @ApiResponse(responseCode = "404", description = "Tenant with given tenantId does not exist"),
                         @ApiResponse(responseCode = "500", description = "Internal server error")
         })
-        // TODO: Change this to permission / role based authorization for SUPER_ADMIN
-        // @PreAuthorize("hasAuthority('tenant.delete')")
+        @PreAuthorize("hasRole('SUPER_USER')")
         @PutMapping("/{tenantId}/deactivate")
         public ResponseEntity<ApiResponseDTO<Void>> deactivateTenant(@PathVariable Integer tenantId) {
                 log.info("PUT /api/v1/tenants/{}/deactivate", tenantId);
@@ -159,8 +154,7 @@ public class TenantController {
                         @ApiResponse(responseCode = "404", description = "Tenant not found"),
                         @ApiResponse(responseCode = "500", description = "Internal server error")
         })
-        // TODO: Change this to permission based authorization
-        // @PreAuthorize("hasAuthority('tenant.config.read')")
+        @PreAuthorize("hasAnyRole('SUPER_USER', 'STATE_ADMIN')")
         @GetMapping("/{tenantId}/config")
         public ResponseEntity<ApiResponseDTO<TenantConfigResponseDTO>> getTenantConfigs(
                         @PathVariable Integer tenantId,
@@ -198,9 +192,7 @@ public class TenantController {
                         @ApiResponse(responseCode = "404", description = "Tenant not found"),
                         @ApiResponse(responseCode = "500", description = "Internal server error")
         })
-        // TODO: Change this to permission based authorization
-        // @PreAuthorize("hasAuthority('tenant.config.update') or
-        // hasAuthority('tenant.config.create')")
+        @PreAuthorize("hasAnyRole('SUPER_USER', 'STATE_ADMIN')")
         @PutMapping("/{tenantId}/config")
         public ResponseEntity<ApiResponseDTO<TenantConfigResponseDTO>> setTenantConfigs(
                         @PathVariable Integer tenantId,
@@ -265,6 +257,7 @@ public class TenantController {
                         @ApiResponse(responseCode = "409", description = "Structural change blocked — seeded data exists"),
                         @ApiResponse(responseCode = "500", description = "Internal server error")
         })
+        @PreAuthorize("hasAnyRole('SUPER_USER', 'STATE_ADMIN')")
         @PutMapping("/{tenantId}/location-hierarchy/{hierarchyType}")
         public ResponseEntity<ApiResponseDTO<LocationHierarchyResponseDTO>> updateLocationHierarchy(
                         @PathVariable Integer tenantId,

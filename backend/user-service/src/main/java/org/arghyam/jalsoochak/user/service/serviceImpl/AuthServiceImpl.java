@@ -182,6 +182,15 @@ public class AuthServiceImpl implements AuthService {
                 usersResource.get(keycloakUuid).update(updatedRep);
             }
 
+            if (!"SUPER_USER".equals(role) && !"STATE_ADMIN".equals(role)) {
+                UserRepresentation updatedRep = usersResource.get(keycloakUuid).toRepresentation();
+                Map<String, List<String>> attrs = new HashMap<>(
+                        updatedRep.getAttributes() != null ? updatedRep.getAttributes() : Map.of());
+                attrs.put("user_type", List.of(role));
+                updatedRep.setAttributes(attrs);
+                usersResource.get(keycloakUuid).update(updatedRep);
+            }
+
             Integer tenantId = "SUPER_USER".equals(role) ? 0
                     : userCommonRepository.findTenantIdByStateCode(tenantCode)
                             .orElseThrow(() -> new ResourceNotFoundException("Tenant not found for code: " + tenantCode));

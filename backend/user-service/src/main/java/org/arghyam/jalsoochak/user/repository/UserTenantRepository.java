@@ -31,6 +31,7 @@ public class UserTenantRepository {
                u.email,
                u.user_type,
                u.title,
+               u.uuid,
                ut.c_name
         FROM %s.user_table u
         LEFT JOIN common_schema.user_type_master_table ut
@@ -46,7 +47,8 @@ public class UserTenantRepository {
                         rs.getString("email"),
                         toLong(rs.getObject("user_type")),
                         rs.getString("c_name"),
-                        rs.getString("title")
+                        rs.getString("title"),
+                        rs.getString("uuid")
                 ), userId);
 
         return rows.stream().findFirst();
@@ -62,6 +64,7 @@ public class UserTenantRepository {
                u.email,
                u.user_type,
                u.title,
+               u.uuid,
                ut.c_name
         FROM %s.user_table u
         LEFT JOIN common_schema.user_type_master_table ut
@@ -77,7 +80,8 @@ public class UserTenantRepository {
                         rs.getString("email"),
                         toLong(rs.getObject("user_type")),
                         rs.getString("c_name"),
-                        rs.getString("title")
+                        rs.getString("title"),
+                        rs.getString("uuid")
                 ), email);
 
         return rows.stream().findFirst();
@@ -96,6 +100,7 @@ public class UserTenantRepository {
                u.email,
                u.user_type,
                u.title,
+               u.uuid,
                ut.c_name
         FROM %s.user_table u
         LEFT JOIN common_schema.user_type_master_table ut
@@ -111,7 +116,8 @@ public class UserTenantRepository {
                         rs.getString("email"),
                         toLong(rs.getObject("user_type")),
                         rs.getString("c_name"),
-                        rs.getString("title")
+                        rs.getString("title"),
+                        rs.getString("uuid")
                 ), phoneNumber.trim());
 
         return rows.stream().findFirst();
@@ -173,6 +179,16 @@ public class UserTenantRepository {
                 WHERE id = ?
                 """, schemaName);
         jdbcTemplate.update(sql, title, phoneNumber, id);
+    }
+
+    public void updateUserRole(String schemaName, Long userId, Long newUserTypeId) {
+        validateSchemaName(schemaName);
+        String sql = String.format("""
+                UPDATE %s.user_table
+                SET user_type = ?, updated_at = NOW()
+                WHERE id = ?
+                """, schemaName);
+        jdbcTemplate.update(sql, newUserTypeId, userId);
     }
 
     public void updateUserLanguageId(String schemaName, Long userId, Integer languageId) {

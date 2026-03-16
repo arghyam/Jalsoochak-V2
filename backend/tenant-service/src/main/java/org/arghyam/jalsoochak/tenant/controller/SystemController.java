@@ -8,6 +8,7 @@ import org.arghyam.jalsoochak.tenant.dto.response.SystemConfigResponseDTO;
 import org.arghyam.jalsoochak.tenant.enums.SystemConfigKeyEnum;
 import org.arghyam.jalsoochak.tenant.service.SystemManagementService;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -41,9 +42,8 @@ public class SystemController {
             @ApiResponse(responseCode = "403", description = "Forbidden to access this resource"),
             @ApiResponse(responseCode = "500", description = "Internal Server Error")
     })
+    @PreAuthorize("hasRole('SUPER_USER')")
     @GetMapping("/config")
-    // TODO: Change this to permission / role based authorization for SUPER_ADMIN
-    // @PreAuthorize("hasAuthority('tenant.create')")
     public ResponseEntity<ApiResponseDTO<SystemConfigResponseDTO>> getSystemConfigs(
             @RequestParam(required = false) Set<SystemConfigKeyEnum> keys) {
         log.info("GET /api/v1/system/config [keys={}]", keys);
@@ -60,10 +60,8 @@ public class SystemController {
             @ApiResponse(responseCode = "403", description = "Forbidden to access this resource"),
             @ApiResponse(responseCode = "500", description = "Internal Server Error")
     })
+    @PreAuthorize("hasRole('SUPER_USER')")
     @PutMapping("/config")
-    // TODO: Change this to permission / role based authorization for SUPER_ADMIN
-    // @PreAuthorize("hasAuthority('tenant.create') or
-    // hasAuthority('tenant.update')")
     public ResponseEntity<ApiResponseDTO<SystemConfigResponseDTO>> setSystemConfigs(
             @Valid @RequestBody SetSystemConfigRequestDTO request) {
         log.info("PUT /api/v1/system/config");

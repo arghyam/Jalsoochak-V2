@@ -21,11 +21,24 @@ spring:
       hibernate:
         dialect: org.hibernate.dialect.PostgreSQLDialect
 
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${KEYCLOAK_ISSUER_URI:https://jalsoochak.beehyv.com/keycloak/realms/jalsoochak-realm}
+
   kafka:
     bootstrap-servers: localhost:9092
     consumer:
       group-id: scheme-service-group
       auto-offset-reset: earliest
+
+keycloak:
+  realm: jalsoochak-realm
+  auth-server-url: https://jalsoochak.beehyv.com/keycloak
+  resource: ${KEYCLOAK_CLIENT_ID}
+  credentials:
+    secret: ${KEYCLOAK_CLIENT_SECRET}
 
 eureka:
   client:
