@@ -508,7 +508,7 @@ public class SchemeRegularityRepository {
                 )
                 SELECT
                     f.outage_reason,
-                    COUNT(DISTINCT (f.scheme_id, f.date))::int AS scheme_count
+                    COUNT(DISTINCT f.scheme_id)::int AS scheme_count
                 FROM analytics_schema.fact_water_quantity_table f
                 JOIN schemes_in_lgd sl
                     ON sl.scheme_id = f.scheme_id
@@ -544,7 +544,7 @@ public class SchemeRegularityRepository {
                 )
                 SELECT
                     f.outage_reason,
-                    COUNT(DISTINCT (f.scheme_id, f.date))::int AS scheme_count
+                    COUNT(DISTINCT f.scheme_id)::int AS scheme_count
                 FROM analytics_schema.fact_water_quantity_table f
                 JOIN schemes_in_department sd
                     ON sd.scheme_id = f.scheme_id
@@ -574,7 +574,7 @@ public class SchemeRegularityRepository {
                 )
                 SELECT
                     f.outage_reason,
-                    COUNT(DISTINCT (f.scheme_id, f.date))::int AS scheme_count
+                    COUNT(DISTINCT f.scheme_id)::int AS scheme_count
                 FROM analytics_schema.fact_water_quantity_table f
                 JOIN user_schemes us
                     ON us.scheme_id = f.scheme_id
@@ -605,7 +605,7 @@ public class SchemeRegularityRepository {
                 SELECT
                     f.date,
                     f.outage_reason,
-                    COUNT(DISTINCT (f.scheme_id, f.date))::int AS scheme_count
+                    COUNT(DISTINCT f.scheme_id)::int AS scheme_count
                 FROM analytics_schema.fact_water_quantity_table f
                 JOIN user_schemes us
                     ON us.scheme_id = f.scheme_id
@@ -781,7 +781,7 @@ public class SchemeRegularityRepository {
                 SELECT
                     ss.child_lgd_id AS lgd_id,
                     f.outage_reason,
-                    COUNT(DISTINCT (f.scheme_id, f.date))::int AS scheme_count
+                    COUNT(DISTINCT f.scheme_id)::int AS scheme_count
                 FROM schemes_in_scope ss
                 JOIN analytics_schema.fact_water_quantity_table f
                     ON f.scheme_id = ss.scheme_id
@@ -827,7 +827,7 @@ public class SchemeRegularityRepository {
                 SELECT
                     ss.child_department_id AS department_id,
                     f.outage_reason,
-                    COUNT(DISTINCT (f.scheme_id, f.date))::int AS scheme_count
+                    COUNT(DISTINCT f.scheme_id)::int AS scheme_count
                 FROM schemes_in_scope ss
                 JOIN analytics_schema.fact_water_quantity_table f
                     ON f.scheme_id = ss.scheme_id
@@ -1197,7 +1197,7 @@ public class SchemeRegularityRepository {
         String sql = """
                 SELECT
                     f.outage_reason,
-                    COUNT(DISTINCT (f.scheme_id, f.date))::int AS scheme_count
+                    COUNT(DISTINCT f.scheme_id)::int AS scheme_count
                 FROM analytics_schema.fact_water_quantity_table f
                 WHERE f.outage_reason IS NOT NULL
                   AND f.date BETWEEN ? AND ?
