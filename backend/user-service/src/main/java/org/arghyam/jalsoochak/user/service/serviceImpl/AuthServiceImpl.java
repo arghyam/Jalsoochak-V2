@@ -177,7 +177,11 @@ public class AuthServiceImpl implements AuthService {
             try {
                 usersResource.get(keycloakUuid).resetPassword(cred);
             } catch (WebApplicationException wae) {
-                throw new BadRequestException("Password does not meet the required policy");
+                int status = wae.getResponse().getStatus();
+                if (status == 400) {
+                    throw new BadRequestException("Password does not meet the required policy");
+                }
+                throw new KeycloakOperationException("Failed to reset password: HTTP " + status);
             }
 
             keycloakAdminHelper.assignRoleToUser(keycloakUuid, role);

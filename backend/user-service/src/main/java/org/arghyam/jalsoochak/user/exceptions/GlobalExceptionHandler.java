@@ -144,7 +144,8 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(DataIntegrityViolationException.class)
     public ResponseEntity<ApiErrorResponseDTO> handleDataIntegrity(DataIntegrityViolationException ex) {
-        log.error("Data integrity violation: {}", ex.getMostSpecificCause().getMessage());
+        log.error("Data integrity violation occurred: {}", ex.getMostSpecificCause().getClass().getSimpleName());
+        log.debug("Full exception:", ex);
         return build(HttpStatus.CONFLICT, "Request conflicts with existing data");
     }
 

@@ -64,7 +64,8 @@ public class UserManagementServiceImpl implements UserManagementService {
     @Override
     @Transactional
     public void inviteUser(InviteRequestDTO request, Authentication caller) {
-        log.info("inviteUser – role={}, tenantCode={}", request.getRole(), request.getTenantCode());
+        log.info("inviteUser called");
+        log.debug("inviteUser – role={}, tenantCode={}", request.getRole(), request.getTenantCode());
         String callerUuid = SecurityUtils.getKeycloakId(caller);
         AdminUserRow callerRow = userCommonRepository.findAdminUserByUuid(callerUuid)
                 .orElseThrow(() -> new UnauthorizedAccessException("Caller is not registered in the system"));
@@ -149,7 +150,8 @@ public class UserManagementServiceImpl implements UserManagementService {
     @Override
     @Transactional
     public void reinviteUser(Long id, Authentication caller) {
-        log.info("reinviteUser – id={}", id);
+        log.info("reinviteUser called");
+        log.debug("reinviteUser – id={}", id);
         AdminUserRow target = userCommonRepository.findAdminUserById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
 
@@ -218,7 +220,8 @@ public class UserManagementServiceImpl implements UserManagementService {
     @Override
     @Transactional
     public AdminUserResponseDTO updateMe(String keycloakId, UpdateProfileRequestDTO request) {
-        log.info("updateMe – keycloakId={}", keycloakId);
+        log.info("updateMe called");
+        log.debug("updateMe – keycloakId={}", keycloakId);
         AdminUserRow user = userCommonRepository.findAdminUserByUuid(keycloakId)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
 
@@ -259,7 +262,8 @@ public class UserManagementServiceImpl implements UserManagementService {
 
     @Override
     public void changePassword(String keycloakId, ChangePasswordRequestDTO request) {
-        log.info("changePassword – keycloakId={}", keycloakId);
+        log.info("changePassword called");
+        log.debug("changePassword – keycloakId={}", keycloakId);
         AdminUserRow user = userCommonRepository.findAdminUserByUuid(keycloakId)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
 
@@ -343,7 +347,8 @@ public class UserManagementServiceImpl implements UserManagementService {
     @Override
     @Transactional
     public AdminUserResponseDTO updateUserById(Long id, Authentication caller, UpdateProfileRequestDTO request) {
-        log.info("updateUserById – id={}", id);
+        log.info("updateUserById called");
+        log.debug("updateUserById – id={}", id);
         AdminUserRow user = userCommonRepository.findAdminUserById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
 
@@ -402,7 +407,8 @@ public class UserManagementServiceImpl implements UserManagementService {
     @Override
     @Transactional
     public void deactivateUser(Long id, Authentication caller) {
-        log.info("deactivateUser – id={}", id);
+        log.info("deactivateUser called");
+        log.debug("deactivateUser – id={}", id);
         AdminUserRow target = userCommonRepository.findAdminUserById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
 
@@ -451,7 +457,8 @@ public class UserManagementServiceImpl implements UserManagementService {
     @Override
     @Transactional
     public void activateUser(Long id, Authentication caller) {
-        log.info("activateUser – id={}", id);
+        log.info("activateUser called");
+        log.debug("activateUser – id={}", id);
         AdminUserRow target = userCommonRepository.findAdminUserById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
 
