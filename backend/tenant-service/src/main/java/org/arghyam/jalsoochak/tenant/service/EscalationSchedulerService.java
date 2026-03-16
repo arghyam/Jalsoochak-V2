@@ -10,11 +10,13 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 /**
  * Processes escalations for a single tenant. Called by {@link TenantSchedulerManager}
@@ -29,6 +31,13 @@ import java.util.Map;
 public class EscalationSchedulerService {
 
     private static final String COMMON_TOPIC = "common-topic";
+
+    /**
+     * Sentinel string set on OperatorEscalationDetail.lastRecordedBfmDate when an operator
+     * has never uploaded a reading. Must match the value consumed by analytics-service
+     * (FactServiceImpl.LAST_RECORDED_BFM_DATE_NEVER).
+     */
+    static final String LAST_RECORDED_BFM_DATE_NEVER = "Never";
 
     private final NudgeRepository nudgeRepository;
     private final TenantConfigService tenantConfigService;
@@ -61,7 +70,8 @@ public class EscalationSchedulerService {
         // Key = "LEVEL_<n>|<phone>" to keep level1 and level2 officers separate
         Map<String, OfficerGroup> officerGroups = new LinkedHashMap<>();
 
-        int total = nudgeRepository.streamUsersWithMissedDays(schema, level1Days, LocalDate.now(), row -> {
+        LocalDate processingDate = LocalDate.now();
+        int total = nudgeRepository.streamUsersWithMissedDays(schema, level1Days, processingDate, row -> {
             // days_since_last_upload is NULL when the operator has never uploaded
             Number daysSinceObj = (Number) row.get("days_since_last_upload");
             boolean neverUploaded = (daysSinceObj == null);
@@ -109,7 +119,28 @@ public class EscalationSchedulerService {
 
             // Display "Never" when no reading exists; otherwise show the actual date
             Object lastReadingDateObj = row.get("last_reading_date");
-            String lastRecordedBfmDate = (lastReadingDateObj == null) ? "Never" : lastReadingDateObj.toString();
+            String lastRecordedBfmDate = (lastReadingDateObj == null) ? LAST_RECORDED_BFM_DATE_NEVER : lastReadingDateObj.toString();
+
+            Object lastConfirmedReadingObj = row.get("last_confirmed_reading");
+            Double lastConfirmedReading = lastConfirmedReadingObj != null
+                    ? ((Number) lastConfirmedReadingObj).doubleValue() : null;
+
+            Integer userId = row.get("user_id") != null
+                    ? ((Number) row.get("user_id")).intValue() : null;
+
+            int effectiveDays = neverUploaded ? 0 : daysSinceLastUpload;
+            LocalDate streakStart = neverUploaded ? LocalDate.of(1970, 1, 1) : processingDate.minusDays(effectiveDays);
+            String operatorIdentifier;
+            if (userId != null) {
+                operatorIdentifier = userId.toString();
+            } else if (row.get("phone_number") != null) {
+                operatorIdentifier = (String) row.get("phone_number");
+            } else {
+                operatorIdentifier = UUID.randomUUID().toString();
+            }
+            String opCorrelationKey = schema + ":" + schemeId + ":" + operatorIdentifier + ":NO_SUBMISSION:" + streakStart;
+            String opCorrelationId = UUID.nameUUIDFromBytes(
+                    opCorrelationKey.getBytes(StandardCharsets.UTF_8)).toString();
 
             OperatorEscalationDetail detail = OperatorEscalationDetail.builder()
                     .name((String) row.get("name"))
@@ -119,6 +150,9 @@ public class EscalationSchedulerService {
                     .soName(soName)
                     .consecutiveDaysMissed(displayedMissedDays)
                     .lastRecordedBfmDate(lastRecordedBfmDate)
+                    .userId(userId)
+                    .lastConfirmedReading(lastConfirmedReading)
+                    .correlationId(opCorrelationId)
                     .build();
 
             String groupKey = "LEVEL_" + escalationLevel + "|" + officerPhone;
@@ -131,6 +165,10 @@ public class EscalationSchedulerService {
 
         // Publish one EscalationEvent per officer
         for (OfficerGroup group : officerGroups.values()) {
+            String officerCorrelationKey = tenantId + ":" + (group.officerId != null ? group.officerId : group.officerPhone) + ":NO_SUBMISSION";
+            String officerCorrelationId = UUID.nameUUIDFromBytes(
+                    officerCorrelationKey.getBytes(StandardCharsets.UTF_8)).toString();
+
             EscalationEvent event = EscalationEvent.builder()
                     .eventType("ESCALATION")
                     .escalationLevel(group.level)
@@ -142,6 +180,7 @@ public class EscalationSchedulerService {
                     .officerId(group.officerId)
                     .officerWhatsappConnectionId(group.officerWhatsappConnectionId)
                     .tenantSchema(schema)
+                    .correlationId(officerCorrelationId)
                     .build();
             kafkaProducer.publishJson(COMMON_TOPIC, event);
             log.info("[EscalationJob] Published EscalationEvent level={} with {} operators",

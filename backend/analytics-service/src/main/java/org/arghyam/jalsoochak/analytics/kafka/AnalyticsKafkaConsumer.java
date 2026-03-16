@@ -6,6 +6,7 @@ import org.arghyam.jalsoochak.analytics.dto.event.LgdLocationEvent;
 import org.arghyam.jalsoochak.analytics.dto.event.MeterReadingEvent;
 import org.arghyam.jalsoochak.analytics.dto.event.SchemeEvent;
 import org.arghyam.jalsoochak.analytics.dto.event.SchemePerformanceEvent;
+import org.arghyam.jalsoochak.analytics.dto.event.TenantEscalationEvent;
 import org.arghyam.jalsoochak.analytics.dto.event.TenantEvent;
 import org.arghyam.jalsoochak.analytics.dto.event.UserEvent;
 import org.arghyam.jalsoochak.analytics.dto.event.WaterQuantityEvent;
@@ -41,6 +42,7 @@ public class AnalyticsKafkaConsumer {
             }
         } catch (Exception e) {
             log.error("Failed to process tenant event: {}", e.getMessage(), e);
+            throw new RuntimeException(e.getMessage(), e);
         }
     }
 
@@ -58,6 +60,7 @@ public class AnalyticsKafkaConsumer {
             }
         } catch (Exception e) {
             log.error("Failed to process user event: {}", e.getMessage(), e);
+            throw new RuntimeException(e.getMessage(), e);
         }
     }
 
@@ -83,6 +86,7 @@ public class AnalyticsKafkaConsumer {
             }
         } catch (Exception e) {
             log.error("Failed to process scheme event: {}", e.getMessage(), e);
+            throw new RuntimeException(e.getMessage(), e);
         }
     }
 
@@ -108,6 +112,7 @@ public class AnalyticsKafkaConsumer {
             }
         } catch (Exception e) {
             log.error("Failed to process telemetry event: {}", e.getMessage(), e);
+            throw new RuntimeException(e.getMessage(), e);
         }
     }
 
@@ -125,12 +130,26 @@ public class AnalyticsKafkaConsumer {
             }
         } catch (Exception e) {
             log.error("Failed to process anomaly event: {}", e.getMessage(), e);
+            throw new RuntimeException(e.getMessage(), e);
         }
     }
 
     @KafkaListener(topics = "common-topic", groupId = "${spring.kafka.consumer.group-id}")
     public void consumeCommonTopic(String message) {
-        log.info("[analytics] Received from common-topic: {}", message);
+        log.info("[analytics] Received from common-topic");
+        try {
+            String eventType = extractEventType(message);
+            switch (eventType) {
+                case "ESCALATION" -> {
+                    TenantEscalationEvent event = objectMapper.readValue(message, TenantEscalationEvent.class);
+                    factService.ingestTenantEscalation(event);
+                }
+                default -> log.debug("[analytics] Ignoring common-topic event type: {}", eventType);
+            }
+        } catch (Exception e) {
+            log.error("Failed to process common-topic event: {}", e.getMessage(), e);
+            throw new RuntimeException(e.getMessage(), e);
+        }
     }
 
     private String extractEventType(String json) {
