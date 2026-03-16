@@ -221,10 +221,16 @@ public class PublicPumpOperatorRepository {
         }
     }
 
-    public List<SchemePumpOperatorsDTO> listPumpOperatorsByScheme(String schemaName, List<Long> schemeIds, String schemeName) {
+    public List<SchemePumpOperatorsDTO> listPumpOperatorsByScheme(
+            String schemaName,
+            List<Long> schemeIds,
+            String schemeName,
+            Integer page,
+            Integer size
+    ) {
         validateSchemaName(schemaName);
 
-        List<Object> params = new ArrayList<>();
+        List<Object> baseParams = new ArrayList<>();
         StringBuilder where = new StringBuilder("""
                 WHERE usm.deleted_at IS NULL
                   AND usm.status = 1
@@ -237,25 +243,160 @@ public class PublicPumpOperatorRepository {
                     where.append(", ");
                 }
                 where.append("?");
-                params.add(schemeIds.get(i));
+                baseParams.add(schemeIds.get(i));
             }
             where.append(")\n");
         }
         if (schemeName != null && !schemeName.trim().isBlank()) {
             where.append("\n  AND sm.scheme_name ILIKE ?\n");
-            params.add("%" + schemeName.trim() + "%");
+            baseParams.add("%" + schemeName.trim() + "%");
         }
 
-        String sql = String.format("""
-                SELECT t.scheme_id,
-                       t.scheme_name,
-                       t.user_id,
-                       t.uuid,
-                       t.name,
-                       t.email,
-                       t.phone_number,
-                       t.status
-                FROM (
+        boolean paginate = page != null && size != null;
+        int effectivePage = paginate ? page : 0;
+        int effectiveSize = paginate ? size : 0;
+
+        if (!paginate) {
+            String sql = String.format("""
+                    SELECT t.scheme_id,
+                           t.scheme_name,
+                           t.user_id,
+                           t.uuid,
+                           t.name,
+                           t.email,
+                           t.phone_number,
+                           t.status,
+                           NULL::bigint AS total_ops
+                    FROM (
+                        SELECT DISTINCT ON (sm.id, u.id)
+                               sm.id AS scheme_id,
+                               sm.scheme_name AS scheme_name,
+                               u.id AS user_id,
+                               u.uuid AS uuid,
+                               u.title AS name,
+                               u.email AS email,
+                               u.phone_number AS phone_number,
+                               u.status AS status
+                        FROM %s.user_scheme_mapping_table usm
+                        JOIN %s.scheme_master_table sm
+                          ON sm.id = usm.scheme_id
+                         AND sm.deleted_at IS NULL
+                        JOIN %s.user_table u
+                          ON u.id = usm.user_id
+                         AND u.deleted_at IS NULL
+                        JOIN common_schema.user_type_master_table ut
+                          ON ut.id = u.user_type
+                        %s
+                        ORDER BY sm.id, u.id, usm.id DESC
+                    ) t
+                    ORDER BY t.scheme_id ASC, t.name ASC, t.user_id ASC
+                    """, schemaName, schemaName, schemaName, where);
+
+            record Row(long schemeId,
+                       String schemeName,
+                       long userId,
+                       String uuid,
+                       String name,
+                       String email,
+                       String phoneNumber,
+                       Integer status) {
+            }
+
+            List<Row> rows = jdbcTemplate.query(sql, (rs, n) -> new Row(
+                    rs.getLong("scheme_id"),
+                    rs.getString("scheme_name"),
+                    rs.getLong("user_id"),
+                    rs.getString("uuid"),
+                    rs.getString("name"),
+                    rs.getString("email"),
+                    rs.getString("phone_number"),
+                    getNullableInt(rs, "status")
+            ), baseParams.toArray());
+
+            // Group while preserving query order.
+            Map<Long, SchemePumpOperatorsDTO> grouped = new LinkedHashMap<>();
+            for (Row r : rows) {
+                SchemePumpOperatorsDTO existing = grouped.get(r.schemeId());
+                PumpOperatorSummaryDTO op = PumpOperatorSummaryDTO.builder()
+                        .id(r.userId())
+                        .uuid(r.uuid())
+                        .name(r.name())
+                        .email(r.email())
+                        .phoneNumber(r.phoneNumber())
+                        .status(r.status())
+                        .build();
+
+                if (existing == null) {
+                    List<PumpOperatorSummaryDTO> ops = new ArrayList<>();
+                    ops.add(op);
+                    grouped.put(r.schemeId(), SchemePumpOperatorsDTO.builder()
+                            .schemeId(r.schemeId())
+                            .schemeName(r.schemeName())
+                            .pumpOperators(ops)
+                            .build());
+                } else {
+                    // List is mutable because we constructed it above.
+                    existing.pumpOperators().add(op);
+                }
+            }
+
+            return new ArrayList<>(grouped.values());
+        }
+
+        // Pagination applies to pump operators within each scheme (page/size are per scheme).
+        long offset = (long) effectivePage * (long) effectiveSize;
+        long upperExclusive = offset + effectiveSize;
+
+        String metaSql = String.format("""
+                WITH latest AS (
+                    SELECT DISTINCT ON (sm.id, u.id)
+                           sm.id AS scheme_id,
+                           sm.scheme_name AS scheme_name,
+                           u.id AS user_id
+                    FROM %s.user_scheme_mapping_table usm
+                    JOIN %s.scheme_master_table sm
+                      ON sm.id = usm.scheme_id
+                     AND sm.deleted_at IS NULL
+                    JOIN %s.user_table u
+                      ON u.id = usm.user_id
+                     AND u.deleted_at IS NULL
+                    JOIN common_schema.user_type_master_table ut
+                      ON ut.id = u.user_type
+                    %s
+                    ORDER BY sm.id, u.id, usm.id DESC
+                )
+                SELECT scheme_id,
+                       scheme_name,
+                       COUNT(*)::bigint AS total_ops
+                FROM latest
+                GROUP BY scheme_id, scheme_name
+                ORDER BY scheme_id ASC
+                """, schemaName, schemaName, schemaName, where);
+
+        record SchemeMeta(long schemeId, String schemeName, long totalOps) {
+        }
+        List<SchemeMeta> metas = jdbcTemplate.query(metaSql, (rs, n) -> new SchemeMeta(
+                rs.getLong("scheme_id"),
+                rs.getString("scheme_name"),
+                rs.getLong("total_ops")
+        ), baseParams.toArray());
+
+        Map<Long, SchemePumpOperatorsDTO> grouped = new LinkedHashMap<>();
+        for (SchemeMeta m : metas) {
+            int totalPages = (int) Math.ceil(m.totalOps() / (double) effectiveSize);
+            grouped.put(m.schemeId(), SchemePumpOperatorsDTO.builder()
+                    .schemeId(m.schemeId())
+                    .schemeName(m.schemeName())
+                    .pumpOperators(new ArrayList<>())
+                    .page(effectivePage)
+                    .size(effectiveSize)
+                    .totalPumpOperators(m.totalOps())
+                    .totalPages(totalPages)
+                    .build());
+        }
+
+        String opsSql = String.format("""
+                WITH latest AS (
                     SELECT DISTINCT ON (sm.id, u.id)
                            sm.id AS scheme_id,
                            sm.scheme_name AS scheme_name,
@@ -276,21 +417,43 @@ public class PublicPumpOperatorRepository {
                       ON ut.id = u.user_type
                     %s
                     ORDER BY sm.id, u.id, usm.id DESC
-                ) t
-                ORDER BY t.scheme_id ASC, t.name ASC, t.user_id ASC
+                ),
+                numbered AS (
+                    SELECT l.*,
+                           ROW_NUMBER() OVER (
+                               PARTITION BY l.scheme_id
+                               ORDER BY l.name ASC NULLS LAST, l.user_id ASC
+                           ) AS rn
+                    FROM latest l
+                )
+                SELECT scheme_id,
+                       scheme_name,
+                       user_id,
+                       uuid,
+                       name,
+                       email,
+                       phone_number,
+                       status
+                FROM numbered
+                WHERE rn > ?
+                  AND rn <= ?
+                ORDER BY scheme_id ASC, rn ASC
                 """, schemaName, schemaName, schemaName, where);
 
-        record Row(long schemeId,
-                   String schemeName,
-                   long userId,
-                   String uuid,
-                   String name,
-                   String email,
-                   String phoneNumber,
-                   Integer status) {
-        }
+        List<Object> opsParams = new ArrayList<>(baseParams);
+        opsParams.add(offset);
+        opsParams.add(upperExclusive);
 
-        List<Row> rows = jdbcTemplate.query(sql, (rs, n) -> new Row(
+        record OpRow(long schemeId,
+                     String schemeName,
+                     long userId,
+                     String uuid,
+                     String name,
+                     String email,
+                     String phoneNumber,
+                     Integer status) {
+        }
+        List<OpRow> ops = jdbcTemplate.query(opsSql, (rs, n) -> new OpRow(
                 rs.getLong("scheme_id"),
                 rs.getString("scheme_name"),
                 rs.getLong("user_id"),
@@ -299,33 +462,30 @@ public class PublicPumpOperatorRepository {
                 rs.getString("email"),
                 rs.getString("phone_number"),
                 getNullableInt(rs, "status")
-        ), params.toArray());
+        ), opsParams.toArray());
 
-        // Group while preserving query order.
-        Map<Long, SchemePumpOperatorsDTO> grouped = new LinkedHashMap<>();
-        for (Row r : rows) {
-            SchemePumpOperatorsDTO existing = grouped.get(r.schemeId());
-            PumpOperatorSummaryDTO op = PumpOperatorSummaryDTO.builder()
+        for (OpRow r : ops) {
+            SchemePumpOperatorsDTO dto = grouped.get(r.schemeId());
+            if (dto == null) {
+                // Fallback: scheme meta query returned nothing, but operator rows exist.
+                dto = SchemePumpOperatorsDTO.builder()
+                        .schemeId(r.schemeId())
+                        .schemeName(r.schemeName())
+                        .pumpOperators(new ArrayList<>())
+                        .page(effectivePage)
+                        .size(effectiveSize)
+                        .build();
+                grouped.put(r.schemeId(), dto);
+            }
+
+            dto.pumpOperators().add(PumpOperatorSummaryDTO.builder()
                     .id(r.userId())
                     .uuid(r.uuid())
                     .name(r.name())
                     .email(r.email())
                     .phoneNumber(r.phoneNumber())
                     .status(r.status())
-                    .build();
-
-            if (existing == null) {
-                List<PumpOperatorSummaryDTO> ops = new ArrayList<>();
-                ops.add(op);
-                grouped.put(r.schemeId(), SchemePumpOperatorsDTO.builder()
-                        .schemeId(r.schemeId())
-                        .schemeName(r.schemeName())
-                        .pumpOperators(ops)
-                        .build());
-            } else {
-                // List is mutable because we constructed it above.
-                existing.pumpOperators().add(op);
-            }
+                    .build());
         }
 
         return new ArrayList<>(grouped.values());
