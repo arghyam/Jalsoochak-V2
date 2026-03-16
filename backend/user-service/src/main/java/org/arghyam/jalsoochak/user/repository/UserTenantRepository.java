@@ -181,14 +181,14 @@ public class UserTenantRepository {
         jdbcTemplate.update(sql, title, phoneNumber, id);
     }
 
-    public void updateUserRole(String schemaName, Long userId, Long newUserTypeId) {
+    public int updateUserRole(String schemaName, Long userId, Long newUserTypeId) {
         validateSchemaName(schemaName);
         String sql = String.format("""
                 UPDATE %s.user_table
                 SET user_type = ?, updated_at = NOW()
                 WHERE id = ?
                 """, schemaName);
-        jdbcTemplate.update(sql, newUserTypeId, userId);
+        return jdbcTemplate.update(sql, newUserTypeId, userId);
     }
 
     public void updateUserLanguageId(String schemaName, Long userId, Integer languageId) {

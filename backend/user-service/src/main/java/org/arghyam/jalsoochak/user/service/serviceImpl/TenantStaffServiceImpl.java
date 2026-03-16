@@ -7,6 +7,7 @@ import org.arghyam.jalsoochak.user.dto.common.PageResponseDTO;
 import org.arghyam.jalsoochak.user.dto.request.UpdateStaffRoleRequestDTO;
 import org.arghyam.jalsoochak.user.dto.response.RoleCountDTO;
 import org.arghyam.jalsoochak.user.dto.response.TenantStaffResponseDTO;
+import org.arghyam.jalsoochak.user.exceptions.ForbiddenAccessException;
 import org.arghyam.jalsoochak.user.exceptions.ResourceNotFoundException;
 import org.arghyam.jalsoochak.user.repository.TenantStaffRepository;
 import org.arghyam.jalsoochak.user.repository.TenantUserRecord;
@@ -14,9 +15,12 @@ import org.arghyam.jalsoochak.user.repository.UserCommonRepository;
 import org.arghyam.jalsoochak.user.repository.UserTenantRepository;
 import org.arghyam.jalsoochak.user.service.KeycloakAdminHelper;
 import org.arghyam.jalsoochak.user.service.TenantStaffService;
+import org.arghyam.jalsoochak.user.util.SecurityUtils;
 import org.arghyam.jalsoochak.user.util.TenantSchemaResolver;
 import org.keycloak.representations.idm.UserRepresentation;
+import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.HashMap;
 import java.util.List;
@@ -62,7 +66,13 @@ public class TenantStaffServiceImpl implements TenantStaffService {
     }
 
     @Override
-    public TenantStaffResponseDTO updateStaffRole(Long id, UpdateStaffRoleRequestDTO request) {
+    @Transactional
+    public TenantStaffResponseDTO updateStaffRole(Long id, UpdateStaffRoleRequestDTO request, Authentication caller) {
+        String callerTenantCode = SecurityUtils.extractTenantCode(caller);
+        if (callerTenantCode == null || !callerTenantCode.equalsIgnoreCase(request.tenantCode())) {
+            throw new ForbiddenAccessException("State admin can only update staff within their own state");
+        }
+
         List<String> allowed = List.of("SECTION_OFFICER", "DISTRICT_OFFICER");
         if (!allowed.contains(request.newRole())) {
             throw new IllegalArgumentException("Role must be one of: " + allowed);
@@ -83,6 +93,10 @@ public class TenantStaffServiceImpl implements TenantStaffService {
                 .orElseThrow(() -> new ResourceNotFoundException("Unknown role: " + request.newRole()));
 
         String keycloakUuid = user.keycloakUuid();
+        if (keycloakUuid == null || keycloakUuid.isBlank()) {
+            throw new IllegalStateException("User " + id + " has no Keycloak UUID");
+        }
+
         var usersResource = keycloakProvider.getAdminInstance().realm(keycloakProvider.getRealm()).users();
 
         try {
@@ -96,19 +110,30 @@ public class TenantStaffServiceImpl implements TenantStaffService {
             rep.setAttributes(attrs);
             usersResource.get(keycloakUuid).update(rep);
 
-            userTenantRepository.updateUserRole(schema, id, newUserTypeId);
+            int rowsAffected = userTenantRepository.updateUserRole(schema, id, newUserTypeId);
+            if (rowsAffected == 0) {
+                throw new ResourceNotFoundException("User not found during role update: " + id);
+            }
         } catch (Exception e) {
             try {
                 keycloakAdminHelper.assignRoleToUser(keycloakUuid, currentRole);
+            } catch (Exception ce) {
+                log.error("Compensation failed - assignRole {} for user {}: {}", currentRole, keycloakUuid, ce.getMessage(), ce);
+            }
+            try {
                 keycloakAdminHelper.removeRoleFromUser(keycloakUuid, request.newRole());
+            } catch (Exception ce) {
+                log.error("Compensation failed - removeRole {} for user {}: {}", request.newRole(), keycloakUuid, ce.getMessage(), ce);
+            }
+            try {
                 UserRepresentation rep = usersResource.get(keycloakUuid).toRepresentation();
                 Map<String, List<String>> rollbackAttrs = new HashMap<>(
                         rep.getAttributes() != null ? rep.getAttributes() : Map.of());
                 rollbackAttrs.put("user_type", List.of(currentRole));
                 rep.setAttributes(rollbackAttrs);
                 usersResource.get(keycloakUuid).update(rep);
-            } catch (Exception compensateEx) {
-                log.error("Keycloak compensation failed for user {}: {}", keycloakUuid, compensateEx.getMessage(), compensateEx);
+            } catch (Exception ce) {
+                log.error("Compensation failed - updateAttributes for user {}: {}", keycloakUuid, ce.getMessage(), ce);
             }
             throw e;
         }

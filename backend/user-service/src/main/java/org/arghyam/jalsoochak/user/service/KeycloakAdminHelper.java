@@ -76,6 +76,12 @@ public class KeycloakAdminHelper {
      * Removes a Keycloak realm role from a user by role name.
      */
     public void removeRoleFromUser(String keycloakId, String roleName) {
+        if (keycloakId == null || keycloakId.isBlank()) {
+            throw new IllegalArgumentException("keycloakId must not be null or blank");
+        }
+        if (roleName == null || roleName.isBlank()) {
+            throw new IllegalArgumentException("roleName must not be null or blank");
+        }
         try {
             var realmResource = keycloakProvider.getAdminInstance().realm(keycloakProvider.getRealm());
             RoleRepresentation role = realmResource.roles().get(roleName).toRepresentation();

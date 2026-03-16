@@ -11,6 +11,7 @@ import org.arghyam.jalsoochak.user.dto.response.TenantStaffResponseDTO;
 import org.arghyam.jalsoochak.user.service.TenantStaffService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -49,9 +50,10 @@ public class TenantStaffController {
     @PreAuthorize("hasRole('STATE_ADMIN')")
     public ResponseEntity<ApiResponseDTO<TenantStaffResponseDTO>> updateStaffRole(
             @PathVariable @Positive Long id,
-            @Valid @RequestBody UpdateStaffRoleRequestDTO request) {
+            @Valid @RequestBody UpdateStaffRoleRequestDTO request,
+            Authentication authentication) {
         return ResponseEntity.ok(ApiResponseDTO.of(200, "Staff role updated",
-                tenantStaffService.updateStaffRole(id, request)));
+                tenantStaffService.updateStaffRole(id, request, authentication)));
     }
 
     @GetMapping("/staff/counts/by-role")
