@@ -169,6 +169,8 @@ class SchemeRegularityRepositoryIntegrationTest {
                 repository.getTopSchemeSubmissionMetricsByLgd(100, D1, D3, 5);
 
         assertThat(rows).hasSize(2);
+        assertThat(rows.get(0).totalWaterSupplied()).isEqualTo(15L);
+        assertThat(rows.get(1).totalWaterSupplied()).isEqualTo(0L);
         assertThat(rows.get(0).immediateParentLgdId()).isEqualTo(100);
         assertThat(rows.get(0).immediateParentLgdCName()).isEqualTo("Parent");
         assertThat(rows.get(0).immediateParentLgdTitle()).isEqualTo("Parent LGD");
@@ -180,6 +182,8 @@ class SchemeRegularityRepositoryIntegrationTest {
                 repository.getTopSchemeSubmissionMetricsByDepartment(200, D1, D3, 5);
 
         assertThat(rows).hasSize(2);
+        assertThat(rows.get(0).totalWaterSupplied()).isEqualTo(15L);
+        assertThat(rows.get(1).totalWaterSupplied()).isEqualTo(0L);
         assertThat(rows.get(0).immediateParentDepartmentId()).isEqualTo(200);
         assertThat(rows.get(0).immediateParentDepartmentCName()).isEqualTo("Parent Dept");
         assertThat(rows.get(0).immediateParentDepartmentTitle()).isEqualTo("Parent Dept");

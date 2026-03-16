@@ -40,6 +40,7 @@ public class SchemeStatusAndTopReportingResponse {
         private String status;
         private Integer submissionDays;
         private BigDecimal reportingRate;
+        private Long totalWaterSupplied;
         private Integer immediateParentLgdId;
         private String immediateParentLgdCName;
         private String immediateParentLgdTitle;

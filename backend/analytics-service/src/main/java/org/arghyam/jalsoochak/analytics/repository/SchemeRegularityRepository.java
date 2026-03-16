@@ -922,7 +922,9 @@ public class SchemeRegularityRepository {
                 scheme_submission_days AS (
                     SELECT
                         m.scheme_id,
-                        COUNT(DISTINCT m.reading_date)::int AS submission_days
+                        COUNT(DISTINCT m.reading_date)::int AS submission_days,
+                        COALESCE(SUM(CASE WHEN m.confirmed_reading > 0 THEN m.confirmed_reading ELSE 0 END), 0)::bigint
+                            AS total_water_supplied
                     FROM analytics_schema.fact_meter_reading_table m
                     JOIN schemes_in_scope ss
                         ON ss.scheme_id = m.scheme_id
@@ -935,6 +937,7 @@ public class SchemeRegularityRepository {
                     ss.scheme_name,
                     ss.status,
                     COALESCE(sd.submission_days, 0)::int AS submission_days,
+                    COALESCE(sd.total_water_supplied, 0)::bigint AS total_water_supplied,
                     ss.immediate_parent_lgd_id,
                     pl.lgd_c_name AS immediate_parent_lgd_c_name,
                     pl.title AS immediate_parent_lgd_title,
@@ -959,6 +962,7 @@ public class SchemeRegularityRepository {
                         rs.getString("scheme_name"),
                         (Integer) rs.getObject("status"),
                         rs.getInt("submission_days"),
+                        rs.getLong("total_water_supplied"),
                         (Integer) rs.getObject("immediate_parent_lgd_id"),
                         rs.getString("immediate_parent_lgd_c_name"),
                         rs.getString("immediate_parent_lgd_title"),
@@ -1002,7 +1006,9 @@ public class SchemeRegularityRepository {
                 scheme_submission_days AS (
                     SELECT
                         m.scheme_id,
-                        COUNT(DISTINCT m.reading_date)::int AS submission_days
+                        COUNT(DISTINCT m.reading_date)::int AS submission_days,
+                        COALESCE(SUM(CASE WHEN m.confirmed_reading > 0 THEN m.confirmed_reading ELSE 0 END), 0)::bigint
+                            AS total_water_supplied
                     FROM analytics_schema.fact_meter_reading_table m
                     JOIN schemes_in_scope ss
                         ON ss.scheme_id = m.scheme_id
@@ -1015,6 +1021,7 @@ public class SchemeRegularityRepository {
                     ss.scheme_name,
                     ss.status,
                     COALESCE(sd.submission_days, 0)::int AS submission_days,
+                    COALESCE(sd.total_water_supplied, 0)::bigint AS total_water_supplied,
                     NULL::int AS immediate_parent_lgd_id,
                     NULL::varchar AS immediate_parent_lgd_c_name,
                     NULL::varchar AS immediate_parent_lgd_title,
@@ -1039,6 +1046,7 @@ public class SchemeRegularityRepository {
                         rs.getString("scheme_name"),
                         (Integer) rs.getObject("status"),
                         rs.getInt("submission_days"),
+                        rs.getLong("total_water_supplied"),
                         (Integer) rs.getObject("immediate_parent_lgd_id"),
                         rs.getString("immediate_parent_lgd_c_name"),
                         rs.getString("immediate_parent_lgd_title"),
@@ -1922,6 +1930,7 @@ public class SchemeRegularityRepository {
             String schemeName,
             Integer status,
             Integer submissionDays,
+            Long totalWaterSupplied,
             Integer immediateParentLgdId,
             String immediateParentLgdCName,
             String immediateParentLgdTitle,

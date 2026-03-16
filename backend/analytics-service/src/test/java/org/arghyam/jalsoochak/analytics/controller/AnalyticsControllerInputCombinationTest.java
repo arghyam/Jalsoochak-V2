@@ -427,6 +427,7 @@ class AnalyticsControllerInputCombinationTest {
                                 .status("active")
                                 .submissionDays(10)
                                 .reportingRate(BigDecimal.valueOf(0.5))
+                                .totalWaterSupplied(150L)
                                 .immediateParentLgdId(100)
                                 .immediateParentLgdCName("Parent")
                                 .immediateParentLgdTitle("Parent LGD")
@@ -442,6 +443,7 @@ class AnalyticsControllerInputCombinationTest {
                 .andExpect(jsonPath("$.parentLgdId").value(101))
                 .andExpect(jsonPath("$.parentLgdCName").value("Parent"))
                 .andExpect(jsonPath("$.parentLgdTitle").value("Parent LGD"))
+                .andExpect(jsonPath("$.topSchemes[0].totalWaterSupplied").value(150))
                 .andExpect(jsonPath("$.topSchemes[0].immediateParentLgdId").value(100))
                 .andExpect(jsonPath("$.topSchemes[0].immediateParentLgdCName").value("Parent"))
                 .andExpect(jsonPath("$.topSchemes[0].immediateParentLgdTitle").value("Parent LGD"));
@@ -464,6 +466,7 @@ class AnalyticsControllerInputCombinationTest {
                                 .status("active")
                                 .submissionDays(8)
                                 .reportingRate(BigDecimal.valueOf(0.4))
+                                .totalWaterSupplied(80L)
                                 .immediateParentDepartmentId(200)
                                 .immediateParentDepartmentCName("Parent Dept")
                                 .immediateParentDepartmentTitle("Parent Dept")
@@ -479,6 +482,7 @@ class AnalyticsControllerInputCombinationTest {
                 .andExpect(jsonPath("$.parentDepartmentId").value(201))
                 .andExpect(jsonPath("$.parentDepartmentCName").value("Parent Dept"))
                 .andExpect(jsonPath("$.parentDepartmentTitle").value("Parent Dept"))
+                .andExpect(jsonPath("$.topSchemes[0].totalWaterSupplied").value(80))
                 .andExpect(jsonPath("$.topSchemes[0].immediateParentDepartmentId").value(200))
                 .andExpect(jsonPath("$.topSchemes[0].immediateParentDepartmentCName").value("Parent Dept"))
                 .andExpect(jsonPath("$.topSchemes[0].immediateParentDepartmentTitle").value("Parent Dept"));
