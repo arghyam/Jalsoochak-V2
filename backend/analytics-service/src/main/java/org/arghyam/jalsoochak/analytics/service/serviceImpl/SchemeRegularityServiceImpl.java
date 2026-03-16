@@ -1237,6 +1237,8 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
 
         SchemeRegularityRepository.SchemeStatusCount statusCount =
                 schemeRegularityRepository.getSchemeStatusCountByLgd(parentLgdId);
+        String parentLgdCName = schemeRegularityRepository.getParentLgdCNameByLgd(parentLgdId);
+        String parentLgdTitle = schemeRegularityRepository.getParentLgdTitleByLgd(parentLgdId);
         List<SchemeRegularityRepository.SchemeSubmissionMetrics> topSchemes =
                 schemeRegularityRepository.getTopSchemeSubmissionMetricsByLgd(
                         parentLgdId, startDate, endDate, topSchemeCount);
@@ -1244,6 +1246,10 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
         return SchemeStatusAndTopReportingResponse.builder()
                 .parentLgdId(parentLgdId)
                 .parentDepartmentId(null)
+                .parentLgdCName(parentLgdCName)
+                .parentDepartmentCName(null)
+                .parentLgdTitle(parentLgdTitle)
+                .parentDepartmentTitle(null)
                 .startDate(startDate)
                 .endDate(endDate)
                 .daysInRange(daysInRange)
@@ -1258,6 +1264,12 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
                                 .status(resolveSchemeStatus(metric.status()))
                                 .submissionDays(metric.submissionDays())
                                 .reportingRate(calculateReportingRate(metric.submissionDays(), daysInRange))
+                                .immediateParentLgdId(metric.immediateParentLgdId())
+                                .immediateParentLgdCName(metric.immediateParentLgdCName())
+                                .immediateParentLgdTitle(metric.immediateParentLgdTitle())
+                                .immediateParentDepartmentId(metric.immediateParentDepartmentId())
+                                .immediateParentDepartmentCName(metric.immediateParentDepartmentCName())
+                                .immediateParentDepartmentTitle(metric.immediateParentDepartmentTitle())
                                 .build())
                         .toList())
                 .build();
@@ -1274,6 +1286,10 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
 
         SchemeRegularityRepository.SchemeStatusCount statusCount =
                 schemeRegularityRepository.getSchemeStatusCountByDepartment(parentDepartmentId);
+        String parentDepartmentCName =
+                schemeRegularityRepository.getParentDepartmentCNameByDepartment(parentDepartmentId);
+        String parentDepartmentTitle =
+                schemeRegularityRepository.getParentDepartmentTitleByDepartment(parentDepartmentId);
         List<SchemeRegularityRepository.SchemeSubmissionMetrics> topSchemes =
                 schemeRegularityRepository.getTopSchemeSubmissionMetricsByDepartment(
                         parentDepartmentId, startDate, endDate, topSchemeCount);
@@ -1281,6 +1297,10 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
         return SchemeStatusAndTopReportingResponse.builder()
                 .parentLgdId(null)
                 .parentDepartmentId(parentDepartmentId)
+                .parentLgdCName(null)
+                .parentDepartmentCName(parentDepartmentCName)
+                .parentLgdTitle(null)
+                .parentDepartmentTitle(parentDepartmentTitle)
                 .startDate(startDate)
                 .endDate(endDate)
                 .daysInRange(daysInRange)
@@ -1295,6 +1315,12 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
                                 .status(resolveSchemeStatus(metric.status()))
                                 .submissionDays(metric.submissionDays())
                                 .reportingRate(calculateReportingRate(metric.submissionDays(), daysInRange))
+                                .immediateParentLgdId(metric.immediateParentLgdId())
+                                .immediateParentLgdCName(metric.immediateParentLgdCName())
+                                .immediateParentLgdTitle(metric.immediateParentLgdTitle())
+                                .immediateParentDepartmentId(metric.immediateParentDepartmentId())
+                                .immediateParentDepartmentCName(metric.immediateParentDepartmentCName())
+                                .immediateParentDepartmentTitle(metric.immediateParentDepartmentTitle())
                                 .build())
                         .toList())
                 .build();
