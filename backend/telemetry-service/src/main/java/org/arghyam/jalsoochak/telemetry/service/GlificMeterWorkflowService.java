@@ -51,6 +51,7 @@ public class GlificMeterWorkflowService {
             "Meter not working",
             "Meter damage",
             "Incorrect Reading Entered Previously",
+            "No Water Supply",
             "Others"
     );
 
@@ -59,6 +60,7 @@ public class GlificMeterWorkflowService {
             "मीटर काम नहीं कर रहा",
             "मीटर खराब है",
             "पहले गलत रीडिंग दर्ज हुई थी",
+            "पानी की आपूर्ति नहीं",
             "अन्य"
     );
     private static final List<String> DEFAULT_ISSUE_REASON_SELECTION_KEYS = List.of(
@@ -66,30 +68,35 @@ public class GlificMeterWorkflowService {
             "meterNotWorking",
             "meterDamage",
             "incorrectReadingEnteredPreviously",
+            "noWaterSupplied",
             "others"
     );
     private static final List<String> TELEMETRY_ISSUE_REASONS = List.of(
             "Meter Replaced",
             "Meter not working",
             "Meter Damaged",
+            "No Water Supply",
             "Others"
     );
     private static final List<String> TELEMETRY_ISSUE_REASONS_HINDI = List.of(
             "मीटर बदला गया",
             "मीटर काम नहीं कर रहा",
             "मीटर खराब है",
+            "पानी की आपूर्ति नहीं",
             "अन्य"
     );
     private static final List<String> TELEMETRY_ISSUE_REASON_SELECTION_KEYS = List.of(
             "meterReplaced",
             "meterNotWorking",
             "meterDamaged",
+            "noWaterSupplied",
             "others"
     );
     private static final Set<String> ISSUE_REPORT_ANOMALY_SELECTION_KEYS = Set.of(
             "meterNotWorking",
             "meterDamage",
             "meterDamaged",
+            "noWaterSupplied",
             "others"
     );
 

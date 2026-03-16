@@ -153,6 +153,59 @@ class GlificMeterWorkflowServiceIssueReportTest {
     }
 
     @Test
+    void issueReportSubmitReturnsNoWaterSuppliedForReason5() {
+        TelemetryOperatorWithSchema operatorWithSchema = new TelemetryOperatorWithSchema(
+                "tenant_test",
+                new TelemetryOperator(1L, 1, "op", "op@example.com", "919999999999", null)
+        );
+
+        when(operatorContextService.resolveOperatorWithSchema("919999999999")).thenReturn(operatorWithSchema);
+        when(operatorContextService.resolveOperatorLanguage(operatorWithSchema, 1)).thenReturn("en");
+        when(localizationService.normalizeLanguageKey("en")).thenReturn("english");
+
+        when(templatesService.resolveScreenReasons(1, "ISSUE_REPORT")).thenReturn(List.of());
+        when(tenantConfigRepository.findIssueReportReasons(1, "english")).thenReturn(List.of());
+        when(templatesService.resolveScreenConfirmationTemplate(1, "ISSUE_REPORT", "english")).thenReturn(Optional.empty());
+        when(tenantConfigRepository.findIssueReportConfirmationTemplate(1, "english")).thenReturn(Optional.empty());
+
+        when(telemetryTenantRepository.findFirstSchemeForUser("tenant_test", 1L)).thenReturn(Optional.of(10L));
+
+        IntroResponse resp = service.issueReportSubmitMessage(IssueReportRequest.builder()
+                .contactId("919999999999")
+                .issueReason("5")
+                .build());
+
+        assertNotNull(resp);
+        assertEquals(true, resp.isSuccess());
+        assertEquals("noWaterSupplied", resp.getSelected());
+
+        // Current behavior: reason "5" is treated as an anomaly selection (legacy numeric rule).
+        verify(telemetryTenantRepository).createAnomalyRecord(
+                eq("tenant_test"),
+                eq(AnomalyConstants.TYPE_ISSUE_REPORTED),
+                eq(1L),
+                eq(10L),
+                isNull(),
+                isNull(),
+                isNull(),
+                eq(0),
+                isNull(),
+                isNull(),
+                eq(0),
+                eq("No Water Supply"),
+                eq(AnomalyConstants.STATUS_OPEN)
+        );
+        verify(telemetryTenantRepository, never()).createIssueReportRecord(
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyLong(),
+                org.mockito.ArgumentMatchers.anyLong(),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyString()
+        );
+    }
+
+    @Test
     void othersSubmittedStoresFreeTextAsAnomalyAndNotInFlowReading() {
         TelemetryOperatorWithSchema operatorWithSchema = new TelemetryOperatorWithSchema(
                 "tenant_test",
@@ -201,5 +254,53 @@ class GlificMeterWorkflowServiceIssueReportTest {
                 org.mockito.ArgumentMatchers.anyString()
         );
     }
-}
 
+    @Test
+    void telemetryIssueReportSubmitReturnsNoWaterSuppliedForReason4() {
+        TelemetryOperatorWithSchema operatorWithSchema = new TelemetryOperatorWithSchema(
+                "tenant_test",
+                new TelemetryOperator(1L, 1, "op", "op@example.com", "919999999999", null)
+        );
+
+        when(operatorContextService.resolveOperatorWithSchema("919999999999")).thenReturn(operatorWithSchema);
+        when(operatorContextService.resolveOperatorLanguage(operatorWithSchema, 1)).thenReturn("en");
+        when(localizationService.normalizeLanguageKey("en")).thenReturn("english");
+        when(tenantConfigRepository.findIssueReportConfirmationTemplate(1, "english")).thenReturn(Optional.empty());
+
+        when(telemetryTenantRepository.findFirstSchemeForUser("tenant_test", 1L)).thenReturn(Optional.of(10L));
+
+        IntroResponse resp = service.issueReportTelemetrySubmitMessage(IssueReportRequest.builder()
+                .contactId("919999999999")
+                .issueReason("4")
+                .build());
+
+        assertNotNull(resp);
+        assertEquals(true, resp.isSuccess());
+        assertEquals("noWaterSupplied", resp.getSelected());
+
+        // Telemetry submit: "No Water Supply" should be tracked as an issue anomaly.
+        verify(telemetryTenantRepository).createAnomalyRecord(
+                eq("tenant_test"),
+                eq(AnomalyConstants.TYPE_ISSUE_REPORTED),
+                eq(1L),
+                eq(10L),
+                isNull(),
+                isNull(),
+                isNull(),
+                eq(0),
+                isNull(),
+                isNull(),
+                eq(0),
+                eq("No Water Supply"),
+                eq(AnomalyConstants.STATUS_OPEN)
+        );
+        verify(telemetryTenantRepository, never()).createIssueReportRecord(
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyLong(),
+                org.mockito.ArgumentMatchers.anyLong(),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyString()
+        );
+    }
+}
