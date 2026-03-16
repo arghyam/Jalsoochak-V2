@@ -23,6 +23,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.dao.DuplicateKeyException;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -30,6 +31,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -201,17 +203,26 @@ class FactServiceImplTest {
     }
 
     @Test
-    void ingestTenantEscalation_duplicateCorrelationId_swallowsDivAndContinues() {
+    void ingestTenantEscalation_duplicateUniqueConstraintIsSwallowed() {
         TenantEscalationEvent event = buildEscalationEvent(buildOp(21, 5, "corr-dup", "11"));
         when(dimTenantRepository.existsById(1)).thenReturn(true);
-        when(escalationRepository.save(any())).thenThrow(new DataIntegrityViolationException("duplicate key"));
-        when(anomalyRepository.save(any())).thenThrow(new DataIntegrityViolationException("duplicate key"));
+        when(escalationRepository.save(any())).thenThrow(new DuplicateKeyException("duplicate key"));
+        when(anomalyRepository.save(any())).thenThrow(new DuplicateKeyException("duplicate key"));
 
-        // Both saves throw DataIntegrityViolationException; method must complete without propagating
+        // Both saves throw DuplicateKeyException; method must complete without propagating
         service.ingestTenantEscalation(event);
 
         verify(escalationRepository, times(1)).save(any());
         verify(anomalyRepository, times(1)).save(any());
+    }
+
+    @Test
+    void ingestTenantEscalation_nonDuplicateDataIntegrityIsPropagated() {
+        TenantEscalationEvent event = buildEscalationEvent(buildOp(21, 5, "corr-fk", "11"));
+        when(dimTenantRepository.existsById(1)).thenReturn(true);
+        when(escalationRepository.save(any())).thenThrow(new DataIntegrityViolationException("foreign key violation"));
+
+        assertThrows(DataIntegrityViolationException.class, () -> service.ingestTenantEscalation(event));
     }
 
     @Test

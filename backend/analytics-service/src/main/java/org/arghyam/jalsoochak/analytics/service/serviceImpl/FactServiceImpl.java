@@ -21,6 +21,7 @@ import org.arghyam.jalsoochak.analytics.service.FactService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -189,7 +190,7 @@ public class FactServiceImpl implements FactService {
                         .build();
                 escalationRepository.save(escalationFact);
                 escalationRowsCreated++;
-            } catch (DataIntegrityViolationException e) {
+            } catch (DuplicateKeyException e) {
                 log.debug("Skipping duplicate fact_escalation for correlationId={}", op.getCorrelationId());
             }
 
@@ -222,7 +223,7 @@ public class FactServiceImpl implements FactService {
                         .build();
                 anomalyRepository.save(anomaly);
                 anomalyRowsCreated++;
-            } catch (DataIntegrityViolationException e) {
+            } catch (DuplicateKeyException e) {
                 log.debug("Skipping duplicate anomaly for correlationId={}", op.getCorrelationId());
             }
         }
@@ -233,7 +234,8 @@ public class FactServiceImpl implements FactService {
     private void ensureTenantExists(Integer tenantId, String tenantSchema) {
         if (tenantId == null) return;
         if (dimTenantRepository.existsById(tenantId)) return;
-        String stateCode = (tenantSchema != null && tenantSchema.startsWith("tenant_"))
+        String stateCode = (tenantSchema != null && tenantSchema.startsWith("tenant_")
+                && tenantSchema.length() > "tenant_".length())
                 ? tenantSchema.substring("tenant_".length())
                 : "unknown";
         LocalDateTime now = LocalDateTime.now();
