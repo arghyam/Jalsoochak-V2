@@ -3,6 +3,7 @@ package org.arghyam.jalsoochak.analytics.service.serviceImpl;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.arghyam.jalsoochak.analytics.dto.response.AverageSchemeRegularityResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.AverageWaterSupplyResponse;
+import org.arghyam.jalsoochak.analytics.dto.response.NationalDashboardResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.OutageReasonSchemeCountResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.PeriodicWaterQuantityResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.ReadingSubmissionRateResponse;
@@ -588,6 +589,41 @@ class SchemeRegularityServiceImplTest {
         assertThat(result)
                 .containsEntry("active_schemes_count", 4)
                 .containsEntry("inactive_schemes_count", 0);
+    }
+
+    @Test
+    void refreshNationalDashboard_computesAndWritesCache() throws Exception {
+        mockRedisValueOps();
+        String key = ":national:dashboard:start:2026-01-01:end:2026-01-03:v1";
+
+        when(schemeRegularityRepository.getAverageWaterSupplyPerNation(START, END))
+                .thenReturn(List.of(
+                        new SchemeRegularityRepository.ChildRegionWaterSupplyMetrics(
+                                1, "mp", null, null, "Madhya Pradesh", 120, 64000L, 5, new BigDecimal("12800.0000"))
+                ));
+        when(schemeRegularityRepository.getStateWiseRegularityMetrics(START, END))
+                .thenReturn(List.of(
+                        new SchemeRegularityRepository.StateSchemeRegularityMetrics(
+                                1, "mp", "Madhya Pradesh", 5, 12)
+                ));
+        when(schemeRegularityRepository.getStateWiseReadingSubmissionMetrics(START, END))
+                .thenReturn(List.of(
+                        new SchemeRegularityRepository.StateReadingSubmissionMetrics(
+                                1, "mp", "Madhya Pradesh", 5, 10)
+                ));
+        when(schemeRegularityRepository.getOverallOutageReasonSchemeCount(START, END))
+                .thenReturn(List.of(
+                        new SchemeRegularityRepository.OutageReasonSchemeCount(1, 3)
+                ));
+        when(objectMapper.writeValueAsString(any())).thenReturn("{json}");
+
+        NationalDashboardResponse response = service.refreshNationalDashboard(START, END);
+
+        assertThat(response.getDaysInRange()).isEqualTo(3);
+        assertThat(response.getStateWiseQuantityPerformance()).hasSize(1);
+        assertThat(response.getStateWiseRegularity()).hasSize(1);
+        assertThat(response.getStateWiseReadingSubmissionRate()).hasSize(1);
+        verify(valueOperations, times(1)).set(eq(key), eq("{json}"), eq(Duration.ofHours(24)));
     }
 
     private static DimTenant tenant(Integer id, String stateCode) {

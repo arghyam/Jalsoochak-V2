@@ -23,5 +23,4 @@ public enum SchemeStatus {
                 .orElseThrow(() -> new IllegalArgumentException("Unknown SchemeStatus code: " + code));
     }
     
-    
 }
