@@ -89,11 +89,13 @@ public class TenantStaffRepository {
                   ON ut.id = u.user_type
                 WHERE u.deleted_at IS NULL
                   AND u.id = ?
+                LIMIT 1
                 """, schemaName);
 
-        List<TenantStaffResponseDTO> rows = jdbcTemplate.query(sql, staffRowMapper, id);
-
-        return rows.stream().findFirst();
+        return jdbcTemplate.query(sql, rs -> {
+            if (rs.next()) return Optional.of(staffRowMapper.mapRow(rs, 0));
+            return Optional.empty();
+        }, id);
     }
 
     public long countStaff(String schemaName, String role, Integer status, String name) {

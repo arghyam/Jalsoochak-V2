@@ -24,7 +24,15 @@ public class SecurityConfig {
                                 "/user/api/v1/auth/activate-account",
                                 "/user/api/v1/auth/forgot-password",
                                 "/user/api/v1/auth/reset-password",
-                                "/user/api/v1/public/**"
+                                "/user/api/v1/public/**",
+                                // Public staff/operator endpoints (user-service SecurityConfig marks these permitAll)
+                                "/user/api/v1/tenant/user/staff",
+                                "/user/api/v1/tenant/user/staff/counts/by-role",
+                                "/user/api/v1/tenant/staff",
+                                "/user/api/v1/tenant/staff/counts/by-role",
+                                "/user/api/v1/pumpoperator/**",
+                                // Upload endpoint — authorized via UploadAuthService internally
+                                "/user/api/v1/state-admin/pump-operators/upload"
                         ).permitAll()
                         // Gateway and service health
                         .pathMatchers(

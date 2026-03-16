@@ -34,9 +34,9 @@ spring:
       auto-offset-reset: earliest
 
 keycloak:
-  realm: jalsoochak-realm
-  auth-server-url: https://jalsoochak.beehyv.com/keycloak
-  resource: ${KEYCLOAK_CLIENT_ID}
+  realm: ${KEYCLOAK_REALM:jalsoochak-realm}
+  auth-server-url: ${KEYCLOAK_AUTH_SERVER_URL:https://jalsoochak.beehyv.com/keycloak}
+  resource: ${KEYCLOAK_CLIENT_ID:scheme-client}
 
 eureka:
   client:

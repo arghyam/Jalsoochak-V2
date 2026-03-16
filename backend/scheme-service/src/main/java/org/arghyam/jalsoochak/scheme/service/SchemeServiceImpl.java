@@ -705,9 +705,11 @@ public class SchemeServiceImpl implements SchemeService {
                 .anyMatch(a -> "ROLE_SUPER_USER".equals(a.getAuthority()));
         if (!isSuperUser) {
             String tenantStateCode = jwt.getClaimAsString("tenant_state_code");
-            String expectedSchema = tenantStateCode != null
-                    ? "tenant_" + tenantStateCode.trim().toLowerCase()
-                    : null;
+            if (tenantStateCode == null || tenantStateCode.isBlank()) {
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                        "Not authorized to operate on this tenant");
+            }
+            String expectedSchema = TenantSchemaResolver.requireSchemaNameFromTenantCode(tenantStateCode);
             if (!schemaName.equals(expectedSchema)) {
                 throw new ResponseStatusException(HttpStatus.FORBIDDEN,
                         "Not authorized to operate on this tenant");

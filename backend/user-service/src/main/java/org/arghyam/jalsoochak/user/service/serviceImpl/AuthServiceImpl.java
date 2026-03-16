@@ -305,11 +305,16 @@ public class AuthServiceImpl implements AuthService {
             String keycloakUuid,
             String key,
             String value) {
-        UserRepresentation rep = usersResource.get(keycloakUuid).toRepresentation();
+        var userResource = usersResource.get(keycloakUuid);
+        UserRepresentation rep = userResource.toRepresentation();
         Map<String, List<String>> attrs = new HashMap<>(
                 rep.getAttributes() != null ? rep.getAttributes() : Map.of());
-        attrs.put(key, List.of(value));
+        if (value == null) {
+            attrs.remove(key);
+        } else {
+            attrs.put(key, List.of(value));
+        }
         rep.setAttributes(attrs);
-        usersResource.get(keycloakUuid).update(rep);
+        userResource.update(rep);
     }
 }
