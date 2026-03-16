@@ -84,3 +84,10 @@ logging:
 
   pattern:
     level: "service=${spring.application.name} %5p"
+
+analytics:
+  scheduler:
+    national-dashboard:
+      lookback-days: ${ANALYTICS_NATIONAL_DASHBOARD_LOOKBACK_DAYS:30}
+    scheme-status:
+      inactive-after-days: ${ANALYTICS_SCHEME_STATUS_INACTIVE_AFTER_DAYS:30}

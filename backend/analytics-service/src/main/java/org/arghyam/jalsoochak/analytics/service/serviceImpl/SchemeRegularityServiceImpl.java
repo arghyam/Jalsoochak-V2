@@ -677,15 +677,31 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
     public NationalDashboardResponse getNationalDashboard(LocalDate startDate, LocalDate endDate) {
         validateDateRange(startDate, endDate);
 
-        String cacheKey = NATIONAL_DASHBOARD_CACHE_PREFIX
-                + ":start:" + startDate
-                + ":end:" + endDate
-                + ":v1";
+        String cacheKey = buildNationalDashboardCacheKey(startDate, endDate);
         NationalDashboardResponse cached = readFromCache(cacheKey, NationalDashboardResponse.class);
         if (cached != null) {
             return cached;
         }
+        return buildAndCacheNationalDashboard(startDate, endDate, cacheKey);
+    }
 
+    @Override
+    public NationalDashboardResponse refreshNationalDashboard(LocalDate startDate, LocalDate endDate) {
+        validateDateRange(startDate, endDate);
+
+        String cacheKey = buildNationalDashboardCacheKey(startDate, endDate);
+        return buildAndCacheNationalDashboard(startDate, endDate, cacheKey);
+    }
+
+    private String buildNationalDashboardCacheKey(LocalDate startDate, LocalDate endDate) {
+        return NATIONAL_DASHBOARD_CACHE_PREFIX
+                + ":start:" + startDate
+                + ":end:" + endDate
+                + ":v1";
+    }
+
+    private NationalDashboardResponse buildAndCacheNationalDashboard(
+            LocalDate startDate, LocalDate endDate, String cacheKey) {
         int daysInRange = (int) ChronoUnit.DAYS.between(startDate, endDate) + 1;
         List<SchemeRegularityRepository.ChildRegionWaterSupplyMetrics> quantityMetrics =
                 schemeRegularityRepository.getAverageWaterSupplyPerNation(startDate, endDate);

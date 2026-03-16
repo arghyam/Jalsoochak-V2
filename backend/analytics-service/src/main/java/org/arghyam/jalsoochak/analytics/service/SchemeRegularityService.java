@@ -47,6 +47,9 @@ public interface SchemeRegularityService {
     NationalDashboardResponse getNationalDashboard(
             LocalDate startDate, LocalDate endDate);
 
+    NationalDashboardResponse refreshNationalDashboard(
+            LocalDate startDate, LocalDate endDate);
+
     AverageWaterSupplyResponse getAverageWaterSupplyPerCurrentRegionByLgd(
             Integer tenantId, Integer lgdId, LocalDate startDate, LocalDate endDate);
 
