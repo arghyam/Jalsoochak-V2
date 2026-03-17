@@ -41,7 +41,7 @@ public interface SchemeService {
 
     SchemeCountsDTO getSchemeCounts(String tenantCode);
 
-    SchemeUploadResponseDTO uploadSchemes(MultipartFile file, String authorizationHeader);
+    SchemeUploadResponseDTO uploadSchemes(MultipartFile file);
 
-    SchemeUploadResponseDTO uploadSchemeMappings(MultipartFile file, String authorizationHeader);
+    SchemeUploadResponseDTO uploadSchemeMappings(MultipartFile file);
 }

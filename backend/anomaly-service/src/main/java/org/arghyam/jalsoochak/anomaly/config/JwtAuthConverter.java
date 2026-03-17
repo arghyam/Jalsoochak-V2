@@ -1,7 +1,7 @@
-package org.arghyam.jalsoochak.user.config;
+package org.arghyam.jalsoochak.anomaly.config;
 
-import org.springframework.core.convert.converter.Converter;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.convert.converter.Converter;
 import org.springframework.security.authentication.AbstractAuthenticationToken;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
@@ -14,6 +14,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -31,7 +32,7 @@ public class JwtAuthConverter implements Converter<Jwt, AbstractAuthenticationTo
     @Override
     public AbstractAuthenticationToken convert(Jwt jwt) {
         Set<GrantedAuthority> authorities = Stream.of(
-                        defaultConverter.convert(jwt),
+                        Optional.ofNullable(defaultConverter.convert(jwt)).orElse(Collections.emptySet()),
                         extractRealmRoles(jwt),
                         extractClientRoles(jwt),
                         extractTenantAuthority(jwt),
@@ -52,7 +53,6 @@ public class JwtAuthConverter implements Converter<Jwt, AbstractAuthenticationTo
         if (realmAccess == null || !(realmAccess.get("roles") instanceof List<?> roles)) {
             return Collections.emptySet();
         }
-
         return roles.stream()
                 .filter(String.class::isInstance)
                 .map(String.class::cast)
@@ -61,12 +61,10 @@ public class JwtAuthConverter implements Converter<Jwt, AbstractAuthenticationTo
     }
 
     private Collection<GrantedAuthority> extractClientRoles(Jwt jwt) {
-        // Keycloak client roles live under: resource_access.<clientId>.roles
         Map<String, Object> resourceAccess = jwt.getClaim("resource_access");
         if (resourceAccess == null || resourceAccess.isEmpty()) {
             return Collections.emptySet();
         }
-
         Object clientBlock = keycloakClientId.isBlank() ? null : resourceAccess.get(keycloakClientId);
         if (clientBlock instanceof Map<?, ?> clientMap) {
             Object rolesObj = clientMap.get("roles");
@@ -78,7 +76,6 @@ public class JwtAuthConverter implements Converter<Jwt, AbstractAuthenticationTo
                         .collect(Collectors.toSet());
             }
         }
-
         return Collections.emptySet();
     }
 

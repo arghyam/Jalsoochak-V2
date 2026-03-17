@@ -73,6 +73,27 @@ public class KeycloakAdminHelper {
     }
 
     /**
+     * Removes a Keycloak realm role from a user by role name.
+     */
+    public void removeRoleFromUser(String keycloakId, String roleName) {
+        if (keycloakId == null || keycloakId.isBlank()) {
+            throw new IllegalArgumentException("keycloakId must not be null or blank");
+        }
+        if (roleName == null || roleName.isBlank()) {
+            throw new IllegalArgumentException("roleName must not be null or blank");
+        }
+        try {
+            var realmResource = keycloakProvider.getAdminInstance().realm(keycloakProvider.getRealm());
+            RoleRepresentation role = realmResource.roles().get(roleName).toRepresentation();
+            realmResource.users().get(keycloakId).roles().realmLevel().remove(List.of(role));
+            log.debug("Removed role '{}' from Keycloak user {}", roleName, keycloakId);
+        } catch (Exception e) {
+            log.error("Failed to remove role '{}' from Keycloak user {}: {}", roleName, keycloakId, e.getMessage(), e);
+            throw new RuntimeException("Failed to remove role '" + roleName + "' from user in Keycloak", e);
+        }
+    }
+
+    /**
      * Deletes a Keycloak user — used for compensation on failed account creation.
      */
     public void deleteUser(String keycloakId) {

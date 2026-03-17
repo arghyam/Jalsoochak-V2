@@ -180,12 +180,9 @@ public class AuthServiceImpl implements AuthService {
             keycloakAdminHelper.assignRoleToUser(keycloakUuid, role);
 
             if ("STATE_ADMIN".equals(role)) {
-                UserRepresentation updatedRep = usersResource.get(keycloakUuid).toRepresentation();
-                Map<String, List<String>> attrs = new HashMap<>(
-                        updatedRep.getAttributes() != null ? updatedRep.getAttributes() : Map.of());
-                attrs.put("tenant_state_code", List.of(tenantCode));
-                updatedRep.setAttributes(attrs);
-                usersResource.get(keycloakUuid).update(updatedRep);
+                setKeycloakUserAttribute(usersResource, keycloakUuid, "tenant_state_code", tenantCode);
+            } else if (!"SUPER_USER".equals(role)) {
+                setKeycloakUserAttribute(usersResource, keycloakUuid, "user_type", role);
             }
 
             Integer tenantId = "SUPER_USER".equals(role) ? 0
@@ -327,5 +324,23 @@ public class AuthServiceImpl implements AuthService {
         } catch (Exception e) {
             return null;
         }
+    }
+
+    private void setKeycloakUserAttribute(
+            org.keycloak.admin.client.resource.UsersResource usersResource,
+            String keycloakUuid,
+            String key,
+            String value) {
+        var userResource = usersResource.get(keycloakUuid);
+        UserRepresentation rep = userResource.toRepresentation();
+        Map<String, List<String>> attrs = new HashMap<>(
+                rep.getAttributes() != null ? rep.getAttributes() : Map.of());
+        if (value == null) {
+            attrs.remove(key);
+        } else {
+            attrs.put(key, List.of(value));
+        }
+        rep.setAttributes(attrs);
+        userResource.update(rep);
     }
 }

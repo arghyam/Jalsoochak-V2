@@ -24,6 +24,17 @@ spring:
       group-id: anomaly-service-group
       auto-offset-reset: earliest
 
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${KEYCLOAK_ISSUER_URI:https://jalsoochak.beehyv.com/keycloak/realms/jalsoochak-realm}
+
+keycloak:
+  realm: jalsoochak-realm
+  auth-server-url: https://jalsoochak.beehyv.com/keycloak
+  resource: jalsoochak-client-id
+
 eureka:
   client:
     service-url:

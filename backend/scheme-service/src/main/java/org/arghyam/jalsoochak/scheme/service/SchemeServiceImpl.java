@@ -10,7 +10,6 @@ import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.Sheet;
 import org.apache.poi.ss.usermodel.Workbook;
 import org.apache.poi.ss.usermodel.WorkbookFactory;
-import org.arghyam.jalsoochak.scheme.auth.UploadAuthService;
 import org.arghyam.jalsoochak.scheme.config.TenantContext;
 import org.arghyam.jalsoochak.scheme.dto.SchemeCountsDTO;
 import org.arghyam.jalsoochak.scheme.dto.SchemeDTO;
@@ -26,6 +25,8 @@ import org.arghyam.jalsoochak.scheme.repository.SchemeLgdMappingCreateRecord;
 import org.arghyam.jalsoochak.scheme.repository.SchemeSubdivisionMappingCreateRecord;
 import org.arghyam.jalsoochak.scheme.util.TenantSchemaResolver;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
@@ -122,7 +123,6 @@ public class SchemeServiceImpl implements SchemeService {
     private static final DataFormatter DATA_FORMATTER = new DataFormatter();
 
     private final SchemeDbRepository schemeDbRepository;
-    private final UploadAuthService uploadAuthService;
     private final SchemeUploadChunkProcessor chunkProcessor;
 
     @Override
@@ -217,9 +217,9 @@ public class SchemeServiceImpl implements SchemeService {
     }
 
     @Override
-    public SchemeUploadResponseDTO uploadSchemes(MultipartFile file, String authorizationHeader) {
+    public SchemeUploadResponseDTO uploadSchemes(MultipartFile file) {
         String schemaName = requireTenantSchema();
-        int actorUserId = uploadAuthService.requireStateAdminUserId(schemaName, authorizationHeader);
+        int actorUserId = resolveCurrentUserId(schemaName);
         validateFile(file);
 
         String extension = extractExtension(file.getOriginalFilename());
@@ -236,9 +236,9 @@ public class SchemeServiceImpl implements SchemeService {
     }
 
     @Override
-    public SchemeUploadResponseDTO uploadSchemeMappings(MultipartFile file, String authorizationHeader) {
+    public SchemeUploadResponseDTO uploadSchemeMappings(MultipartFile file) {
         String schemaName = requireTenantSchema();
-        int actorUserId = uploadAuthService.requireStateAdminUserId(schemaName, authorizationHeader);
+        int actorUserId = resolveCurrentUserId(schemaName);
         validateFile(file);
 
         String extension = extractExtension(file.getOriginalFilename());
@@ -690,6 +690,44 @@ public class SchemeServiceImpl implements SchemeService {
         }
 
         chunkProcessor.insertMappingsChunk(schemaName, lgd, dept);
+    }
+
+    private int resolveCurrentUserId(String schemaName) {
+        var auth = SecurityContextHolder.getContext().getAuthentication();
+        if (!(auth instanceof JwtAuthenticationToken jwtAuth)) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "No valid authentication");
+        }
+        var jwt = jwtAuth.getToken();
+
+        // Verify the caller's tenant_state_code maps to the requested schema.
+        // SUPER_USER tokens carry no tenant_state_code and are allowed through.
+        boolean isSuperUser = jwtAuth.getAuthorities().stream()
+                .anyMatch(a -> "ROLE_SUPER_USER".equals(a.getAuthority()));
+        if (!isSuperUser) {
+            String tenantStateCode = jwt.getClaimAsString("tenant_state_code");
+            if (tenantStateCode == null || tenantStateCode.isBlank()) {
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                        "Not authorized to operate on this tenant");
+            }
+            String expectedSchema = TenantSchemaResolver.requireSchemaNameFromTenantCode(tenantStateCode);
+            if (!schemaName.equals(expectedSchema)) {
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                        "Not authorized to operate on this tenant");
+            }
+        }
+
+        String email = jwt.getClaimAsString("email");
+        if (email == null || email.isBlank()) {
+            email = jwt.getClaimAsString("preferred_username");
+        }
+        if (email == null || email.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Token missing user identity");
+        }
+        Integer userId = schemeDbRepository.findUserIdByEmail(schemaName, email);
+        if (userId == null) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "User not found for token");
+        }
+        return userId;
     }
 
     private String requireTenantSchema() {

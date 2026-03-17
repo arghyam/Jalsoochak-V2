@@ -7,5 +7,6 @@ public record TenantUserRecord(
         String email,
         Long userTypeId,
         String cName,
-        String title
+        String title,
+        String keycloakUuid
 ) {}
