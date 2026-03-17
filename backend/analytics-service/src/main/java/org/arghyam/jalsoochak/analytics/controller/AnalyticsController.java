@@ -34,6 +34,8 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -41,15 +43,21 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.regex.Pattern;
 
 @RestController
 @RequestMapping("/api/v1/analytics")
 @RequiredArgsConstructor
 @Tag(name = "Analytics", description = "Data warehouse query endpoints")
 public class AnalyticsController {
+    private static final String CSV_OUTPUT_FORMAT = "csv";
+    private static final Pattern NON_FILENAME_SAFE_CHARS = Pattern.compile("[^a-zA-Z0-9._-]");
+    private static final Pattern MULTIPLE_UNDERSCORES = Pattern.compile("_+");
 
     private final DimTenantRepository dimTenantRepository;
     private final DimSchemeRepository dimSchemeRepository;
@@ -271,27 +279,43 @@ public class AnalyticsController {
 
     @GetMapping("/schemes/region-report")
     @Operation(summary = "Get all schemes with status, average regularity, submission rate and submission days for a parent LGD or parent department")
-    public ResponseEntity<SchemeRegularityListResponse> getSchemeRegionReport(
+    public ResponseEntity<?> getSchemeRegionReport(
             @RequestParam(name = "start_date") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
             @RequestParam(name = "end_date") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
             @RequestParam(name = "parent_lgd_id", required = false) Integer parentLgdId,
             @RequestParam(name = "parent_department_id", required = false) Integer parentDepartmentId,
             @RequestParam(name = "page_number", required = false) Integer pageNumber,
-            @RequestParam(name = "count", required = false) Integer count) {
+            @RequestParam(name = "count", required = false) Integer count,
+            @Parameter(
+                    description = "Output format for response",
+                    required = false,
+                    schema = @Schema(type = "string", allowableValues = {"json", "csv"}, defaultValue = "json", example = "csv"))
+            @RequestParam(name = "output_format", required = false, defaultValue = "json") String outputFormat) {
         if (parentLgdId != null && parentDepartmentId != null) {
             throw new IllegalArgumentException("Provide either parent_lgd_id or parent_department_id, not both");
         }
         if (parentLgdId == null && parentDepartmentId == null) {
             throw new IllegalArgumentException("Provide either parent_lgd_id or parent_department_id");
         }
+        SchemeRegularityListResponse reportResponse;
         if (parentLgdId != null) {
-            return ResponseEntity.ok(
-                    schemeRegularityService.getSchemeRegionReportByLgd(
-                            parentLgdId, startDate, endDate, pageNumber, count));
+            reportResponse = schemeRegularityService.getSchemeRegionReportByLgd(
+                    parentLgdId, startDate, endDate, pageNumber, count);
+        } else {
+            reportResponse = schemeRegularityService.getSchemeRegionReportByDepartment(
+                    parentDepartmentId, startDate, endDate, pageNumber, count);
         }
-        return ResponseEntity.ok(
-                schemeRegularityService.getSchemeRegionReportByDepartment(
-                        parentDepartmentId, startDate, endDate, pageNumber, count));
+        if (!CSV_OUTPUT_FORMAT.equalsIgnoreCase(Objects.toString(outputFormat, ""))) {
+            return ResponseEntity.ok(reportResponse);
+        }
+
+        String csvContent = buildSchemeRegionReportCsv(reportResponse);
+        String filename = buildSchemeRegionReportFilename(reportResponse, startDate, endDate);
+
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + filename + "\"")
+                .contentType(new MediaType("text", "csv", StandardCharsets.UTF_8))
+                .body(csvContent);
     }
 
 
@@ -465,5 +489,56 @@ public class AnalyticsController {
 
         dateDimensionService.populateDateRange(startDate, endDate);
         return ResponseEntity.ok("Date dimension populated from " + startDate + " to " + endDate);
+    }
+
+    private String buildSchemeRegionReportCsv(SchemeRegularityListResponse response) {
+        StringBuilder csvBuilder = new StringBuilder();
+        csvBuilder.append("scheme_id,scheme_name,status_code,status,supply_days,average_regularity,submission_days,submission_rate")
+                .append('\n');
+        if (response.getSchemes() == null || response.getSchemes().isEmpty()) {
+            return csvBuilder.toString();
+        }
+        for (SchemeRegularityListResponse.SchemeMetrics scheme : response.getSchemes()) {
+            csvBuilder.append(toCsvField(scheme.getSchemeId())).append(',')
+                    .append(toCsvField(scheme.getSchemeName())).append(',')
+                    .append(toCsvField(scheme.getStatusCode())).append(',')
+                    .append(toCsvField(scheme.getStatus())).append(',')
+                    .append(toCsvField(scheme.getSupplyDays())).append(',')
+                    .append(toCsvField(scheme.getAverageRegularity())).append(',')
+                    .append(toCsvField(scheme.getSubmissionDays())).append(',')
+                    .append(toCsvField(scheme.getSubmissionRate())).append('\n');
+        }
+        return csvBuilder.toString();
+    }
+
+    private String buildSchemeRegionReportFilename(
+            SchemeRegularityListResponse response, LocalDate startDate, LocalDate endDate) {
+        String parentName = response.getParentLgdCName();
+        if (parentName == null || parentName.isBlank()) {
+            parentName = response.getParentDepartmentCName();
+        }
+        String safeParentName = sanitizeFilenamePart(parentName);
+        return "scheme-region-report_" + safeParentName + "_" + startDate + "_to_" + endDate + ".csv";
+    }
+
+    private String sanitizeFilenamePart(String input) {
+        if (input == null || input.isBlank()) {
+            return "unknown_parent";
+        }
+        String normalized = NON_FILENAME_SAFE_CHARS.matcher(input.trim().toLowerCase()).replaceAll("_");
+        normalized = MULTIPLE_UNDERSCORES.matcher(normalized).replaceAll("_");
+        normalized = normalized.replaceAll("^_|_$", "");
+        return normalized.isBlank() ? "unknown_parent" : normalized;
+    }
+
+    private String toCsvField(Object value) {
+        if (value == null) {
+            return "";
+        }
+        String text = String.valueOf(value);
+        if (text.contains(",") || text.contains("\"") || text.contains("\n") || text.contains("\r")) {
+            return "\"" + text.replace("\"", "\"\"") + "\"";
+        }
+        return text;
     }
 }

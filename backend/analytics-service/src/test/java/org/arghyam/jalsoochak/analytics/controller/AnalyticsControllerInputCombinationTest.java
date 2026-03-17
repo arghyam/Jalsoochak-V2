@@ -41,6 +41,7 @@ import java.util.Map;
 import java.util.stream.Stream;
 
 import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.startsWith;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
@@ -50,6 +51,8 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -588,6 +591,88 @@ class AnalyticsControllerInputCombinationTest {
 
         verify(schemeRegularityService, times(1))
                 .getSchemeRegionReportByLgd(101, START, END, 2, 1);
+    }
+
+    @Test
+    void getSchemeRegionReport_withCsvOutputFormat_returnsCsvAttachmentForParentLgd() throws Exception {
+        when(schemeRegularityService.getSchemeRegionReportByLgd(101, START, END, null, null))
+                .thenReturn(SchemeRegularityListResponse.builder()
+                        .parentLgdId(101)
+                        .parentLgdCName("Parent LGD Name")
+                        .schemes(List.of(
+                                SchemeRegularityListResponse.SchemeMetrics.builder()
+                                        .schemeId(1)
+                                        .schemeName("Scheme A")
+                                        .statusCode(1)
+                                        .status("active")
+                                        .supplyDays(2)
+                                        .averageRegularity(BigDecimal.valueOf(0.6667))
+                                        .submissionDays(3)
+                                        .submissionRate(BigDecimal.valueOf(1.0000))
+                                        .build()))
+                        .build());
+
+        mockMvc.perform(get(BASE + "/schemes/region-report")
+                        .param("start_date", START.toString())
+                        .param("end_date", END.toString())
+                        .param("parent_lgd_id", "101")
+                        .param("output_format", "csv"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Content-Disposition",
+                        "attachment; filename=\"scheme-region-report_parent_lgd_name_2026-01-01_to_2026-01-31.csv\""))
+                .andExpect(content().contentTypeCompatibleWith("text/csv"))
+                .andExpect(content().string(startsWith(
+                        "scheme_id,scheme_name,status_code,status,supply_days,average_regularity,submission_days,submission_rate")))
+                .andExpect(content().string(containsString("1,Scheme A,1,active,2,0.6667,3,1.0")));
+    }
+
+    @Test
+    void getSchemeRegionReport_withCsvOutputFormat_returnsCsvAttachmentForParentDepartment() throws Exception {
+        when(schemeRegularityService.getSchemeRegionReportByDepartment(201, START, END, null, null))
+                .thenReturn(SchemeRegularityListResponse.builder()
+                        .parentDepartmentId(201)
+                        .parentDepartmentCName("Department (HQ)")
+                        .schemes(List.of(
+                                SchemeRegularityListResponse.SchemeMetrics.builder()
+                                        .schemeId(2)
+                                        .schemeName("Scheme, B")
+                                        .statusCode(0)
+                                        .status("inactive")
+                                        .supplyDays(0)
+                                        .averageRegularity(BigDecimal.ZERO)
+                                        .submissionDays(1)
+                                        .submissionRate(BigDecimal.valueOf(0.3333))
+                                        .build()))
+                        .build());
+
+        mockMvc.perform(get(BASE + "/schemes/region-report")
+                        .param("start_date", START.toString())
+                        .param("end_date", END.toString())
+                        .param("parent_department_id", "201")
+                        .param("output_format", "CSV"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Content-Disposition",
+                        "attachment; filename=\"scheme-region-report_department_hq_2026-01-01_to_2026-01-31.csv\""))
+                .andExpect(content().contentTypeCompatibleWith("text/csv"))
+                .andExpect(content().string(containsString("2,\"Scheme, B\",0,inactive,0,0,1,0.3333")));
+    }
+
+    @Test
+    void getSchemeRegionReport_withoutCsvOutputFormat_behavesAsJson() throws Exception {
+        when(schemeRegularityService.getSchemeRegionReportByLgd(101, START, END, null, null))
+                .thenReturn(SchemeRegularityListResponse.builder()
+                        .parentLgdId(101)
+                        .schemes(List.of())
+                        .build());
+
+        mockMvc.perform(get(BASE + "/schemes/region-report")
+                        .param("start_date", START.toString())
+                        .param("end_date", END.toString())
+                        .param("parent_lgd_id", "101")
+                        .param("output_format", "json"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.parentLgdId").value(101))
+                .andExpect(header().doesNotExist("Content-Disposition"));
     }
 
     @Test
