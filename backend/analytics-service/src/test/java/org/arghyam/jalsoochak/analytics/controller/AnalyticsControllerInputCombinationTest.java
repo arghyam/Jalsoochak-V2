@@ -6,6 +6,7 @@ import org.arghyam.jalsoochak.analytics.dto.response.OutageReasonSchemeCountResp
 import org.arghyam.jalsoochak.analytics.dto.response.PeriodicWaterQuantityResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.ReadingSubmissionRateResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.RegionWiseWaterQuantityResponse;
+import org.arghyam.jalsoochak.analytics.dto.response.SchemeStatusAndTopReportingResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.TenantDetailsResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.UserOutageReasonSchemeCountResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.UserSubmissionStatusResponse;
@@ -407,6 +408,84 @@ class AnalyticsControllerInputCombinationTest {
     void getSchemeStatusCount_withNoId_returnsBadRequest() throws Exception {
         mockMvc.perform(get(BASE + "/schemes/status-count"))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void getSchemesDashboard_withParentLgdId_returnsParentLgdCName() throws Exception {
+        when(schemeRegularityService.getSchemeStatusAndTopReportingByLgd(101, START, END, 5))
+                .thenReturn(SchemeStatusAndTopReportingResponse.builder()
+                        .parentLgdId(101)
+                        .parentLgdCName("Parent")
+                        .parentLgdTitle("Parent LGD")
+                        .activeSchemeCount(1)
+                        .inactiveSchemeCount(1)
+                        .topSchemeCount(1)
+                        .topSchemes(List.of(SchemeStatusAndTopReportingResponse.TopReportingScheme.builder()
+                                .schemeId(1)
+                                .schemeName("Scheme A")
+                                .statusCode(1)
+                                .status("active")
+                                .submissionDays(10)
+                                .reportingRate(BigDecimal.valueOf(0.5))
+                                .totalWaterSupplied(150L)
+                                .immediateParentLgdId(100)
+                                .immediateParentLgdCName("Parent")
+                                .immediateParentLgdTitle("Parent LGD")
+                                .build()))
+                        .build());
+
+        mockMvc.perform(get(BASE + "/schemes/dashboard")
+                        .param("start_date", START.toString())
+                        .param("end_date", END.toString())
+                        .param("parent_lgd_id", "101")
+                        .param("scheme_count", "5"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.parentLgdId").value(101))
+                .andExpect(jsonPath("$.parentLgdCName").value("Parent"))
+                .andExpect(jsonPath("$.parentLgdTitle").value("Parent LGD"))
+                .andExpect(jsonPath("$.topSchemes[0].totalWaterSupplied").value(150))
+                .andExpect(jsonPath("$.topSchemes[0].immediateParentLgdId").value(100))
+                .andExpect(jsonPath("$.topSchemes[0].immediateParentLgdCName").value("Parent"))
+                .andExpect(jsonPath("$.topSchemes[0].immediateParentLgdTitle").value("Parent LGD"));
+    }
+
+    @Test
+    void getSchemesDashboard_withParentDepartmentId_returnsParentDepartmentCName() throws Exception {
+        when(schemeRegularityService.getSchemeStatusAndTopReportingByDepartment(201, START, END, 5))
+                .thenReturn(SchemeStatusAndTopReportingResponse.builder()
+                        .parentDepartmentId(201)
+                        .parentDepartmentCName("Parent Dept")
+                        .parentDepartmentTitle("Parent Dept")
+                        .activeSchemeCount(1)
+                        .inactiveSchemeCount(1)
+                        .topSchemeCount(1)
+                        .topSchemes(List.of(SchemeStatusAndTopReportingResponse.TopReportingScheme.builder()
+                                .schemeId(2)
+                                .schemeName("Scheme B")
+                                .statusCode(1)
+                                .status("active")
+                                .submissionDays(8)
+                                .reportingRate(BigDecimal.valueOf(0.4))
+                                .totalWaterSupplied(80L)
+                                .immediateParentDepartmentId(200)
+                                .immediateParentDepartmentCName("Parent Dept")
+                                .immediateParentDepartmentTitle("Parent Dept")
+                                .build()))
+                        .build());
+
+        mockMvc.perform(get(BASE + "/schemes/dashboard")
+                        .param("start_date", START.toString())
+                        .param("end_date", END.toString())
+                        .param("parent_department_id", "201")
+                        .param("scheme_count", "5"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.parentDepartmentId").value(201))
+                .andExpect(jsonPath("$.parentDepartmentCName").value("Parent Dept"))
+                .andExpect(jsonPath("$.parentDepartmentTitle").value("Parent Dept"))
+                .andExpect(jsonPath("$.topSchemes[0].totalWaterSupplied").value(80))
+                .andExpect(jsonPath("$.topSchemes[0].immediateParentDepartmentId").value(200))
+                .andExpect(jsonPath("$.topSchemes[0].immediateParentDepartmentCName").value("Parent Dept"))
+                .andExpect(jsonPath("$.topSchemes[0].immediateParentDepartmentTitle").value("Parent Dept"));
     }
 
     @Test

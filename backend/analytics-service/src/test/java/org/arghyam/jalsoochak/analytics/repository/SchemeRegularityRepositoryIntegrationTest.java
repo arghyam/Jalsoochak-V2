@@ -164,6 +164,60 @@ class SchemeRegularityRepositoryIntegrationTest {
     }
 
     @Test
+    void getTopSchemeSubmissionMetricsByLgd_includesImmediateParentLgdDetailsPerScheme() {
+        List<SchemeRegularityRepository.SchemeSubmissionMetrics> rows =
+                repository.getTopSchemeSubmissionMetricsByLgd(100, D1, D3, 5);
+
+        assertThat(rows).hasSize(2);
+        assertThat(rows.get(0).totalWaterSupplied()).isEqualTo(15L);
+        assertThat(rows.get(1).totalWaterSupplied()).isEqualTo(0L);
+        assertThat(rows.get(0).immediateParentLgdId()).isEqualTo(100);
+        assertThat(rows.get(0).immediateParentLgdCName()).isEqualTo("Parent");
+        assertThat(rows.get(0).immediateParentLgdTitle()).isEqualTo("Parent LGD");
+    }
+
+    @Test
+    void getTopSchemeSubmissionMetricsByDepartment_includesImmediateParentDepartmentDetailsPerScheme() {
+        List<SchemeRegularityRepository.SchemeSubmissionMetrics> rows =
+                repository.getTopSchemeSubmissionMetricsByDepartment(200, D1, D3, 5);
+
+        assertThat(rows).hasSize(2);
+        assertThat(rows.get(0).totalWaterSupplied()).isEqualTo(15L);
+        assertThat(rows.get(1).totalWaterSupplied()).isEqualTo(0L);
+        assertThat(rows.get(0).immediateParentDepartmentId()).isEqualTo(200);
+        assertThat(rows.get(0).immediateParentDepartmentCName()).isEqualTo("Parent Dept");
+        assertThat(rows.get(0).immediateParentDepartmentTitle()).isEqualTo("Parent Dept");
+    }
+
+    @Test
+    void getParentLgdCNameByLgd_returnsParentLgdNameFromSchemeJoin() {
+        String parentLgdCName = repository.getParentLgdCNameByLgd(100);
+
+        assertThat(parentLgdCName).isEqualTo("Parent");
+    }
+
+    @Test
+    void getParentLgdTitleByLgd_returnsParentLgdTitleFromSchemeJoin() {
+        String parentLgdTitle = repository.getParentLgdTitleByLgd(100);
+
+        assertThat(parentLgdTitle).isEqualTo("Parent LGD");
+    }
+
+    @Test
+    void getParentDepartmentCNameByDepartment_returnsParentDepartmentNameFromSchemeJoin() {
+        String parentDepartmentCName = repository.getParentDepartmentCNameByDepartment(200);
+
+        assertThat(parentDepartmentCName).isEqualTo("Parent Dept");
+    }
+
+    @Test
+    void getParentDepartmentTitleByDepartment_returnsParentDepartmentTitleFromSchemeJoin() {
+        String parentDepartmentTitle = repository.getParentDepartmentTitleByDepartment(200);
+
+        assertThat(parentDepartmentTitle).isEqualTo("Parent Dept");
+    }
+
+    @Test
     void getPeriodicWaterQuantityByLgdId_weekScale_returnsExpectedRowsAndAverages() {
         List<SchemeRegularityRepository.PeriodicWaterQuantityMetrics> rows =
                 repository.getPeriodicWaterQuantityByLgdId(100, D1, D10, PeriodScale.WEEK);

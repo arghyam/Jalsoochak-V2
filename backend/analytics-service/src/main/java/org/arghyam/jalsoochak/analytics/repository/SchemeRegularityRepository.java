@@ -906,14 +906,25 @@ public class SchemeRegularityRepository {
                     SELECT
                         s.scheme_id,
                         s.scheme_name,
-                        s.status
+                        s.status,
+                        CASE
+                            WHEN s.level_6_lgd_id IS NOT NULL THEN s.level_5_lgd_id
+                            WHEN s.level_5_lgd_id IS NOT NULL THEN s.level_4_lgd_id
+                            WHEN s.level_4_lgd_id IS NOT NULL THEN s.level_3_lgd_id
+                            WHEN s.level_3_lgd_id IS NOT NULL THEN s.level_2_lgd_id
+                            WHEN s.level_2_lgd_id IS NOT NULL THEN s.level_1_lgd_id
+                            WHEN s.level_1_lgd_id IS NOT NULL THEN s.parent_lgd_location_id
+                            ELSE NULL
+                        END AS immediate_parent_lgd_id
                     FROM analytics_schema.dim_scheme_table s
                     WHERE s.%1$s = ?
                 ),
                 scheme_submission_days AS (
                     SELECT
                         m.scheme_id,
-                        COUNT(DISTINCT m.reading_date)::int AS submission_days
+                        COUNT(DISTINCT m.reading_date)::int AS submission_days,
+                        COALESCE(SUM(CASE WHEN m.confirmed_reading > 0 THEN m.confirmed_reading ELSE 0 END), 0)::bigint
+                            AS total_water_supplied
                     FROM analytics_schema.fact_meter_reading_table m
                     JOIN schemes_in_scope ss
                         ON ss.scheme_id = m.scheme_id
@@ -925,10 +936,19 @@ public class SchemeRegularityRepository {
                     ss.scheme_id,
                     ss.scheme_name,
                     ss.status,
-                    COALESCE(sd.submission_days, 0)::int AS submission_days
+                    COALESCE(sd.submission_days, 0)::int AS submission_days,
+                    COALESCE(sd.total_water_supplied, 0)::bigint AS total_water_supplied,
+                    ss.immediate_parent_lgd_id,
+                    pl.lgd_c_name AS immediate_parent_lgd_c_name,
+                    pl.title AS immediate_parent_lgd_title,
+                    NULL::int AS immediate_parent_department_id,
+                    NULL::varchar AS immediate_parent_department_c_name,
+                    NULL::varchar AS immediate_parent_department_title
                 FROM schemes_in_scope ss
                 LEFT JOIN scheme_submission_days sd
                     ON sd.scheme_id = ss.scheme_id
+                LEFT JOIN analytics_schema.dim_lgd_location_table pl
+                    ON pl.lgd_id = ss.immediate_parent_lgd_id
                 ORDER BY
                     (COALESCE(sd.submission_days, 0)::numeric / ?) DESC,
                     ss.scheme_id ASC
@@ -941,7 +961,14 @@ public class SchemeRegularityRepository {
                         rs.getInt("scheme_id"),
                         rs.getString("scheme_name"),
                         (Integer) rs.getObject("status"),
-                        rs.getInt("submission_days")),
+                        rs.getInt("submission_days"),
+                        rs.getLong("total_water_supplied"),
+                        (Integer) rs.getObject("immediate_parent_lgd_id"),
+                        rs.getString("immediate_parent_lgd_c_name"),
+                        rs.getString("immediate_parent_lgd_title"),
+                        (Integer) rs.getObject("immediate_parent_department_id"),
+                        rs.getString("immediate_parent_department_c_name"),
+                        rs.getString("immediate_parent_department_title")),
                 parentLgdId,
                 startDate,
                 endDate,
@@ -963,14 +990,25 @@ public class SchemeRegularityRepository {
                     SELECT
                         s.scheme_id,
                         s.scheme_name,
-                        s.status
+                        s.status,
+                        CASE
+                            WHEN s.level_6_dept_id IS NOT NULL THEN s.level_5_dept_id
+                            WHEN s.level_5_dept_id IS NOT NULL THEN s.level_4_dept_id
+                            WHEN s.level_4_dept_id IS NOT NULL THEN s.level_3_dept_id
+                            WHEN s.level_3_dept_id IS NOT NULL THEN s.level_2_dept_id
+                            WHEN s.level_2_dept_id IS NOT NULL THEN s.level_1_dept_id
+                            WHEN s.level_1_dept_id IS NOT NULL THEN s.parent_department_location_id
+                            ELSE NULL
+                        END AS immediate_parent_department_id
                     FROM analytics_schema.dim_scheme_table s
                     WHERE s.%1$s = ?
                 ),
                 scheme_submission_days AS (
                     SELECT
                         m.scheme_id,
-                        COUNT(DISTINCT m.reading_date)::int AS submission_days
+                        COUNT(DISTINCT m.reading_date)::int AS submission_days,
+                        COALESCE(SUM(CASE WHEN m.confirmed_reading > 0 THEN m.confirmed_reading ELSE 0 END), 0)::bigint
+                            AS total_water_supplied
                     FROM analytics_schema.fact_meter_reading_table m
                     JOIN schemes_in_scope ss
                         ON ss.scheme_id = m.scheme_id
@@ -982,10 +1020,19 @@ public class SchemeRegularityRepository {
                     ss.scheme_id,
                     ss.scheme_name,
                     ss.status,
-                    COALESCE(sd.submission_days, 0)::int AS submission_days
+                    COALESCE(sd.submission_days, 0)::int AS submission_days,
+                    COALESCE(sd.total_water_supplied, 0)::bigint AS total_water_supplied,
+                    NULL::int AS immediate_parent_lgd_id,
+                    NULL::varchar AS immediate_parent_lgd_c_name,
+                    NULL::varchar AS immediate_parent_lgd_title,
+                    ss.immediate_parent_department_id,
+                    pd.department_c_name AS immediate_parent_department_c_name,
+                    pd.title AS immediate_parent_department_title
                 FROM schemes_in_scope ss
                 LEFT JOIN scheme_submission_days sd
                     ON sd.scheme_id = ss.scheme_id
+                LEFT JOIN analytics_schema.dim_department_location_table pd
+                    ON pd.department_id = ss.immediate_parent_department_id
                 ORDER BY
                     (COALESCE(sd.submission_days, 0)::numeric / ?) DESC,
                     ss.scheme_id ASC
@@ -998,12 +1045,91 @@ public class SchemeRegularityRepository {
                         rs.getInt("scheme_id"),
                         rs.getString("scheme_name"),
                         (Integer) rs.getObject("status"),
-                        rs.getInt("submission_days")),
+                        rs.getInt("submission_days"),
+                        rs.getLong("total_water_supplied"),
+                        (Integer) rs.getObject("immediate_parent_lgd_id"),
+                        rs.getString("immediate_parent_lgd_c_name"),
+                        rs.getString("immediate_parent_lgd_title"),
+                        (Integer) rs.getObject("immediate_parent_department_id"),
+                        rs.getString("immediate_parent_department_c_name"),
+                        rs.getString("immediate_parent_department_title")),
                 parentDepartmentId,
                 startDate,
                 endDate,
                 ChronoUnit.DAYS.between(startDate, endDate) + 1,
                 topSchemeCount);
+    }
+
+    public String getParentLgdCNameByLgd(Integer lgdId) {
+        Integer lgdLevel = getLgdLevel(lgdId);
+        if (lgdLevel == null) {
+            throw new IllegalArgumentException("lgd_id not found in dim_lgd_location_table: " + lgdId);
+        }
+        String schemeLgdColumn = resolveSchemeLgdColumn(lgdLevel);
+
+        String sql = String.format("""
+                SELECT MAX(l.lgd_c_name) AS parent_lgd_c_name
+                FROM analytics_schema.dim_scheme_table s
+                LEFT JOIN analytics_schema.dim_lgd_location_table l
+                    ON l.lgd_id = s.parent_lgd_location_id
+                WHERE s.%1$s = ?
+                """, schemeLgdColumn);
+
+        return jdbcTemplate.queryForObject(sql, String.class, lgdId);
+    }
+
+    public String getParentLgdTitleByLgd(Integer lgdId) {
+        Integer lgdLevel = getLgdLevel(lgdId);
+        if (lgdLevel == null) {
+            throw new IllegalArgumentException("lgd_id not found in dim_lgd_location_table: " + lgdId);
+        }
+        String schemeLgdColumn = resolveSchemeLgdColumn(lgdLevel);
+
+        String sql = String.format("""
+                SELECT MAX(l.title) AS parent_lgd_title
+                FROM analytics_schema.dim_scheme_table s
+                LEFT JOIN analytics_schema.dim_lgd_location_table l
+                    ON l.lgd_id = s.parent_lgd_location_id
+                WHERE s.%1$s = ?
+                """, schemeLgdColumn);
+
+        return jdbcTemplate.queryForObject(sql, String.class, lgdId);
+    }
+
+    public String getParentDepartmentCNameByDepartment(Integer departmentId) {
+        Integer departmentLevel = getDepartmentLevel(departmentId);
+        if (departmentLevel == null) {
+            throw new IllegalArgumentException("department_id not found in dim_department_location_table: " + departmentId);
+        }
+        String schemeDepartmentColumn = resolveSchemeDepartmentColumn(departmentLevel);
+
+        String sql = String.format("""
+                SELECT MAX(d.department_c_name) AS parent_department_c_name
+                FROM analytics_schema.dim_scheme_table s
+                LEFT JOIN analytics_schema.dim_department_location_table d
+                    ON d.department_id = s.parent_department_location_id
+                WHERE s.%1$s = ?
+                """, schemeDepartmentColumn);
+
+        return jdbcTemplate.queryForObject(sql, String.class, departmentId);
+    }
+
+    public String getParentDepartmentTitleByDepartment(Integer departmentId) {
+        Integer departmentLevel = getDepartmentLevel(departmentId);
+        if (departmentLevel == null) {
+            throw new IllegalArgumentException("department_id not found in dim_department_location_table: " + departmentId);
+        }
+        String schemeDepartmentColumn = resolveSchemeDepartmentColumn(departmentLevel);
+
+        String sql = String.format("""
+                SELECT MAX(d.title) AS parent_department_title
+                FROM analytics_schema.dim_scheme_table s
+                LEFT JOIN analytics_schema.dim_department_location_table d
+                    ON d.department_id = s.parent_department_location_id
+                WHERE s.%1$s = ?
+                """, schemeDepartmentColumn);
+
+        return jdbcTemplate.queryForObject(sql, String.class, departmentId);
     }
 
     public List<SchemeWaterSupplyMetrics> getAverageWaterSupplyPerCurrentRegion(
@@ -1803,7 +1929,14 @@ public class SchemeRegularityRepository {
             Integer schemeId,
             String schemeName,
             Integer status,
-            Integer submissionDays) {
+            Integer submissionDays,
+            Long totalWaterSupplied,
+            Integer immediateParentLgdId,
+            String immediateParentLgdCName,
+            String immediateParentLgdTitle,
+            Integer immediateParentDepartmentId,
+            String immediateParentDepartmentCName,
+            String immediateParentDepartmentTitle) {
     }
 
     public record SubmissionStatusCount(Integer compliantSubmissionCount, Integer anomalousSubmissionCount) {
