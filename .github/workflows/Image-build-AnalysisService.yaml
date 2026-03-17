@@ -96,9 +96,11 @@ jobs:
 
       - name: Build and Push Docker image for analytics_DB
         if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev'
+        env:
+          ECR_REGISTRY: ${{ steps.ecr-login.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
         run: |
           docker build -t $ECR_REGISTRY/analytics-service-db:$IMAGE_TAG  .
-          docker tag $ECR_REGISTRY/analytics-service-db:$IMAGE_TAG $ECR_REGISTRY/analytics-service-db:$IMAGE_TAG
           docker push $ECR_REGISTRY/analytics-service-db:$IMAGE_TAG
         working-directory: backend/analytics-service/src/main/resources/db
   Deployment:
