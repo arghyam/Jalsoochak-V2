@@ -1,20 +1,27 @@
 package org.arghyam.jalsoochak.tenant.exception;
 
+import com.fasterxml.jackson.databind.exc.InvalidFormatException;
 import jakarta.validation.ConstraintViolationException;
 import lombok.extern.slf4j.Slf4j;
 import org.arghyam.jalsoochak.tenant.dto.common.ApiErrorResponseDTO;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.AuthenticationException;
+import org.springframework.web.HttpMediaTypeNotSupportedException;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 @RestControllerAdvice
 @Slf4j
@@ -111,6 +118,54 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiErrorResponseDTO> handleConflict(IllegalStateException ex) {
         log.warn("Conflict: {}", ex.getMessage());
         return build(HttpStatus.CONFLICT, ex.getMessage());
+    }
+
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<ApiErrorResponseDTO> handleMessageNotReadable(HttpMessageNotReadableException ex) {
+        Throwable cause = ex.getCause();
+        if (cause instanceof InvalidFormatException ife) {
+            Class<?> targetType = ife.getTargetType();
+            if (targetType != null && targetType.isEnum()) {
+                String invalidValue = String.valueOf(ife.getValue());
+                String validValues = Arrays.stream(targetType.getEnumConstants())
+                        .map(e -> ((Enum<?>) e).name())
+                        .collect(Collectors.joining(", "));
+                String message = String.format(
+                        "Invalid value '%s' for type '%s'. Accepted values: [%s]",
+                        invalidValue, targetType.getSimpleName(), validValues);
+                log.warn("Invalid enum value in request body: {}", message);
+                return build(HttpStatus.BAD_REQUEST, message);
+            }
+            String message = String.format("Invalid value '%s': %s", ife.getValue(), ife.getOriginalMessage());
+            log.warn("Invalid format in request body: {}", message);
+            return build(HttpStatus.BAD_REQUEST, message);
+        }
+        log.warn("Malformed request body: {}", ex.getMessage());
+        return build(HttpStatus.BAD_REQUEST, "Malformed or unreadable request body");
+    }
+
+    @ExceptionHandler(MissingServletRequestParameterException.class)
+    public ResponseEntity<ApiErrorResponseDTO> handleMissingRequestParam(MissingServletRequestParameterException ex) {
+        String message = String.format("Required request parameter '%s' of type '%s' is missing",
+                ex.getParameterName(), ex.getParameterType());
+        log.warn("Missing request parameter: {}", message);
+        return build(HttpStatus.BAD_REQUEST, message);
+    }
+
+    @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
+    public ResponseEntity<ApiErrorResponseDTO> handleMethodNotSupported(HttpRequestMethodNotSupportedException ex) {
+        String message = String.format("HTTP method '%s' is not supported for this endpoint. Supported: %s",
+                ex.getMethod(), ex.getSupportedHttpMethods());
+        log.warn("Method not allowed: {}", message);
+        return build(HttpStatus.METHOD_NOT_ALLOWED, message);
+    }
+
+    @ExceptionHandler(HttpMediaTypeNotSupportedException.class)
+    public ResponseEntity<ApiErrorResponseDTO> handleMediaTypeNotSupported(HttpMediaTypeNotSupportedException ex) {
+        String message = String.format("Content-Type '%s' is not supported. Supported types: %s",
+                ex.getContentType(), ex.getSupportedMediaTypes());
+        log.warn("Unsupported media type: {}", message);
+        return build(HttpStatus.UNSUPPORTED_MEDIA_TYPE, message);
     }
 
     @ExceptionHandler(RuntimeException.class)

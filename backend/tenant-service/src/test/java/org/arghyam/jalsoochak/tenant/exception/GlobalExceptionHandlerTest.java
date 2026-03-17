@@ -1,16 +1,23 @@
 package org.arghyam.jalsoochak.tenant.exception;
 
+import com.fasterxml.jackson.databind.exc.InvalidFormatException;
 import org.arghyam.jalsoochak.tenant.dto.common.ApiErrorResponseDTO;
+import org.arghyam.jalsoochak.tenant.enums.TenantStatusEnum;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.core.MethodParameter;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.validation.BindingResult;
 import org.springframework.validation.FieldError;
+import org.springframework.web.HttpMediaTypeNotSupportedException;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 import java.util.ArrayList;
@@ -366,6 +373,127 @@ class GlobalExceptionHandlerTest {
             assertEquals(400, response.getBody().getStatus());
             assertEquals("Bad Request", response.getBody().getError());
             assertEquals("Invalid config value format", response.getBody().getMessage());
+        }
+    }
+
+    @Nested
+    @DisplayName("HttpMessageNotReadable Handler Tests")
+    class HttpMessageNotReadableHandlerTests {
+
+        @SuppressWarnings({ "rawtypes", "unchecked" })
+        @Test
+        @DisplayName("Should return 400 with accepted enum values when an invalid enum value is provided")
+        void testHandleMessageNotReadable_InvalidEnumValue() {
+            InvalidFormatException ife = mock(InvalidFormatException.class);
+            when(ife.getTargetType()).thenReturn((Class) TenantStatusEnum.class);
+            when(ife.getValue()).thenReturn("INVALID_STATUS");
+
+            HttpMessageNotReadableException ex = mock(HttpMessageNotReadableException.class);
+            when(ex.getCause()).thenReturn(ife);
+
+            ResponseEntity<ApiErrorResponseDTO> response = handler.handleMessageNotReadable(ex);
+
+            assertEquals(HttpStatus.BAD_REQUEST, response.getStatusCode());
+            assertNotNull(response.getBody());
+            assertEquals(400, response.getBody().getStatus());
+            assertTrue(response.getBody().getMessage().contains("INVALID_STATUS"));
+            assertTrue(response.getBody().getMessage().contains("TenantStatusEnum"));
+            assertTrue(response.getBody().getMessage().contains("Accepted values"));
+        }
+
+        @SuppressWarnings({ "rawtypes", "unchecked" })
+        @Test
+        @DisplayName("Should return 400 with format error message for non-enum invalid format")
+        void testHandleMessageNotReadable_NonEnumInvalidFormat() {
+            InvalidFormatException ife = mock(InvalidFormatException.class);
+            when(ife.getTargetType()).thenReturn((Class) Integer.class);
+            when(ife.getValue()).thenReturn("abc");
+            when(ife.getOriginalMessage()).thenReturn("not a valid Integer value");
+
+            HttpMessageNotReadableException ex = mock(HttpMessageNotReadableException.class);
+            when(ex.getCause()).thenReturn(ife);
+
+            ResponseEntity<ApiErrorResponseDTO> response = handler.handleMessageNotReadable(ex);
+
+            assertEquals(HttpStatus.BAD_REQUEST, response.getStatusCode());
+            assertNotNull(response.getBody());
+            assertEquals(400, response.getBody().getStatus());
+            assertTrue(response.getBody().getMessage().contains("abc"));
+            assertTrue(response.getBody().getMessage().contains("not a valid Integer value"));
+        }
+
+        @Test
+        @DisplayName("Should return 400 with generic message for malformed body")
+        void testHandleMessageNotReadable_MalformedBody() {
+            HttpMessageNotReadableException ex = mock(HttpMessageNotReadableException.class);
+            when(ex.getCause()).thenReturn(new RuntimeException("low-level parse error"));
+
+            ResponseEntity<ApiErrorResponseDTO> response = handler.handleMessageNotReadable(ex);
+
+            assertEquals(HttpStatus.BAD_REQUEST, response.getStatusCode());
+            assertNotNull(response.getBody());
+            assertEquals(400, response.getBody().getStatus());
+            assertEquals("Malformed or unreadable request body", response.getBody().getMessage());
+        }
+    }
+
+    @Nested
+    @DisplayName("MissingServletRequestParameter Handler Tests")
+    class MissingServletRequestParameterHandlerTests {
+
+        @Test
+        @DisplayName("Should return 400 with parameter name and type in message")
+        void testHandleMissingRequestParam() {
+            MissingServletRequestParameterException ex =
+                    new MissingServletRequestParameterException("page", "int");
+
+            ResponseEntity<ApiErrorResponseDTO> response = handler.handleMissingRequestParam(ex);
+
+            assertEquals(HttpStatus.BAD_REQUEST, response.getStatusCode());
+            assertNotNull(response.getBody());
+            assertEquals(400, response.getBody().getStatus());
+            assertTrue(response.getBody().getMessage().contains("page"));
+            assertTrue(response.getBody().getMessage().contains("int"));
+        }
+    }
+
+    @Nested
+    @DisplayName("HttpRequestMethodNotSupported Handler Tests")
+    class HttpRequestMethodNotSupportedHandlerTests {
+
+        @Test
+        @DisplayName("Should return 405 with the unsupported method name in message")
+        void testHandleMethodNotSupported() {
+            HttpRequestMethodNotSupportedException ex =
+                    new HttpRequestMethodNotSupportedException("DELETE", List.of("GET", "POST"));
+
+            ResponseEntity<ApiErrorResponseDTO> response = handler.handleMethodNotSupported(ex);
+
+            assertEquals(HttpStatus.METHOD_NOT_ALLOWED, response.getStatusCode());
+            assertNotNull(response.getBody());
+            assertEquals(405, response.getBody().getStatus());
+            assertEquals("Method Not Allowed", response.getBody().getError());
+            assertTrue(response.getBody().getMessage().contains("DELETE"));
+        }
+    }
+
+    @Nested
+    @DisplayName("HttpMediaTypeNotSupported Handler Tests")
+    class HttpMediaTypeNotSupportedHandlerTests {
+
+        @Test
+        @DisplayName("Should return 415 with content type in message")
+        void testHandleMediaTypeNotSupported() {
+            HttpMediaTypeNotSupportedException ex = new HttpMediaTypeNotSupportedException(
+                    MediaType.TEXT_PLAIN, List.of(MediaType.APPLICATION_JSON));
+
+            ResponseEntity<ApiErrorResponseDTO> response = handler.handleMediaTypeNotSupported(ex);
+
+            assertEquals(HttpStatus.UNSUPPORTED_MEDIA_TYPE, response.getStatusCode());
+            assertNotNull(response.getBody());
+            assertEquals(415, response.getBody().getStatus());
+            assertEquals("Unsupported Media Type", response.getBody().getError());
+            assertTrue(response.getBody().getMessage().contains("text/plain"));
         }
     }
 }
