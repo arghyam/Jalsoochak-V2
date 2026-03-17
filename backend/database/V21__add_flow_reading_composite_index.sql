@@ -7,17 +7,16 @@
 DO $$
 DECLARE
     r RECORD;
-    schema_name TEXT;
 BEGIN
     FOR r IN
-        SELECT state_code
-        FROM common_schema.tenant_master_table
+        SELECT nspname AS schema_name
+        FROM pg_namespace
+        WHERE nspname LIKE 'tenant\_%' ESCAPE '\'
     LOOP
-        schema_name := 'tenant_' || lower(r.state_code);
         EXECUTE format(
             'CREATE INDEX IF NOT EXISTS idx_%1$s_flow_scheme_creator_date '
             'ON %1$I.flow_reading_table(scheme_id, created_by, reading_date DESC)',
-            schema_name
+            r.schema_name
         );
     END LOOP;
 END $$;

@@ -62,6 +62,8 @@ public class TenantController {
         @ApiResponses({
                         @ApiResponse(responseCode = "201", description = "Tenant created and schema provisioned successfully"),
                         @ApiResponse(responseCode = "400", description = "Invalid request — missing or malformed fields"),
+                        @ApiResponse(responseCode = "401", description = "Unauthorized — valid Bearer token required"),
+                        @ApiResponse(responseCode = "403", description = "Forbidden — insufficient scope or role"),
                         @ApiResponse(responseCode = "409", description = "Tenant with the given state code already exists"),
                         @ApiResponse(responseCode = "500", description = "Internal server error during tenant creation")
         })
@@ -78,11 +80,14 @@ public class TenantController {
         /**
          * Get tenant status summary
          */
-        @Operation(summary = "Get tenant status summary", description = "Returns aggregate counts of all non-system tenants grouped by status: total, active, inactive, and archived.")
+        @Operation(summary = "Get all tenant's status summary", description = "Returns aggregate counts of all non-system tenants grouped by status: total, active, inactive, and archived.")
         @ApiResponses({
                         @ApiResponse(responseCode = "200", description = "Tenant summary retrieved successfully"),
+                        @ApiResponse(responseCode = "401", description = "Unauthorized — valid Bearer token required"),
+                        @ApiResponse(responseCode = "403", description = "Forbidden — insufficient scope or role"),
                         @ApiResponse(responseCode = "500", description = "Internal server error")
         })
+        @PreAuthorize("hasRole('SUPER_USER')")
         @GetMapping("/summary")
         public ResponseEntity<ApiResponseDTO<TenantSummaryResponseDTO>> getTenantSummary() {
                 log.info("GET /api/v1/tenants/summary");
@@ -114,6 +119,8 @@ public class TenantController {
         @ApiResponses({
                         @ApiResponse(responseCode = "200", description = "Tenant updated successfully"),
                         @ApiResponse(responseCode = "400", description = "Tenant updation failed"),
+                        @ApiResponse(responseCode = "401", description = "Unauthorized — valid Bearer token required"),
+                        @ApiResponse(responseCode = "403", description = "Forbidden — insufficient scope or role"),
                         @ApiResponse(responseCode = "404", description = "Tenant with given tenantId does not exist"),
                         @ApiResponse(responseCode = "500", description = "Internal server error")
         })
@@ -134,6 +141,8 @@ public class TenantController {
         @ApiResponses({
                         @ApiResponse(responseCode = "200", description = "Tenant deactivated successfully"),
                         @ApiResponse(responseCode = "400", description = "Tenant deactivation failed"),
+                        @ApiResponse(responseCode = "401", description = "Unauthorized — valid Bearer token required"),
+                        @ApiResponse(responseCode = "403", description = "Forbidden — insufficient scope or role"),
                         @ApiResponse(responseCode = "404", description = "Tenant with given tenantId does not exist"),
                         @ApiResponse(responseCode = "500", description = "Internal server error")
         })
@@ -151,6 +160,8 @@ public class TenantController {
         @Operation(summary = "Get the configurations for a tenant", description = "Retrieves either all or the selected configuration key-value pairs for a specific tenant in a Map format.")
         @ApiResponses({
                         @ApiResponse(responseCode = "200", description = "Tenant configurations retrieved successfully"),
+                        @ApiResponse(responseCode = "401", description = "Unauthorized — valid Bearer token required"),
+                        @ApiResponse(responseCode = "403", description = "Forbidden — insufficient scope or role"),
                         @ApiResponse(responseCode = "404", description = "Tenant not found"),
                         @ApiResponse(responseCode = "500", description = "Internal server error")
         })
@@ -172,9 +183,12 @@ public class TenantController {
                         + "along with an aggregate summary of total, configured, and pending counts.")
         @ApiResponses({
                         @ApiResponse(responseCode = "200", description = "Configuration status retrieved successfully"),
+                        @ApiResponse(responseCode = "401", description = "Unauthorized — valid Bearer token required"),
+                        @ApiResponse(responseCode = "403", description = "Forbidden — insufficient scope or role"),
                         @ApiResponse(responseCode = "404", description = "Tenant not found"),
                         @ApiResponse(responseCode = "500", description = "Internal server error")
         })
+        @PreAuthorize("hasAnyRole('SUPER_USER', 'STATE_ADMIN')")
         @GetMapping("/{tenantId}/config/status")
         public ResponseEntity<ApiResponseDTO<TenantConfigStatusResponseDTO>> getTenantConfigStatus(
                         @PathVariable Integer tenantId) {
@@ -189,6 +203,8 @@ public class TenantController {
         @Operation(summary = "Set or update multiple tenant configurations", description = "Batch updates or creates configurations for the specified tenant using a Map structure.")
         @ApiResponses({
                         @ApiResponse(responseCode = "200", description = "Configurations set successfully"),
+                        @ApiResponse(responseCode = "401", description = "Unauthorized — valid Bearer token required"),
+                        @ApiResponse(responseCode = "403", description = "Forbidden — insufficient scope or role"),
                         @ApiResponse(responseCode = "404", description = "Tenant not found"),
                         @ApiResponse(responseCode = "500", description = "Internal server error")
         })
@@ -231,9 +247,12 @@ public class TenantController {
         @ApiResponses({
                         @ApiResponse(responseCode = "200", description = "Edit constraints retrieved successfully"),
                         @ApiResponse(responseCode = "400", description = "Invalid hierarchy type"),
+                        @ApiResponse(responseCode = "401", description = "Unauthorized — valid Bearer token required"),
+                        @ApiResponse(responseCode = "403", description = "Forbidden — insufficient scope or role"),
                         @ApiResponse(responseCode = "404", description = "Tenant not found"),
                         @ApiResponse(responseCode = "500", description = "Internal server error")
         })
+        @PreAuthorize("hasAnyRole('SUPER_USER', 'STATE_ADMIN')")
         @GetMapping("/{tenantId}/location-hierarchy/{hierarchyType}/edit-constraints")
         public ResponseEntity<ApiResponseDTO<LocationHierarchyEditConstraintsResponseDTO>> getLocationHierarchyEditConstraints(
                         @PathVariable Integer tenantId,
@@ -253,6 +272,8 @@ public class TenantController {
         @ApiResponses({
                         @ApiResponse(responseCode = "200", description = "Location hierarchy updated successfully"),
                         @ApiResponse(responseCode = "400", description = "Invalid hierarchy type or empty levels"),
+                        @ApiResponse(responseCode = "401", description = "Unauthorized — valid Bearer token required"),
+                        @ApiResponse(responseCode = "403", description = "Forbidden — insufficient scope or role"),
                         @ApiResponse(responseCode = "404", description = "Tenant not found"),
                         @ApiResponse(responseCode = "409", description = "Structural change blocked — seeded data exists"),
                         @ApiResponse(responseCode = "500", description = "Internal server error")

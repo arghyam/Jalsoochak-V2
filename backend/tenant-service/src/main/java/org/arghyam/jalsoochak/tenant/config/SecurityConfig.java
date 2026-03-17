@@ -6,6 +6,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.env.Environment;
 import org.springframework.core.env.Profiles;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
@@ -24,6 +25,7 @@ public class SecurityConfig {
 
     private final JwtAuthConverter jwtAuthConverter;
     private final Environment environment;
+    private final SecurityExceptionHandler securityExceptionHandler;
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
@@ -34,6 +36,10 @@ public class SecurityConfig {
                 .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> {
                     auth.requestMatchers("/error", "/actuator/health/**", "/actuator/info").permitAll();
+                    auth.requestMatchers(HttpMethod.GET,
+                            "/api/v1/tenants", 
+                            "/api/v1/tenants/*/location-hierarchy/*",
+                            "/api/v1/tenants/*/locations/*/children/*").permitAll();
                     if (isProd) {
                         auth.requestMatchers(SWAGGER_PATHS).authenticated();
                     } else {
@@ -41,7 +47,11 @@ public class SecurityConfig {
                     }
                     auth.anyRequest().authenticated();
                 })
+                .exceptionHandling(ex -> ex
+                        .authenticationEntryPoint(securityExceptionHandler)
+                        .accessDeniedHandler(securityExceptionHandler))
                 .oauth2ResourceServer(oauth -> oauth
+                        .authenticationEntryPoint(securityExceptionHandler)
                         .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthConverter)));
 
         return http.build();
