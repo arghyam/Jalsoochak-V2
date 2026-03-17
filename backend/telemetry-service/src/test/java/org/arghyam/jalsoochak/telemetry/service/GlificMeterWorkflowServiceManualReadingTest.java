@@ -216,6 +216,116 @@ class GlificMeterWorkflowServiceManualReadingTest {
     }
 
     @Test
+    void manualReadingRejectsWhenImpliedQuantityBelowTenantThreshold() {
+        TelemetryOperatorWithSchema operatorWithSchema = new TelemetryOperatorWithSchema(
+                "tenant_test",
+                new TelemetryOperator(1L, 1, "op", "op@example.com", "919999999999", null)
+        );
+
+        when(operatorContextService.resolveOperatorWithSchema("919999999999")).thenReturn(operatorWithSchema);
+        when(operatorContextService.resolveOperatorLanguage(operatorWithSchema, 1)).thenReturn("en");
+        when(localizationService.normalizeLanguageKey("en")).thenReturn("english");
+
+        when(telemetryTenantRepository.findFirstSchemeForUser("tenant_test", 1L)).thenReturn(Optional.of(10L));
+        when(telemetryTenantRepository.findLatestPendingMeterChangeRecord("tenant_test", 10L, 1L))
+                .thenReturn(Optional.empty());
+
+        // Snapshot is optional for this validation; it's only used as context in the anomaly record.
+        when(telemetryTenantRepository.findLatestConfirmedReadingSnapshotForDate("tenant_test", 10L, LocalDate.now().minusDays(1), null))
+                .thenReturn(Optional.empty());
+
+        // Thresholds: undersupply 50% of water norm (oversupply 0%).
+        when(tenantConfigRepository.findConfigValue(1, "TENANT_WATER_QUANTITY_SUPPLY_THRESHOLD"))
+                .thenReturn(Optional.empty());
+        when(tenantConfigRepository.findConfigValue(1, "WATER_QUANTITY_SUPPLY_THRESHOLD"))
+                .thenReturn(Optional.of("{\"undersupplyThresholdPercent\":50.0,\"oversupplyThresholdPercent\":0.0}"));
+        when(tenantConfigRepository.findConfigValue(1, "WATER_NORM"))
+                .thenReturn(Optional.of("{\"value\":\"100\"}"));
+
+        CreateReadingResponse resp = service.manualReadingMessage(ManualReadingRequest.builder()
+                .contactId("919999999999")
+                .manualReading("40") // min allowed = 50
+                .isMeterReplaced(false)
+                .build());
+
+        assertNotNull(resp);
+        assertEquals(false, resp.isSuccess());
+        assertEquals("REJECTED", resp.getQualityStatus());
+
+        verify(telemetryTenantRepository).createAnomalyRecord(
+                anyString(),
+                ArgumentMatchers.eq(AnomalyConstants.TYPE_LOW_WATER_SUPPLY),
+                anyLong(),
+                anyLong(),
+                ArgumentMatchers.<BigDecimal>any(),
+                ArgumentMatchers.<BigDecimal>any(),
+                ArgumentMatchers.eq(new BigDecimal("40")),
+                anyInt(),
+                ArgumentMatchers.<BigDecimal>any(),
+                ArgumentMatchers.<LocalDateTime>any(),
+                anyInt(),
+                anyString(),
+                ArgumentMatchers.eq(AnomalyConstants.STATUS_OPEN)
+        );
+
+        verify(telemetryTenantRepository, never()).updateConfirmedReading(anyString(), anyLong(), any(), anyLong());
+        verify(telemetryTenantRepository, never()).createFlowReading(anyString(), anyLong(), anyLong(), any(), any(), any(), anyString(), anyString(), any());
+    }
+
+    @Test
+    void manualReadingRejectsWhenReadingAboveTenantOversupplyThreshold() {
+        TelemetryOperatorWithSchema operatorWithSchema = new TelemetryOperatorWithSchema(
+                "tenant_test",
+                new TelemetryOperator(1L, 1, "op", "op@example.com", "919999999999", null)
+        );
+
+        when(operatorContextService.resolveOperatorWithSchema("919999999999")).thenReturn(operatorWithSchema);
+        when(operatorContextService.resolveOperatorLanguage(operatorWithSchema, 1)).thenReturn("en");
+        when(localizationService.normalizeLanguageKey("en")).thenReturn("english");
+
+        when(telemetryTenantRepository.findFirstSchemeForUser("tenant_test", 1L)).thenReturn(Optional.of(10L));
+        when(telemetryTenantRepository.findLatestPendingMeterChangeRecord("tenant_test", 10L, 1L))
+                .thenReturn(Optional.empty());
+        when(telemetryTenantRepository.findLatestConfirmedReadingSnapshotForDate("tenant_test", 10L, LocalDate.now().minusDays(1), null))
+                .thenReturn(Optional.empty());
+
+        // Oversupply 10% above water norm.
+        when(tenantConfigRepository.findConfigValue(1, "TENANT_WATER_QUANTITY_SUPPLY_THRESHOLD"))
+                .thenReturn(Optional.of("{\"undersupplyThresholdPercent\":0.0,\"oversupplyThresholdPercent\":10.0}"));
+        when(tenantConfigRepository.findConfigValue(1, "WATER_NORM"))
+                .thenReturn(Optional.of("{\"value\":\"100\"}"));
+
+        CreateReadingResponse resp = service.manualReadingMessage(ManualReadingRequest.builder()
+                .contactId("919999999999")
+                .manualReading("120") // max allowed = 110
+                .isMeterReplaced(false)
+                .build());
+
+        assertNotNull(resp);
+        assertEquals(false, resp.isSuccess());
+        assertEquals("REJECTED", resp.getQualityStatus());
+
+        verify(telemetryTenantRepository).createAnomalyRecord(
+                anyString(),
+                ArgumentMatchers.eq(AnomalyConstants.TYPE_OVER_WATER_SUPPLY),
+                anyLong(),
+                anyLong(),
+                ArgumentMatchers.<BigDecimal>any(),
+                ArgumentMatchers.<BigDecimal>any(),
+                ArgumentMatchers.eq(new BigDecimal("120")),
+                anyInt(),
+                ArgumentMatchers.<BigDecimal>any(),
+                ArgumentMatchers.<LocalDateTime>any(),
+                anyInt(),
+                anyString(),
+                ArgumentMatchers.eq(AnomalyConstants.STATUS_OPEN)
+        );
+
+        verify(telemetryTenantRepository, never()).updateConfirmedReading(anyString(), anyLong(), any(), anyLong());
+        verify(telemetryTenantRepository, never()).createFlowReading(anyString(), anyLong(), anyLong(), any(), any(), any(), anyString(), anyString(), any());
+    }
+
+    @Test
     void manualReadingWhenNoYesterdaySnapshotDoesNotRejectAgainstHistoricReadings() {
         TelemetryOperatorWithSchema operatorWithSchema = new TelemetryOperatorWithSchema(
                 "tenant_test",

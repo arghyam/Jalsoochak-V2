@@ -327,9 +327,12 @@ public class GlificMeterWorkflowService {
 
             String correlationId = "issue-report-" + UUID.randomUUID();
             if (shouldStoreIssueAsAnomaly(selectedKey, rawIssueReason, ISSUE_REPORT_ANOMALY_SELECTION_KEYS)) {
+                int anomalyType = "noWaterSupplied".equals(selectedKey)
+                        ? AnomalyConstants.TYPE_NO_WATER_SUPPLY
+                        : AnomalyConstants.TYPE_NO_SUBMISSION;
                 telemetryTenantRepository.createAnomalyRecord(
                         operatorWithSchema.schemaName(),
-                        AnomalyConstants.TYPE_ISSUE_REPORTED,
+                        anomalyType,
                         operatorWithSchema.operator().id(),
                         schemeId,
                         null,
@@ -482,9 +485,12 @@ public class GlificMeterWorkflowService {
 
             String correlationId = "issue-report-" + UUID.randomUUID();
             if (shouldStoreIssueAsAnomaly(selectedKey, rawIssueReason, ISSUE_REPORT_ANOMALY_SELECTION_KEYS)) {
+                int anomalyType = "noWaterSupplied".equals(selectedKey)
+                        ? AnomalyConstants.TYPE_NO_WATER_SUPPLY
+                        : AnomalyConstants.TYPE_NO_SUBMISSION;
                 telemetryTenantRepository.createAnomalyRecord(
                         operatorWithSchema.schemaName(),
-                        AnomalyConstants.TYPE_ISSUE_REPORTED,
+                        anomalyType,
                         operatorWithSchema.operator().id(),
                         schemeId,
                         null,
@@ -555,7 +561,7 @@ public class GlificMeterWorkflowService {
 
             telemetryTenantRepository.createAnomalyRecord(
                     operatorWithSchema.schemaName(),
-                    AnomalyConstants.TYPE_ISSUE_REPORTED,
+                    AnomalyConstants.TYPE_NO_SUBMISSION,
                     operatorWithSchema.operator().id(),
                     schemeId,
                     null,
@@ -687,6 +693,86 @@ public class GlificMeterWorkflowService {
                         .meterReading(manualReadingValue)
                         .lastConfirmedReading(previousSnapshot.confirmedReading())
                         .build();
+            }
+
+            // Tenant-configured water supply threshold validation (relative to WATER_NORM).
+            // For manual submissions, validate the submitted value directly against thresholds, independent of previous-day readings.
+            if (!isMeterReplaced) {
+                Optional<WaterSupplyThreshold> thresholdOpt = loadWaterSupplyThreshold(tenantId);
+                Optional<BigDecimal> waterNormOpt = loadWaterNorm(tenantId);
+                if (thresholdOpt.isPresent() && waterNormOpt.isPresent()) {
+                    WaterSupplyThreshold threshold = thresholdOpt.get();
+                    BigDecimal waterNorm = waterNormOpt.get();
+
+                    BigDecimal minAllowed = waterNorm
+                            .multiply(BigDecimal.valueOf(100.0d - threshold.undersupplyThresholdPercent()))
+                            .divide(BigDecimal.valueOf(100.0d), 6, RoundingMode.HALF_UP);
+                    BigDecimal maxAllowed = waterNorm
+                            .multiply(BigDecimal.valueOf(100.0d + threshold.oversupplyThresholdPercent()))
+                            .divide(BigDecimal.valueOf(100.0d), 6, RoundingMode.HALF_UP);
+
+                    BigDecimal previousConfirmed = previousSnapshotOpt.map(TelemetryConfirmedReadingSnapshot::confirmedReading).orElse(null);
+                    LocalDateTime previousConfirmedAt = previousSnapshotOpt.map(TelemetryConfirmedReadingSnapshot::createdAt).orElse(null);
+
+                    if (manualReadingValue.compareTo(minAllowed) < 0) {
+                        telemetryTenantRepository.createAnomalyRecord(
+                                operatorWithSchema.schemaName(),
+                                AnomalyConstants.TYPE_LOW_WATER_SUPPLY,
+                                operatorWithSchema.operator().id(),
+                                schemeId,
+                                pendingOpt.map(TelemetryPendingMeterChangeRecord::extractedReading).orElse(null),
+                                null,
+                                manualReadingValue,
+                                0,
+                                previousConfirmed,
+                                previousConfirmedAt,
+                                0,
+                                "Manual reading is below allowed minimum (" + toPlain(minAllowed) + ").",
+                                AnomalyConstants.STATUS_OPEN
+                        );
+                        return CreateReadingResponse.builder()
+                                .success(false)
+                                .message(localizationService.localizeMessage(
+                                        "Reading rejected because it is below the allowed minimum. Submitted: " + toPlain(manualReadingValue)
+                                                + ". Minimum allowed: " + toPlain(minAllowed) + ".",
+                                        languageKey
+                                ))
+                                .qualityStatus("REJECTED")
+                                .correlationId(correlationId)
+                                .meterReading(manualReadingValue)
+                                .lastConfirmedReading(previousConfirmed)
+                                .build();
+                    }
+                    if (manualReadingValue.compareTo(maxAllowed) > 0) {
+                        telemetryTenantRepository.createAnomalyRecord(
+                                operatorWithSchema.schemaName(),
+                                AnomalyConstants.TYPE_OVER_WATER_SUPPLY,
+                                operatorWithSchema.operator().id(),
+                                schemeId,
+                                pendingOpt.map(TelemetryPendingMeterChangeRecord::extractedReading).orElse(null),
+                                null,
+                                manualReadingValue,
+                                0,
+                                previousConfirmed,
+                                previousConfirmedAt,
+                                0,
+                                "Manual reading is above allowed maximum (" + toPlain(maxAllowed) + ").",
+                                AnomalyConstants.STATUS_OPEN
+                        );
+                        return CreateReadingResponse.builder()
+                                .success(false)
+                                .message(localizationService.localizeMessage(
+                                        "Reading rejected because it is above the allowed maximum. Submitted: " + toPlain(manualReadingValue)
+                                                + ". Maximum allowed: " + toPlain(maxAllowed) + ".",
+                                        languageKey
+                                ))
+                                .qualityStatus("REJECTED")
+                                .correlationId(correlationId)
+                                .meterReading(manualReadingValue)
+                                .lastConfirmedReading(previousConfirmed)
+                                .build();
+                    }
+                }
             }
 
             if (pendingOpt.isPresent()) {
@@ -1083,7 +1169,7 @@ public class GlificMeterWorkflowService {
         if (tenantId == null) {
             return Optional.empty();
         }
-        return tenantConfigRepository.findConfigValue(tenantId, "WATER_NORM")
+        return safeFindConfigValue(tenantId, "WATER_NORM")
                 .flatMap(raw -> {
                     try {
                         JsonNode root = objectMapper.readTree(raw);
@@ -1105,13 +1191,20 @@ public class GlificMeterWorkflowService {
                 });
     }
 
+    private Optional<String> safeFindConfigValue(Integer tenantId, String key) {
+        Optional<String> opt = tenantConfigRepository.findConfigValue(tenantId, key);
+        // Some mocks may return null; treat as empty.
+        return opt == null ? Optional.empty() : opt;
+    }
+
     private Optional<WaterSupplyThreshold> loadWaterSupplyThreshold(Integer tenantId) {
         if (tenantId == null) {
             return Optional.empty();
         }
-        // Tenant override first, then system default (tenant_id = 0).
-        Optional<String> rawOpt = tenantConfigRepository.findConfigValue(tenantId, "TENANT_WATER_QUANTITY_SUPPLY_THRESHOLD")
-                .or(() -> tenantConfigRepository.findConfigValue(0, "WATER_QUANTITY_SUPPLY_THRESHOLD"));
+        // Prefer tenant-specific override keys, then tenant-level default, then system default (tenant_id = 0).
+        Optional<String> rawOpt = safeFindConfigValue(tenantId, "TENANT_WATER_QUANTITY_SUPPLY_THRESHOLD")
+                .or(() -> safeFindConfigValue(tenantId, "WATER_QUANTITY_SUPPLY_THRESHOLD"))
+                .or(() -> safeFindConfigValue(0, "WATER_QUANTITY_SUPPLY_THRESHOLD"));
         if (rawOpt.isEmpty()) {
             return Optional.empty();
         }
@@ -1133,7 +1226,7 @@ public class GlificMeterWorkflowService {
             }
             return Optional.of(new WaterSupplyThreshold(under, over));
         } catch (Exception e) {
-            log.warn("Invalid WATER_QUANTITY_SUPPLY_THRESHOLD config for tenantId {}: {}", tenantId, e.getMessage());
+            log.warn("Invalid water supply threshold config for tenantId {}: {}", tenantId, e.getMessage());
             return Optional.empty();
         }
     }
