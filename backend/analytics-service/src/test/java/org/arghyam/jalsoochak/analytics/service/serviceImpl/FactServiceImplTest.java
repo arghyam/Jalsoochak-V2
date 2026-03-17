@@ -25,6 +25,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.DuplicateKeyException;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 
@@ -262,14 +263,14 @@ class FactServiceImplTest {
         SchemePerformanceEvent event = new SchemePerformanceEvent();
         event.setTenantId(1);
         event.setSchemeId(11);
-        event.setPerformanceScore(88);
+        event.setPerformanceScore(BigDecimal.valueOf(88));
         event.setLastWaterSupplyDate("");
 
         service.ingestSchemePerformance(event);
 
         ArgumentCaptor<FactSchemePerformance> captor = ArgumentCaptor.forClass(FactSchemePerformance.class);
         verify(schemePerformanceRepository, times(1)).save(captor.capture());
-        assertThat(captor.getValue().getPerformanceScore()).isEqualTo(88);
+        assertThat(captor.getValue().getPerformanceScore()).isEqualByComparingTo(BigDecimal.valueOf(88));
         assertThat(captor.getValue().getLastWaterSupplyDate()).isEqualTo(LocalDate.now());
     }
 }

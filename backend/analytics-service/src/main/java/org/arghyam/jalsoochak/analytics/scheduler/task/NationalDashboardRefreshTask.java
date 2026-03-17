@@ -29,8 +29,8 @@ public class NationalDashboardRefreshTask implements AnalyticsScheduledTask {
 
     @Override
     @Scheduled(
-            cron = "0 0 19 * * *",
-            zone = "Asia/Kolkata")
+            cron = "${analytics.scheduler.common.cron:0 0 19 * * *}",
+            zone = "${analytics.scheduler.common.zone:Asia/Kolkata}")
     public void runTask() {
         int sanitizedLookbackDays = Math.max(0, lookbackDays);
         LocalDate endDate = LocalDate.now(IST_ZONE);

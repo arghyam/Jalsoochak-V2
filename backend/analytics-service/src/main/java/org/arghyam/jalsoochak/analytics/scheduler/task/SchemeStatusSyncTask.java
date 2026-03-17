@@ -25,8 +25,8 @@ public class SchemeStatusSyncTask implements AnalyticsScheduledTask {
 
     @Override
     @Scheduled(
-            cron = "0 0 19 * * *",
-            zone = "Asia/Kolkata")
+            cron = "${analytics.scheduler.common.cron:0 0 19 * * *}",
+            zone = "${analytics.scheduler.common.zone:Asia/Kolkata}")
     public void runTask() {
         int sanitizedInactiveAfterDays = Math.max(0, inactiveAfterDays);
         log.info("Running scheduled task '{}' with inactive-after-days={}", taskName(), sanitizedInactiveAfterDays);
