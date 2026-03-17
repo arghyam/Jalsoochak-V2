@@ -77,7 +77,7 @@ class GlificMeterWorkflowServiceIssueReportTest {
 
         verify(telemetryTenantRepository).createAnomalyRecord(
                 eq("tenant_test"),
-                eq(AnomalyConstants.TYPE_ISSUE_REPORTED),
+                eq(AnomalyConstants.TYPE_NO_SUBMISSION),
                 eq(1L),
                 eq(10L),
                 isNull(),
@@ -182,7 +182,7 @@ class GlificMeterWorkflowServiceIssueReportTest {
         // Current behavior: reason "5" is treated as an anomaly selection (legacy numeric rule).
         verify(telemetryTenantRepository).createAnomalyRecord(
                 eq("tenant_test"),
-                eq(AnomalyConstants.TYPE_ISSUE_REPORTED),
+                eq(AnomalyConstants.TYPE_NO_WATER_SUPPLY),
                 eq(1L),
                 eq(10L),
                 isNull(),
@@ -232,7 +232,7 @@ class GlificMeterWorkflowServiceIssueReportTest {
 
         verify(telemetryTenantRepository).createAnomalyRecord(
                 eq("tenant_test"),
-                eq(AnomalyConstants.TYPE_ISSUE_REPORTED),
+                eq(AnomalyConstants.TYPE_NO_SUBMISSION),
                 eq(1L),
                 eq(10L),
                 isNull(),
@@ -281,7 +281,7 @@ class GlificMeterWorkflowServiceIssueReportTest {
         // Telemetry submit: "No Water Supply" should be tracked as an issue anomaly.
         verify(telemetryTenantRepository).createAnomalyRecord(
                 eq("tenant_test"),
-                eq(AnomalyConstants.TYPE_ISSUE_REPORTED),
+                eq(AnomalyConstants.TYPE_NO_WATER_SUPPLY),
                 eq(1L),
                 eq(10L),
                 isNull(),

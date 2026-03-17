@@ -110,6 +110,8 @@ class GlificMeterWorkflowServiceUpdatePreviousReadingTest {
                 .thenReturn(Optional.of("{\"value\":\"100\"}"));
         when(tenantConfigRepository.findConfigValue(1, "TENANT_WATER_QUANTITY_SUPPLY_THRESHOLD"))
                 .thenReturn(Optional.empty());
+        when(tenantConfigRepository.findConfigValue(1, "WATER_QUANTITY_SUPPLY_THRESHOLD"))
+                .thenReturn(Optional.empty());
         when(tenantConfigRepository.findConfigValue(0, "WATER_QUANTITY_SUPPLY_THRESHOLD"))
                 .thenReturn(Optional.of("{\"undersupplyThresholdPercent\":20.0,\"oversupplyThresholdPercent\":30.0}"));
 
@@ -149,6 +151,8 @@ class GlificMeterWorkflowServiceUpdatePreviousReadingTest {
         when(tenantConfigRepository.findConfigValue(1, "WATER_NORM"))
                 .thenReturn(Optional.of("{\"value\":\"100\"}"));
         when(tenantConfigRepository.findConfigValue(1, "TENANT_WATER_QUANTITY_SUPPLY_THRESHOLD"))
+                .thenReturn(Optional.empty());
+        when(tenantConfigRepository.findConfigValue(1, "WATER_QUANTITY_SUPPLY_THRESHOLD"))
                 .thenReturn(Optional.empty());
         when(tenantConfigRepository.findConfigValue(0, "WATER_QUANTITY_SUPPLY_THRESHOLD"))
                 .thenReturn(Optional.of("{\"undersupplyThresholdPercent\":20.0,\"oversupplyThresholdPercent\":30.0}"));
