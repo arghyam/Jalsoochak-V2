@@ -7,6 +7,7 @@ import org.arghyam.jalsoochak.analytics.dto.response.OutageReasonSchemeCountResp
 import org.arghyam.jalsoochak.analytics.dto.response.PeriodicWaterQuantityResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.RegionWiseWaterQuantityResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.ReadingSubmissionRateResponse;
+import org.arghyam.jalsoochak.analytics.dto.response.SchemeRegularityListResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.SchemeStatusAndTopReportingResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.UserOutageReasonSchemeCountResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.UserSubmissionStatusResponse;
@@ -89,4 +90,10 @@ public interface SchemeRegularityService {
 
     SchemeStatusAndTopReportingResponse getSchemeStatusAndTopReportingByDepartment(
             Integer parentDepartmentId, LocalDate startDate, LocalDate endDate, Integer topSchemeCount);
+
+    SchemeRegularityListResponse getSchemeRegionReportByLgd(
+            Integer parentLgdId, LocalDate startDate, LocalDate endDate, Integer pageNumber, Integer count);
+
+    SchemeRegularityListResponse getSchemeRegionReportByDepartment(
+            Integer parentDepartmentId, LocalDate startDate, LocalDate endDate, Integer pageNumber, Integer count);
 }

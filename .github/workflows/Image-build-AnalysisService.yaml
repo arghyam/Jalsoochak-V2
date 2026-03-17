@@ -95,7 +95,7 @@ jobs:
 
 
       - name: Build and Push Docker image for analytics_DB
-        if: (github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/main') && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+        if: github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/main'
         run: |
           docker build -t $ECR_REGISTRY/analytics-service-db:$IMAGE_TAG  .
           docker tag $ECR_REGISTRY/analytics-service-db:$IMAGE_TAG $ECR_REGISTRY/analytics-service-db:$IMAGE_TAG

@@ -7,6 +7,7 @@ import org.arghyam.jalsoochak.analytics.dto.response.NationalDashboardResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.OutageReasonSchemeCountResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.PeriodicWaterQuantityResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.ReadingSubmissionRateResponse;
+import org.arghyam.jalsoochak.analytics.dto.response.SchemeRegularityListResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.UserOutageReasonSchemeCountResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.UserSubmissionStatusResponse;
 import org.arghyam.jalsoochak.analytics.entity.DimTenant;
@@ -589,6 +590,68 @@ class SchemeRegularityServiceImplTest {
         assertThat(result)
                 .containsEntry("active_schemes_count", 4)
                 .containsEntry("inactive_schemes_count", 0);
+    }
+
+    @Test
+    void getSchemeRegionReportByLgd_buildsSchemeMetricsAndCounts() {
+        when(schemeRegularityRepository.getSchemeRegionReportByLgd(101, START, END))
+                .thenReturn(List.of(
+                        new SchemeRegularityRepository.SchemeRegularityListMetrics(1, "Scheme A", 1, 2, 3),
+                        new SchemeRegularityRepository.SchemeRegularityListMetrics(2, "Scheme B", 0, 0, 1)
+                ));
+        when(schemeRegularityRepository.getParentLgdCNameByLgd(101)).thenReturn("Parent");
+        when(schemeRegularityRepository.getParentLgdTitleByLgd(101)).thenReturn("District");
+
+        SchemeRegularityListResponse response = service.getSchemeRegionReportByLgd(101, START, END, null, null);
+
+        assertThat(response.getParentLgdId()).isEqualTo(101);
+        assertThat(response.getDaysInRange()).isEqualTo(3);
+        assertThat(response.getTotalSchemeCount()).isEqualTo(2);
+        assertThat(response.getActiveSchemeCount()).isEqualTo(1);
+        assertThat(response.getInactiveSchemeCount()).isEqualTo(1);
+        assertThat(response.getSchemes()).hasSize(2);
+        assertThat(response.getSchemes().get(0).getAverageRegularity()).isEqualByComparingTo("0.6667");
+        assertThat(response.getSchemes().get(0).getSubmissionRate()).isEqualByComparingTo("1.0000");
+        assertThat(response.getSchemes().get(1).getStatus()).isEqualTo("inactive");
+    }
+
+    @Test
+    void getSchemeRegionReportByDepartment_buildsSchemeMetricsAndCounts() {
+        when(schemeRegularityRepository.getSchemeRegionReportByDepartment(201, START, END))
+                .thenReturn(List.of(
+                        new SchemeRegularityRepository.SchemeRegularityListMetrics(4, "Scheme D", 1, 1, 2)
+                ));
+        when(schemeRegularityRepository.getParentDepartmentCNameByDepartment(201)).thenReturn("Dept");
+        when(schemeRegularityRepository.getParentDepartmentTitleByDepartment(201)).thenReturn("Division");
+
+        SchemeRegularityListResponse response =
+                service.getSchemeRegionReportByDepartment(201, START, END, null, null);
+
+        assertThat(response.getParentDepartmentId()).isEqualTo(201);
+        assertThat(response.getTotalSchemeCount()).isEqualTo(1);
+        assertThat(response.getActiveSchemeCount()).isEqualTo(1);
+        assertThat(response.getInactiveSchemeCount()).isEqualTo(0);
+        assertThat(response.getSchemes().getFirst().getAverageRegularity()).isEqualByComparingTo("0.3333");
+        assertThat(response.getSchemes().getFirst().getSubmissionRate()).isEqualByComparingTo("0.6667");
+    }
+
+    @Test
+    void getSchemeRegionReportByLgd_withPagination_returnsPagedSchemes() {
+        when(schemeRegularityRepository.getSchemeRegionReportByLgd(101, START, END))
+                .thenReturn(List.of(
+                        new SchemeRegularityRepository.SchemeRegularityListMetrics(1, "Scheme A", 1, 2, 3),
+                        new SchemeRegularityRepository.SchemeRegularityListMetrics(2, "Scheme B", 0, 0, 1),
+                        new SchemeRegularityRepository.SchemeRegularityListMetrics(3, "Scheme C", 1, 3, 3)
+                ));
+        when(schemeRegularityRepository.getParentLgdCNameByLgd(101)).thenReturn("Parent");
+        when(schemeRegularityRepository.getParentLgdTitleByLgd(101)).thenReturn("District");
+
+        SchemeRegularityListResponse response = service.getSchemeRegionReportByLgd(101, START, END, 2, 1);
+
+        assertThat(response.getTotalSchemeCount()).isEqualTo(3);
+        assertThat(response.getSchemeCountInResponse()).isEqualTo(1);
+        assertThat(response.getSchemes()).hasSize(1);
+        assertThat(response.getSchemes().getFirst().getSchemeId()).isEqualTo(2);
     }
 
     @Test
