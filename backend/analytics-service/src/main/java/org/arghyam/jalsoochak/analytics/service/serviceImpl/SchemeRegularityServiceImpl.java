@@ -7,6 +7,7 @@ import org.arghyam.jalsoochak.analytics.dto.response.OutageReasonSchemeCountResp
 import org.arghyam.jalsoochak.analytics.dto.response.PeriodicWaterQuantityResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.RegionWiseWaterQuantityResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.ReadingSubmissionRateResponse;
+import org.arghyam.jalsoochak.analytics.dto.response.SchemeRegularityListResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.SchemeStatusAndTopReportingResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.UserOutageReasonSchemeCountResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.UserSubmissionStatusResponse;
@@ -47,6 +48,7 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
     private static final String READING_SUBMISSION_RATE_CACHE_PREFIX = ":reading_submission_rate";
     private static final String NATIONAL_DASHBOARD_CACHE_PREFIX = ":national:dashboard";
     private static final int DEFAULT_TOP_SCHEME_COUNT = 10;
+    private static final int DEFAULT_PAGE_COUNT = 10;
     private static final String DEBUG_LOG_PATH = "/home/beehyv/Desktop/Codes/jalSoochak/JalSoochak_New/.cursor/debug.log";
 
     private final SchemeRegularityRepository schemeRegularityRepository;
@@ -1328,6 +1330,114 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
                 .build();
     }
 
+    @Override
+    public SchemeRegularityListResponse getSchemeRegionReportByLgd(
+            Integer parentLgdId, LocalDate startDate, LocalDate endDate, Integer pageNumber, Integer count) {
+        validateLgdInput(parentLgdId);
+        validateDateRange(startDate, endDate);
+        validatePaginationInput(pageNumber, count);
+        int daysInRange = (int) ChronoUnit.DAYS.between(startDate, endDate) + 1;
+
+        List<SchemeRegularityRepository.SchemeRegularityListMetrics> schemes =
+                schemeRegularityRepository.getSchemeRegionReportByLgd(parentLgdId, startDate, endDate);
+        String parentLgdCName = schemeRegularityRepository.getParentLgdCNameByLgd(parentLgdId);
+        String parentLgdTitle = schemeRegularityRepository.getParentLgdTitleByLgd(parentLgdId);
+
+        int activeCount = (int) schemes.stream()
+                .filter(s -> s.status() != null && s.status() == SchemeStatus.ACTIVE.getCode())
+                .count();
+        int inactiveCount = (int) schemes.stream()
+                .filter(s -> s.status() != null && s.status() == SchemeStatus.INACTIVE.getCode())
+                .count();
+
+        List<SchemeRegularityListResponse.SchemeMetrics> allSchemeMetrics = schemes.stream()
+                .map(metric -> SchemeRegularityListResponse.SchemeMetrics.builder()
+                        .schemeId(metric.schemeId())
+                        .schemeName(metric.schemeName())
+                        .statusCode(metric.status())
+                        .status(resolveSchemeStatus(metric.status()))
+                        .supplyDays(metric.supplyDays())
+                        .averageRegularity(calculateReportingRate(metric.supplyDays(), daysInRange))
+                        .submissionDays(metric.submissionDays())
+                        .submissionRate(calculateReportingRate(metric.submissionDays(), daysInRange))
+                        .build())
+                .toList();
+        List<SchemeRegularityListResponse.SchemeMetrics> schemeMetrics =
+                paginateSchemeReport(allSchemeMetrics, pageNumber, count);
+
+        return SchemeRegularityListResponse.builder()
+                .parentLgdId(parentLgdId)
+                .parentDepartmentId(null)
+                .parentLgdCName(parentLgdCName)
+                .parentDepartmentCName(null)
+                .parentLgdTitle(parentLgdTitle)
+                .parentDepartmentTitle(null)
+                .startDate(startDate)
+                .endDate(endDate)
+                .daysInRange(daysInRange)
+                .totalSchemeCount(schemes.size())
+                .activeSchemeCount(activeCount)
+                .inactiveSchemeCount(inactiveCount)
+                .schemeCountInResponse(schemeMetrics.size())
+                .schemes(schemeMetrics)
+                .build();
+    }
+
+    @Override
+    public SchemeRegularityListResponse getSchemeRegionReportByDepartment(
+            Integer parentDepartmentId, LocalDate startDate, LocalDate endDate, Integer pageNumber, Integer count) {
+        validateDepartmentInput(parentDepartmentId);
+        validateDateRange(startDate, endDate);
+        validatePaginationInput(pageNumber, count);
+        int daysInRange = (int) ChronoUnit.DAYS.between(startDate, endDate) + 1;
+
+        List<SchemeRegularityRepository.SchemeRegularityListMetrics> schemes =
+                schemeRegularityRepository.getSchemeRegionReportByDepartment(parentDepartmentId, startDate, endDate);
+        String parentDepartmentCName =
+                schemeRegularityRepository.getParentDepartmentCNameByDepartment(parentDepartmentId);
+        String parentDepartmentTitle =
+                schemeRegularityRepository.getParentDepartmentTitleByDepartment(parentDepartmentId);
+
+        int activeCount = (int) schemes.stream()
+                .filter(s -> s.status() != null && s.status() == SchemeStatus.ACTIVE.getCode())
+                .count();
+        int inactiveCount = (int) schemes.stream()
+                .filter(s -> s.status() != null && s.status() == SchemeStatus.INACTIVE.getCode())
+                .count();
+
+        List<SchemeRegularityListResponse.SchemeMetrics> allSchemeMetrics = schemes.stream()
+                .map(metric -> SchemeRegularityListResponse.SchemeMetrics.builder()
+                        .schemeId(metric.schemeId())
+                        .schemeName(metric.schemeName())
+                        .statusCode(metric.status())
+                        .status(resolveSchemeStatus(metric.status()))
+                        .supplyDays(metric.supplyDays())
+                        .averageRegularity(calculateReportingRate(metric.supplyDays(), daysInRange))
+                        .submissionDays(metric.submissionDays())
+                        .submissionRate(calculateReportingRate(metric.submissionDays(), daysInRange))
+                        .build())
+                .toList();
+        List<SchemeRegularityListResponse.SchemeMetrics> schemeMetrics =
+                paginateSchemeReport(allSchemeMetrics, pageNumber, count);
+
+        return SchemeRegularityListResponse.builder()
+                .parentLgdId(null)
+                .parentDepartmentId(parentDepartmentId)
+                .parentLgdCName(null)
+                .parentDepartmentCName(parentDepartmentCName)
+                .parentLgdTitle(null)
+                .parentDepartmentTitle(parentDepartmentTitle)
+                .startDate(startDate)
+                .endDate(endDate)
+                .daysInRange(daysInRange)
+                .totalSchemeCount(schemes.size())
+                .activeSchemeCount(activeCount)
+                .inactiveSchemeCount(inactiveCount)
+                .schemeCountInResponse(schemeMetrics.size())
+                .schemes(schemeMetrics)
+                .build();
+    }
+
     private void validateLgdInput(Integer lgdId) {
         if (lgdId == null || lgdId <= 0) {
             throw new IllegalArgumentException("lgd_id must be a positive integer");
@@ -1365,6 +1475,30 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
         if (topSchemeCount == null || topSchemeCount <= 0) {
             throw new IllegalArgumentException("scheme_count must be a positive integer");
         }
+    }
+
+    private void validatePaginationInput(Integer pageNumber, Integer count) {
+        if (pageNumber != null && pageNumber <= 0) {
+            throw new IllegalArgumentException("page_number must be a positive integer");
+        }
+        if (count != null && count <= 0) {
+            throw new IllegalArgumentException("count must be a positive integer");
+        }
+    }
+
+    private List<SchemeRegularityListResponse.SchemeMetrics> paginateSchemeReport(
+            List<SchemeRegularityListResponse.SchemeMetrics> schemes, Integer pageNumber, Integer count) {
+        if (pageNumber == null && count == null) {
+            return schemes;
+        }
+        int effectivePage = pageNumber == null ? 1 : pageNumber;
+        int effectiveCount = count == null ? DEFAULT_PAGE_COUNT : count;
+        int fromIndex = (effectivePage - 1) * effectiveCount;
+        if (fromIndex >= schemes.size()) {
+            return List.of();
+        }
+        int toIndex = Math.min(fromIndex + effectiveCount, schemes.size());
+        return schemes.subList(fromIndex, toIndex);
     }
 
     private BigDecimal calculateReportingRate(Integer submissionDays, Integer daysInRange) {

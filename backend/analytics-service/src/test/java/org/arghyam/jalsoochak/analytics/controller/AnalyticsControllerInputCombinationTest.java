@@ -6,6 +6,7 @@ import org.arghyam.jalsoochak.analytics.dto.response.OutageReasonSchemeCountResp
 import org.arghyam.jalsoochak.analytics.dto.response.PeriodicWaterQuantityResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.ReadingSubmissionRateResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.RegionWiseWaterQuantityResponse;
+import org.arghyam.jalsoochak.analytics.dto.response.SchemeRegularityListResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.SchemeStatusAndTopReportingResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.TenantDetailsResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.UserOutageReasonSchemeCountResponse;
@@ -486,6 +487,107 @@ class AnalyticsControllerInputCombinationTest {
                 .andExpect(jsonPath("$.topSchemes[0].immediateParentDepartmentId").value(200))
                 .andExpect(jsonPath("$.topSchemes[0].immediateParentDepartmentCName").value("Parent Dept"))
                 .andExpect(jsonPath("$.topSchemes[0].immediateParentDepartmentTitle").value("Parent Dept"));
+    }
+
+    @Test
+    void getSchemeRegionReport_withParentLgdId_routesToLgdService() throws Exception {
+        when(schemeRegularityService.getSchemeRegionReportByLgd(101, START, END, null, null))
+                .thenReturn(SchemeRegularityListResponse.builder()
+                        .parentLgdId(101)
+                        .totalSchemeCount(1)
+                        .activeSchemeCount(1)
+                        .inactiveSchemeCount(0)
+                        .schemeCountInResponse(1)
+                        .schemes(List.of(
+                                SchemeRegularityListResponse.SchemeMetrics.builder()
+                                        .schemeId(1)
+                                        .schemeName("Scheme A")
+                                        .statusCode(1)
+                                        .status("active")
+                                        .supplyDays(2)
+                                        .averageRegularity(BigDecimal.valueOf(0.6667))
+                                        .submissionDays(3)
+                                        .submissionRate(BigDecimal.valueOf(1.0000))
+                                        .build()))
+                        .build());
+
+        mockMvc.perform(get(BASE + "/schemes/region-report")
+                        .param("start_date", START.toString())
+                        .param("end_date", END.toString())
+                        .param("parent_lgd_id", "101"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.parentLgdId").value(101))
+                .andExpect(jsonPath("$.schemes[0].schemeId").value(1));
+
+        verify(schemeRegularityService, times(1))
+                .getSchemeRegionReportByLgd(101, START, END, null, null);
+        verify(schemeRegularityService, never()).getSchemeRegionReportByDepartment(any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void getSchemeRegionReport_withParentDepartmentId_routesToDepartmentService() throws Exception {
+        when(schemeRegularityService.getSchemeRegionReportByDepartment(201, START, END, null, null))
+                .thenReturn(SchemeRegularityListResponse.builder()
+                        .parentDepartmentId(201)
+                        .totalSchemeCount(1)
+                        .activeSchemeCount(0)
+                        .inactiveSchemeCount(1)
+                        .schemeCountInResponse(1)
+                        .schemes(List.of(
+                                SchemeRegularityListResponse.SchemeMetrics.builder()
+                                        .schemeId(2)
+                                        .schemeName("Scheme B")
+                                        .statusCode(0)
+                                        .status("inactive")
+                                        .supplyDays(0)
+                                        .averageRegularity(BigDecimal.ZERO)
+                                        .submissionDays(1)
+                                        .submissionRate(BigDecimal.valueOf(0.3333))
+                                        .build()))
+                        .build());
+
+        mockMvc.perform(get(BASE + "/schemes/region-report")
+                        .param("start_date", START.toString())
+                        .param("end_date", END.toString())
+                        .param("parent_department_id", "201"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.parentDepartmentId").value(201))
+                .andExpect(jsonPath("$.schemes[0].schemeId").value(2));
+
+        verify(schemeRegularityService, times(1))
+                .getSchemeRegionReportByDepartment(201, START, END, null, null);
+        verify(schemeRegularityService, never()).getSchemeRegionReportByLgd(any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void getSchemeRegionReport_withBothParentIds_returnsBadRequest() throws Exception {
+        mockMvc.perform(get(BASE + "/schemes/region-report")
+                        .param("start_date", START.toString())
+                        .param("end_date", END.toString())
+                        .param("parent_lgd_id", "101")
+                        .param("parent_department_id", "201"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void getSchemeRegionReport_withPaginationParams_passesPaginationToService() throws Exception {
+        when(schemeRegularityService.getSchemeRegionReportByLgd(101, START, END, 2, 1))
+                .thenReturn(SchemeRegularityListResponse.builder()
+                        .parentLgdId(101)
+                        .schemeCountInResponse(0)
+                        .schemes(List.of())
+                        .build());
+
+        mockMvc.perform(get(BASE + "/schemes/region-report")
+                        .param("start_date", START.toString())
+                        .param("end_date", END.toString())
+                        .param("parent_lgd_id", "101")
+                        .param("page_number", "2")
+                        .param("count", "1"))
+                .andExpect(status().isOk());
+
+        verify(schemeRegularityService, times(1))
+                .getSchemeRegionReportByLgd(101, START, END, 2, 1);
     }
 
     @Test
