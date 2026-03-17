@@ -78,11 +78,12 @@ public class TenantController {
         /**
          * Get tenant status summary
          */
-        @Operation(summary = "Get tenant status summary", description = "Returns aggregate counts of all non-system tenants grouped by status: total, active, inactive, and archived.")
+        @Operation(summary = "Get all tenant's status summary", description = "Returns aggregate counts of all non-system tenants grouped by status: total, active, inactive, and archived.")
         @ApiResponses({
                         @ApiResponse(responseCode = "200", description = "Tenant summary retrieved successfully"),
                         @ApiResponse(responseCode = "500", description = "Internal server error")
         })
+        @PreAuthorize("hasRole('SUPER_USER')")
         @GetMapping("/summary")
         public ResponseEntity<ApiResponseDTO<TenantSummaryResponseDTO>> getTenantSummary() {
                 log.info("GET /api/v1/tenants/summary");
@@ -175,6 +176,7 @@ public class TenantController {
                         @ApiResponse(responseCode = "404", description = "Tenant not found"),
                         @ApiResponse(responseCode = "500", description = "Internal server error")
         })
+        @PreAuthorize("hasAnyRole('SUPER_USER', 'STATE_ADMIN')")
         @GetMapping("/{tenantId}/config/status")
         public ResponseEntity<ApiResponseDTO<TenantConfigStatusResponseDTO>> getTenantConfigStatus(
                         @PathVariable Integer tenantId) {
@@ -234,6 +236,7 @@ public class TenantController {
                         @ApiResponse(responseCode = "404", description = "Tenant not found"),
                         @ApiResponse(responseCode = "500", description = "Internal server error")
         })
+        @PreAuthorize("hasAnyRole('SUPER_USER', 'STATE_ADMIN')")
         @GetMapping("/{tenantId}/location-hierarchy/{hierarchyType}/edit-constraints")
         public ResponseEntity<ApiResponseDTO<LocationHierarchyEditConstraintsResponseDTO>> getLocationHierarchyEditConstraints(
                         @PathVariable Integer tenantId,
