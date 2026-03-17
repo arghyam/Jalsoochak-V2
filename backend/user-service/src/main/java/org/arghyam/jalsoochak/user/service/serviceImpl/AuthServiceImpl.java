@@ -35,6 +35,7 @@ import org.arghyam.jalsoochak.user.service.KeycloakAdminHelper;
 import org.arghyam.jalsoochak.user.service.MailService;
 import org.arghyam.jalsoochak.user.service.TokenService;
 import org.arghyam.jalsoochak.user.util.SecurityUtils;
+import org.keycloak.admin.client.resource.UserResource;
 import org.keycloak.representations.idm.CredentialRepresentation;
 import org.keycloak.representations.idm.UserRepresentation;
 import org.springframework.stereotype.Service;
@@ -43,6 +44,7 @@ import org.springframework.web.util.UriComponentsBuilder;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import jakarta.ws.rs.WebApplicationException;
 import jakarta.ws.rs.core.Response;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -65,6 +67,7 @@ public class AuthServiceImpl implements AuthService {
 
     @Override
     public AuthResult login(LoginRequestDTO request) {
+        log.info("login – processing authentication request");
         AdminUserRow user = userCommonRepository.findAdminUserByEmail(request.getEmail())
                 .orElseThrow(() -> new InvalidCredentialsException("Invalid credentials"));
 
@@ -81,6 +84,7 @@ public class AuthServiceImpl implements AuthService {
 
     @Override
     public AuthResult refreshToken(String refreshToken) {
+        log.info("refreshToken – processing token refresh");
         if (refreshToken == null || refreshToken.isBlank()) {
             throw new BadRequestException("Refresh token must be provided");
         }
@@ -101,6 +105,7 @@ public class AuthServiceImpl implements AuthService {
 
     @Override
     public void logout(String refreshToken) {
+        log.info("logout – revoking session");
         keycloakClient.logout(refreshToken);
     }
 
@@ -128,6 +133,7 @@ public class AuthServiceImpl implements AuthService {
     @Override
     @Transactional
     public AuthResult activateAccount(ActivateAccountRequestDTO request) {
+        log.info("activateAccount – consuming invite token");
         String hash = tokenService.hash(request.getInviteToken());
         // Atomically validate and consume the token, checking type in the same UPDATE
         AdminUserTokenRow tokenRow = userCommonRepository.consumeActiveTokenOfType(hash, "INVITE")
@@ -169,17 +175,14 @@ public class AuthServiceImpl implements AuthService {
             cred.setType(CredentialRepresentation.PASSWORD);
             cred.setValue(request.getPassword());
             cred.setTemporary(false);
-            usersResource.get(keycloakUuid).resetPassword(cred);
+            resetKeycloakPassword(usersResource.get(keycloakUuid), cred);
 
             keycloakAdminHelper.assignRoleToUser(keycloakUuid, role);
 
             if ("STATE_ADMIN".equals(role)) {
-                UserRepresentation updatedRep = usersResource.get(keycloakUuid).toRepresentation();
-                Map<String, List<String>> attrs = new HashMap<>(
-                        updatedRep.getAttributes() != null ? updatedRep.getAttributes() : Map.of());
-                attrs.put("tenant_state_code", List.of(tenantCode));
-                updatedRep.setAttributes(attrs);
-                usersResource.get(keycloakUuid).update(updatedRep);
+                setKeycloakUserAttribute(usersResource, keycloakUuid, "tenant_state_code", tenantCode);
+            } else if (!"SUPER_USER".equals(role)) {
+                setKeycloakUserAttribute(usersResource, keycloakUuid, "user_type", role);
             }
 
             Integer tenantId = "SUPER_USER".equals(role) ? 0
@@ -197,6 +200,7 @@ public class AuthServiceImpl implements AuthService {
                         request.getPhoneNumber(), "KEYCLOAK_MANAGED", 0L);
             }
 
+            log.info("activateAccount – account activated successfully, role={}", role);
             KeycloakTokenResponse token = keycloakClient.obtainToken(email, request.getPassword());
             String tenantStateCode = "SUPER_USER".equals(role) ? null : tenantCode;
             String name = "STATE_ADMIN".equals(role)
@@ -220,6 +224,7 @@ public class AuthServiceImpl implements AuthService {
     @Override
     @Transactional
     public void forgotPassword(ForgotPasswordRequestDTO request) {
+        log.info("forgotPassword – password reset requested");
         var userOpt = userCommonRepository.findAdminUserByEmail(request.getEmail());
         if (userOpt.isEmpty() || userOpt.get().status() == AdminUserStatus.PENDING) {
             return; // OWASP: no email enumeration; also silently skip PENDING users (not yet activated)
@@ -240,6 +245,7 @@ public class AuthServiceImpl implements AuthService {
     @Override
     @Transactional
     public void resetPassword(ResetPasswordRequestDTO request) {
+        log.info("resetPassword – consuming reset token");
         String hash = tokenService.hash(request.getToken());
         // Atomically validate, consume and check type in one step
         AdminUserTokenRow tokenRow = userCommonRepository.consumeActiveTokenOfType(hash, "RESET")
@@ -252,8 +258,25 @@ public class AuthServiceImpl implements AuthService {
         cred.setType(CredentialRepresentation.PASSWORD);
         cred.setValue(request.getNewPassword());
         cred.setTemporary(false);
-        keycloakProvider.getAdminInstance().realm(keycloakProvider.getRealm())
-                .users().get(user.uuid()).resetPassword(cred);
+        resetKeycloakPassword(
+                keycloakProvider.getAdminInstance().realm(keycloakProvider.getRealm()).users().get(user.uuid()),
+                cred);
+    }
+
+    private void resetKeycloakPassword(UserResource userResource, CredentialRepresentation cred) {
+        try {
+            userResource.resetPassword(cred);
+        } catch (WebApplicationException wae) {
+            Response resp = wae.getResponse();
+            if (resp == null) {
+                throw new KeycloakOperationException("Failed to reset password: no HTTP response available");
+            }
+            int status = resp.getStatus();
+            if (status == 400) {
+                throw new BadRequestException("Password does not meet the required policy");
+            }
+            throw new KeycloakOperationException("Failed to reset password: HTTP " + status, status);
+        }
     }
 
     private AuthResult buildEnrichedAuthResult(KeycloakTokenResponse token, AdminUserRow user) {
@@ -301,5 +324,23 @@ public class AuthServiceImpl implements AuthService {
         } catch (Exception e) {
             return null;
         }
+    }
+
+    private void setKeycloakUserAttribute(
+            org.keycloak.admin.client.resource.UsersResource usersResource,
+            String keycloakUuid,
+            String key,
+            String value) {
+        var userResource = usersResource.get(keycloakUuid);
+        UserRepresentation rep = userResource.toRepresentation();
+        Map<String, List<String>> attrs = new HashMap<>(
+                rep.getAttributes() != null ? rep.getAttributes() : Map.of());
+        if (value == null) {
+            attrs.remove(key);
+        } else {
+            attrs.put(key, List.of(value));
+        }
+        rep.setAttributes(attrs);
+        userResource.update(rep);
     }
 }

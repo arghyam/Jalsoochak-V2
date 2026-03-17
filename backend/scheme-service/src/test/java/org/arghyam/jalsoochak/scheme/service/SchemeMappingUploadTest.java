@@ -1,6 +1,5 @@
 package org.arghyam.jalsoochak.scheme.service;
 
-import org.arghyam.jalsoochak.scheme.auth.UploadAuthService;
 import org.arghyam.jalsoochak.scheme.config.TenantContext;
 import org.arghyam.jalsoochak.scheme.dto.SchemeUploadResponseDTO;
 import org.arghyam.jalsoochak.scheme.exception.FileValidationException;
@@ -17,8 +16,14 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.security.core.context.SecurityContext;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
@@ -37,9 +42,6 @@ class SchemeMappingUploadTest {
     SchemeDbRepository schemeDbRepository;
 
     @Mock
-    UploadAuthService uploadAuthService;
-
-    @Mock
     SchemeUploadChunkProcessor chunkProcessor;
 
     @InjectMocks
@@ -54,12 +56,27 @@ class SchemeMappingUploadTest {
     @BeforeEach
     void setUp() {
         TenantContext.setSchema("tenant_ka");
-        when(uploadAuthService.requireStateAdminUserId(eq("tenant_ka"), eq("Bearer token"))).thenReturn(10);
+
+        Jwt jwt = Jwt.withTokenValue("test-token")
+                .header("alg", "RS256")
+                .issuedAt(Instant.now())
+                .expiresAt(Instant.now().plusSeconds(3600))
+                .claim("email", "admin@example.com")
+                .claim("tenant_state_code", "ka")
+                .build();
+        JwtAuthenticationToken auth = new JwtAuthenticationToken(jwt, Collections.emptyList());
+
+        SecurityContext securityContext = SecurityContextHolder.createEmptyContext();
+        securityContext.setAuthentication(auth);
+        SecurityContextHolder.setContext(securityContext);
+
+        when(schemeDbRepository.findUserIdByEmail("tenant_ka", "admin@example.com")).thenReturn(10);
     }
 
     @AfterEach
     void tearDown() {
         TenantContext.clear();
+        SecurityContextHolder.clearContext();
     }
 
     @Test
@@ -82,7 +99,7 @@ class SchemeMappingUploadTest {
         when(schemeDbRepository.findDepartmentIdsByTitles(eq("tenant_ka"), anyList()))
                 .thenReturn(Map.of("bengaluru north", 1001));
 
-        SchemeUploadResponseDTO res = schemeService.uploadSchemeMappings(file, "Bearer token");
+        SchemeUploadResponseDTO res = schemeService.uploadSchemeMappings(file);
 
         assertThat(res.getMessage()).isEqualTo("Scheme mappings uploaded successfully");
         assertThat(res.getTotalRows()).isEqualTo(1);
@@ -119,11 +136,11 @@ class SchemeMappingUploadTest {
                 csv.getBytes(StandardCharsets.UTF_8)
         );
 
-        assertThatThrownBy(() -> schemeService.uploadSchemeMappings(file, "Bearer token"))
+        assertThatThrownBy(() -> schemeService.uploadSchemeMappings(file))
                 .isInstanceOf(FileValidationException.class)
                 .hasMessage("Invalid headers");
 
-        verifyNoInteractions(schemeDbRepository);
+        verifyNoInteractions(chunkProcessor);
     }
 
     @Test
@@ -143,7 +160,7 @@ class SchemeMappingUploadTest {
         when(schemeDbRepository.findLgdIdsByCodes(eq("tenant_ka"), anyList())).thenReturn(Map.of());
         when(schemeDbRepository.findDepartmentIdsByTitles(eq("tenant_ka"), anyList())).thenReturn(Map.of());
 
-        assertThatThrownBy(() -> schemeService.uploadSchemeMappings(file, "Bearer token"))
+        assertThatThrownBy(() -> schemeService.uploadSchemeMappings(file))
                 .isInstanceOf(FileValidationException.class)
                 .hasMessage("Validation failed for uploaded file")
                 .satisfies(ex -> {

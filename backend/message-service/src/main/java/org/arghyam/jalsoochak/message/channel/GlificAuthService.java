@@ -78,17 +78,25 @@ public class GlificAuthService {
         }
     }
 
-    /** Refreshes tokens using the renewal token (PUT /api/v1/session/renew). */
+    /** Refreshes tokens using the renewal token (PUT /api/v1/session/renew).
+     *  Falls back to a full re-login if the renewal token itself is rejected (401). */
     public synchronized void refresh() {
         log.info("[GlificAuth] Refreshing access token...");
         String renewUrl = authUrl + "/renew";
-        JsonNode data = webClient.put()
-                .uri(renewUrl)
-                .header("Authorization", renewalToken)
-                .header("Content-Type", "application/json")
-                .retrieve()
-                .bodyToMono(JsonNode.class)
-                .block(Duration.ofSeconds(30));
+        JsonNode data;
+        try {
+            data = webClient.put()
+                    .uri(renewUrl)
+                    .header("Authorization", renewalToken)
+                    .header("Content-Type", "application/json")
+                    .retrieve()
+                    .bodyToMono(JsonNode.class)
+                    .block(Duration.ofSeconds(30));
+        } catch (org.springframework.web.reactive.function.client.WebClientResponseException.Unauthorized e) {
+            log.warn("[GlificAuth] Renewal token rejected (401); falling back to full re-login");
+            login();
+            return;
+        }
 
         if (data == null || !data.has("data")) {
             throw new RuntimeException("[GlificAuth] Token refresh failed");

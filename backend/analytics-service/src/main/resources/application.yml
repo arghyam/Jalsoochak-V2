@@ -51,6 +51,11 @@ spring:
       group-id: analytics-service-group
       auto-offset-reset: earliest
 
+keycloak:
+  realm: jalsoochak-realm
+  auth-server-url: https://jalsoochak.beehyv.com/keycloak
+  resource: jalsoochak-client-id
+
 eureka:
   client:
     enabled: ${EUREKA_ENABLED:false}

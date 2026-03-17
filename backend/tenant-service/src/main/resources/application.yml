@@ -40,6 +40,12 @@ spring:
         dialect: org.hibernate.dialect.PostgreSQLDialect
         default_schema: common_schema
 
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${KEYCLOAK_ISSUER_URI:https://jalsoochak.beehyv.com/keycloak/realms/jalsoochak-realm}
+
   data:
     redis:
       host: ${REDIS_HOST:localhost}
@@ -59,6 +65,11 @@ spring:
         heartbeat.interval.ms: 10000
         max.poll.interval.ms: 600000
         fetch.max.wait.ms: 500
+
+keycloak:
+  realm: jalsoochak-realm
+  auth-server-url: https://jalsoochak.beehyv.com/keycloak
+  resource: jalsoochak-client-id
 
 eureka:
   client:

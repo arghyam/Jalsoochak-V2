@@ -19,13 +19,22 @@ BEGIN
     END LOOP;
 
     -- 2) Future tenants: patch provisioning function
-    IF to_regprocedure('create_tenant_schema(text)') IS NULL THEN
+    -- Try both unqualified and schema-qualified versions since the function
+    -- may exist in a schema other than the current search_path (e.g. common_schema).
+    fn_definition := NULL;
+
+    IF to_regprocedure('create_tenant_schema(text)') IS NOT NULL THEN
+        SELECT pg_get_functiondef('create_tenant_schema(text)'::regprocedure)
+          INTO fn_definition;
+    ELSIF to_regprocedure('common_schema.create_tenant_schema(text)') IS NOT NULL THEN
+        SELECT pg_get_functiondef('common_schema.create_tenant_schema(text)'::regprocedure)
+          INTO fn_definition;
+    END IF;
+
+    IF fn_definition IS NULL THEN
         RAISE NOTICE 'Function create_tenant_schema(text) not found. Skipping function patch.';
         RETURN;
     END IF;
-
-    SELECT pg_get_functiondef('create_tenant_schema(text)'::regprocedure)
-      INTO fn_definition;
 
     patched_definition := fn_definition;
 

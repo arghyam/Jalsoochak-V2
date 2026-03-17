@@ -1,57 +1,42 @@
 -- Update create_tenant_schema() so newly created tenant schemas include
 -- flow_reading_table.issue_report_reason.
+
 DO $$
-DECLARE
-    fn_definition TEXT;
-    patched_definition TEXT;
 BEGIN
-    IF to_regprocedure('create_tenant_schema(text)') IS NULL THEN
-        RAISE NOTICE 'Function create_tenant_schema(text) not found. Skipping function patch.';
-        RETURN;
+    -- Preserve the current implementation once.
+    IF EXISTS (
+        SELECT 1
+        FROM pg_proc p
+        JOIN pg_namespace n ON n.oid = p.pronamespace
+        WHERE p.proname = 'create_tenant_schema'
+          AND n.nspname = 'common_schema'
+          AND pg_get_function_identity_arguments(p.oid) = 'schema_name text'
+    )
+    AND NOT EXISTS (
+        SELECT 1
+        FROM pg_proc p
+        JOIN pg_namespace n ON n.oid = p.pronamespace
+        WHERE p.proname = 'create_tenant_schema_v12_base'
+          AND n.nspname = 'common_schema'
+          AND pg_get_function_identity_arguments(p.oid) = 'schema_name text'
+    ) THEN
+        ALTER FUNCTION common_schema.create_tenant_schema(text) RENAME TO create_tenant_schema_v12_base;
     END IF;
-
-    SELECT pg_get_functiondef('create_tenant_schema(text)'::regprocedure)
-      INTO fn_definition;
-
-    IF position('issue_report_reason' IN fn_definition) > 0 THEN
-        RAISE NOTICE 'create_tenant_schema(text) already includes issue_report_reason. Skipping.';
-        RETURN;
-    END IF;
-
-    patched_definition := replace(
-        fn_definition,
-        E'            meter_change_reason TEXT,\n            image_url',
-        E'            meter_change_reason TEXT,\n            issue_report_reason TEXT,\n            image_url'
-    );
-
-    IF patched_definition = fn_definition THEN
-        patched_definition := replace(
-            fn_definition,
-            E'            channel             INTEGER,\n            image_url',
-            E'            channel             INTEGER,\n            issue_report_reason TEXT,\n            image_url'
-        );
-    END IF;
-
-    IF patched_definition = fn_definition THEN
-        patched_definition := replace(
-            fn_definition,
-            E'meter_change_reason TEXT,',
-            E'meter_change_reason TEXT,\n            issue_report_reason TEXT,'
-        );
-    END IF;
-
-    IF patched_definition = fn_definition THEN
-        patched_definition := replace(
-            fn_definition,
-            E'image_url           TEXT            DEFAULT '''''',',
-            E'issue_report_reason TEXT,\n            image_url           TEXT            DEFAULT '''''','
-        );
-    END IF;
-
-    IF patched_definition = fn_definition THEN
-        RAISE NOTICE 'Unable to patch create_tenant_schema(text): flow_reading_table block not found. Skipping.';
-        RETURN;
-    END IF;
-
-    EXECUTE patched_definition;
 END $$;
+
+CREATE OR REPLACE FUNCTION common_schema.create_tenant_schema(schema_name TEXT)
+RETURNS VOID
+LANGUAGE plpgsql
+AS $func$
+BEGIN
+    -- Execute the existing provisioning logic first.
+    PERFORM common_schema.create_tenant_schema_v12_base(schema_name);
+
+    -- Ensure the new column exists for newly created tenant schemas.
+    EXECUTE format(
+        'ALTER TABLE IF EXISTS %1$I.flow_reading_table
+         ADD COLUMN IF NOT EXISTS issue_report_reason TEXT',
+        schema_name
+    );
+END;
+$func$;

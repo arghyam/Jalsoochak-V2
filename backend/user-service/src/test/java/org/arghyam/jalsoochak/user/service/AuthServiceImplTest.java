@@ -173,7 +173,7 @@ class AuthServiceImplTest {
             when(userCommonRepository.findUserTypeNameById(2)).thenReturn(Optional.of("STATE_ADMIN"));
             when(userCommonRepository.findTenantStateCodeById(1)).thenReturn(Optional.of("MP"));
 
-            TenantUserRecord tenantUser = new TenantUserRecord(10L, 1, "91XXXXXXXXXX", "sa@example.com", 2L, "STATE_ADMIN", "State Admin");
+            TenantUserRecord tenantUser = new TenantUserRecord(10L, 1, "91XXXXXXXXXX", "sa@example.com", 2L, "STATE_ADMIN", "State Admin", null);
             when(userTenantRepository.findUserByEmail("tenant_mp", "sa@example.com")).thenReturn(Optional.of(tenantUser));
 
             AuthResult result = authService.login(loginRequest("sa@example.com", "pass"));

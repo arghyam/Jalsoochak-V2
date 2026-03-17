@@ -27,6 +27,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 @Service
@@ -50,6 +51,7 @@ public class GlificMeterWorkflowService {
             "Meter not working",
             "Meter damage",
             "Incorrect Reading Entered Previously",
+            "No Water Supply",
             "Others"
     );
 
@@ -58,6 +60,7 @@ public class GlificMeterWorkflowService {
             "मीटर काम नहीं कर रहा",
             "मीटर खराब है",
             "पहले गलत रीडिंग दर्ज हुई थी",
+            "पानी की आपूर्ति नहीं",
             "अन्य"
     );
     private static final List<String> DEFAULT_ISSUE_REASON_SELECTION_KEYS = List.of(
@@ -65,24 +68,35 @@ public class GlificMeterWorkflowService {
             "meterNotWorking",
             "meterDamage",
             "incorrectReadingEnteredPreviously",
+            "noWaterSupplied",
             "others"
     );
     private static final List<String> TELEMETRY_ISSUE_REASONS = List.of(
             "Meter Replaced",
             "Meter not working",
             "Meter Damaged",
+            "No Water Supply",
             "Others"
     );
     private static final List<String> TELEMETRY_ISSUE_REASONS_HINDI = List.of(
             "मीटर बदला गया",
             "मीटर काम नहीं कर रहा",
             "मीटर खराब है",
+            "पानी की आपूर्ति नहीं",
             "अन्य"
     );
     private static final List<String> TELEMETRY_ISSUE_REASON_SELECTION_KEYS = List.of(
             "meterReplaced",
             "meterNotWorking",
             "meterDamaged",
+            "noWaterSupplied",
+            "others"
+    );
+    private static final Set<String> ISSUE_REPORT_ANOMALY_SELECTION_KEYS = Set.of(
+            "meterNotWorking",
+            "meterDamage",
+            "meterDamaged",
+            "noWaterSupplied",
             "others"
     );
 
@@ -312,15 +326,32 @@ public class GlificMeterWorkflowService {
                     .orElseThrow(() -> new IllegalStateException("Operator is not mapped to any scheme"));
 
             String correlationId = "issue-report-" + UUID.randomUUID();
-
-            telemetryTenantRepository.createIssueReportRecord(
-                    operatorWithSchema.schemaName(),
-                    schemeId,
-                    operatorWithSchema.operator().id(),
-                    LocalDateTime.now(),
-                    correlationId,
-                    resolvedIssueReason
-            );
+            if (shouldStoreIssueAsAnomaly(selectedKey, rawIssueReason, ISSUE_REPORT_ANOMALY_SELECTION_KEYS)) {
+                telemetryTenantRepository.createAnomalyRecord(
+                        operatorWithSchema.schemaName(),
+                        AnomalyConstants.TYPE_ISSUE_REPORTED,
+                        operatorWithSchema.operator().id(),
+                        schemeId,
+                        null,
+                        null,
+                        null,
+                        0,
+                        null,
+                        null,
+                        0,
+                        resolvedIssueReason,
+                        AnomalyConstants.STATUS_OPEN
+                );
+            } else {
+                telemetryTenantRepository.createIssueReportRecord(
+                        operatorWithSchema.schemaName(),
+                        schemeId,
+                        operatorWithSchema.operator().id(),
+                        LocalDateTime.now(),
+                        correlationId,
+                        resolvedIssueReason
+                );
+            }
 
             String fallbackMessage = "Issue reported. Thank you.";
             if ("hindi".equals(languageKey)) {
@@ -450,14 +481,32 @@ public class GlificMeterWorkflowService {
                     .orElseThrow(() -> new IllegalStateException("Operator is not mapped to any scheme"));
 
             String correlationId = "issue-report-" + UUID.randomUUID();
-            telemetryTenantRepository.createIssueReportRecord(
-                    operatorWithSchema.schemaName(),
-                    schemeId,
-                    operatorWithSchema.operator().id(),
-                    LocalDateTime.now(),
-                    correlationId,
-                    resolvedIssueReason
-            );
+            if (shouldStoreIssueAsAnomaly(selectedKey, rawIssueReason, ISSUE_REPORT_ANOMALY_SELECTION_KEYS)) {
+                telemetryTenantRepository.createAnomalyRecord(
+                        operatorWithSchema.schemaName(),
+                        AnomalyConstants.TYPE_ISSUE_REPORTED,
+                        operatorWithSchema.operator().id(),
+                        schemeId,
+                        null,
+                        null,
+                        null,
+                        0,
+                        null,
+                        null,
+                        0,
+                        resolvedIssueReason,
+                        AnomalyConstants.STATUS_OPEN
+                );
+            } else {
+                telemetryTenantRepository.createIssueReportRecord(
+                        operatorWithSchema.schemaName(),
+                        schemeId,
+                        operatorWithSchema.operator().id(),
+                        LocalDateTime.now(),
+                        correlationId,
+                        resolvedIssueReason
+                );
+            }
 
             String fallbackMessage = "Issue reported. Thank you.";
             if ("hindi".equals(languageKey)) {
@@ -504,13 +553,20 @@ public class GlificMeterWorkflowService {
             String correlationId = "issue-report-" + UUID.randomUUID();
             String issueReason = request.getIssueReason().trim();
 
-            telemetryTenantRepository.createIssueReportRecord(
+            telemetryTenantRepository.createAnomalyRecord(
                     operatorWithSchema.schemaName(),
-                    schemeId,
+                    AnomalyConstants.TYPE_ISSUE_REPORTED,
                     operatorWithSchema.operator().id(),
-                    LocalDateTime.now(),
-                    correlationId,
-                    issueReason
+                    schemeId,
+                    null,
+                    null,
+                    null,
+                    0,
+                    null,
+                    null,
+                    0,
+                    issueReason,
+                    AnomalyConstants.STATUS_OPEN
             );
 
             String languageKey = localizationService.normalizeLanguageKey(
@@ -1099,6 +1155,22 @@ public class GlificMeterWorkflowService {
             return Optional.of(options.get(index));
         }
         return options.stream().filter(v -> v.equalsIgnoreCase(value)).findFirst();
+    }
+
+    private boolean shouldStoreIssueAsAnomaly(String selectedKey, String rawIssueReason, Set<String> anomalySelectionKeys) {
+        // Primary: selection key resolved from templates/config by index or label match.
+        if (selectedKey != null) {
+            String normalizedKey = selectedKey.trim();
+            if (anomalySelectionKeys.contains(normalizedKey)) {
+                return true;
+            }
+        }
+        // Fallback: raw numeric selection (legacy clients can send only the number).
+        if (rawIssueReason == null) {
+            return false;
+        }
+        String trimmed = rawIssueReason.trim();
+        return "2".equals(trimmed) || "3".equals(trimmed) || "5".equals(trimmed);
     }
 
     private String resolveIssueSelectionKey(String rawIssueReason,

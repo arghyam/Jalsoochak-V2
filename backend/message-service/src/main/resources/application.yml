@@ -31,6 +31,12 @@ spring:
         max.poll.interval.ms: 600000
         fetch.max.wait.ms: 500
 
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${KEYCLOAK_ISSUER_URI:https://jalsoochak.beehyv.com/keycloak/realms/jalsoochak-realm}
+
 # ──────────────────────────────────────────────────────────────
 # Notification Channel Credentials (to be provided later)
 # ──────────────────────────────────────────────────────────────
@@ -49,6 +55,10 @@ notification:
       from-address: "noreply@example.com"
       from-name: "Water Management Platform"
 
+keycloak:
+  realm: jalsoochak-realm
+  auth-server-url: https://jalsoochak.beehyv.com/keycloak
+  resource: jalsoochak-client-id
 
 eureka:
   client:
