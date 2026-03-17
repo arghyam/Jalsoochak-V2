@@ -39,7 +39,8 @@ public class SystemController {
     @Operation(summary = "Get system configurations", description = "Retrieves global platform settings. Super User only.")
     @ApiResponses(value = {
             @ApiResponse(responseCode = "200", description = "System configurations retrieved successfully"),
-            @ApiResponse(responseCode = "403", description = "Forbidden to access this resource"),
+            @ApiResponse(responseCode = "401", description = "Unauthorized — valid Bearer token required"),
+            @ApiResponse(responseCode = "403", description = "Forbidden — insufficient scope or role"),
             @ApiResponse(responseCode = "500", description = "Internal Server Error")
     })
     @PreAuthorize("hasRole('SUPER_USER')")
@@ -57,7 +58,8 @@ public class SystemController {
     @Operation(summary = "Set system configurations", description = "Updates global system settings. Super User only.")
     @ApiResponses(value = {
             @ApiResponse(responseCode = "200", description = "System configurations set successfully"),
-            @ApiResponse(responseCode = "403", description = "Forbidden to access this resource"),
+            @ApiResponse(responseCode = "401", description = "Unauthorized — valid Bearer token required"),
+            @ApiResponse(responseCode = "403", description = "Forbidden — insufficient scope or role"),
             @ApiResponse(responseCode = "500", description = "Internal Server Error")
     })
     @PreAuthorize("hasRole('SUPER_USER')")

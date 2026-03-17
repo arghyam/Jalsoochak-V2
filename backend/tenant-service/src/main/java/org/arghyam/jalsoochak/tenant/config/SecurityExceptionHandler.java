@@ -24,12 +24,15 @@ public class SecurityExceptionHandler implements AuthenticationEntryPoint, Acces
     @Override
     public void commence(HttpServletRequest request, HttpServletResponse response,
                          AuthenticationException authException) throws IOException {
+        response.setHeader("WWW-Authenticate", "Bearer realm=\"jalsoochak\"");
         writeError(response, HttpStatus.UNAUTHORIZED, "Authentication required");
     }
 
     @Override
     public void handle(HttpServletRequest request, HttpServletResponse response,
                        AccessDeniedException accessDeniedException) throws IOException {
+        response.setHeader("WWW-Authenticate",
+                "Bearer realm=\"jalsoochak\", error=\"insufficient_scope\", error_description=\"Insufficient scope for this resource\"");
         writeError(response, HttpStatus.FORBIDDEN, "Access denied");
     }
 
