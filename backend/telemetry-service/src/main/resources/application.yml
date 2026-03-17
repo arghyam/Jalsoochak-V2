@@ -1,5 +1,5 @@
 server:
-  port: 8088
+  port: 8089
 
 spring:
   config:
@@ -20,12 +20,6 @@ spring:
     properties:
       hibernate:
         dialect: org.hibernate.dialect.PostgreSQLDialect
-
-  security:
-    oauth2:
-      resourceserver:
-        jwt:
-          issuer-uri: ${KEYCLOAK_ISSUER_URI:https://jalsoochak.beehyv.com/keycloak/realms/jalsoochak-realm}
 
   kafka:
     bootstrap-servers: ${SPRING_KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
@@ -65,12 +59,12 @@ media-download:
     max-attempts: ${MEDIA_DOWNLOAD_RETRY_MAX_ATTEMPTS:3}
     initial-backoff-ms: ${MEDIA_DOWNLOAD_RETRY_INITIAL_BACKOFF_MS:300}
 
-keycloak:
-  realm: ${KEYCLOAK_REALM:jalsoochak-realm}
-  auth-server-url: ${KEYCLOAK_AUTH_SERVER_URL:https://jalsoochak.beehyv.com/keycloak}
-  resource: ${KEYCLOAK_CLIENT_ID:}
-  credentials:
-    secret: ${KEYCLOAK_CLIENT_SECRET:}
+#keycloak:
+#  realm: ${KEYCLOAK_REALM:jalsoochak-realm}
+#  auth-server-url: ${KEYCLOAK_AUTH_SERVER_URL:https://jalsoochak.beehyv.com/keycloak}
+#  resource: ${KEYCLOAK_CLIENT_ID:}
+#  credentials:
+#    secret: ${KEYCLOAK_CLIENT_SECRET:}
 
 eureka:
   client:
