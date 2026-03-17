@@ -18,6 +18,7 @@ import org.arghyam.jalsoochak.user.service.TenantStaffService;
 import org.arghyam.jalsoochak.user.util.SecurityUtils;
 import org.arghyam.jalsoochak.user.util.TenantSchemaResolver;
 import org.keycloak.representations.idm.UserRepresentation;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -37,6 +38,9 @@ public class TenantStaffServiceImpl implements TenantStaffService {
     private final UserCommonRepository userCommonRepository;
     private final KeycloakAdminHelper keycloakAdminHelper;
     private final KeycloakProvider keycloakProvider;
+
+    @Value("${staff.allowed-update-roles:SECTION_OFFICER,DISTRICT_OFFICER}")
+    private List<String> allowedUpdateRoles;
 
     @Override
     public PageResponseDTO<TenantStaffResponseDTO> listStaff(
@@ -74,9 +78,8 @@ public class TenantStaffServiceImpl implements TenantStaffService {
             throw new ForbiddenAccessException("State admin can only update staff within their own state");
         }
 
-        List<String> allowed = List.of("SECTION_OFFICER", "DISTRICT_OFFICER");
-        if (!allowed.contains(request.newRole())) {
-            throw new IllegalArgumentException("Role must be one of: " + allowed);
+        if (!allowedUpdateRoles.contains(request.newRole())) {
+            throw new IllegalArgumentException("Role must be one of: " + allowedUpdateRoles);
         }
 
         String schema = TenantSchemaResolver.requireSchemaNameFromTenantCode(request.tenantCode());
@@ -84,6 +87,9 @@ public class TenantStaffServiceImpl implements TenantStaffService {
                 .orElseThrow(() -> new ResourceNotFoundException("User not found: " + id));
 
         String currentRole = user.cName();
+        if (currentRole == null || currentRole.isBlank()) {
+            throw new IllegalArgumentException("Current user role is missing for user: " + id);
+        }
         if (Objects.equals(currentRole, request.newRole())) {
             throw new IllegalArgumentException("User already has role: " + request.newRole());
         }
@@ -115,6 +121,9 @@ public class TenantStaffServiceImpl implements TenantStaffService {
             if (rowsAffected == 0) {
                 throw new ResourceNotFoundException("User not found during role update: " + id);
             }
+
+            return tenantStaffRepository.findStaffById(schema, id)
+                    .orElseThrow(() -> new ResourceNotFoundException("Staff not found after update: " + id));
         } catch (Exception e) {
             try {
                 keycloakAdminHelper.assignRoleToUser(keycloakUuid, currentRole);
@@ -138,9 +147,6 @@ public class TenantStaffServiceImpl implements TenantStaffService {
             }
             throw e;
         }
-
-        return tenantStaffRepository.findStaffById(schema, id)
-                .orElseThrow(() -> new ResourceNotFoundException("Staff not found after update: " + id));
     }
 
     private int clampLimit(int limit) {
