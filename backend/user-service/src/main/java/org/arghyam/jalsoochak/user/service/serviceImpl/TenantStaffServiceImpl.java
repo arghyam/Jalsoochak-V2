@@ -110,12 +110,13 @@ public class TenantStaffServiceImpl implements TenantStaffService {
             keycloakAdminHelper.removeRoleFromUser(keycloakUuid, currentRole);
             keycloakAdminHelper.assignRoleToUser(keycloakUuid, request.newRole());
 
-            UserRepresentation rep = usersResource.get(keycloakUuid).toRepresentation();
+            var userResource = usersResource.get(keycloakUuid);
+            UserRepresentation rep = userResource.toRepresentation();
             Map<String, List<String>> attrs = new HashMap<>(
                     rep.getAttributes() != null ? rep.getAttributes() : Map.of());
             attrs.put("user_type", List.of(request.newRole()));
             rep.setAttributes(attrs);
-            usersResource.get(keycloakUuid).update(rep);
+            userResource.update(rep);
 
             int rowsAffected = userTenantRepository.updateUserRole(schema, id, newUserTypeId);
             if (rowsAffected == 0) {
@@ -136,12 +137,13 @@ public class TenantStaffServiceImpl implements TenantStaffService {
                 log.error("Compensation failed - removeRole {} for user {}: {}", request.newRole(), keycloakUuid, ce.getMessage(), ce);
             }
             try {
-                UserRepresentation rep = usersResource.get(keycloakUuid).toRepresentation();
+                var userResource = usersResource.get(keycloakUuid);
+                UserRepresentation rep = userResource.toRepresentation();
                 Map<String, List<String>> rollbackAttrs = new HashMap<>(
                         rep.getAttributes() != null ? rep.getAttributes() : Map.of());
                 rollbackAttrs.put("user_type", List.of(currentRole));
                 rep.setAttributes(rollbackAttrs);
-                usersResource.get(keycloakUuid).update(rep);
+                userResource.update(rep);
             } catch (Exception ce) {
                 log.error("Compensation failed - updateAttributes for user {}: {}", keycloakUuid, ce.getMessage(), ce);
             }

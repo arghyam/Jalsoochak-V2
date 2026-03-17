@@ -91,6 +91,9 @@ mail:
     email: ${MAIL_FROM_EMAIL:no-reply@example.com}
     name: ${MAIL_FROM_NAME:Jalsoochak}
 
+staff:
+  allowed-update-roles: SECTION_OFFICER,DISTRICT_OFFICER
+
 invite:
   expiry-hours: 24
 

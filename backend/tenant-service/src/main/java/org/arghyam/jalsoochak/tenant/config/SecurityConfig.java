@@ -20,6 +20,8 @@ import org.springframework.security.web.SecurityFilterChain;
 @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
 public class SecurityConfig {
 
+    private static final String[] SWAGGER_PATHS = {"/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html"};
+
     private final JwtAuthConverter jwtAuthConverter;
     private final Environment environment;
 
@@ -33,9 +35,9 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> {
                     auth.requestMatchers("/error", "/actuator/health/**", "/actuator/info").permitAll();
                     if (isProd) {
-                        auth.requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").authenticated();
+                        auth.requestMatchers(SWAGGER_PATHS).authenticated();
                     } else {
-                        auth.requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll();
+                        auth.requestMatchers(SWAGGER_PATHS).permitAll();
                     }
                     auth.anyRequest().authenticated();
                 })
