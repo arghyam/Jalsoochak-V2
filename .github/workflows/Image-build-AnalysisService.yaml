@@ -66,7 +66,7 @@ jobs:
           docker build --build-arg WORK_DIR="backend/analytics-service" -t $ECR_REGISTRY/analytics-service:$IMAGE_TAG -f build/maven/Dockerfile .
           docker push $ECR_REGISTRY/analytics-service:$IMAGE_TAG
       - name: Build and Push Docker image for analytics_DB
-        if: github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/main'
+        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev'
         run: |
           docker build -t $ECR_REGISTRY/analytics-service-db:$IMAGE_TAG  .
           docker tag $ECR_REGISTRY/analytics-service-db:$IMAGE_TAG $ECR_REGISTRY/analytics-service-db:$IMAGE_TAG
