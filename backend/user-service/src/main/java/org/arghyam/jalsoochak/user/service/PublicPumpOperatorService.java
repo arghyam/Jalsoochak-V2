@@ -4,6 +4,7 @@ import org.arghyam.jalsoochak.user.dto.response.PumpOperatorDetailsDTO;
 import org.arghyam.jalsoochak.user.dto.response.PumpOperatorReadingComplianceDTO;
 import org.arghyam.jalsoochak.user.dto.response.PumpOperatorReadingComplianceRowDTO;
 import org.arghyam.jalsoochak.user.dto.response.SchemePumpOperatorsDTO;
+import org.arghyam.jalsoochak.user.dto.common.PageResponseDTO;
 
 import java.util.List;
 
@@ -13,7 +14,7 @@ public interface PublicPumpOperatorService {
 
     PumpOperatorReadingComplianceDTO getReadingCompliance(String tenantCode, long pumpOperatorId);
 
-    List<PumpOperatorReadingComplianceRowDTO> listReadingCompliance(String tenantCode);
+    PageResponseDTO<PumpOperatorReadingComplianceRowDTO> listReadingCompliance(String tenantCode, int page, int size);
 
     List<SchemePumpOperatorsDTO> listPumpOperatorsByScheme(
             String tenantCode,

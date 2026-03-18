@@ -1,6 +1,7 @@
 package org.arghyam.jalsoochak.user.service.serviceImpl;
 
 import lombok.RequiredArgsConstructor;
+import org.arghyam.jalsoochak.user.dto.common.PageResponseDTO;
 import org.arghyam.jalsoochak.user.dto.response.PumpOperatorDetailsDTO;
 import org.arghyam.jalsoochak.user.dto.response.PumpOperatorReadingComplianceDTO;
 import org.arghyam.jalsoochak.user.dto.response.PumpOperatorReadingComplianceRowDTO;
@@ -41,9 +42,14 @@ public class PublicPumpOperatorServiceImpl implements PublicPumpOperatorService 
     }
 
     @Override
-    public List<PumpOperatorReadingComplianceRowDTO> listReadingCompliance(String tenantCode) {
+    public PageResponseDTO<PumpOperatorReadingComplianceRowDTO> listReadingCompliance(String tenantCode, int page, int size) {
         String schemaName = TenantSchemaResolver.requireSchemaNameFromTenantCode(tenantCode);
-        return publicPumpOperatorRepository.listReadingCompliance(schemaName);
+        int p = Math.max(0, page);
+        int effectiveSize = clampLimit(size);
+        int offset = p * effectiveSize;
+        List<PumpOperatorReadingComplianceRowDTO> rows = publicPumpOperatorRepository.listReadingCompliance(schemaName, offset, effectiveSize);
+        long total = publicPumpOperatorRepository.countReadingCompliance(schemaName);
+        return PageResponseDTO.of(rows, total, p, effectiveSize);
     }
 
     @Override
@@ -56,5 +62,12 @@ public class PublicPumpOperatorServiceImpl implements PublicPumpOperatorService 
     ) {
         String schemaName = TenantSchemaResolver.requireSchemaNameFromTenantCode(tenantCode);
         return publicPumpOperatorRepository.listPumpOperatorsByScheme(schemaName, schemeIds, schemeName, page, size);
+    }
+
+    private int clampLimit(int limit) {
+        if (limit < 1) {
+            return 1;
+        }
+        return Math.min(limit, 100);
     }
 }
