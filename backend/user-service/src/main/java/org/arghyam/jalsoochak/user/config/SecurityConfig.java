@@ -5,6 +5,8 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.env.Environment;
+import org.springframework.core.env.Profiles;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
@@ -25,6 +27,7 @@ import java.util.stream.Collectors;
 public class SecurityConfig {
 
     private final JwtAuthConverter jwtAuthConverter;
+    private final Environment environment;
 
     @Value("${cors.allowed-origins}")
     private String allowedOrigins;
@@ -52,39 +55,43 @@ public class SecurityConfig {
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+        boolean isProd = environment.acceptsProfiles(Profiles.of("prod"));
+
         http
                 .csrf(AbstractHttpConfigurer::disable)
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                .authorizeHttpRequests(auth -> auth
-                        .requestMatchers(
-                                "/api/v1/auth/login",
-                                "/api/v1/auth/refresh",
-                                "/api/v1/auth/logout",
-                                "/api/v1/auth/invite/info",
-                                "/api/v1/auth/activate-account",
-                                "/api/v1/pumpoperator/**",
-                                "/api/v1/tenant/user/staff",
-                                "/api/v1/tenant/user/staff/counts/by-role",
-                                "/api/v1/auth/forgot-password",
-                                "/api/v1/auth/reset-password",
-                                // Public (no-auth) endpoints
-                                "/api/v1/public/**",
-                                // Tenant staff endpoints (no-auth; tenantCode param required)
-                                "/api/v1/tenant/staff",
-                                "/api/v1/tenant/staff/counts/by-role",
-                                // Upload endpoint is authorized via UploadAuthService (JWT validation + role check),
-                                // not via Spring Security's JwtDecoder (which may require network access to Keycloak).
-                                "/api/v1/state-admin/pump-operators/upload",
-                                "/v3/api-docs/**",
-                                "/swagger-ui/**",
-                                "/swagger-ui.html",
-                                "/error",
-                                "/actuator/health",
-                                "/actuator/info")
-                        .permitAll()
-                        .anyRequest()
-                        .authenticated())
+                .authorizeHttpRequests(auth -> {
+                    auth.requestMatchers(
+                                    "/api/v1/auth/login",
+                                    "/api/v1/auth/refresh",
+                                    "/api/v1/auth/logout",
+                                    "/api/v1/auth/invite/info",
+                                    "/api/v1/auth/activate-account",
+                                    "/api/v1/pumpoperator/**",
+                                    "/api/v1/tenant/user/staff",
+                                    "/api/v1/tenant/user/staff/counts/by-role",
+                                    "/api/v1/auth/forgot-password",
+                                    "/api/v1/auth/reset-password",
+                                    // Public (no-auth) endpoints
+                                    "/api/v1/public/**",
+                                    // Tenant staff endpoints (no-auth; tenantCode param required)
+                                    "/api/v1/tenant/staff",
+                                    "/api/v1/tenant/staff/counts/by-role",
+                                    // Upload endpoint is authorized via UploadAuthService (JWT validation + role check),
+                                    // not via Spring Security's JwtDecoder (which may require network access to Keycloak).
+                                    "/api/v1/state-admin/pump-operators/upload",
+                                    "/error",
+                                    "/actuator/health",
+                                    "/actuator/info")
+                            .permitAll();
+                    if (isProd) {
+                        auth.requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").authenticated();
+                    } else {
+                        auth.requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll();
+                    }
+                    auth.anyRequest().authenticated();
+                })
                 .oauth2ResourceServer(oauth -> oauth
                         .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthConverter)));
 

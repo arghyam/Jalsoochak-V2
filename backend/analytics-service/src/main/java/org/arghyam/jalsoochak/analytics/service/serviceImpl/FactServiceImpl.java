@@ -1,5 +1,6 @@
 package org.arghyam.jalsoochak.analytics.service.serviceImpl;
 
+import org.arghyam.jalsoochak.analytics.constant.EscalationType;
 import org.arghyam.jalsoochak.analytics.dto.event.EscalationEvent;
 import org.arghyam.jalsoochak.analytics.dto.event.MeterReadingEvent;
 import org.arghyam.jalsoochak.analytics.dto.event.SchemePerformanceEvent;
@@ -21,11 +22,11 @@ import org.arghyam.jalsoochak.analytics.service.FactService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
@@ -153,12 +154,12 @@ public class FactServiceImpl implements FactService {
                 continue;
             }
             if (op.getUserId() == null) {
-                log.warn("Skipping operator escalation row — userId is null (correlationId={})", op.getCorrelationId());
+                log.warn("Skipping operator escalation row — userId is null (schemeId={}, tenant={})", op.getSchemeId(), event.getTenantId());
                 continue;
             }
             boolean neverUploaded = LAST_RECORDED_BFM_DATE_NEVER.equalsIgnoreCase(op.getLastRecordedBfmDate());
             if (op.getConsecutiveDaysMissed() == null && !neverUploaded) {
-                log.warn("Skipping operator escalation row — consecutiveDaysMissed is null (correlationId={})", op.getCorrelationId());
+                log.warn("Skipping operator escalation row — consecutiveDaysMissed is null (schemeId={}, tenant={})", op.getSchemeId(), event.getTenantId());
                 continue;
             }
 
@@ -170,28 +171,39 @@ public class FactServiceImpl implements FactService {
             } catch (NumberFormatException e) {
                 log.warn("Could not parse schemeId '{}' for operator row", op.getSchemeId());
             }
+            if (schemeId == null) {
+                log.warn("Skipping operator escalation row — schemeId is null/invalid (schemeId='{}', tenant={})", op.getSchemeId(), event.getTenantId());
+                continue;
+            }
+
+            // Same correlation ID for both tables — allows joining fact_escalation and anomaly on the same event
+            String correlationId = buildCorrelationId(EscalationType.NO_SUBMISSION, op.getUserId(), event.getTenantId(), schemeId);
 
             // Idempotency: delegate to the DB unique constraint; catch duplicate-key on concurrent delivery
-            String escalationMessage = neverUploaded
-                    ? op.getName() + " has never submitted a reading"
-                    : op.getName() + " has not submitted for " + op.getConsecutiveDaysMissed() + " consecutive days";
-            try {
-                FactEscalation escalationFact = FactEscalation.builder()
-                        .tenantId(event.getTenantId())
-                        .schemeId(schemeId)
-                        .escalationType(1) // NO_SUBMISSION
-                        .message(escalationMessage)
-                        .correlationId(op.getCorrelationId())
-                        .userId(op.getUserId())
-                        .resolutionStatus(1) // UNRESOLVED
-                        .remark(null)
-                        .createdAt(now.toLocalDateTime())
-                        .updatedAt(now.toLocalDateTime())
-                        .build();
-                escalationRepository.save(escalationFact);
-                escalationRowsCreated++;
-            } catch (DuplicateKeyException e) {
-                log.debug("Skipping duplicate fact_escalation for correlationId={}", op.getCorrelationId());
+            if (event.getOfficerId() == null) {
+                log.warn("Skipping fact_escalation row — officerId is null (schemeId={}, tenant={})", schemeId, event.getTenantId());
+            } else {
+                String escalationMessage = neverUploaded
+                        ? op.getName() + " has never submitted a reading"
+                        : op.getName() + " has not submitted for " + op.getConsecutiveDaysMissed() + " consecutive days";
+                try {
+                    FactEscalation escalationFact = FactEscalation.builder()
+                            .tenantId(event.getTenantId())
+                            .schemeId(schemeId)
+                            .escalationType(EscalationType.NO_SUBMISSION.code)
+                            .message(escalationMessage)
+                            .correlationId(correlationId)
+                            .userId(event.getOfficerId().intValue())
+                            .resolutionStatus(1) // UNRESOLVED
+                            .remark(null)
+                            .createdAt(now.toLocalDateTime())
+                            .updatedAt(now.toLocalDateTime())
+                            .build();
+                    escalationRepository.save(escalationFact);
+                    escalationRowsCreated++;
+                } catch (DataIntegrityViolationException e) {
+                    log.debug("Skipping duplicate fact_escalation for correlationId={}", correlationId);
+                }
             }
 
             LocalDate previousReadingDate = null;
@@ -208,7 +220,7 @@ public class FactServiceImpl implements FactService {
             try {
                 Anomaly anomaly = Anomaly.builder()
                         .uuid(UUID.randomUUID().toString())
-                        .type(6) // NO_SUBMISSION
+                        .type(EscalationType.NO_SUBMISSION.code)
                         .userId(op.getUserId())
                         .schemeId(schemeId)
                         .tenantId(event.getTenantId())
@@ -217,14 +229,14 @@ public class FactServiceImpl implements FactService {
                         .consecutiveDaysMissed(op.getConsecutiveDaysMissed())
                         .reason(anomalyReason)
                         .status(1) // OPEN
-                        .correlationId(op.getCorrelationId())
+                        .correlationId(correlationId)
                         .createdAt(now)
                         .updatedAt(now)
                         .build();
                 anomalyRepository.save(anomaly);
                 anomalyRowsCreated++;
-            } catch (DuplicateKeyException e) {
-                log.debug("Skipping duplicate anomaly for correlationId={}", op.getCorrelationId());
+            } catch (DataIntegrityViolationException e) {
+                log.debug("Skipping duplicate anomaly for correlationId={}", correlationId);
             }
         }
         log.info("Processed {} operators for tenant={}: {} escalation rows, {} anomaly rows created (of {} total)",
@@ -275,6 +287,22 @@ public class FactServiceImpl implements FactService {
             log.warn("Could not parse date '{}', falling back to today", value);
             return LocalDate.now();
         }
+    }
+
+    /**
+     * Builds a deterministic correlation ID for an anomaly event.
+     * <ul>
+     *   <li>Water anomalies ({@link EscalationType#WATER_ANOMALIES}): keyed on {@code tenantId:schemeId:type}
+     *       — one record per supply event regardless of which user reported it.</li>
+     *   <li>User anomalies ({@link EscalationType#USER_ANOMALIES}): keyed on {@code userId:tenantId:schemeId:type}
+     *       — distinct per operator so concurrent violations from different users are not collapsed.</li>
+     * </ul>
+     */
+    String buildCorrelationId(EscalationType type, Integer userId, Integer tenantId, Integer schemeId) {
+        String key = EscalationType.USER_ANOMALIES.contains(type)
+                ? userId + ":" + tenantId + ":" + schemeId + ":" + type.label
+                : tenantId + ":" + schemeId + ":" + type.label;
+        return UUID.nameUUIDFromBytes(key.getBytes(StandardCharsets.UTF_8)).toString();
     }
 
     private LocalDate parseDateOrNull(String value) {

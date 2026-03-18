@@ -1,5 +1,6 @@
 package org.arghyam.jalsoochak.analytics.service.serviceImpl;
 
+import org.arghyam.jalsoochak.analytics.constant.EscalationType;
 import org.arghyam.jalsoochak.analytics.dto.event.EscalationEvent;
 import org.arghyam.jalsoochak.analytics.dto.event.MeterReadingEvent;
 import org.arghyam.jalsoochak.analytics.dto.event.SchemePerformanceEvent;
@@ -160,13 +161,14 @@ class FactServiceImplTest {
 
         ArgumentCaptor<FactEscalation> escCaptor = ArgumentCaptor.forClass(FactEscalation.class);
         verify(escalationRepository, times(1)).save(escCaptor.capture());
-        assertThat(escCaptor.getValue().getUserId()).isEqualTo(21);
+        assertThat(escCaptor.getValue().getUserId()).isEqualTo(99); // officerId
         assertThat(escCaptor.getValue().getSchemeId()).isEqualTo(11);
-        assertThat(escCaptor.getValue().getCorrelationId()).isEqualTo("corr-1");
+        assertThat(escCaptor.getValue().getCorrelationId())
+                .isEqualTo(service.buildCorrelationId(EscalationType.NO_SUBMISSION, 21, 1, 11));
 
         ArgumentCaptor<Anomaly> anomalyCaptor = ArgumentCaptor.forClass(Anomaly.class);
         verify(anomalyRepository, times(1)).save(anomalyCaptor.capture());
-        assertThat(anomalyCaptor.getValue().getUserId()).isEqualTo(21);
+        assertThat(anomalyCaptor.getValue().getUserId()).isEqualTo(21); // operator userId
         assertThat(anomalyCaptor.getValue().getConsecutiveDaysMissed()).isEqualTo(5);
     }
 
@@ -207,10 +209,10 @@ class FactServiceImplTest {
     void ingestTenantEscalation_duplicateUniqueConstraintIsSwallowed() {
         TenantEscalationEvent event = buildEscalationEvent(buildOp(21, 5, "corr-dup", "11"));
         when(dimTenantRepository.existsById(1)).thenReturn(true);
-        when(escalationRepository.save(any())).thenThrow(new DuplicateKeyException("duplicate key"));
-        when(anomalyRepository.save(any())).thenThrow(new DuplicateKeyException("duplicate key"));
+        when(escalationRepository.save(any())).thenThrow(new DataIntegrityViolationException("duplicate key"));
+        when(anomalyRepository.save(any())).thenThrow(new DataIntegrityViolationException("duplicate key"));
 
-        // Both saves throw DuplicateKeyException; method must complete without propagating
+        // Both saves throw DataIntegrityViolationException (real JPA behavior); both must be swallowed
         service.ingestTenantEscalation(event);
 
         verify(escalationRepository, times(1)).save(any());
@@ -218,24 +220,23 @@ class FactServiceImplTest {
     }
 
     @Test
-    void ingestTenantEscalation_nonDuplicateDataIntegrityIsPropagated() {
+    void ingestTenantEscalation_unexpectedRuntimeException_propagates() {
         TenantEscalationEvent event = buildEscalationEvent(buildOp(21, 5, "corr-fk", "11"));
         when(dimTenantRepository.existsById(1)).thenReturn(true);
-        when(escalationRepository.save(any())).thenThrow(new DataIntegrityViolationException("foreign key violation"));
+        when(escalationRepository.save(any())).thenThrow(new RuntimeException("unexpected db error"));
 
-        assertThrows(DataIntegrityViolationException.class, () -> service.ingestTenantEscalation(event));
+        assertThrows(RuntimeException.class, () -> service.ingestTenantEscalation(event));
     }
 
     @Test
-    void ingestTenantEscalation_invalidSchemeId_doesNotThrow() {
+    void ingestTenantEscalation_invalidSchemeId_skipsRow() {
         TenantEscalationEvent event = buildEscalationEvent(buildOp(21, 5, "corr-3", "not-a-number"));
         when(dimTenantRepository.existsById(1)).thenReturn(true);
 
         service.ingestTenantEscalation(event);
 
-        ArgumentCaptor<FactEscalation> captor = ArgumentCaptor.forClass(FactEscalation.class);
-        verify(escalationRepository, times(1)).save(captor.capture());
-        assertThat(captor.getValue().getSchemeId()).isNull();
+        verify(escalationRepository, never()).save(any());
+        verify(anomalyRepository, never()).save(any());
     }
 
     @Test
@@ -248,7 +249,8 @@ class FactServiceImplTest {
 
         ArgumentCaptor<FactEscalation> escCaptor = ArgumentCaptor.forClass(FactEscalation.class);
         verify(escalationRepository, times(1)).save(escCaptor.capture());
-        assertThat(escCaptor.getValue().getCorrelationId()).isEqualTo("corr-never");
+        assertThat(escCaptor.getValue().getCorrelationId())
+                .isEqualTo(service.buildCorrelationId(EscalationType.NO_SUBMISSION, 21, 1, 11));
         assertThat(escCaptor.getValue().getMessage()).contains("never submitted");
 
         ArgumentCaptor<Anomaly> anomalyCaptor = ArgumentCaptor.forClass(Anomaly.class);

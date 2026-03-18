@@ -19,19 +19,16 @@ JalSoochak V2 is a water management platform built as a multi-module Spring Boot
 ### Build
 
 > **Important:** If your system Maven uses a JDK newer than 21 (e.g. Homebrew OpenJDK 25),
-> Lombok annotation processing will fail with `TypeTag :: UNKNOWN`. Always point Maven at Java 21:
-> ```bash
-> export JAVA_HOME=/Users/vinci/Library/Java/JavaVirtualMachines/ms-21.0.10/Contents/Home
-> ```
-> Add this to your shell profile or prefix every `mvn` command with the override.
+> Lombok annotation processing will fail with `TypeTag :: UNKNOWN`. Always point Maven at Java 21
+> by setting `JAVA_HOME` to your local JDK 21 path and adding it to your shell profile.
 
 ```bash
 # Build a single service (skip tests)
 cd backend/<service-name>
-JAVA_HOME=/Users/vinci/Library/Java/JavaVirtualMachines/ms-21.0.10/Contents/Home mvn clean package -DskipTests
+mvn clean package -DskipTests
 
 # Run a service locally
-JAVA_HOME=/Users/vinci/Library/Java/JavaVirtualMachines/ms-21.0.10/Contents/Home mvn spring-boot:run
+mvn spring-boot:run
 
 # Run via JAR
 java -jar target/<service-name>-*.jar
@@ -40,15 +37,14 @@ java -jar target/<service-name>-*.jar
 ### Tests
 
 ```bash
-# Run tests for a service (prefix JAVA_HOME if Maven defaults to JDK > 21)
-JAVA_HOME=/Users/vinci/Library/Java/JavaVirtualMachines/ms-21.0.10/Contents/Home \
-  mvn test -pl backend/<service-name>
+# Run tests for a service
+mvn test -pl backend/<service-name>
 
 # Run a single test class
-JAVA_HOME=... mvn test -Dtest=ClassName
+mvn test -Dtest=ClassName
 
 # Run a single test method
-JAVA_HOME=... mvn test -Dtest=ClassName#methodName
+mvn test -Dtest=ClassName#methodName
 ```
 
 ### Infrastructure Setup
