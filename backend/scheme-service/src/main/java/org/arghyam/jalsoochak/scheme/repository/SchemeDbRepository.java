@@ -3,6 +3,7 @@ package org.arghyam.jalsoochak.scheme.repository;
 import lombok.RequiredArgsConstructor;
 import org.arghyam.jalsoochak.scheme.dto.SchemeDTO;
 import org.arghyam.jalsoochak.scheme.dto.SchemeMappingDTO;
+import org.arghyam.jalsoochak.scheme.dto.CodeCountDTO;
 import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.jdbc.core.BatchPreparedStatementSetter;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -331,6 +332,47 @@ public class SchemeDbRepository {
 
         return jdbcTemplate.queryForObject(sql, (rs, rowNum) ->
                 new SchemeCounts(rs.getLong("active"), rs.getLong("inactive")));
+    }
+
+    public long countSchemesTotal(String schemaName) {
+        validateSchemaName(schemaName);
+        String sql = String.format("""
+                SELECT COUNT(1)
+                FROM %s.scheme_master_table
+                WHERE deleted_at IS NULL
+                """, schemaName);
+        Long total = jdbcTemplate.queryForObject(sql, Long.class);
+        return total == null ? 0 : total;
+    }
+
+    public List<CodeCountDTO> countSchemesByWorkStatus(String schemaName) {
+        validateSchemaName(schemaName);
+        String sql = String.format("""
+                SELECT work_status AS code, COUNT(1) AS cnt
+                FROM %s.scheme_master_table
+                WHERE deleted_at IS NULL
+                GROUP BY work_status
+                ORDER BY work_status
+                """, schemaName);
+        return jdbcTemplate.query(sql, (rs, rowNum) -> CodeCountDTO.builder()
+                .code(rs.getInt("code"))
+                .count(rs.getLong("cnt"))
+                .build());
+    }
+
+    public List<CodeCountDTO> countSchemesByOperatingStatus(String schemaName) {
+        validateSchemaName(schemaName);
+        String sql = String.format("""
+                SELECT operating_status AS code, COUNT(1) AS cnt
+                FROM %s.scheme_master_table
+                WHERE deleted_at IS NULL
+                GROUP BY operating_status
+                ORDER BY operating_status
+                """, schemaName);
+        return jdbcTemplate.query(sql, (rs, rowNum) -> CodeCountDTO.builder()
+                .code(rs.getInt("code"))
+                .count(rs.getLong("cnt"))
+                .build());
     }
 
     public boolean existsSchemeById(String schemaName, Integer schemeId) {
