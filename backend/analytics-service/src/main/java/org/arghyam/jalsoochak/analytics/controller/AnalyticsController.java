@@ -7,6 +7,7 @@ import org.arghyam.jalsoochak.analytics.entity.FactMeterReading;
 import org.arghyam.jalsoochak.analytics.entity.FactSchemePerformance;
 import org.arghyam.jalsoochak.analytics.dto.response.AverageSchemeRegularityResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.AverageWaterSupplyResponse;
+import org.arghyam.jalsoochak.analytics.dto.response.NonSubmissionReasonSchemeCountResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.NationalDashboardResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.OutageReasonSchemeCountResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.PeriodicWaterQuantityResponse;
@@ -15,6 +16,7 @@ import org.arghyam.jalsoochak.analytics.dto.response.ReadingSubmissionRateRespon
 import org.arghyam.jalsoochak.analytics.dto.response.SchemeRegularityListResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.SchemeStatusAndTopReportingResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.TenantDetailsResponse;
+import org.arghyam.jalsoochak.analytics.dto.response.UserNonSubmissionReasonSchemeCountResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.UserOutageReasonSchemeCountResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.UserSubmissionStatusResponse;
 import org.arghyam.jalsoochak.analytics.enums.PeriodScale;
@@ -266,6 +268,38 @@ public class AnalyticsController {
             @RequestParam(name = "end_date") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
         return ResponseEntity.ok(
                 schemeRegularityService.getOutageReasonSchemeCountByUser(userId, startDate, endDate));
+    }
+
+    @GetMapping("/non-submission-reasons")
+    @Operation(summary = "Get non submission reason wise scheme count for an LGD or department area")
+    public ResponseEntity<NonSubmissionReasonSchemeCountResponse> getNonSubmissionReasonWiseSchemeCount(
+            @RequestParam(name = "start_date") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam(name = "end_date") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
+            @RequestParam(name = "parent_lgd_id", required = false) Integer parentLgdId,
+            @RequestParam(name = "parent_department_id", required = false) Integer parentDepartmentId) {
+        if (parentLgdId != null && parentDepartmentId != null) {
+            throw new IllegalArgumentException("Provide either parent_lgd_id or parent_department_id, not both");
+        }
+        if (parentLgdId == null && parentDepartmentId == null) {
+            throw new IllegalArgumentException("Provide either parent_lgd_id or parent_department_id");
+        }
+        if (parentLgdId != null) {
+            return ResponseEntity.ok(
+                    schemeRegularityService.getNonSubmissionReasonSchemeCountByLgd(parentLgdId, startDate, endDate));
+        }
+        return ResponseEntity.ok(
+                schemeRegularityService.getNonSubmissionReasonSchemeCountByDepartment(
+                        parentDepartmentId, startDate, endDate));
+    }
+
+    @GetMapping("/non-submission-reasons/user")
+    @Operation(summary = "Get non submission reason wise scheme count for a user")
+    public ResponseEntity<UserNonSubmissionReasonSchemeCountResponse> getNonSubmissionReasonWiseSchemeCountByUser(
+            @RequestParam(name = "user_id") Integer userId,
+            @RequestParam(name = "start_date") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam(name = "end_date") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
+        return ResponseEntity.ok(
+                schemeRegularityService.getNonSubmissionReasonSchemeCountByUser(userId, startDate, endDate));
     }
 
     @GetMapping("/submission-status/user")

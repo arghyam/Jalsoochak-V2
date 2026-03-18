@@ -4,10 +4,12 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.arghyam.jalsoochak.analytics.dto.response.AverageSchemeRegularityResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.AverageWaterSupplyResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.NationalDashboardResponse;
+import org.arghyam.jalsoochak.analytics.dto.response.NonSubmissionReasonSchemeCountResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.OutageReasonSchemeCountResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.PeriodicWaterQuantityResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.ReadingSubmissionRateResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.SchemeRegularityListResponse;
+import org.arghyam.jalsoochak.analytics.dto.response.UserNonSubmissionReasonSchemeCountResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.UserOutageReasonSchemeCountResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.UserSubmissionStatusResponse;
 import org.arghyam.jalsoochak.analytics.entity.DimTenant;
@@ -536,6 +538,84 @@ class SchemeRegularityServiceImplTest {
         assertThat(response.getDailyOutageReasonDistribution().get(1).getOutageReasonSchemeCount())
                 .containsEntry("motor_burnt", 2);
         assertThat(response.getDailyOutageReasonDistribution().get(2).getOutageReasonSchemeCount()).isEmpty();
+    }
+
+    @Test
+    void getNonSubmissionReasonSchemeCountByLgd_usesTableReasonValues() {
+        when(schemeRegularityRepository.getLgdLevel(101)).thenReturn(3);
+        when(schemeRegularityRepository.getNonSubmissionReasonSchemeCountByLgd(101, START, END))
+                .thenReturn(List.of(new SchemeRegularityRepository.NonSubmissionReasonSchemeCount("no_operator", 4)));
+        when(schemeRegularityRepository.getChildRegionsByLgd(101))
+                .thenReturn(List.of(
+                        new SchemeRegularityRepository.ChildRegionRef(401, null, "Village A"),
+                        new SchemeRegularityRepository.ChildRegionRef(402, null, "Village B")
+                ));
+        when(schemeRegularityRepository.getChildNonSubmissionReasonSchemeCountByLgd(101, START, END))
+                .thenReturn(List.of(
+                        new SchemeRegularityRepository.ChildRegionNonSubmissionReasonSchemeCount(
+                                401, null, "app_issue", 2),
+                        new SchemeRegularityRepository.ChildRegionNonSubmissionReasonSchemeCount(
+                                999, null, "network_issue", 5)
+                ));
+
+        NonSubmissionReasonSchemeCountResponse response =
+                service.getNonSubmissionReasonSchemeCountByLgd(101, START, END);
+
+        assertThat(response.getNonSubmissionReasonSchemeCount())
+                .containsExactlyEntriesOf(Map.of("no_operator", 4));
+        assertThat(response.getChildRegions()).hasSize(2);
+        assertThat(response.getChildRegions().get(0).getNonSubmissionReasonSchemeCount())
+                .containsExactlyEntriesOf(Map.of("app_issue", 2));
+        assertThat(response.getChildRegions().get(1).getNonSubmissionReasonSchemeCount())
+                .isEmpty();
+    }
+
+    @Test
+    void getNonSubmissionReasonSchemeCountByDepartment_mapsReasonAndChildRows() {
+        when(schemeRegularityRepository.getDepartmentLevel(201)).thenReturn(2);
+        when(schemeRegularityRepository.getNonSubmissionReasonSchemeCountByDepartment(201, START, END))
+                .thenReturn(List.of(new SchemeRegularityRepository.NonSubmissionReasonSchemeCount("device_issue", 3)));
+        when(schemeRegularityRepository.getChildRegionsByDepartment(201))
+                .thenReturn(List.of(new SchemeRegularityRepository.ChildRegionRef(null, 501, "Dept-A")));
+        when(schemeRegularityRepository.getChildNonSubmissionReasonSchemeCountByDepartment(201, START, END))
+                .thenReturn(List.of(new SchemeRegularityRepository.ChildRegionNonSubmissionReasonSchemeCount(
+                        null, 501, "operator_absent", 4
+                )));
+
+        NonSubmissionReasonSchemeCountResponse response =
+                service.getNonSubmissionReasonSchemeCountByDepartment(201, START, END);
+
+        assertThat(response.getDepartmentId()).isEqualTo(201);
+        assertThat(response.getNonSubmissionReasonSchemeCount()).containsExactlyEntriesOf(Map.of("device_issue", 3));
+        assertThat(response.getChildRegions()).hasSize(1);
+        assertThat(response.getChildRegions().getFirst().getNonSubmissionReasonSchemeCount())
+                .containsEntry("operator_absent", 4);
+    }
+
+    @Test
+    void getNonSubmissionReasonSchemeCountByUser_returnsReasonCountsFromTableValues() {
+        when(schemeRegularityRepository.getNonSubmissionReasonSchemeCountByUser(11, START, END))
+                .thenReturn(List.of(new SchemeRegularityRepository.NonSubmissionReasonSchemeCount("device_issue", 2)));
+        when(schemeRegularityRepository.getDailyNonSubmissionReasonSchemeCountByUser(11, START, END))
+                .thenReturn(List.of(
+                        new SchemeRegularityRepository.DailyNonSubmissionReasonSchemeCount(START, "network_issue", 1),
+                        new SchemeRegularityRepository.DailyNonSubmissionReasonSchemeCount(START.plusDays(1), "device_issue", 2)
+                ));
+        when(schemeRegularityRepository.getSchemeCountByUser(11)).thenReturn(2);
+
+        UserNonSubmissionReasonSchemeCountResponse response =
+                service.getNonSubmissionReasonSchemeCountByUser(11, START, END);
+
+        assertThat(response.getUserId()).isEqualTo(11);
+        assertThat(response.getSchemeCount()).isEqualTo(2);
+        assertThat(response.getNonSubmissionReasonSchemeCount())
+                .containsExactlyEntriesOf(Map.of("device_issue", 2));
+        assertThat(response.getDailyNonSubmissionReasonDistribution()).hasSize(3);
+        assertThat(response.getDailyNonSubmissionReasonDistribution().get(0).getNonSubmissionReasonSchemeCount())
+                .containsEntry("network_issue", 1);
+        assertThat(response.getDailyNonSubmissionReasonDistribution().get(1).getNonSubmissionReasonSchemeCount())
+                .containsEntry("device_issue", 2);
+        assertThat(response.getDailyNonSubmissionReasonDistribution().get(2).getNonSubmissionReasonSchemeCount()).isEmpty();
     }
 
     @Test

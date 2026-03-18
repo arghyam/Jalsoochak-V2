@@ -4,8 +4,7 @@ import java.util.Arrays;
 
 public enum SubmissionStatus {
     SUBMITTED(1),
-    NOT_SUBMITTED(2),
-    PENDING(3);
+    NOT_SUBMITTED(0);
 
     private final int code;
 

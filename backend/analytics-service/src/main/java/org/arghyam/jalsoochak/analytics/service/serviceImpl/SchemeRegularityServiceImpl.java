@@ -2,6 +2,7 @@ package org.arghyam.jalsoochak.analytics.service.serviceImpl;
 
 import org.arghyam.jalsoochak.analytics.dto.response.AverageSchemeRegularityResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.AverageWaterSupplyResponse;
+import org.arghyam.jalsoochak.analytics.dto.response.NonSubmissionReasonSchemeCountResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.NationalDashboardResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.OutageReasonSchemeCountResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.PeriodicWaterQuantityResponse;
@@ -9,6 +10,7 @@ import org.arghyam.jalsoochak.analytics.dto.response.RegionWiseWaterQuantityResp
 import org.arghyam.jalsoochak.analytics.dto.response.ReadingSubmissionRateResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.SchemeRegularityListResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.SchemeStatusAndTopReportingResponse;
+import org.arghyam.jalsoochak.analytics.dto.response.UserNonSubmissionReasonSchemeCountResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.UserOutageReasonSchemeCountResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.UserSubmissionStatusResponse;
 import org.arghyam.jalsoochak.analytics.enums.PeriodScale;
@@ -1190,6 +1192,120 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
     }
 
     @Override
+    public NonSubmissionReasonSchemeCountResponse getNonSubmissionReasonSchemeCountByLgd(
+            Integer parentLgdId, LocalDate startDate, LocalDate endDate) {
+        validateLgdInput(parentLgdId);
+        validateDateRange(startDate, endDate);
+        Integer parentLgdLevel = schemeRegularityRepository.getLgdLevel(parentLgdId);
+        if (parentLgdLevel == null) {
+            throw new IllegalArgumentException("parent_lgd_id not found in dim_lgd_location_table: " + parentLgdId);
+        }
+
+        List<SchemeRegularityRepository.NonSubmissionReasonSchemeCount> rows =
+                schemeRegularityRepository.getNonSubmissionReasonSchemeCountByLgd(
+                        parentLgdId, startDate, endDate);
+        List<SchemeRegularityRepository.ChildRegionRef> childRegions =
+                schemeRegularityRepository.getChildRegionsByLgd(parentLgdId);
+        List<SchemeRegularityRepository.ChildRegionNonSubmissionReasonSchemeCount> childRows =
+                schemeRegularityRepository.getChildNonSubmissionReasonSchemeCountByLgd(
+                        parentLgdId, startDate, endDate);
+
+        return NonSubmissionReasonSchemeCountResponse.builder()
+                .lgdId(parentLgdId)
+                .departmentId(null)
+                .startDate(startDate)
+                .endDate(endDate)
+                .parentLgdLevel(parentLgdLevel)
+                .parentDepartmentLevel(null)
+                .nonSubmissionReasonSchemeCount(buildNonSubmissionReasonCountMap(rows))
+                .childRegionCount(childRegions.size())
+                .childRegions(buildChildNonSubmissionRegions(
+                        childRegions,
+                        childRows,
+                        SchemeRegularityRepository.ChildRegionNonSubmissionReasonSchemeCount::lgdId))
+                .build();
+    }
+
+    @Override
+    public NonSubmissionReasonSchemeCountResponse getNonSubmissionReasonSchemeCountByDepartment(
+            Integer parentDepartmentId, LocalDate startDate, LocalDate endDate) {
+        validateDepartmentInput(parentDepartmentId);
+        validateDateRange(startDate, endDate);
+        Integer parentDepartmentLevel = schemeRegularityRepository.getDepartmentLevel(parentDepartmentId);
+        if (parentDepartmentLevel == null) {
+            throw new IllegalArgumentException(
+                    "parent_department_id not found in dim_department_location_table: " + parentDepartmentId);
+        }
+
+        List<SchemeRegularityRepository.NonSubmissionReasonSchemeCount> rows =
+                schemeRegularityRepository.getNonSubmissionReasonSchemeCountByDepartment(
+                        parentDepartmentId, startDate, endDate);
+        List<SchemeRegularityRepository.ChildRegionRef> childRegions =
+                schemeRegularityRepository.getChildRegionsByDepartment(parentDepartmentId);
+        List<SchemeRegularityRepository.ChildRegionNonSubmissionReasonSchemeCount> childRows =
+                schemeRegularityRepository.getChildNonSubmissionReasonSchemeCountByDepartment(
+                        parentDepartmentId, startDate, endDate);
+
+        return NonSubmissionReasonSchemeCountResponse.builder()
+                .lgdId(null)
+                .departmentId(parentDepartmentId)
+                .startDate(startDate)
+                .endDate(endDate)
+                .parentLgdLevel(null)
+                .parentDepartmentLevel(parentDepartmentLevel)
+                .nonSubmissionReasonSchemeCount(buildNonSubmissionReasonCountMap(rows))
+                .childRegionCount(childRegions.size())
+                .childRegions(buildChildNonSubmissionRegions(
+                        childRegions,
+                        childRows,
+                        SchemeRegularityRepository.ChildRegionNonSubmissionReasonSchemeCount::departmentId))
+                .build();
+    }
+
+    @Override
+    public UserNonSubmissionReasonSchemeCountResponse getNonSubmissionReasonSchemeCountByUser(
+            Integer userId, LocalDate startDate, LocalDate endDate) {
+        validateUserInput(userId);
+        validateDateRange(startDate, endDate);
+
+        List<SchemeRegularityRepository.NonSubmissionReasonSchemeCount> rows =
+                schemeRegularityRepository.getNonSubmissionReasonSchemeCountByUser(userId, startDate, endDate);
+        List<SchemeRegularityRepository.DailyNonSubmissionReasonSchemeCount> dailyRows =
+                schemeRegularityRepository.getDailyNonSubmissionReasonSchemeCountByUser(userId, startDate, endDate);
+        Integer schemeCount = schemeRegularityRepository.getSchemeCountByUser(userId);
+
+        Map<LocalDate, Map<String, Integer>> dailyReasonCountMap = new LinkedHashMap<>();
+        LocalDate currentDate = startDate;
+        while (!currentDate.isAfter(endDate)) {
+            dailyReasonCountMap.put(currentDate, new LinkedHashMap<>());
+            currentDate = currentDate.plusDays(1);
+        }
+        for (SchemeRegularityRepository.DailyNonSubmissionReasonSchemeCount row : dailyRows) {
+            Map<String, Integer> reasonCount = dailyReasonCountMap.get(row.date());
+            if (reasonCount == null) {
+                continue;
+            }
+            reasonCount.put(
+                    row.nonSubmissionReason(),
+                    row.schemeCount() == null ? 0 : row.schemeCount());
+        }
+
+        return UserNonSubmissionReasonSchemeCountResponse.builder()
+                .userId(userId)
+                .startDate(startDate)
+                .endDate(endDate)
+                .schemeCount(schemeCount == null ? 0 : schemeCount)
+                .nonSubmissionReasonSchemeCount(buildNonSubmissionReasonCountMap(rows))
+                .dailyNonSubmissionReasonDistribution(dailyReasonCountMap.entrySet().stream()
+                        .map(entry -> UserNonSubmissionReasonSchemeCountResponse.DailyNonSubmissionReasonDistribution.builder()
+                                .date(entry.getKey())
+                                .nonSubmissionReasonSchemeCount(entry.getValue())
+                                .build())
+                        .toList())
+                .build();
+    }
+
+    @Override
     public UserSubmissionStatusResponse getSubmissionStatusByUser(
             Integer userId, LocalDate startDate, LocalDate endDate) {
         validateUserInput(userId);
@@ -1598,6 +1714,17 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
         return reasonCountMap;
     }
 
+    private Map<String, Integer> buildNonSubmissionReasonCountMap(
+            List<SchemeRegularityRepository.NonSubmissionReasonSchemeCount> rows) {
+        Map<String, Integer> reasonCountMap = new LinkedHashMap<>();
+        for (SchemeRegularityRepository.NonSubmissionReasonSchemeCount row : rows) {
+            reasonCountMap.put(
+                    row.nonSubmissionReason(),
+                    row.schemeCount() == null ? 0 : row.schemeCount());
+        }
+        return reasonCountMap;
+    }
+
     private List<OutageReasonSchemeCountResponse.ChildRegionOutageReasonSchemeCount> buildChildOutageRegions(
             List<SchemeRegularityRepository.ChildRegionRef> childRegions,
             List<SchemeRegularityRepository.ChildRegionOutageReasonSchemeCount> childRows,
@@ -1622,6 +1749,36 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
             }
             child.getOutageReasonSchemeCount().put(
                     row.outageReason(),
+                    row.schemeCount() == null ? 0 : row.schemeCount());
+        }
+        return childById.values().stream().toList();
+    }
+
+    private List<NonSubmissionReasonSchemeCountResponse.ChildRegionNonSubmissionReasonSchemeCount> buildChildNonSubmissionRegions(
+            List<SchemeRegularityRepository.ChildRegionRef> childRegions,
+            List<SchemeRegularityRepository.ChildRegionNonSubmissionReasonSchemeCount> childRows,
+            Function<SchemeRegularityRepository.ChildRegionNonSubmissionReasonSchemeCount, Integer> regionIdExtractor) {
+        Map<Integer, NonSubmissionReasonSchemeCountResponse.ChildRegionNonSubmissionReasonSchemeCount> childById =
+                new LinkedHashMap<>();
+        for (SchemeRegularityRepository.ChildRegionRef childRegion : childRegions) {
+            Integer regionId = childRegion.lgdId() != null ? childRegion.lgdId() : childRegion.departmentId();
+            childById.put(
+                    regionId,
+                    NonSubmissionReasonSchemeCountResponse.ChildRegionNonSubmissionReasonSchemeCount.builder()
+                            .lgdId(childRegion.lgdId())
+                            .departmentId(childRegion.departmentId())
+                            .title(childRegion.title())
+                            .nonSubmissionReasonSchemeCount(new LinkedHashMap<>())
+                            .build());
+        }
+        for (SchemeRegularityRepository.ChildRegionNonSubmissionReasonSchemeCount row : childRows) {
+            Integer regionId = regionIdExtractor.apply(row);
+            NonSubmissionReasonSchemeCountResponse.ChildRegionNonSubmissionReasonSchemeCount child = childById.get(regionId);
+            if (child == null) {
+                continue;
+            }
+            child.getNonSubmissionReasonSchemeCount().put(
+                    row.nonSubmissionReason(),
                     row.schemeCount() == null ? 0 : row.schemeCount());
         }
         return childById.values().stream().toList();

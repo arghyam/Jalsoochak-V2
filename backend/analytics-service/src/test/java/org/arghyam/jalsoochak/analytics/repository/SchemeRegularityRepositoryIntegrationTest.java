@@ -1,6 +1,7 @@
 package org.arghyam.jalsoochak.analytics.repository;
 
 import org.arghyam.jalsoochak.analytics.enums.PeriodScale;
+import org.arghyam.jalsoochak.analytics.enums.SubmissionStatus;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -389,6 +390,126 @@ class SchemeRegularityRepositoryIntegrationTest {
     }
 
     @Test
+    void nonSubmissionQueriesByLgd_returnParentAndChildAggregations() {
+        List<SchemeRegularityRepository.NonSubmissionReasonSchemeCount> parent =
+                repository.getNonSubmissionReasonSchemeCountByLgd(100, D1, D10);
+        List<SchemeRegularityRepository.ChildRegionRef> children = repository.getChildRegionsByLgd(100);
+        List<SchemeRegularityRepository.ChildRegionNonSubmissionReasonSchemeCount> childCounts =
+                repository.getChildNonSubmissionReasonSchemeCountByLgd(100, D1, D10);
+
+        assertThat(parent).hasSize(2);
+        assertThat(parent)
+                .anySatisfy(r -> {
+                    assertThat(r.nonSubmissionReason()).isEqualTo("app_issue");
+                    assertThat(r.schemeCount()).isEqualTo(1);
+                })
+                .anySatisfy(r -> {
+                    assertThat(r.nonSubmissionReason()).isEqualTo("network_issue");
+                    assertThat(r.schemeCount()).isEqualTo(2);
+                });
+
+        assertThat(children).hasSize(2);
+        assertThat(children.get(0).lgdId()).isEqualTo(101);
+        assertThat(children.get(1).lgdId()).isEqualTo(102);
+
+        assertThat(childCounts).hasSize(3);
+        assertThat(childCounts)
+                .anySatisfy(r -> {
+                    assertThat(r.lgdId()).isEqualTo(101);
+                    assertThat(r.nonSubmissionReason()).isEqualTo("app_issue");
+                    assertThat(r.schemeCount()).isEqualTo(1);
+                })
+                .anySatisfy(r -> {
+                    assertThat(r.lgdId()).isEqualTo(101);
+                    assertThat(r.nonSubmissionReason()).isEqualTo("network_issue");
+                    assertThat(r.schemeCount()).isEqualTo(1);
+                })
+                .anySatisfy(r -> {
+                    assertThat(r.lgdId()).isEqualTo(102);
+                    assertThat(r.nonSubmissionReason()).isEqualTo("network_issue");
+                    assertThat(r.schemeCount()).isEqualTo(1);
+                });
+    }
+
+    @Test
+    void nonSubmissionQueriesByDepartment_returnParentAndChildAggregations() {
+        List<SchemeRegularityRepository.NonSubmissionReasonSchemeCount> parent =
+                repository.getNonSubmissionReasonSchemeCountByDepartment(200, D1, D10);
+        List<SchemeRegularityRepository.ChildRegionRef> children = repository.getChildRegionsByDepartment(200);
+        List<SchemeRegularityRepository.ChildRegionNonSubmissionReasonSchemeCount> childCounts =
+                repository.getChildNonSubmissionReasonSchemeCountByDepartment(200, D1, D10);
+
+        assertThat(parent).hasSize(2);
+        assertThat(parent)
+                .anySatisfy(r -> {
+                    assertThat(r.nonSubmissionReason()).isEqualTo("app_issue");
+                    assertThat(r.schemeCount()).isEqualTo(1);
+                })
+                .anySatisfy(r -> {
+                    assertThat(r.nonSubmissionReason()).isEqualTo("network_issue");
+                    assertThat(r.schemeCount()).isEqualTo(2);
+                });
+
+        assertThat(children).hasSize(2);
+        assertThat(children.get(0).departmentId()).isEqualTo(201);
+        assertThat(children.get(1).departmentId()).isEqualTo(202);
+
+        assertThat(childCounts).hasSize(3);
+        assertThat(childCounts)
+                .anySatisfy(r -> {
+                    assertThat(r.departmentId()).isEqualTo(201);
+                    assertThat(r.nonSubmissionReason()).isEqualTo("app_issue");
+                    assertThat(r.schemeCount()).isEqualTo(1);
+                })
+                .anySatisfy(r -> {
+                    assertThat(r.departmentId()).isEqualTo(201);
+                    assertThat(r.nonSubmissionReason()).isEqualTo("network_issue");
+                    assertThat(r.schemeCount()).isEqualTo(1);
+                })
+                .anySatisfy(r -> {
+                    assertThat(r.departmentId()).isEqualTo(202);
+                    assertThat(r.nonSubmissionReason()).isEqualTo("network_issue");
+                    assertThat(r.schemeCount()).isEqualTo(1);
+                });
+    }
+
+    @Test
+    void nonSubmissionQueriesByUser_returnMappedSchemeReasonCounts() {
+        List<SchemeRegularityRepository.NonSubmissionReasonSchemeCount> userCounts =
+                repository.getNonSubmissionReasonSchemeCountByUser(11, D1, D10);
+        List<SchemeRegularityRepository.DailyNonSubmissionReasonSchemeCount> dailyUserCounts =
+                repository.getDailyNonSubmissionReasonSchemeCountByUser(11, D1, D10);
+
+        assertThat(userCounts).hasSize(2);
+        assertThat(dailyUserCounts).hasSize(3);
+        assertThat(userCounts)
+                .anySatisfy(r -> {
+                    assertThat(r.nonSubmissionReason()).isEqualTo("app_issue");
+                    assertThat(r.schemeCount()).isEqualTo(1);
+                })
+                .anySatisfy(r -> {
+                    assertThat(r.nonSubmissionReason()).isEqualTo("network_issue");
+                    assertThat(r.schemeCount()).isEqualTo(2);
+                });
+        assertThat(dailyUserCounts)
+                .anySatisfy(r -> {
+                    assertThat(r.date()).isEqualTo(D1);
+                    assertThat(r.nonSubmissionReason()).isEqualTo("app_issue");
+                    assertThat(r.schemeCount()).isEqualTo(1);
+                })
+                .anySatisfy(r -> {
+                    assertThat(r.date()).isEqualTo(D1);
+                    assertThat(r.nonSubmissionReason()).isEqualTo("network_issue");
+                    assertThat(r.schemeCount()).isEqualTo(1);
+                })
+                .anySatisfy(r -> {
+                    assertThat(r.date()).isEqualTo(D8);
+                    assertThat(r.nonSubmissionReason()).isEqualTo("network_issue");
+                    assertThat(r.schemeCount()).isEqualTo(2);
+                });
+    }
+
+    @Test
     void submissionStatusCountByUser_returnsCompliantAndAnomalousCounts() {
         jdbcTemplate.update("""
                 INSERT INTO analytics_schema.fact_meter_reading_table
@@ -656,33 +777,33 @@ class SchemeRegularityRepositoryIntegrationTest {
     private void seedWaterQuantity() {
         jdbcTemplate.update("""
                 INSERT INTO analytics_schema.fact_water_quantity_table
-                (tenant_id, scheme_id, user_id, water_quantity, date, created_at, updated_at, submission_status, outage_reason)
-                VALUES (?, ?, ?, ?, ?, NOW(), NOW(), ?, ?)
-                """, 1, 1, 11, 100, D1, 1, "draught");
+                (tenant_id, scheme_id, user_id, water_quantity, date, created_at, updated_at, submission_status, outage_reason, non_submission_reason)
+                VALUES (?, ?, ?, ?, ?, NOW(), NOW(), ?, ?, ?)
+                """, 1, 1, 11, 100, D1, SubmissionStatus.NOT_SUBMITTED.getCode(), "draught", "app_issue");
 
         jdbcTemplate.update("""
                 INSERT INTO analytics_schema.fact_water_quantity_table
-                (tenant_id, scheme_id, user_id, water_quantity, date, created_at, updated_at, submission_status, outage_reason)
-                VALUES (?, ?, ?, ?, ?, NOW(), NOW(), ?, ?)
-                """, 1, 1, 11, 200, D2, 1, null);
+                (tenant_id, scheme_id, user_id, water_quantity, date, created_at, updated_at, submission_status, outage_reason, non_submission_reason)
+                VALUES (?, ?, ?, ?, ?, NOW(), NOW(), ?, ?, ?)
+                """, 1, 1, 11, 200, D2, SubmissionStatus.SUBMITTED.getCode(), null, null);
 
         jdbcTemplate.update("""
                 INSERT INTO analytics_schema.fact_water_quantity_table
-                (tenant_id, scheme_id, user_id, water_quantity, date, created_at, updated_at, submission_status, outage_reason)
-                VALUES (?, ?, ?, ?, ?, NOW(), NOW(), ?, ?)
-                """, 1, 1, 11, 300, D8, 1, "no_electricity");
+                (tenant_id, scheme_id, user_id, water_quantity, date, created_at, updated_at, submission_status, outage_reason, non_submission_reason)
+                VALUES (?, ?, ?, ?, ?, NOW(), NOW(), ?, ?, ?)
+                """, 1, 1, 11, 300, D8, SubmissionStatus.NOT_SUBMITTED.getCode(), "no_electricity", "network_issue");
 
         jdbcTemplate.update("""
                 INSERT INTO analytics_schema.fact_water_quantity_table
-                (tenant_id, scheme_id, user_id, water_quantity, date, created_at, updated_at, submission_status, outage_reason)
-                VALUES (?, ?, ?, ?, ?, NOW(), NOW(), ?, ?)
-                """, 1, 2, 12, 50, D1, 1, "no_electricity");
+                (tenant_id, scheme_id, user_id, water_quantity, date, created_at, updated_at, submission_status, outage_reason, non_submission_reason)
+                VALUES (?, ?, ?, ?, ?, NOW(), NOW(), ?, ?, ?)
+                """, 1, 2, 12, 50, D1, SubmissionStatus.NOT_SUBMITTED.getCode(), "no_electricity", "network_issue");
 
         jdbcTemplate.update("""
                 INSERT INTO analytics_schema.fact_water_quantity_table
-                (tenant_id, scheme_id, user_id, water_quantity, date, created_at, updated_at, submission_status, outage_reason)
-                VALUES (?, ?, ?, ?, ?, NOW(), NOW(), ?, ?)
-                """, 1, 2, 12, 70, D8, 1, "no_electricity");
+                (tenant_id, scheme_id, user_id, water_quantity, date, created_at, updated_at, submission_status, outage_reason, non_submission_reason)
+                VALUES (?, ?, ?, ?, ?, NOW(), NOW(), ?, ?, ?)
+                """, 1, 2, 12, 70, D8, SubmissionStatus.NOT_SUBMITTED.getCode(), "no_electricity", "network_issue");
     }
 
     private void insertDate(LocalDate date) {

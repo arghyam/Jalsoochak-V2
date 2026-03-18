@@ -2,6 +2,7 @@ package org.arghyam.jalsoochak.analytics.repository;
 
 import lombok.RequiredArgsConstructor;
 import org.arghyam.jalsoochak.analytics.enums.PeriodScale;
+import org.arghyam.jalsoochak.analytics.enums.SubmissionStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
@@ -17,6 +18,7 @@ import java.util.Map;
 public class SchemeRegularityRepository {
 
     private final JdbcTemplate jdbcTemplate;
+    private static final int NOT_SUBMITTED_STATUS = SubmissionStatus.NOT_SUBMITTED.getCode();
 
     public SchemeRegularityMetrics getSchemeRegularityMetrics(Integer parentLgdId, LocalDate startDate, LocalDate endDate) {
         Integer lgdLevel = getLgdLevel(parentLgdId);
@@ -784,6 +786,148 @@ public class SchemeRegularityRepository {
                 endDate);
     }
 
+    public List<NonSubmissionReasonSchemeCount> getNonSubmissionReasonSchemeCountByLgd(
+            Integer lgdId, LocalDate startDate, LocalDate endDate) {
+        Integer lgdLevel = getLgdLevel(lgdId);
+        if (lgdLevel == null) {
+            throw new IllegalArgumentException("lgd_id not found in dim_lgd_location_table: " + lgdId);
+        }
+        String schemeLgdColumn = resolveSchemeLgdColumn(lgdLevel);
+
+        String sql = String.format("""
+                WITH schemes_in_lgd AS (
+                    SELECT DISTINCT s.scheme_id
+                    FROM analytics_schema.dim_scheme_table s
+                    WHERE s.%1$s = ?
+                )
+                SELECT
+                    f.non_submission_reason,
+                    COUNT(DISTINCT f.scheme_id)::int AS scheme_count
+                FROM analytics_schema.fact_water_quantity_table f
+                JOIN schemes_in_lgd sl
+                    ON sl.scheme_id = f.scheme_id
+                WHERE f.non_submission_reason IS NOT NULL
+                  AND f.submission_status = ?
+                  AND f.date BETWEEN ? AND ?
+                GROUP BY f.non_submission_reason
+                ORDER BY f.non_submission_reason
+                """, schemeLgdColumn);
+
+        return jdbcTemplate.query(
+                sql,
+                (rs, rowNum) -> new NonSubmissionReasonSchemeCount(
+                        rs.getString("non_submission_reason"),
+                        rs.getInt("scheme_count")),
+                lgdId,
+                NOT_SUBMITTED_STATUS,
+                startDate,
+                endDate);
+    }
+
+    public List<NonSubmissionReasonSchemeCount> getNonSubmissionReasonSchemeCountByDepartment(
+            Integer departmentId, LocalDate startDate, LocalDate endDate) {
+        Integer departmentLevel = getDepartmentLevel(departmentId);
+        if (departmentLevel == null) {
+            throw new IllegalArgumentException("department_id not found in dim_department_location_table: " + departmentId);
+        }
+        String schemeDepartmentColumn = resolveSchemeDepartmentColumn(departmentLevel);
+
+        String sql = String.format("""
+                WITH schemes_in_department AS (
+                    SELECT DISTINCT s.scheme_id
+                    FROM analytics_schema.dim_scheme_table s
+                    WHERE s.%1$s = ?
+                )
+                SELECT
+                    f.non_submission_reason,
+                    COUNT(DISTINCT f.scheme_id)::int AS scheme_count
+                FROM analytics_schema.fact_water_quantity_table f
+                JOIN schemes_in_department sd
+                    ON sd.scheme_id = f.scheme_id
+                WHERE f.non_submission_reason IS NOT NULL
+                  AND f.submission_status = ?
+                  AND f.date BETWEEN ? AND ?
+                GROUP BY f.non_submission_reason
+                ORDER BY f.non_submission_reason
+                """, schemeDepartmentColumn);
+
+        return jdbcTemplate.query(
+                sql,
+                (rs, rowNum) -> new NonSubmissionReasonSchemeCount(
+                        rs.getString("non_submission_reason"),
+                        rs.getInt("scheme_count")),
+                departmentId,
+                NOT_SUBMITTED_STATUS,
+                startDate,
+                endDate);
+    }
+
+    public List<NonSubmissionReasonSchemeCount> getNonSubmissionReasonSchemeCountByUser(
+            Integer userId, LocalDate startDate, LocalDate endDate) {
+        String sql = """
+                WITH user_schemes AS (
+                    SELECT DISTINCT usm.scheme_id
+                    FROM analytics_schema.dim_user_scheme_mapping_table usm
+                    WHERE usm.user_id = ?
+                )
+                SELECT
+                    f.non_submission_reason,
+                    COUNT(DISTINCT f.scheme_id)::int AS scheme_count
+                FROM analytics_schema.fact_water_quantity_table f
+                JOIN user_schemes us
+                    ON us.scheme_id = f.scheme_id
+                WHERE f.non_submission_reason IS NOT NULL
+                  AND f.submission_status = ?
+                  AND f.date BETWEEN ? AND ?
+                GROUP BY f.non_submission_reason
+                ORDER BY f.non_submission_reason
+                """;
+
+        return jdbcTemplate.query(
+                sql,
+                (rs, rowNum) -> new NonSubmissionReasonSchemeCount(
+                        rs.getString("non_submission_reason"),
+                        rs.getInt("scheme_count")),
+                userId,
+                NOT_SUBMITTED_STATUS,
+                startDate,
+                endDate);
+    }
+
+    public List<DailyNonSubmissionReasonSchemeCount> getDailyNonSubmissionReasonSchemeCountByUser(
+            Integer userId, LocalDate startDate, LocalDate endDate) {
+        String sql = """
+                WITH user_schemes AS (
+                    SELECT DISTINCT usm.scheme_id
+                    FROM analytics_schema.dim_user_scheme_mapping_table usm
+                    WHERE usm.user_id = ?
+                )
+                SELECT
+                    f.date,
+                    f.non_submission_reason,
+                    COUNT(DISTINCT f.scheme_id)::int AS scheme_count
+                FROM analytics_schema.fact_water_quantity_table f
+                JOIN user_schemes us
+                    ON us.scheme_id = f.scheme_id
+                WHERE f.non_submission_reason IS NOT NULL
+                  AND f.submission_status = ?
+                  AND f.date BETWEEN ? AND ?
+                GROUP BY f.date, f.non_submission_reason
+                ORDER BY f.date, f.non_submission_reason
+                """;
+
+        return jdbcTemplate.query(
+                sql,
+                (rs, rowNum) -> new DailyNonSubmissionReasonSchemeCount(
+                        rs.getObject("date", LocalDate.class),
+                        rs.getString("non_submission_reason"),
+                        rs.getInt("scheme_count")),
+                userId,
+                NOT_SUBMITTED_STATUS,
+                startDate,
+                endDate);
+    }
+
     public Integer getSchemeCountByUser(Integer userId) {
         String sql = """
                 SELECT COALESCE(COUNT(DISTINCT usm.scheme_id), 0)::int AS scheme_count
@@ -1003,6 +1147,102 @@ public class SchemeRegularityRepository {
                         rs.getString("outage_reason"),
                         rs.getInt("scheme_count")),
                 departmentId,
+                startDate,
+                endDate);
+    }
+
+    public List<ChildRegionNonSubmissionReasonSchemeCount> getChildNonSubmissionReasonSchemeCountByLgd(
+            Integer lgdId, LocalDate startDate, LocalDate endDate) {
+        Integer lgdLevel = getLgdLevel(lgdId);
+        if (lgdLevel == null) {
+            throw new IllegalArgumentException("lgd_id not found in dim_lgd_location_table: " + lgdId);
+        }
+        if (lgdLevel >= 6) {
+            return List.of();
+        }
+
+        String parentSchemeLgdColumn = resolveSchemeLgdColumn(lgdLevel);
+        String childSchemeLgdColumn = resolveSchemeLgdColumn(lgdLevel + 1);
+
+        String sql = String.format("""
+                WITH schemes_in_scope AS (
+                    SELECT
+                        s.scheme_id,
+                        s.%1$s AS child_lgd_id
+                    FROM analytics_schema.dim_scheme_table s
+                    WHERE s.%2$s = ?
+                )
+                SELECT
+                    ss.child_lgd_id AS lgd_id,
+                    f.non_submission_reason,
+                    COUNT(DISTINCT f.scheme_id)::int AS scheme_count
+                FROM schemes_in_scope ss
+                JOIN analytics_schema.fact_water_quantity_table f
+                    ON f.scheme_id = ss.scheme_id
+                WHERE f.non_submission_reason IS NOT NULL
+                  AND f.submission_status = ?
+                  AND f.date BETWEEN ? AND ?
+                GROUP BY ss.child_lgd_id, f.non_submission_reason
+                ORDER BY ss.child_lgd_id, f.non_submission_reason
+                """, childSchemeLgdColumn, parentSchemeLgdColumn);
+
+        return jdbcTemplate.query(
+                sql,
+                (rs, rowNum) -> new ChildRegionNonSubmissionReasonSchemeCount(
+                        rs.getInt("lgd_id"),
+                        null,
+                        rs.getString("non_submission_reason"),
+                        rs.getInt("scheme_count")),
+                lgdId,
+                NOT_SUBMITTED_STATUS,
+                startDate,
+                endDate);
+    }
+
+    public List<ChildRegionNonSubmissionReasonSchemeCount> getChildNonSubmissionReasonSchemeCountByDepartment(
+            Integer departmentId, LocalDate startDate, LocalDate endDate) {
+        Integer departmentLevel = getDepartmentLevel(departmentId);
+        if (departmentLevel == null) {
+            throw new IllegalArgumentException("department_id not found in dim_department_location_table: " + departmentId);
+        }
+        if (departmentLevel >= 6) {
+            return List.of();
+        }
+
+        String parentSchemeDepartmentColumn = resolveSchemeDepartmentColumn(departmentLevel);
+        String childSchemeDepartmentColumn = resolveSchemeDepartmentColumn(departmentLevel + 1);
+
+        String sql = String.format("""
+                WITH schemes_in_scope AS (
+                    SELECT
+                        s.scheme_id,
+                        s.%1$s AS child_department_id
+                    FROM analytics_schema.dim_scheme_table s
+                    WHERE s.%2$s = ?
+                )
+                SELECT
+                    ss.child_department_id AS department_id,
+                    f.non_submission_reason,
+                    COUNT(DISTINCT f.scheme_id)::int AS scheme_count
+                FROM schemes_in_scope ss
+                JOIN analytics_schema.fact_water_quantity_table f
+                    ON f.scheme_id = ss.scheme_id
+                WHERE f.non_submission_reason IS NOT NULL
+                  AND f.submission_status = ?
+                  AND f.date BETWEEN ? AND ?
+                GROUP BY ss.child_department_id, f.non_submission_reason
+                ORDER BY ss.child_department_id, f.non_submission_reason
+                """, childSchemeDepartmentColumn, parentSchemeDepartmentColumn);
+
+        return jdbcTemplate.query(
+                sql,
+                (rs, rowNum) -> new ChildRegionNonSubmissionReasonSchemeCount(
+                        null,
+                        rs.getInt("department_id"),
+                        rs.getString("non_submission_reason"),
+                        rs.getInt("scheme_count")),
+                departmentId,
+                NOT_SUBMITTED_STATUS,
                 startDate,
                 endDate);
     }
@@ -2183,6 +2423,9 @@ public class SchemeRegularityRepository {
     public record OutageReasonSchemeCount(String outageReason, Integer schemeCount) {
     }
 
+    public record NonSubmissionReasonSchemeCount(String nonSubmissionReason, Integer schemeCount) {
+    }
+
     public record ChildRegionRef(Integer lgdId, Integer departmentId, String title) {
     }
 
@@ -2190,6 +2433,13 @@ public class SchemeRegularityRepository {
             Integer lgdId,
             Integer departmentId,
             String outageReason,
+            Integer schemeCount) {
+    }
+
+    public record ChildRegionNonSubmissionReasonSchemeCount(
+            Integer lgdId,
+            Integer departmentId,
+            String nonSubmissionReason,
             Integer schemeCount) {
     }
 
@@ -2224,6 +2474,12 @@ public class SchemeRegularityRepository {
     public record DailyOutageReasonSchemeCount(
             LocalDate date,
             String outageReason,
+            Integer schemeCount) {
+    }
+
+    public record DailyNonSubmissionReasonSchemeCount(
+            LocalDate date,
+            String nonSubmissionReason,
             Integer schemeCount) {
     }
 

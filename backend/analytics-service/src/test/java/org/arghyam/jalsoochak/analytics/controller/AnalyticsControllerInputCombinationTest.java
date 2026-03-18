@@ -2,6 +2,7 @@ package org.arghyam.jalsoochak.analytics.controller;
 
 import org.arghyam.jalsoochak.analytics.dto.response.AverageSchemeRegularityResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.AverageWaterSupplyResponse;
+import org.arghyam.jalsoochak.analytics.dto.response.NonSubmissionReasonSchemeCountResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.OutageReasonSchemeCountResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.PeriodicWaterQuantityResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.ReadingSubmissionRateResponse;
@@ -9,6 +10,7 @@ import org.arghyam.jalsoochak.analytics.dto.response.RegionWiseWaterQuantityResp
 import org.arghyam.jalsoochak.analytics.dto.response.SchemeRegularityListResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.SchemeStatusAndTopReportingResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.TenantDetailsResponse;
+import org.arghyam.jalsoochak.analytics.dto.response.UserNonSubmissionReasonSchemeCountResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.UserOutageReasonSchemeCountResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.UserSubmissionStatusResponse;
 import org.arghyam.jalsoochak.analytics.enums.PeriodScale;
@@ -367,6 +369,56 @@ class AnalyticsControllerInputCombinationTest {
                 .andExpect(status().isOk());
 
         verify(schemeRegularityService, times(1)).getOutageReasonSchemeCountByUser(11, START, END);
+    }
+
+    @ParameterizedTest
+    @MethodSource("nonSubmissionValidRoutes")
+    void getNonSubmissionReasons_validRoutes(String paramName, String paramValue, boolean lgdRoute) throws Exception {
+        if (lgdRoute) {
+            when(schemeRegularityService.getNonSubmissionReasonSchemeCountByLgd(Integer.parseInt(paramValue), START, END))
+                    .thenReturn(nonSubmissionReasonResponse());
+        } else {
+            when(schemeRegularityService.getNonSubmissionReasonSchemeCountByDepartment(Integer.parseInt(paramValue), START, END))
+                    .thenReturn(nonSubmissionReasonResponse());
+        }
+
+        mockMvc.perform(get(BASE + "/non-submission-reasons")
+                        .param("start_date", START.toString())
+                        .param("end_date", END.toString())
+                        .param(paramName, paramValue))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void getNonSubmissionReasons_withBothIds_returnsBadRequest() throws Exception {
+        mockMvc.perform(get(BASE + "/non-submission-reasons")
+                        .param("start_date", START.toString())
+                        .param("end_date", END.toString())
+                        .param("parent_lgd_id", "101")
+                        .param("parent_department_id", "201"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void getNonSubmissionReasons_withNoId_returnsBadRequest() throws Exception {
+        mockMvc.perform(get(BASE + "/non-submission-reasons")
+                        .param("start_date", START.toString())
+                        .param("end_date", END.toString()))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void getNonSubmissionReasonsByUser_validRequest_routesToUserService() throws Exception {
+        when(schemeRegularityService.getNonSubmissionReasonSchemeCountByUser(11, START, END))
+                .thenReturn(userNonSubmissionReasonResponse());
+
+        mockMvc.perform(get(BASE + "/non-submission-reasons/user")
+                        .param("user_id", "11")
+                        .param("start_date", START.toString())
+                        .param("end_date", END.toString()))
+                .andExpect(status().isOk());
+
+        verify(schemeRegularityService, times(1)).getNonSubmissionReasonSchemeCountByUser(11, START, END);
     }
 
     @Test
@@ -958,6 +1010,13 @@ class AnalyticsControllerInputCombinationTest {
         );
     }
 
+    private static Stream<Arguments> nonSubmissionValidRoutes() {
+        return Stream.of(
+                Arguments.of("parent_lgd_id", "101", true),
+                Arguments.of("parent_department_id", "201", false)
+        );
+    }
+
     private static Stream<Arguments> schemeStatusValidRoutes() {
         return Stream.of(
                 Arguments.of("lgd_id", "101", true),
@@ -1039,6 +1098,29 @@ class AnalyticsControllerInputCombinationTest {
                         UserOutageReasonSchemeCountResponse.DailyOutageReasonDistribution.builder()
                                 .date(START)
                                 .outageReasonSchemeCount(Map.of("draught", 1, "no_electricity", 0, "motor_burnt", 0))
+                                .build()
+                ))
+                .build();
+    }
+
+    private static NonSubmissionReasonSchemeCountResponse nonSubmissionReasonResponse() {
+        return NonSubmissionReasonSchemeCountResponse.builder()
+                .childRegionCount(0)
+                .nonSubmissionReasonSchemeCount(Map.of("operator_absent", 0))
+                .build();
+    }
+
+    private static UserNonSubmissionReasonSchemeCountResponse userNonSubmissionReasonResponse() {
+        return UserNonSubmissionReasonSchemeCountResponse.builder()
+                .userId(11)
+                .startDate(START)
+                .endDate(END)
+                .schemeCount(2)
+                .nonSubmissionReasonSchemeCount(Map.of("app_issue", 1))
+                .dailyNonSubmissionReasonDistribution(List.of(
+                        UserNonSubmissionReasonSchemeCountResponse.DailyNonSubmissionReasonDistribution.builder()
+                                .date(START)
+                                .nonSubmissionReasonSchemeCount(Map.of("app_issue", 1))
                                 .build()
                 ))
                 .build();

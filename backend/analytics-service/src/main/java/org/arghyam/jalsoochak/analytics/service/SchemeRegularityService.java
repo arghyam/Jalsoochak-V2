@@ -2,6 +2,7 @@ package org.arghyam.jalsoochak.analytics.service;
 
 import org.arghyam.jalsoochak.analytics.dto.response.AverageSchemeRegularityResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.AverageWaterSupplyResponse;
+import org.arghyam.jalsoochak.analytics.dto.response.NonSubmissionReasonSchemeCountResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.NationalDashboardResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.OutageReasonSchemeCountResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.PeriodicWaterQuantityResponse;
@@ -9,6 +10,7 @@ import org.arghyam.jalsoochak.analytics.dto.response.RegionWiseWaterQuantityResp
 import org.arghyam.jalsoochak.analytics.dto.response.ReadingSubmissionRateResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.SchemeRegularityListResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.SchemeStatusAndTopReportingResponse;
+import org.arghyam.jalsoochak.analytics.dto.response.UserNonSubmissionReasonSchemeCountResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.UserOutageReasonSchemeCountResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.UserSubmissionStatusResponse;
 import org.arghyam.jalsoochak.analytics.enums.PeriodScale;
@@ -91,6 +93,15 @@ public interface SchemeRegularityService {
             Integer parentDepartmentId, LocalDate startDate, LocalDate endDate);
 
     UserOutageReasonSchemeCountResponse getOutageReasonSchemeCountByUser(
+            Integer userId, LocalDate startDate, LocalDate endDate);
+
+    NonSubmissionReasonSchemeCountResponse getNonSubmissionReasonSchemeCountByLgd(
+            Integer parentLgdId, LocalDate startDate, LocalDate endDate);
+
+    NonSubmissionReasonSchemeCountResponse getNonSubmissionReasonSchemeCountByDepartment(
+            Integer parentDepartmentId, LocalDate startDate, LocalDate endDate);
+
+    UserNonSubmissionReasonSchemeCountResponse getNonSubmissionReasonSchemeCountByUser(
             Integer userId, LocalDate startDate, LocalDate endDate);
 
     UserSubmissionStatusResponse getSubmissionStatusByUser(
