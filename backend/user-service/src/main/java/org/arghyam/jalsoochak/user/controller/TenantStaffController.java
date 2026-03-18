@@ -38,7 +38,7 @@ public class TenantStaffController {
             @RequestParam(defaultValue = "20") int limit,
             @RequestParam(defaultValue = "id") String sortBy,
             @RequestParam(defaultValue = "desc") String sortDir,
-            @RequestParam(required = false) String role,
+            @RequestParam(required = false) List<String> role,
             @RequestParam(required = false) Integer status,
             @RequestParam(required = false) String name
     ) {

@@ -24,9 +24,12 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 
 @Slf4j
 @Service
@@ -49,7 +52,7 @@ public class TenantStaffServiceImpl implements TenantStaffService {
             int limit,
             String sortBy,
             String sortDir,
-            String role,
+            List<String> role,
             Integer status,
             String name
     ) {
@@ -59,8 +62,9 @@ public class TenantStaffServiceImpl implements TenantStaffService {
         int size = clampLimit(limit);
         int offset = p * size;
 
-        List<TenantStaffResponseDTO> rows = tenantStaffRepository.listStaff(schemaName, role, status, name, sortBy, sortDir, offset, size);
-        long total = tenantStaffRepository.countStaff(schemaName, role, status, name);
+        List<String> normalizedRoles = normalizeRoles(role);
+        List<TenantStaffResponseDTO> rows = tenantStaffRepository.listStaff(schemaName, normalizedRoles, status, name, sortBy, sortDir, offset, size);
+        long total = tenantStaffRepository.countStaff(schemaName, normalizedRoles, status, name);
         return PageResponseDTO.of(rows, total, p, size);
     }
 
@@ -156,5 +160,25 @@ public class TenantStaffServiceImpl implements TenantStaffService {
             return 1;
         }
         return Math.min(limit, 100);
+    }
+
+    private List<String> normalizeRoles(List<String> roles) {
+        if (roles == null || roles.isEmpty()) {
+            return List.of();
+        }
+        Set<String> normalized = new LinkedHashSet<>();
+        for (String entry : roles) {
+            if (entry == null || entry.isBlank()) {
+                continue;
+            }
+            String[] parts = entry.split(",");
+            for (String part : parts) {
+                String value = part == null ? "" : part.trim();
+                if (!value.isEmpty()) {
+                    normalized.add(value.toLowerCase(Locale.ROOT));
+                }
+            }
+        }
+        return List.copyOf(normalized);
     }
 }

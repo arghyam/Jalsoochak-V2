@@ -16,7 +16,7 @@ public interface TenantStaffService {
             int limit,
             String sortBy,
             String sortDir,
-            String role,
+            List<String> role,
             Integer status,
             String name
     );
