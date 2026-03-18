@@ -234,7 +234,7 @@ public class PublicPumpOperatorRepository {
         StringBuilder where = new StringBuilder("""
                 WHERE usm.deleted_at IS NULL
                   AND usm.status = 1
-                  AND ut.c_name = 'pump_operator'
+                  AND lower(COALESCE(ut.c_name, '')) = 'pump_operator'
                 """);
         if (schemeIds != null && !schemeIds.isEmpty()) {
             where.append("\n  AND sm.id IN (");
