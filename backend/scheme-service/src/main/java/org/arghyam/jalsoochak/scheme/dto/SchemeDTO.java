@@ -21,6 +21,6 @@ public class SchemeDTO {
     private Double latitude;
     private Double longitude;
     private Integer channel;
-    private Integer workStatus;
-    private Integer operatingStatus;
+    private String workStatus;
+    private String operatingStatus;
 }

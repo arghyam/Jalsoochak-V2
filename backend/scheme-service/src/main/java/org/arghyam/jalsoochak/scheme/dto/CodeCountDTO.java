@@ -4,8 +4,7 @@ import lombok.Builder;
 
 @Builder
 public record CodeCountDTO(
-        int code,
+        String status,
         long count
 ) {
 }
-
