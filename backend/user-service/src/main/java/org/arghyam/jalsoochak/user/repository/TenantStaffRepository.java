@@ -51,6 +51,19 @@ public class TenantStaffRepository {
         }
     }
 
+    private boolean tableExists(String schemaName, String tableName) {
+        String sql = """
+                SELECT EXISTS (
+                    SELECT 1
+                    FROM information_schema.tables
+                    WHERE table_schema = ?
+                      AND table_name = ?
+                )
+                """;
+        Boolean exists = jdbcTemplate.queryForObject(sql, Boolean.class, schemaName, tableName);
+        return Boolean.TRUE.equals(exists);
+    }
+
     public List<TenantStaffResponseDTO> listStaff(
             String schemaName,
             List<String> roles,
@@ -220,6 +233,22 @@ public class TenantStaffRepository {
 
     private void attachSchemes(String schemaName, List<TenantStaffResponseDTO> rows) {
         if (rows == null || rows.isEmpty()) {
+            return;
+        }
+        if (!tableExists(schemaName, "user_scheme_mapping_table")) {
+            for (int i = 0; i < rows.size(); i++) {
+                TenantStaffResponseDTO row = rows.get(i);
+                rows.set(i, TenantStaffResponseDTO.builder()
+                        .id(row.id())
+                        .uuid(row.uuid())
+                        .title(row.title())
+                        .email(row.email())
+                        .phoneNumber(row.phoneNumber())
+                        .status(row.status())
+                        .role(row.role())
+                        .schemes(List.of())
+                        .build());
+            }
             return;
         }
 

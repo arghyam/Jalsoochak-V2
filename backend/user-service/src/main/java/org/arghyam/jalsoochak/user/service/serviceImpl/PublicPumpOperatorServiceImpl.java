@@ -3,8 +3,10 @@ package org.arghyam.jalsoochak.user.service.serviceImpl;
 import lombok.RequiredArgsConstructor;
 import org.arghyam.jalsoochak.user.dto.common.PageResponseDTO;
 import org.arghyam.jalsoochak.user.dto.response.PumpOperatorDetailsDTO;
+import org.arghyam.jalsoochak.user.dto.response.PumpOperatorDetailsWithComplianceDTO;
 import org.arghyam.jalsoochak.user.dto.response.PumpOperatorReadingComplianceDTO;
 import org.arghyam.jalsoochak.user.dto.response.PumpOperatorReadingComplianceRowDTO;
+import org.arghyam.jalsoochak.user.dto.response.PumpOperatorSchemeComplianceRowDTO;
 import org.arghyam.jalsoochak.user.dto.response.SchemePumpOperatorsDTO;
 import org.arghyam.jalsoochak.user.repository.PublicPumpOperatorRepository;
 import org.arghyam.jalsoochak.user.service.PublicPumpOperatorService;
@@ -42,6 +44,16 @@ public class PublicPumpOperatorServiceImpl implements PublicPumpOperatorService 
     }
 
     @Override
+    public PumpOperatorDetailsWithComplianceDTO getPumpOperatorDetailsWithCompliance(String tenantCode, long pumpOperatorId) {
+        PumpOperatorDetailsDTO details = getPumpOperatorDetails(tenantCode, pumpOperatorId);
+        PumpOperatorReadingComplianceDTO compliance = getReadingCompliance(tenantCode, pumpOperatorId);
+        return PumpOperatorDetailsWithComplianceDTO.builder()
+                .details(details)
+                .readingCompliance(compliance)
+                .build();
+    }
+
+    @Override
     public PageResponseDTO<PumpOperatorReadingComplianceRowDTO> listReadingCompliance(String tenantCode, int page, int size) {
         String schemaName = TenantSchemaResolver.requireSchemaNameFromTenantCode(tenantCode);
         int p = Math.max(0, page);
@@ -49,6 +61,27 @@ public class PublicPumpOperatorServiceImpl implements PublicPumpOperatorService 
         int offset = p * effectiveSize;
         List<PumpOperatorReadingComplianceRowDTO> rows = publicPumpOperatorRepository.listReadingCompliance(schemaName, offset, effectiveSize);
         long total = publicPumpOperatorRepository.countReadingCompliance(schemaName);
+        return PageResponseDTO.of(rows, total, p, effectiveSize);
+    }
+
+    @Override
+    public PageResponseDTO<PumpOperatorSchemeComplianceRowDTO> listPumpOperatorsBySchemeWithCompliance(
+            String tenantCode,
+            long schemeId,
+            int page,
+            int size
+    ) {
+        String schemaName = TenantSchemaResolver.requireSchemaNameFromTenantCode(tenantCode);
+        int p = Math.max(0, page);
+        int effectiveSize = clampLimit(size);
+        int offset = p * effectiveSize;
+        List<PumpOperatorSchemeComplianceRowDTO> rows = publicPumpOperatorRepository.listPumpOperatorsBySchemeWithCompliance(
+                schemaName,
+                schemeId,
+                offset,
+                effectiveSize
+        );
+        long total = publicPumpOperatorRepository.countPumpOperatorsBySchemeWithCompliance(schemaName, schemeId);
         return PageResponseDTO.of(rows, total, p, effectiveSize);
     }
 
