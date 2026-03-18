@@ -31,6 +31,7 @@ public class SecurityConfig {
                                 "/user/api/v1/tenant/staff",
                                 "/user/api/v1/tenant/staff/counts/by-role",
                                 "/user/api/v1/pumpoperator/**",
+                                "/api/v1/pumpoperator/**",
                                 // Upload endpoint — authorized via UploadAuthService internally
                                 "/user/api/v1/state-admin/pump-operators/upload"
                         ).permitAll()
