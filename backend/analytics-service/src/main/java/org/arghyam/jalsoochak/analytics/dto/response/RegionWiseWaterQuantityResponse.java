@@ -33,5 +33,7 @@ public class RegionWiseWaterQuantityResponse {
         private String title;
         private Long waterQuantity;
         private Integer householdCount;
+        private Integer fhtcCount;
+        private Integer plannedFhtc;
     }
 }

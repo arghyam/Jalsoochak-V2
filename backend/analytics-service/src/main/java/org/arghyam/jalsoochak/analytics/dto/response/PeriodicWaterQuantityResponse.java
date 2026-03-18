@@ -32,5 +32,7 @@ public class PeriodicWaterQuantityResponse {
         private LocalDate periodEndDate;
         private BigDecimal averageWaterQuantity;
         private Integer householdCount;
+        private Integer fhtcCount;
+        private Integer plannedFhtc;
     }
 }

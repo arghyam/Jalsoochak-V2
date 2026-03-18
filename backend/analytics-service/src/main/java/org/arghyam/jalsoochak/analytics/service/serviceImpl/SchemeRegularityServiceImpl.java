@@ -625,7 +625,7 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
         String cacheKey = ":water_supply:tenant:" + tenantId
                 + ":start:" + startDate
                 + ":end:" + endDate
-                + ":v3";
+                + ":v4";
         AverageWaterSupplyResponse cached = readFromCache(cacheKey, AverageWaterSupplyResponse.class);
         if (cached != null) {
             return cached;
@@ -640,6 +640,8 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
                         .schemeId(m.schemeId())
                         .schemeName(m.schemeName())
                         .householdCount(m.householdCount())
+                        .fhtcCount(m.fhtcCount())
+                        .plannedFhtc(m.plannedFhtc())
                         .totalWaterSuppliedLiters(m.totalWaterSuppliedLiters())
                         .supplyDays(m.supplyDays())
                         .avgLitersPerHousehold(m.averageLitersPerHousehold())
@@ -671,7 +673,7 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
         String cacheKey = ":water_supply:nation"
                 + ":start:" + startDate
                 + ":end:" + endDate
-                + ":v3";
+                + ":v4";
         AverageWaterSupplyResponse cached = readFromCache(cacheKey, AverageWaterSupplyResponse.class);
         if (cached != null) {
             return cached;
@@ -687,6 +689,8 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
                         .departmentId(null)
                         .title(m.title())
                         .totalHouseholdCount(m.totalHouseholdCount())
+                        .totalFhtcCount(m.totalFhtcCount())
+                        .totalPlannedFhtc(m.totalPlannedFhtc())
                         .totalWaterSuppliedLiters(m.totalWaterSuppliedLiters())
                         .schemeCount(m.schemeCount())
                         .avgWaterSupplyPerScheme(m.avgWaterSupplyPerScheme())
@@ -734,7 +738,7 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
         return NATIONAL_DASHBOARD_CACHE_PREFIX
                 + ":start:" + startDate
                 + ":end:" + endDate
-                + ":v1";
+                + ":v2";
     }
 
     private NationalDashboardResponse buildAndCacheNationalDashboard(
@@ -756,6 +760,8 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
                         .stateTitle(metric.title())
                         .schemeCount(metric.schemeCount())
                         .totalHouseholdCount(metric.totalHouseholdCount())
+                        .totalFhtcCount(metric.totalFhtcCount())
+                        .totalPlannedFhtc(metric.totalPlannedFhtc())
                         .totalWaterSuppliedLiters(metric.totalWaterSuppliedLiters())
                         .avgWaterSupplyPerScheme(metric.avgWaterSupplyPerScheme())
                         .build())
@@ -833,7 +839,7 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
                 + ":lgd:" + lgdId
                 + ":start:" + startDate
                 + ":end:" + endDate
-                + ":v3";
+                + ":v4";
         AverageWaterSupplyResponse cached = readFromCache(cacheKey, AverageWaterSupplyResponse.class);
         if (cached != null) {
             return cached;
@@ -872,6 +878,8 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
                         .departmentId(null)
                         .title(m.title())
                         .totalHouseholdCount(m.totalHouseholdCount())
+                        .totalFhtcCount(m.totalFhtcCount())
+                        .totalPlannedFhtc(m.totalPlannedFhtc())
                         .totalWaterSuppliedLiters(m.totalWaterSuppliedLiters())
                         .schemeCount(m.schemeCount())
                         .avgWaterSupplyPerScheme(m.avgWaterSupplyPerScheme())
@@ -917,7 +925,7 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
                 + ":department:" + parentDepartmentId
                 + ":start:" + startDate
                 + ":end:" + endDate
-                + ":v3";
+                + ":v4";
         AverageWaterSupplyResponse cached = readFromCache(cacheKey, AverageWaterSupplyResponse.class);
         if (cached != null) {
             return cached;
@@ -957,6 +965,8 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
                         .departmentId(m.departmentId())
                         .title(m.title())
                         .totalHouseholdCount(m.totalHouseholdCount())
+                        .totalFhtcCount(m.totalFhtcCount())
+                        .totalPlannedFhtc(m.totalPlannedFhtc())
                         .totalWaterSuppliedLiters(m.totalWaterSuppliedLiters())
                         .schemeCount(m.schemeCount())
                         .avgWaterSupplyPerScheme(m.avgWaterSupplyPerScheme())
@@ -1001,6 +1011,8 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
                         .title(metric.title())
                         .waterQuantity(metric.waterQuantity())
                         .householdCount(metric.householdCount())
+                        .fhtcCount(metric.fhtcCount())
+                        .plannedFhtc(metric.plannedFhtc())
                         .build())
                 .toList();
 
@@ -1038,6 +1050,8 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
                         .title(metric.title())
                         .waterQuantity(metric.waterQuantity())
                         .householdCount(metric.householdCount())
+                        .fhtcCount(metric.fhtcCount())
+                        .plannedFhtc(metric.plannedFhtc())
                         .build())
                 .toList();
 
@@ -1689,6 +1703,8 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
                         .periodEndDate(metric.periodEndDate().isAfter(endDate) ? endDate : metric.periodEndDate())
                         .averageWaterQuantity(metric.averageWaterQuantity())
                         .householdCount(metric.householdCount())
+                        .fhtcCount(metric.fhtcCount())
+                        .plannedFhtc(metric.plannedFhtc())
                         .build())
                 .toList();
 

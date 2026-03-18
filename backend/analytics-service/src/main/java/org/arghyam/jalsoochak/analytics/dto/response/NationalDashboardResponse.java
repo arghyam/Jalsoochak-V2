@@ -34,6 +34,8 @@ public class NationalDashboardResponse {
         private String stateTitle;
         private Integer schemeCount;
         private Integer totalHouseholdCount;
+        private Integer totalFhtcCount;
+        private Integer totalPlannedFhtc;
         private Long totalWaterSuppliedLiters;
         private BigDecimal avgWaterSupplyPerScheme;
     }
