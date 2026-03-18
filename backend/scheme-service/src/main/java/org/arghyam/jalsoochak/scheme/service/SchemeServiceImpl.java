@@ -14,6 +14,7 @@ import org.arghyam.jalsoochak.scheme.config.TenantContext;
 import org.arghyam.jalsoochak.scheme.dto.SchemeCountsDTO;
 import org.arghyam.jalsoochak.scheme.dto.SchemeDTO;
 import org.arghyam.jalsoochak.scheme.dto.SchemeMappingDTO;
+import org.arghyam.jalsoochak.scheme.dto.SchemeStatusCountsDTO;
 import org.arghyam.jalsoochak.scheme.dto.SchemeUploadErrorDTO;
 import org.arghyam.jalsoochak.scheme.dto.SchemeUploadResponseDTO;
 import org.arghyam.jalsoochak.scheme.dto.common.PageResponseDTO;
@@ -213,6 +214,22 @@ public class SchemeServiceImpl implements SchemeService {
         return SchemeCountsDTO.builder()
                 .activeSchemes(counts.activeSchemes())
                 .inactiveSchemes(counts.inactiveSchemes())
+                .build();
+    }
+
+    @Override
+    public SchemeStatusCountsDTO getSchemeStatusCounts(String tenantCode) {
+        String schemaName = TenantSchemaResolver.requireSchemaNameFromTenantCode(tenantCode);
+
+        long total = schemeDbRepository.countSchemesTotal(schemaName);
+        SchemeDbRepository.SchemeCounts activeInactive = schemeDbRepository.countActiveInactiveSchemes(schemaName);
+
+        return SchemeStatusCountsDTO.builder()
+                .totalSchemes(total)
+                .activeSchemes(activeInactive.activeSchemes())
+                .inactiveSchemes(activeInactive.inactiveSchemes())
+                .workStatusCounts(schemeDbRepository.countSchemesByWorkStatus(schemaName))
+                .operatingStatusCounts(schemeDbRepository.countSchemesByOperatingStatus(schemaName))
                 .build();
     }
 

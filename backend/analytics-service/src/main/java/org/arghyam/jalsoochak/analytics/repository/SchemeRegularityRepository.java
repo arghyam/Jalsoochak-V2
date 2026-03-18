@@ -158,6 +158,164 @@ public class SchemeRegularityRepository {
         return new SchemeRegularityMetrics(schemeCount, totalSupplyDays);
     }
 
+    public BigDecimal getAveragePerformanceScoreByLgd(
+            Integer parentLgdId, LocalDate startDate, LocalDate endDate) {
+        Integer lgdLevel = getLgdLevel(parentLgdId);
+        if (lgdLevel == null) {
+            throw new IllegalArgumentException("parent_lgd_id not found in dim_lgd_location_table: " + parentLgdId);
+        }
+        String schemeLgdColumn = resolveSchemeLgdColumn(lgdLevel);
+        return getAveragePerformanceScoreByScopeColumn(schemeLgdColumn, parentLgdId, startDate, endDate);
+    }
+
+    public BigDecimal getAveragePerformanceScoreByDepartment(
+            Integer parentDepartmentId, LocalDate startDate, LocalDate endDate) {
+        Integer departmentLevel = getDepartmentLevel(parentDepartmentId);
+        if (departmentLevel == null) {
+            throw new IllegalArgumentException(
+                    "parent_department_id not found in dim_department_location_table: " + parentDepartmentId);
+        }
+        String schemeDepartmentColumn = resolveSchemeDepartmentColumn(departmentLevel);
+        return getAveragePerformanceScoreByScopeColumn(
+                schemeDepartmentColumn, parentDepartmentId, startDate, endDate);
+    }
+
+    private BigDecimal getAveragePerformanceScoreByScopeColumn(
+            String schemeScopeColumn, Integer scopeId, LocalDate startDate, LocalDate endDate) {
+        // Build a scope-specific scheme list first so aggregation stays limited to the selected boundary.
+        String sql = String.format("""
+                WITH schemes_in_scope AS (
+                    SELECT DISTINCT s.scheme_id
+                    FROM analytics_schema.dim_scheme_table s
+                    WHERE s.%1$s = ?
+                )
+                SELECT
+                    COALESCE(AVG(fp.performance_score), 0)::numeric AS average_performance_score
+                FROM analytics_schema.fact_scheme_performance_table fp
+                JOIN schemes_in_scope ss
+                    ON ss.scheme_id = fp.scheme_id
+                WHERE fp.last_water_supply_date BETWEEN ? AND ?
+                """, schemeScopeColumn);
+
+        // Average across all scheme-day records in the requested period (0 when no rows exist).
+        BigDecimal averagePerformanceScore = jdbcTemplate.queryForObject(
+                sql, BigDecimal.class, scopeId, startDate, endDate);
+        return averagePerformanceScore == null ? BigDecimal.ZERO : averagePerformanceScore;
+    }
+
+    public List<ChildRegionPerformanceScore> getChildAveragePerformanceScoreByLgd(
+            Integer parentLgdId, LocalDate startDate, LocalDate endDate) {
+        Integer lgdLevel = getLgdLevel(parentLgdId);
+        if (lgdLevel == null) {
+            throw new IllegalArgumentException("parent_lgd_id not found in dim_lgd_location_table: " + parentLgdId);
+        }
+        if (lgdLevel >= 6) {
+            throw new IllegalArgumentException("No child LGD level available for parent_lgd_id: " + parentLgdId);
+        }
+
+        int childLevel = lgdLevel + 1;
+        String parentSchemeLgdColumn = resolveSchemeLgdColumn(lgdLevel);
+        String childSchemeLgdColumn = resolveSchemeLgdColumn(childLevel);
+        String childRegionParentLgdColumn = resolveChildRegionLgdParentColumn(lgdLevel);
+
+        String sql = String.format("""
+                WITH child_regions AS (
+                    SELECT
+                        l.lgd_id AS child_lgd_id
+                    FROM analytics_schema.dim_lgd_location_table l
+                    WHERE l.lgd_level = ?
+                      AND l.%1$s = ?
+                ),
+                schemes_in_scope AS (
+                    SELECT
+                        s.scheme_id,
+                        s.%2$s AS child_lgd_id
+                    FROM analytics_schema.dim_scheme_table s
+                    WHERE s.%3$s = ?
+                )
+                SELECT
+                    c.child_lgd_id AS lgd_id,
+                    COALESCE(AVG(fp.performance_score), 0)::numeric AS average_performance_score
+                FROM child_regions c
+                LEFT JOIN schemes_in_scope s
+                    ON s.child_lgd_id = c.child_lgd_id
+                LEFT JOIN analytics_schema.fact_scheme_performance_table fp
+                    ON fp.scheme_id = s.scheme_id
+                    AND fp.last_water_supply_date BETWEEN ? AND ?
+                GROUP BY c.child_lgd_id
+                ORDER BY c.child_lgd_id
+                """, childRegionParentLgdColumn, childSchemeLgdColumn, parentSchemeLgdColumn);
+
+        return jdbcTemplate.query(
+                sql,
+                (rs, rowNum) -> new ChildRegionPerformanceScore(
+                        rs.getInt("lgd_id"),
+                        null,
+                        rs.getBigDecimal("average_performance_score")),
+                childLevel,
+                parentLgdId,
+                parentLgdId,
+                startDate,
+                endDate);
+    }
+
+    public List<ChildRegionPerformanceScore> getChildAveragePerformanceScoreByDepartment(
+            Integer parentDepartmentId, LocalDate startDate, LocalDate endDate) {
+        Integer departmentLevel = getDepartmentLevel(parentDepartmentId);
+        if (departmentLevel == null) {
+            throw new IllegalArgumentException(
+                    "parent_department_id not found in dim_department_location_table: " + parentDepartmentId);
+        }
+        if (departmentLevel >= 6) {
+            throw new IllegalArgumentException("No child department level available for parent_department_id: " + parentDepartmentId);
+        }
+
+        int childLevel = departmentLevel + 1;
+        String parentSchemeDepartmentColumn = resolveSchemeDepartmentColumn(departmentLevel);
+        String childSchemeDepartmentColumn = resolveSchemeDepartmentColumn(childLevel);
+        String childRegionParentDepartmentColumn = resolveChildRegionDepartmentParentColumn(departmentLevel);
+
+        String sql = String.format("""
+                WITH child_regions AS (
+                    SELECT
+                        d.department_id AS child_department_id
+                    FROM analytics_schema.dim_department_location_table d
+                    WHERE d.department_level = ?
+                      AND d.%1$s = ?
+                ),
+                schemes_in_scope AS (
+                    SELECT
+                        s.scheme_id,
+                        s.%2$s AS child_department_id
+                    FROM analytics_schema.dim_scheme_table s
+                    WHERE s.%3$s = ?
+                )
+                SELECT
+                    c.child_department_id AS department_id,
+                    COALESCE(AVG(fp.performance_score), 0)::numeric AS average_performance_score
+                FROM child_regions c
+                LEFT JOIN schemes_in_scope s
+                    ON s.child_department_id = c.child_department_id
+                LEFT JOIN analytics_schema.fact_scheme_performance_table fp
+                    ON fp.scheme_id = s.scheme_id
+                    AND fp.last_water_supply_date BETWEEN ? AND ?
+                GROUP BY c.child_department_id
+                ORDER BY c.child_department_id
+                """, childRegionParentDepartmentColumn, childSchemeDepartmentColumn, parentSchemeDepartmentColumn);
+
+        return jdbcTemplate.query(
+                sql,
+                (rs, rowNum) -> new ChildRegionPerformanceScore(
+                        null,
+                        rs.getInt("department_id"),
+                        rs.getBigDecimal("average_performance_score")),
+                childLevel,
+                parentDepartmentId,
+                parentDepartmentId,
+                startDate,
+                endDate);
+    }
+
     public List<ChildRegionReadingSubmissionMetrics> getChildReadingSubmissionRateMetricsByLgd(
             Integer parentLgdId, LocalDate startDate, LocalDate endDate) {
         Integer lgdLevel = getLgdLevel(parentLgdId);
@@ -1991,6 +2149,12 @@ public class SchemeRegularityRepository {
             Integer schemeCount,
             Integer totalSubmissionDays,
             BigDecimal readingSubmissionRate) {
+    }
+
+    public record ChildRegionPerformanceScore(
+            Integer lgdId,
+            Integer departmentId,
+            BigDecimal averagePerformanceScore) {
     }
 
     public record StateSchemeRegularityMetrics(

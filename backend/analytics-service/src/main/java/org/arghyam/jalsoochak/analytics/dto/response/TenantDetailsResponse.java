@@ -20,5 +20,6 @@ public class TenantDetailsResponse {
     private String boundaryGeoJson;
     private BigDecimal averageSchemeRegularity;
     private BigDecimal readingSubmissionRate;
+    private BigDecimal averagePerformanceScore;
     private List<ChildRegionDetails> childRegions;
 }

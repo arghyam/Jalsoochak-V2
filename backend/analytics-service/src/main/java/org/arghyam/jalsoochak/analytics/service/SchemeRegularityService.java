@@ -12,8 +12,11 @@ import org.arghyam.jalsoochak.analytics.dto.response.SchemeStatusAndTopReporting
 import org.arghyam.jalsoochak.analytics.dto.response.UserOutageReasonSchemeCountResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.UserSubmissionStatusResponse;
 import org.arghyam.jalsoochak.analytics.enums.PeriodScale;
+import org.arghyam.jalsoochak.analytics.repository.SchemeRegularityRepository;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.List;
 import java.util.Map;
 public interface SchemeRegularityService {
 
@@ -37,6 +40,18 @@ public interface SchemeRegularityService {
             Integer parentDepartmentId, LocalDate startDate, LocalDate endDate);
 
     ReadingSubmissionRateResponse getReadingSubmissionRateByDepartmentForChildRegions(
+            Integer parentDepartmentId, LocalDate startDate, LocalDate endDate);
+
+    BigDecimal getAveragePerformanceScoreByLgd(
+            Integer parentLgdId, LocalDate startDate, LocalDate endDate);
+
+    BigDecimal getAveragePerformanceScoreByDepartment(
+            Integer parentDepartmentId, LocalDate startDate, LocalDate endDate);
+
+    List<SchemeRegularityRepository.ChildRegionPerformanceScore> getChildAveragePerformanceScoreByLgd(
+            Integer parentLgdId, LocalDate startDate, LocalDate endDate);
+
+    List<SchemeRegularityRepository.ChildRegionPerformanceScore> getChildAveragePerformanceScoreByDepartment(
             Integer parentDepartmentId, LocalDate startDate, LocalDate endDate);
 
     AverageWaterSupplyResponse getAverageWaterSupplyPerCurrentRegion(

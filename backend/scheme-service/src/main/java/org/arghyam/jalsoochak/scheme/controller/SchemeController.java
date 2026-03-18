@@ -5,6 +5,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.arghyam.jalsoochak.scheme.dto.SchemeCountsDTO;
 import org.arghyam.jalsoochak.scheme.dto.SchemeDTO;
 import org.arghyam.jalsoochak.scheme.dto.SchemeMappingDTO;
+import org.arghyam.jalsoochak.scheme.dto.SchemeStatusCountsDTO;
 import org.arghyam.jalsoochak.scheme.dto.SchemeUploadResponseDTO;
 import org.arghyam.jalsoochak.scheme.dto.common.PageResponseDTO;
 import org.arghyam.jalsoochak.scheme.service.SchemeService;
@@ -101,6 +102,14 @@ public class SchemeController {
     ) {
         log.info("GET /api/schemes/counts called");
         return ResponseEntity.ok(schemeService.getSchemeCounts(tenantCode));
+    }
+
+    @GetMapping("/schemes/counts/by-status")
+    public ResponseEntity<SchemeStatusCountsDTO> getSchemeStatusCounts(
+            @RequestParam String tenantCode
+    ) {
+        log.info("GET /api/schemes/counts/by-status called");
+        return ResponseEntity.ok(schemeService.getSchemeStatusCounts(tenantCode));
     }
 
     @PreAuthorize("hasRole('STATE_ADMIN')")
