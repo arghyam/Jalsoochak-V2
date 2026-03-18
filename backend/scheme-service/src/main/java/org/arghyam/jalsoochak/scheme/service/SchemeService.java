@@ -3,6 +3,7 @@ package org.arghyam.jalsoochak.scheme.service;
 import org.arghyam.jalsoochak.scheme.dto.SchemeDTO;
 import org.arghyam.jalsoochak.scheme.dto.SchemeCountsDTO;
 import org.arghyam.jalsoochak.scheme.dto.SchemeMappingDTO;
+import org.arghyam.jalsoochak.scheme.dto.SchemeStatusCountsDTO;
 import org.arghyam.jalsoochak.scheme.dto.SchemeUploadResponseDTO;
 import org.arghyam.jalsoochak.scheme.dto.common.PageResponseDTO;
 import org.springframework.web.multipart.MultipartFile;
@@ -40,6 +41,8 @@ public interface SchemeService {
     );
 
     SchemeCountsDTO getSchemeCounts(String tenantCode);
+
+    SchemeStatusCountsDTO getSchemeStatusCounts(String tenantCode);
 
     SchemeUploadResponseDTO uploadSchemes(MultipartFile file);
 
