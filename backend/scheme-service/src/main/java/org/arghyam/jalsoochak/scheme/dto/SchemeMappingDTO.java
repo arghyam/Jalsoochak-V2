@@ -9,7 +9,7 @@ public record SchemeMappingDTO(
         String stateSchemeId,
         String schemeName,
         String villageLgdCode,
+        String villageName,
         String subDivisionName
 ) {
 }
-

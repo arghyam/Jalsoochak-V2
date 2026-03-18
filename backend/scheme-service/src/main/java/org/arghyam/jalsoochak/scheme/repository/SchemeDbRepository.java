@@ -29,6 +29,17 @@ public class SchemeDbRepository {
     private final JdbcTemplate jdbcTemplate;
     private static final Pattern SAFE_SCHEMA = Pattern.compile("^[a-z_][a-z0-9_]*$");
     private final ConcurrentHashMap<String, Boolean> deptTablesExistCache = new ConcurrentHashMap<>();
+    private static final Map<Integer, String> WORK_STATUS_LABELS = Map.of(
+            1, "Ongoing",
+            2, "Completed",
+            3, "Not Started",
+            4, "Handed Over"
+    );
+    private static final Map<Integer, String> OPERATING_STATUS_LABELS = Map.of(
+            1, "Operative",
+            2, "Non-Operative",
+            3, "Partially Operative"
+    );
 
     public List<SchemeDTO> findAllSchemes(String schemaName) {
         validateSchemaName(schemaName);
@@ -53,8 +64,8 @@ public class SchemeDbRepository {
                 .latitude((Double) rs.getObject("latitude"))
                 .longitude((Double) rs.getObject("longitude"))
                 .channel(rs.getInt("channel"))
-                .workStatus(rs.getInt("work_status"))
-                .operatingStatus(rs.getInt("operating_status"))
+                .workStatus(workStatusLabel((Integer) rs.getObject("work_status")))
+                .operatingStatus(operatingStatusLabel((Integer) rs.getObject("operating_status")))
                 .build());
     }
 
@@ -103,8 +114,8 @@ public class SchemeDbRepository {
                 .latitude((Double) rs.getObject("latitude"))
                 .longitude((Double) rs.getObject("longitude"))
                 .channel((Integer) rs.getObject("channel"))
-                .workStatus(rs.getInt("work_status"))
-                .operatingStatus(rs.getInt("operating_status"))
+                .workStatus(workStatusLabel((Integer) rs.getObject("work_status")))
+                .operatingStatus(operatingStatusLabel((Integer) rs.getObject("operating_status")))
                 .build(), args.toArray());
     }
 
@@ -192,6 +203,7 @@ public class SchemeDbRepository {
                            sm.state_scheme_id,
                            sm.scheme_name,
                            lgd.lgd_code AS village_lgd_code,
+                           lgd.title AS village_name,
                            dept.title   AS sub_division_name
                     FROM %s.scheme_lgd_mapping_table slm
                     JOIN %s.scheme_master_table sm
@@ -213,6 +225,7 @@ public class SchemeDbRepository {
                            sm.state_scheme_id,
                            sm.scheme_name,
                            lgd.lgd_code AS village_lgd_code,
+                           lgd.title AS village_name,
                            NULL::varchar AS sub_division_name
                     FROM %s.scheme_lgd_mapping_table slm
                     JOIN %s.scheme_master_table sm
@@ -234,6 +247,7 @@ public class SchemeDbRepository {
                 .stateSchemeId(rs.getString("state_scheme_id"))
                 .schemeName(rs.getString("scheme_name"))
                 .villageLgdCode(rs.getString("village_lgd_code"))
+                .villageName(rs.getString("village_name"))
                 .subDivisionName(rs.getString("sub_division_name"))
                 .build(), args.toArray());
     }
@@ -355,7 +369,7 @@ public class SchemeDbRepository {
                 ORDER BY work_status
                 """, schemaName);
         return jdbcTemplate.query(sql, (rs, rowNum) -> CodeCountDTO.builder()
-                .code(rs.getInt("code"))
+                .status(workStatusLabel((Integer) rs.getObject("code")))
                 .count(rs.getLong("cnt"))
                 .build());
     }
@@ -370,7 +384,7 @@ public class SchemeDbRepository {
                 ORDER BY operating_status
                 """, schemaName);
         return jdbcTemplate.query(sql, (rs, rowNum) -> CodeCountDTO.builder()
-                .code(rs.getInt("code"))
+                .status(operatingStatusLabel((Integer) rs.getObject("code")))
                 .count(rs.getLong("cnt"))
                 .build());
     }
@@ -409,12 +423,26 @@ public class SchemeDbRepository {
                     .latitude((Double) rs.getObject("latitude"))
                     .longitude((Double) rs.getObject("longitude"))
                     .channel((Integer) rs.getObject("channel"))
-                    .workStatus(rs.getInt("work_status"))
-                    .operatingStatus(rs.getInt("operating_status"))
+                    .workStatus(workStatusLabel((Integer) rs.getObject("work_status")))
+                    .operatingStatus(operatingStatusLabel((Integer) rs.getObject("operating_status")))
                     .build(), schemeId);
         } catch (EmptyResultDataAccessException ex) {
             return null;
         }
+    }
+
+    private String workStatusLabel(Integer code) {
+        if (code == null) {
+            return "Unknown";
+        }
+        return WORK_STATUS_LABELS.getOrDefault(code, "Unknown");
+    }
+
+    private String operatingStatusLabel(Integer code) {
+        if (code == null) {
+            return "Unknown";
+        }
+        return OPERATING_STATUS_LABELS.getOrDefault(code, "Unknown");
     }
 
     /**

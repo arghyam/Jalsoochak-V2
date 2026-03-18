@@ -11,6 +11,7 @@ import org.apache.poi.ss.usermodel.Sheet;
 import org.apache.poi.ss.usermodel.Workbook;
 import org.apache.poi.ss.usermodel.WorkbookFactory;
 import org.arghyam.jalsoochak.scheme.config.TenantContext;
+import org.arghyam.jalsoochak.scheme.dto.CodeCountDTO;
 import org.arghyam.jalsoochak.scheme.dto.SchemeCountsDTO;
 import org.arghyam.jalsoochak.scheme.dto.SchemeDTO;
 import org.arghyam.jalsoochak.scheme.dto.SchemeMappingDTO;
@@ -228,6 +229,10 @@ public class SchemeServiceImpl implements SchemeService {
                 .totalSchemes(total)
                 .activeSchemes(activeInactive.activeSchemes())
                 .inactiveSchemes(activeInactive.inactiveSchemes())
+                .statusCounts(List.of(
+                        CodeCountDTO.builder().status("ACTIVE").count(activeInactive.activeSchemes()).build(),
+                        CodeCountDTO.builder().status("INACTIVE").count(activeInactive.inactiveSchemes()).build()
+                ))
                 .workStatusCounts(schemeDbRepository.countSchemesByWorkStatus(schemaName))
                 .operatingStatusCounts(schemeDbRepository.countSchemesByOperatingStatus(schemaName))
                 .build();
