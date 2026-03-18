@@ -298,7 +298,7 @@ public class FactServiceImpl implements FactService {
      *       — distinct per operator so concurrent violations from different users are not collapsed.</li>
      * </ul>
      */
-    private String buildCorrelationId(EscalationType type, Integer userId, Integer tenantId, Integer schemeId) {
+    String buildCorrelationId(EscalationType type, Integer userId, Integer tenantId, Integer schemeId) {
         String key = EscalationType.USER_ANOMALIES.contains(type)
                 ? userId + ":" + tenantId + ":" + schemeId + ":" + type.label
                 : tenantId + ":" + schemeId + ":" + type.label;

@@ -1,5 +1,6 @@
 package org.arghyam.jalsoochak.analytics.service.serviceImpl;
 
+import org.arghyam.jalsoochak.analytics.constant.EscalationType;
 import org.arghyam.jalsoochak.analytics.dto.event.EscalationEvent;
 import org.arghyam.jalsoochak.analytics.dto.event.MeterReadingEvent;
 import org.arghyam.jalsoochak.analytics.dto.event.SchemePerformanceEvent;
@@ -162,7 +163,8 @@ class FactServiceImplTest {
         verify(escalationRepository, times(1)).save(escCaptor.capture());
         assertThat(escCaptor.getValue().getUserId()).isEqualTo(99); // officerId
         assertThat(escCaptor.getValue().getSchemeId()).isEqualTo(11);
-        assertThat(escCaptor.getValue().getCorrelationId()).isEqualTo("80753e8b-05ad-32b7-8355-f0dfac4c6cd1");
+        assertThat(escCaptor.getValue().getCorrelationId())
+                .isEqualTo(service.buildCorrelationId(EscalationType.NO_SUBMISSION, 21, 1, 11));
 
         ArgumentCaptor<Anomaly> anomalyCaptor = ArgumentCaptor.forClass(Anomaly.class);
         verify(anomalyRepository, times(1)).save(anomalyCaptor.capture());
@@ -247,7 +249,8 @@ class FactServiceImplTest {
 
         ArgumentCaptor<FactEscalation> escCaptor = ArgumentCaptor.forClass(FactEscalation.class);
         verify(escalationRepository, times(1)).save(escCaptor.capture());
-        assertThat(escCaptor.getValue().getCorrelationId()).isEqualTo("80753e8b-05ad-32b7-8355-f0dfac4c6cd1");
+        assertThat(escCaptor.getValue().getCorrelationId())
+                .isEqualTo(service.buildCorrelationId(EscalationType.NO_SUBMISSION, 21, 1, 11));
         assertThat(escCaptor.getValue().getMessage()).contains("never submitted");
 
         ArgumentCaptor<Anomaly> anomalyCaptor = ArgumentCaptor.forClass(Anomaly.class);
