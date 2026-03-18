@@ -32,7 +32,7 @@ public class FactWaterQuantity {
     @Column(name = "scheme_id", nullable = false)
     private Integer schemeId;
 
-    @Column(name = "user_id", nullable = false)
+    @Column(name = "user_id")
     private Integer userId;
 
     @Column(name = "water_quantity", nullable = false)
@@ -51,5 +51,5 @@ public class FactWaterQuantity {
     private Integer submissionStatus;
 
     @Column(name = "outage_reason")
-    private Integer outageReason;
+    private String outageReason;
 }

@@ -183,10 +183,10 @@ class SchemeRegularityServiceImplTest {
     }
 
     @Test
-    void getOutageReasonSchemeCountByLgd_fillsMissingReasonKeysAndChildRows() {
+    void getOutageReasonSchemeCountByLgd_usesTableReasonValues() {
         when(schemeRegularityRepository.getLgdLevel(101)).thenReturn(3);
         when(schemeRegularityRepository.getOutageReasonSchemeCountByLgd(101, START, END))
-                .thenReturn(List.of(new SchemeRegularityRepository.OutageReasonSchemeCount(2, 4)));
+                .thenReturn(List.of(new SchemeRegularityRepository.OutageReasonSchemeCount("no_electricity", 4)));
         when(schemeRegularityRepository.getChildRegionsByLgd(101))
                 .thenReturn(List.of(
                         new SchemeRegularityRepository.ChildRegionRef(401, null, "Village A"),
@@ -194,26 +194,20 @@ class SchemeRegularityServiceImplTest {
                 ));
         when(schemeRegularityRepository.getChildOutageReasonSchemeCountByLgd(101, START, END))
                 .thenReturn(List.of(
-                        new SchemeRegularityRepository.ChildRegionOutageReasonSchemeCount(401, null, 1, 2),
-                        new SchemeRegularityRepository.ChildRegionOutageReasonSchemeCount(999, null, 3, 5)
+                        new SchemeRegularityRepository.ChildRegionOutageReasonSchemeCount(401, null, "draught", 2),
+                        new SchemeRegularityRepository.ChildRegionOutageReasonSchemeCount(999, null, "motor_burnt", 5)
                 ));
 
         OutageReasonSchemeCountResponse response =
                 service.getOutageReasonSchemeCountByLgd(101, START, END);
 
         assertThat(response.getOutageReasonSchemeCount())
-                .containsEntry("draught", 0)
-                .containsEntry("no_electricity", 4)
-                .containsEntry("motor_burnt", 0);
+                .containsExactlyEntriesOf(Map.of("no_electricity", 4));
         assertThat(response.getChildRegions()).hasSize(2);
         assertThat(response.getChildRegions().get(0).getOutageReasonSchemeCount())
-                .containsEntry("draught", 2)
-                .containsEntry("no_electricity", 0)
-                .containsEntry("motor_burnt", 0);
+                .containsExactlyEntriesOf(Map.of("draught", 2));
         assertThat(response.getChildRegions().get(1).getOutageReasonSchemeCount())
-                .containsEntry("draught", 0)
-                .containsEntry("no_electricity", 0)
-                .containsEntry("motor_burnt", 0);
+                .isEmpty();
     }
 
     @Test
@@ -501,32 +495,31 @@ class SchemeRegularityServiceImplTest {
     void getOutageReasonSchemeCountByDepartment_mapsReasonAndChildRows() {
         when(schemeRegularityRepository.getDepartmentLevel(201)).thenReturn(2);
         when(schemeRegularityRepository.getOutageReasonSchemeCountByDepartment(201, START, END))
-                .thenReturn(List.of(new SchemeRegularityRepository.OutageReasonSchemeCount(1, 3)));
+                .thenReturn(List.of(new SchemeRegularityRepository.OutageReasonSchemeCount("draught", 3)));
         when(schemeRegularityRepository.getChildRegionsByDepartment(201))
                 .thenReturn(List.of(new SchemeRegularityRepository.ChildRegionRef(null, 501, "Dept-A")));
         when(schemeRegularityRepository.getChildOutageReasonSchemeCountByDepartment(201, START, END))
                 .thenReturn(List.of(new SchemeRegularityRepository.ChildRegionOutageReasonSchemeCount(
-                        null, 501, 2, 4
+                        null, 501, "no_electricity", 4
                 )));
 
         OutageReasonSchemeCountResponse response =
                 service.getOutageReasonSchemeCountByDepartment(201, START, END);
 
         assertThat(response.getDepartmentId()).isEqualTo(201);
-        assertThat(response.getOutageReasonSchemeCount()).containsEntry("draught", 3);
-        assertThat(response.getOutageReasonSchemeCount()).containsEntry("no_electricity", 0);
+        assertThat(response.getOutageReasonSchemeCount()).containsExactlyEntriesOf(Map.of("draught", 3));
         assertThat(response.getChildRegions()).hasSize(1);
         assertThat(response.getChildRegions().getFirst().getOutageReasonSchemeCount()).containsEntry("no_electricity", 4);
     }
 
     @Test
-    void getOutageReasonSchemeCountByUser_returnsReasonCountsWithMissingKeysAsZero() {
+    void getOutageReasonSchemeCountByUser_returnsReasonCountsFromTableValues() {
         when(schemeRegularityRepository.getOutageReasonSchemeCountByUser(11, START, END))
-                .thenReturn(List.of(new SchemeRegularityRepository.OutageReasonSchemeCount(3, 2)));
+                .thenReturn(List.of(new SchemeRegularityRepository.OutageReasonSchemeCount("motor_burnt", 2)));
         when(schemeRegularityRepository.getDailyOutageReasonSchemeCountByUser(11, START, END))
                 .thenReturn(List.of(
-                        new SchemeRegularityRepository.DailyOutageReasonSchemeCount(START, 2, 1),
-                        new SchemeRegularityRepository.DailyOutageReasonSchemeCount(START.plusDays(1), 3, 2)
+                        new SchemeRegularityRepository.DailyOutageReasonSchemeCount(START, "no_electricity", 1),
+                        new SchemeRegularityRepository.DailyOutageReasonSchemeCount(START.plusDays(1), "motor_burnt", 2)
                 ));
         when(schemeRegularityRepository.getSchemeCountByUser(11)).thenReturn(2);
 
@@ -536,18 +529,13 @@ class SchemeRegularityServiceImplTest {
         assertThat(response.getUserId()).isEqualTo(11);
         assertThat(response.getSchemeCount()).isEqualTo(2);
         assertThat(response.getOutageReasonSchemeCount())
-                .containsEntry("draught", 0)
-                .containsEntry("no_electricity", 0)
-                .containsEntry("motor_burnt", 2);
+                .containsExactlyEntriesOf(Map.of("motor_burnt", 2));
         assertThat(response.getDailyOutageReasonDistribution()).hasSize(3);
         assertThat(response.getDailyOutageReasonDistribution().get(0).getOutageReasonSchemeCount())
                 .containsEntry("no_electricity", 1);
         assertThat(response.getDailyOutageReasonDistribution().get(1).getOutageReasonSchemeCount())
                 .containsEntry("motor_burnt", 2);
-        assertThat(response.getDailyOutageReasonDistribution().get(2).getOutageReasonSchemeCount())
-                .containsEntry("draught", 0)
-                .containsEntry("no_electricity", 0)
-                .containsEntry("motor_burnt", 0);
+        assertThat(response.getDailyOutageReasonDistribution().get(2).getOutageReasonSchemeCount()).isEmpty();
     }
 
     @Test
@@ -676,7 +664,7 @@ class SchemeRegularityServiceImplTest {
                 ));
         when(schemeRegularityRepository.getOverallOutageReasonSchemeCount(START, END))
                 .thenReturn(List.of(
-                        new SchemeRegularityRepository.OutageReasonSchemeCount(1, 3)
+                        new SchemeRegularityRepository.OutageReasonSchemeCount("draught", 3)
                 ));
         when(objectMapper.writeValueAsString(any())).thenReturn("{json}");
 

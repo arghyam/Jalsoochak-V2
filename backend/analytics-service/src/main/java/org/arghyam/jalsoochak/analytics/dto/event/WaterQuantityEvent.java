@@ -15,6 +15,6 @@ public class WaterQuantityEvent {
     private Integer userId;
     private Integer waterQuantity;
     private Integer submissionStatus;
-    private Integer outageReason;
+    private String outageReason;
     private String date;
 }

@@ -260,11 +260,11 @@ class SchemeRegularityRepositoryIntegrationTest {
         assertThat(parent).hasSize(2);
         assertThat(parent)
                 .anySatisfy(r -> {
-                    assertThat(r.outageReason()).isEqualTo(1);
+                    assertThat(r.outageReason()).isEqualTo("draught");
                     assertThat(r.schemeCount()).isEqualTo(1);
                 })
                 .anySatisfy(r -> {
-                    assertThat(r.outageReason()).isEqualTo(2);
+                    assertThat(r.outageReason()).isEqualTo("no_electricity");
                     assertThat(r.schemeCount()).isEqualTo(2);
                 });
 
@@ -276,17 +276,17 @@ class SchemeRegularityRepositoryIntegrationTest {
         assertThat(childCounts)
                 .anySatisfy(r -> {
                     assertThat(r.lgdId()).isEqualTo(101);
-                    assertThat(r.outageReason()).isEqualTo(1);
+                    assertThat(r.outageReason()).isEqualTo("draught");
                     assertThat(r.schemeCount()).isEqualTo(1);
                 })
                 .anySatisfy(r -> {
                     assertThat(r.lgdId()).isEqualTo(101);
-                    assertThat(r.outageReason()).isEqualTo(2);
+                    assertThat(r.outageReason()).isEqualTo("no_electricity");
                     assertThat(r.schemeCount()).isEqualTo(1);
                 })
                 .anySatisfy(r -> {
                     assertThat(r.lgdId()).isEqualTo(102);
-                    assertThat(r.outageReason()).isEqualTo(2);
+                    assertThat(r.outageReason()).isEqualTo("no_electricity");
                     assertThat(r.schemeCount()).isEqualTo(1);
                 });
     }
@@ -302,11 +302,11 @@ class SchemeRegularityRepositoryIntegrationTest {
         assertThat(parent).hasSize(2);
         assertThat(parent)
                 .anySatisfy(r -> {
-                    assertThat(r.outageReason()).isEqualTo(1);
+                    assertThat(r.outageReason()).isEqualTo("draught");
                     assertThat(r.schemeCount()).isEqualTo(1);
                 })
                 .anySatisfy(r -> {
-                    assertThat(r.outageReason()).isEqualTo(2);
+                    assertThat(r.outageReason()).isEqualTo("no_electricity");
                     assertThat(r.schemeCount()).isEqualTo(2);
                 });
 
@@ -318,17 +318,17 @@ class SchemeRegularityRepositoryIntegrationTest {
         assertThat(childCounts)
                 .anySatisfy(r -> {
                     assertThat(r.departmentId()).isEqualTo(201);
-                    assertThat(r.outageReason()).isEqualTo(1);
+                    assertThat(r.outageReason()).isEqualTo("draught");
                     assertThat(r.schemeCount()).isEqualTo(1);
                 })
                 .anySatisfy(r -> {
                     assertThat(r.departmentId()).isEqualTo(201);
-                    assertThat(r.outageReason()).isEqualTo(2);
+                    assertThat(r.outageReason()).isEqualTo("no_electricity");
                     assertThat(r.schemeCount()).isEqualTo(1);
                 })
                 .anySatisfy(r -> {
                     assertThat(r.departmentId()).isEqualTo(202);
-                    assertThat(r.outageReason()).isEqualTo(2);
+                    assertThat(r.outageReason()).isEqualTo("no_electricity");
                     assertThat(r.schemeCount()).isEqualTo(1);
                 });
     }
@@ -363,27 +363,27 @@ class SchemeRegularityRepositoryIntegrationTest {
         assertThat(schemeCount).isEqualTo(3);
         assertThat(userCounts)
                 .anySatisfy(r -> {
-                    assertThat(r.outageReason()).isEqualTo(1);
+                    assertThat(r.outageReason()).isEqualTo("draught");
                     assertThat(r.schemeCount()).isEqualTo(1);
                 })
                 .anySatisfy(r -> {
-                    assertThat(r.outageReason()).isEqualTo(2);
+                    assertThat(r.outageReason()).isEqualTo("no_electricity");
                     assertThat(r.schemeCount()).isEqualTo(2);
                 });
         assertThat(dailyUserCounts)
                 .anySatisfy(r -> {
                     assertThat(r.date()).isEqualTo(D1);
-                    assertThat(r.outageReason()).isEqualTo(1);
+                    assertThat(r.outageReason()).isEqualTo("draught");
                     assertThat(r.schemeCount()).isEqualTo(1);
                 })
                 .anySatisfy(r -> {
                     assertThat(r.date()).isEqualTo(D1);
-                    assertThat(r.outageReason()).isEqualTo(2);
+                    assertThat(r.outageReason()).isEqualTo("no_electricity");
                     assertThat(r.schemeCount()).isEqualTo(1);
                 })
                 .anySatisfy(r -> {
                     assertThat(r.date()).isEqualTo(D8);
-                    assertThat(r.outageReason()).isEqualTo(2);
+                    assertThat(r.outageReason()).isEqualTo("no_electricity");
                     assertThat(r.schemeCount()).isEqualTo(2);
                 });
     }
@@ -658,7 +658,7 @@ class SchemeRegularityRepositoryIntegrationTest {
                 INSERT INTO analytics_schema.fact_water_quantity_table
                 (tenant_id, scheme_id, user_id, water_quantity, date, created_at, updated_at, submission_status, outage_reason)
                 VALUES (?, ?, ?, ?, ?, NOW(), NOW(), ?, ?)
-                """, 1, 1, 11, 100, D1, 1, 1);
+                """, 1, 1, 11, 100, D1, 1, "draught");
 
         jdbcTemplate.update("""
                 INSERT INTO analytics_schema.fact_water_quantity_table
@@ -670,19 +670,19 @@ class SchemeRegularityRepositoryIntegrationTest {
                 INSERT INTO analytics_schema.fact_water_quantity_table
                 (tenant_id, scheme_id, user_id, water_quantity, date, created_at, updated_at, submission_status, outage_reason)
                 VALUES (?, ?, ?, ?, ?, NOW(), NOW(), ?, ?)
-                """, 1, 1, 11, 300, D8, 1, 2);
+                """, 1, 1, 11, 300, D8, 1, "no_electricity");
 
         jdbcTemplate.update("""
                 INSERT INTO analytics_schema.fact_water_quantity_table
                 (tenant_id, scheme_id, user_id, water_quantity, date, created_at, updated_at, submission_status, outage_reason)
                 VALUES (?, ?, ?, ?, ?, NOW(), NOW(), ?, ?)
-                """, 1, 2, 12, 50, D1, 1, 2);
+                """, 1, 2, 12, 50, D1, 1, "no_electricity");
 
         jdbcTemplate.update("""
                 INSERT INTO analytics_schema.fact_water_quantity_table
                 (tenant_id, scheme_id, user_id, water_quantity, date, created_at, updated_at, submission_status, outage_reason)
                 VALUES (?, ?, ?, ?, ?, NOW(), NOW(), ?, ?)
-                """, 1, 2, 12, 70, D8, 1, 2);
+                """, 1, 2, 12, 70, D8, 1, "no_electricity");
     }
 
     private void insertDate(LocalDate date) {

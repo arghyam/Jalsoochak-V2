@@ -679,7 +679,7 @@ public class SchemeRegularityRepository {
         return jdbcTemplate.query(
                 sql,
                 (rs, rowNum) -> new OutageReasonSchemeCount(
-                        (Integer) rs.getObject("outage_reason"),
+                        rs.getString("outage_reason"),
                         rs.getInt("scheme_count")),
                 lgdId,
                 startDate,
@@ -715,7 +715,7 @@ public class SchemeRegularityRepository {
         return jdbcTemplate.query(
                 sql,
                 (rs, rowNum) -> new OutageReasonSchemeCount(
-                        (Integer) rs.getObject("outage_reason"),
+                        rs.getString("outage_reason"),
                         rs.getInt("scheme_count")),
                 departmentId,
                 startDate,
@@ -745,7 +745,7 @@ public class SchemeRegularityRepository {
         return jdbcTemplate.query(
                 sql,
                 (rs, rowNum) -> new OutageReasonSchemeCount(
-                        (Integer) rs.getObject("outage_reason"),
+                        rs.getString("outage_reason"),
                         rs.getInt("scheme_count")),
                 userId,
                 startDate,
@@ -777,7 +777,7 @@ public class SchemeRegularityRepository {
                 sql,
                 (rs, rowNum) -> new DailyOutageReasonSchemeCount(
                         rs.getObject("date", LocalDate.class),
-                        (Integer) rs.getObject("outage_reason"),
+                        rs.getString("outage_reason"),
                         rs.getInt("scheme_count")),
                 userId,
                 startDate,
@@ -954,7 +954,7 @@ public class SchemeRegularityRepository {
                 (rs, rowNum) -> new ChildRegionOutageReasonSchemeCount(
                         rs.getInt("lgd_id"),
                         null,
-                        (Integer) rs.getObject("outage_reason"),
+                        rs.getString("outage_reason"),
                         rs.getInt("scheme_count")),
                 lgdId,
                 startDate,
@@ -1000,7 +1000,7 @@ public class SchemeRegularityRepository {
                 (rs, rowNum) -> new ChildRegionOutageReasonSchemeCount(
                         null,
                         rs.getInt("department_id"),
-                        (Integer) rs.getObject("outage_reason"),
+                        rs.getString("outage_reason"),
                         rs.getInt("scheme_count")),
                 departmentId,
                 startDate,
@@ -1599,7 +1599,7 @@ public class SchemeRegularityRepository {
         return jdbcTemplate.query(
                 sql,
                 (rs, rowNum) -> new OutageReasonSchemeCount(
-                        (Integer) rs.getObject("outage_reason"),
+                        rs.getString("outage_reason"),
                         rs.getInt("scheme_count")),
                 startDate,
                 endDate);
@@ -2180,7 +2180,7 @@ public class SchemeRegularityRepository {
             String periodStartFromFact) {
     }
 
-    public record OutageReasonSchemeCount(Integer outageReason, Integer schemeCount) {
+    public record OutageReasonSchemeCount(String outageReason, Integer schemeCount) {
     }
 
     public record ChildRegionRef(Integer lgdId, Integer departmentId, String title) {
@@ -2189,7 +2189,7 @@ public class SchemeRegularityRepository {
     public record ChildRegionOutageReasonSchemeCount(
             Integer lgdId,
             Integer departmentId,
-            Integer outageReason,
+            String outageReason,
             Integer schemeCount) {
     }
 
@@ -2223,7 +2223,7 @@ public class SchemeRegularityRepository {
 
     public record DailyOutageReasonSchemeCount(
             LocalDate date,
-            Integer outageReason,
+            String outageReason,
             Integer schemeCount) {
     }
 

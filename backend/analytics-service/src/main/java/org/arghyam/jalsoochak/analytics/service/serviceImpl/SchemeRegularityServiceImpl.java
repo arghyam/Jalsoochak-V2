@@ -11,7 +11,6 @@ import org.arghyam.jalsoochak.analytics.dto.response.SchemeRegularityListRespons
 import org.arghyam.jalsoochak.analytics.dto.response.SchemeStatusAndTopReportingResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.UserOutageReasonSchemeCountResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.UserSubmissionStatusResponse;
-import org.arghyam.jalsoochak.analytics.enums.OutageReason;
 import org.arghyam.jalsoochak.analytics.enums.PeriodScale;
 import org.arghyam.jalsoochak.analytics.enums.RegularityScope;
 import org.arghyam.jalsoochak.analytics.enums.SchemeStatus;
@@ -1162,7 +1161,7 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
         Map<LocalDate, Map<String, Integer>> dailyReasonCountMap = new LinkedHashMap<>();
         LocalDate currentDate = startDate;
         while (!currentDate.isAfter(endDate)) {
-            dailyReasonCountMap.put(currentDate, initReasonCountMap());
+            dailyReasonCountMap.put(currentDate, new LinkedHashMap<>());
             currentDate = currentDate.plusDays(1);
         }
         for (SchemeRegularityRepository.DailyOutageReasonSchemeCount row : dailyRows) {
@@ -1171,7 +1170,7 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
                 continue;
             }
             reasonCount.put(
-                    OutageReason.getKeyForCode(row.outageReason()),
+                    row.outageReason(),
                     row.schemeCount() == null ? 0 : row.schemeCount());
         }
 
@@ -1590,10 +1589,10 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
 
     private Map<String, Integer> buildReasonCountMap(
             List<SchemeRegularityRepository.OutageReasonSchemeCount> rows) {
-        Map<String, Integer> reasonCountMap = initReasonCountMap();
+        Map<String, Integer> reasonCountMap = new LinkedHashMap<>();
         for (SchemeRegularityRepository.OutageReasonSchemeCount row : rows) {
             reasonCountMap.put(
-                    OutageReason.getKeyForCode(row.outageReason()),
+                    row.outageReason(),
                     row.schemeCount() == null ? 0 : row.schemeCount());
         }
         return reasonCountMap;
@@ -1612,7 +1611,7 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
                             .lgdId(childRegion.lgdId())
                             .departmentId(childRegion.departmentId())
                             .title(childRegion.title())
-                            .outageReasonSchemeCount(initReasonCountMap())
+                            .outageReasonSchemeCount(new LinkedHashMap<>())
                             .build());
         }
         for (SchemeRegularityRepository.ChildRegionOutageReasonSchemeCount row : childRows) {
@@ -1622,18 +1621,10 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
                 continue;
             }
             child.getOutageReasonSchemeCount().put(
-                    OutageReason.getKeyForCode(row.outageReason()),
+                    row.outageReason(),
                     row.schemeCount() == null ? 0 : row.schemeCount());
         }
         return childById.values().stream().toList();
-    }
-
-    private Map<String, Integer> initReasonCountMap() {
-        Map<String, Integer> reasonCountMap = new LinkedHashMap<>();
-        for (OutageReason outageReason : OutageReason.values()) {
-            reasonCountMap.put(outageReason.getKey(), 0);
-        }
-        return reasonCountMap;
     }
 
     private String getTenantStateCode(Integer tenantId) {

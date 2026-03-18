@@ -165,9 +165,9 @@ class AnalyticsJpaRepositoriesIntegrationTest {
                 INSERT INTO analytics_schema.fact_water_quantity_table
                 (tenant_id, scheme_id, user_id, water_quantity, date, created_at, updated_at, submission_status, outage_reason)
                 VALUES
-                (1, 1, 11, 100, ?, NOW(), NOW(), 1, 1),
+                (1, 1, 11, 100, ?, NOW(), NOW(), 1, 'draught'),
                 (1, 1, 11, 200, ?, NOW(), NOW(), 1, NULL),
-                (1, 2, 12, 50, ?, NOW(), NOW(), 1, 2)
+                (1, 2, 12, 50, ?, NOW(), NOW(), 1, 'no_electricity')
                 """, D1, D2, D1);
 
         jdbcTemplate.update("""

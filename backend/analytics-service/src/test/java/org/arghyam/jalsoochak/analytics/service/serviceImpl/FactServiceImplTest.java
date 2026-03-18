@@ -90,7 +90,7 @@ class FactServiceImplTest {
         event.setUserId(21);
         event.setWaterQuantity(120);
         event.setSubmissionStatus(1);
-        event.setOutageReason(2);
+        event.setOutageReason("no_electricity");
         event.setDate("invalid-date");
 
         service.ingestWaterQuantity(event);
@@ -98,7 +98,7 @@ class FactServiceImplTest {
         ArgumentCaptor<FactWaterQuantity> captor = ArgumentCaptor.forClass(FactWaterQuantity.class);
         verify(waterQuantityRepository, times(1)).save(captor.capture());
         assertThat(captor.getValue().getDate()).isEqualTo(LocalDate.now());
-        assertThat(captor.getValue().getOutageReason()).isEqualTo(2);
+        assertThat(captor.getValue().getOutageReason()).isEqualTo("no_electricity");
     }
 
     @Test
