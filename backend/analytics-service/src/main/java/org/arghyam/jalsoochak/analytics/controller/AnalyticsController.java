@@ -25,6 +25,7 @@ import org.arghyam.jalsoochak.analytics.repository.DimTenantRepository;
 import org.arghyam.jalsoochak.analytics.repository.FactEscalationRepository;
 import org.arghyam.jalsoochak.analytics.repository.FactMeterReadingRepository;
 import org.arghyam.jalsoochak.analytics.repository.FactSchemePerformanceRepository;
+import org.arghyam.jalsoochak.analytics.repository.SchemeRegularityRepository;
 import org.arghyam.jalsoochak.analytics.service.DateDimensionService;
 import org.arghyam.jalsoochak.analytics.service.SchemeRegularityService;
 import org.arghyam.jalsoochak.analytics.service.TenantDetailsService;
@@ -45,10 +46,12 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/v1/analytics")
@@ -80,9 +83,20 @@ public class AnalyticsController {
     public ResponseEntity<TenantDetailsResponse> getTenantDetails(
             @RequestParam(name = "tenant_id", required = true) Integer tenantId,
             @RequestParam(name = "parent_lgd_id", required = false) Integer parentLgdId,
-            @RequestParam(name = "parent_department_id", required = false) Integer parentDepartmentId) {
-        LocalDate endDate = LocalDate.now();
-        LocalDate startDate = endDate.minusDays(29);
+            @RequestParam(name = "parent_department_id", required = false) Integer parentDepartmentId,
+            @RequestParam(name = "start_date", required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam(name = "end_date", required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
+        if (startDate == null && endDate == null) {
+            endDate = LocalDate.now();
+            startDate = endDate.minusDays(30);
+        } else if (startDate == null || endDate == null) {
+            throw new IllegalArgumentException("Provide both start_date and end_date together");
+        }
+        if (endDate.isBefore(startDate)) {
+            throw new IllegalArgumentException("end_date must be on or after start_date");
+        }
         if (parentLgdId != null && parentDepartmentId != null) {
             throw new IllegalArgumentException("Provide either parent_lgd_id or parent_department_id, not both");
         }
@@ -95,6 +109,20 @@ public class AnalyticsController {
                     .getAverageSchemeRegularityByDepartment(parentDepartmentId, startDate, endDate);
             ReadingSubmissionRateResponse submissionRateResponse = schemeRegularityService
                     .getReadingSubmissionRateByDepartment(parentDepartmentId, startDate, endDate);
+            Map<Integer, BigDecimal> childPerformanceByDepartmentId = schemeRegularityService
+                    .getChildAveragePerformanceScoreByDepartment(parentDepartmentId, startDate, endDate)
+                    .stream()
+                    .collect(Collectors.toMap(
+                            SchemeRegularityRepository.ChildRegionPerformanceScore::departmentId,
+                            SchemeRegularityRepository.ChildRegionPerformanceScore::averagePerformanceScore));
+            if (response.getChildRegions() != null) {
+                response.getChildRegions().forEach(childRegion -> childRegion.setAveragePerformanceScore(
+                        childPerformanceByDepartmentId.getOrDefault(
+                                childRegion.getDepartmentId(), BigDecimal.ZERO)));
+            }
+            response.setAveragePerformanceScore(
+                    schemeRegularityService.getAveragePerformanceScoreByDepartment(
+                            parentDepartmentId, startDate, endDate));
             response.setAverageSchemeRegularity(averageResponse.getAverageRegularity());
             response.setReadingSubmissionRate(submissionRateResponse.getReadingSubmissionRate());
             return ResponseEntity.ok(response);
@@ -104,6 +132,20 @@ public class AnalyticsController {
                 .getAverageSchemeRegularity(parentLgdId, startDate, endDate);
         ReadingSubmissionRateResponse submissionRateResponse = schemeRegularityService
                 .getReadingSubmissionRateByLgd(parentLgdId, startDate, endDate);
+        Map<Integer, BigDecimal> childPerformanceByLgdId = schemeRegularityService
+                .getChildAveragePerformanceScoreByLgd(parentLgdId, startDate, endDate)
+                .stream()
+                .collect(Collectors.toMap(
+                        SchemeRegularityRepository.ChildRegionPerformanceScore::lgdId,
+                        SchemeRegularityRepository.ChildRegionPerformanceScore::averagePerformanceScore));
+        if (response.getChildRegions() != null) {
+            response.getChildRegions().forEach(childRegion -> childRegion.setAveragePerformanceScore(
+                    childPerformanceByLgdId.getOrDefault(
+                            childRegion.getLgdId(), BigDecimal.ZERO)));
+        }
+        response.setAveragePerformanceScore(
+                schemeRegularityService.getAveragePerformanceScoreByLgd(
+                        parentLgdId, startDate, endDate));
         response.setAverageSchemeRegularity(averageResponse.getAverageRegularity());
         response.setReadingSubmissionRate(submissionRateResponse.getReadingSubmissionRate());
         return ResponseEntity.ok(response);

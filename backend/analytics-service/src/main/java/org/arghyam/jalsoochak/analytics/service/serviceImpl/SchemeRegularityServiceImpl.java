@@ -582,6 +582,40 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
     }
 
     @Override
+    public BigDecimal getAveragePerformanceScoreByLgd(
+            Integer parentLgdId, LocalDate startDate, LocalDate endDate) {
+        validateLgdInput(parentLgdId);
+        validateDateRange(startDate, endDate);
+        return schemeRegularityRepository.getAveragePerformanceScoreByLgd(parentLgdId, startDate, endDate);
+    }
+
+    @Override
+    public BigDecimal getAveragePerformanceScoreByDepartment(
+            Integer parentDepartmentId, LocalDate startDate, LocalDate endDate) {
+        validateDepartmentInput(parentDepartmentId);
+        validateDateRange(startDate, endDate);
+        return schemeRegularityRepository.getAveragePerformanceScoreByDepartment(
+                parentDepartmentId, startDate, endDate);
+    }
+
+    @Override
+    public List<SchemeRegularityRepository.ChildRegionPerformanceScore> getChildAveragePerformanceScoreByLgd(
+            Integer parentLgdId, LocalDate startDate, LocalDate endDate) {
+        validateLgdInput(parentLgdId);
+        validateDateRange(startDate, endDate);
+        return schemeRegularityRepository.getChildAveragePerformanceScoreByLgd(parentLgdId, startDate, endDate);
+    }
+
+    @Override
+    public List<SchemeRegularityRepository.ChildRegionPerformanceScore> getChildAveragePerformanceScoreByDepartment(
+            Integer parentDepartmentId, LocalDate startDate, LocalDate endDate) {
+        validateDepartmentInput(parentDepartmentId);
+        validateDateRange(startDate, endDate);
+        return schemeRegularityRepository.getChildAveragePerformanceScoreByDepartment(
+                parentDepartmentId, startDate, endDate);
+    }
+
+    @Override
     public AverageWaterSupplyResponse getAverageWaterSupplyPerCurrentRegion(
             Integer tenantId, LocalDate startDate, LocalDate endDate) {
         validateTenantInput(tenantId);

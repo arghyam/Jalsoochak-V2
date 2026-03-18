@@ -5,6 +5,8 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.math.BigDecimal;
+
 @Data
 @Builder
 @NoArgsConstructor
@@ -20,4 +22,5 @@ public class ChildRegionDetails {
     private String title;
     private String lgdCode;
     private String boundaryGeoJson;
+    private BigDecimal averagePerformanceScore;
 }
