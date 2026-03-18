@@ -1,6 +1,7 @@
 package org.arghyam.jalsoochak.user.dto.response;
 
 import lombok.Builder;
+import org.arghyam.jalsoochak.user.enums.TenantUserStatus;
 
 @Builder
 public record TenantStaffResponseDTO(
@@ -9,8 +10,7 @@ public record TenantStaffResponseDTO(
         String title,
         String email,
         String phoneNumber,
-        Integer status,
+        TenantUserStatus status,
         String role
 ) {
 }
-

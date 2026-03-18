@@ -3,6 +3,7 @@ package org.arghyam.jalsoochak.user.repository;
 import lombok.RequiredArgsConstructor;
 import org.arghyam.jalsoochak.user.dto.response.RoleCountDTO;
 import org.arghyam.jalsoochak.user.dto.response.TenantStaffResponseDTO;
+import org.arghyam.jalsoochak.user.enums.TenantUserStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Repository;
@@ -25,7 +26,7 @@ public class TenantStaffRepository {
             .title(rs.getString("title"))
             .email(rs.getString("email"))
             .phoneNumber(rs.getString("phone_number"))
-            .status((Integer) rs.getObject("status"))
+            .status(mapStatus(rs.getObject("status")))
             .role(rs.getString("role"))
             .build();
 
@@ -186,5 +187,15 @@ public class TenantStaffRepository {
             default -> "u.id";
         };
         return "ORDER BY " + col + " " + dir;
+    }
+
+    private TenantUserStatus mapStatus(Object status) {
+        if (status == null) {
+            return null;
+        }
+        if (status instanceof Number num) {
+            return TenantUserStatus.fromCode(num.intValue());
+        }
+        return TenantUserStatus.fromCode(Integer.parseInt(status.toString()));
     }
 }
