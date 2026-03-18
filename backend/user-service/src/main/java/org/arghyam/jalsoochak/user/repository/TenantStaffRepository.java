@@ -2,6 +2,7 @@ package org.arghyam.jalsoochak.user.repository;
 
 import lombok.RequiredArgsConstructor;
 import org.arghyam.jalsoochak.user.dto.response.RoleCountDTO;
+import org.arghyam.jalsoochak.user.dto.response.SchemeSummaryDTO;
 import org.arghyam.jalsoochak.user.dto.response.TenantStaffResponseDTO;
 import org.arghyam.jalsoochak.user.enums.TenantUserStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -9,8 +10,10 @@ import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Repository;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 
@@ -19,6 +22,17 @@ import java.util.Optional;
 public class TenantStaffRepository {
 
     private final JdbcTemplate jdbcTemplate;
+    private static final Map<Integer, String> WORK_STATUS_LABELS = Map.of(
+            1, "Ongoing",
+            2, "Completed",
+            3, "Not Started",
+            4, "Handed Over"
+    );
+    private static final Map<Integer, String> OPERATING_STATUS_LABELS = Map.of(
+            1, "Operative",
+            2, "Non-Operative",
+            3, "Partially Operative"
+    );
 
     private final RowMapper<TenantStaffResponseDTO> staffRowMapper = (rs, rowNum) -> TenantStaffResponseDTO.builder()
             .id(rs.getLong("id"))
@@ -28,6 +42,7 @@ public class TenantStaffRepository {
             .phoneNumber(rs.getString("phone_number"))
             .status(mapStatus(rs.getObject("status")))
             .role(rs.getString("role"))
+            .schemes(null)
             .build();
 
     private void validateSchemaName(String schemaName) {
@@ -72,7 +87,9 @@ public class TenantStaffRepository {
         args.add(limit);
         args.add(offset);
 
-        return jdbcTemplate.query(sql, staffRowMapper, args.toArray());
+        List<TenantStaffResponseDTO> rows = jdbcTemplate.query(sql, staffRowMapper, args.toArray());
+        attachSchemes(schemaName, rows);
+        return rows;
     }
 
     public Optional<TenantStaffResponseDTO> findStaffById(String schemaName, Long id) {
@@ -94,10 +111,12 @@ public class TenantStaffRepository {
                 LIMIT 1
                 """, schemaName);
 
-        return jdbcTemplate.query(sql, rs -> {
+        Optional<TenantStaffResponseDTO> result = jdbcTemplate.query(sql, rs -> {
             if (rs.next()) return Optional.of(staffRowMapper.mapRow(rs, 0));
             return Optional.empty();
         }, id);
+        result.ifPresent(r -> attachSchemes(schemaName, List.of(r)));
+        return result;
     }
 
     public long countStaff(String schemaName, List<String> roles, Integer status, String name) {
@@ -197,5 +216,87 @@ public class TenantStaffRepository {
             return TenantUserStatus.fromCode(num.intValue());
         }
         return TenantUserStatus.fromCode(Integer.parseInt(status.toString()));
+    }
+
+    private void attachSchemes(String schemaName, List<TenantStaffResponseDTO> rows) {
+        if (rows == null || rows.isEmpty()) {
+            return;
+        }
+
+        List<Long> userIds = rows.stream()
+                .map(TenantStaffResponseDTO::id)
+                .filter(Objects::nonNull)
+                .toList();
+        if (userIds.isEmpty()) {
+            return;
+        }
+
+        String placeholders = String.join(", ", userIds.stream().map(v -> "?").toList());
+        String sql = String.format("""
+                SELECT usm.user_id,
+                       sm.id AS scheme_id,
+                       sm.scheme_name,
+                       sm.work_status,
+                       sm.operating_status
+                FROM %s.user_scheme_mapping_table usm
+                JOIN %s.scheme_master_table sm
+                  ON sm.id = usm.scheme_id
+                 AND sm.deleted_at IS NULL
+                WHERE usm.deleted_at IS NULL
+                  AND usm.status = 1
+                  AND usm.user_id IN (%s)
+                ORDER BY usm.user_id ASC, sm.id ASC
+                """, schemaName, schemaName, placeholders);
+
+        Map<Long, List<SchemeSummaryDTO>> byUser = new HashMap<>();
+        jdbcTemplate.query(sql, rs -> {
+            long userId = rs.getLong("user_id");
+            SchemeSummaryDTO scheme = SchemeSummaryDTO.builder()
+                    .schemeId(rs.getLong("scheme_id"))
+                    .schemeName(rs.getString("scheme_name"))
+                    .workStatus(workStatusLabel(getNullableInt(rs.getObject("work_status"))))
+                    .operatingStatus(operatingStatusLabel(getNullableInt(rs.getObject("operating_status"))))
+                    .build();
+            byUser.computeIfAbsent(userId, k -> new ArrayList<>()).add(scheme);
+        }, userIds.toArray());
+
+        for (int i = 0; i < rows.size(); i++) {
+            TenantStaffResponseDTO row = rows.get(i);
+            List<SchemeSummaryDTO> schemes = byUser.getOrDefault(row.id(), List.of());
+            rows.set(i, TenantStaffResponseDTO.builder()
+                    .id(row.id())
+                    .uuid(row.uuid())
+                    .title(row.title())
+                    .email(row.email())
+                    .phoneNumber(row.phoneNumber())
+                    .status(row.status())
+                    .role(row.role())
+                    .schemes(schemes)
+                    .build());
+        }
+    }
+
+    private String workStatusLabel(Integer code) {
+        if (code == null) {
+            return "Unknown";
+        }
+        return WORK_STATUS_LABELS.getOrDefault(code, "Unknown");
+    }
+
+    private String operatingStatusLabel(Integer code) {
+        if (code == null) {
+            return "Unknown";
+        }
+        return OPERATING_STATUS_LABELS.getOrDefault(code, "Unknown");
+    }
+
+    private Integer getNullableInt(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof Number n) {
+            return n.intValue();
+        }
+        return Integer.valueOf(value.toString());
     }
 }
