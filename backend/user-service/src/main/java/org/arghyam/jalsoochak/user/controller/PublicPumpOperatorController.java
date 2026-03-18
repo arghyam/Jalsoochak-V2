@@ -2,6 +2,7 @@ package org.arghyam.jalsoochak.user.controller;
 
 import lombok.RequiredArgsConstructor;
 import org.arghyam.jalsoochak.user.dto.common.ApiResponseDTO;
+import org.arghyam.jalsoochak.user.dto.common.PageResponseDTO;
 import org.arghyam.jalsoochak.user.dto.response.PumpOperatorDetailsDTO;
 import org.arghyam.jalsoochak.user.dto.response.PumpOperatorReadingComplianceDTO;
 import org.arghyam.jalsoochak.user.dto.response.PumpOperatorReadingComplianceRowDTO;
@@ -42,10 +43,12 @@ public class PublicPumpOperatorController {
     }
 
     @GetMapping("/pump-operators/reading-compliance")
-    public ResponseEntity<ApiResponseDTO<List<PumpOperatorReadingComplianceRowDTO>>> listReadingCompliance(
-            @RequestParam String tenantCode
+    public ResponseEntity<ApiResponseDTO<PageResponseDTO<PumpOperatorReadingComplianceRowDTO>>> listReadingCompliance(
+            @RequestParam String tenantCode,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size
     ) {
-        List<PumpOperatorReadingComplianceRowDTO> rows = publicPumpOperatorService.listReadingCompliance(tenantCode);
+        PageResponseDTO<PumpOperatorReadingComplianceRowDTO> rows = publicPumpOperatorService.listReadingCompliance(tenantCode, page, size);
         return ResponseEntity.ok(ApiResponseDTO.of(200, "Reading compliance retrieved", rows));
     }
 

@@ -533,7 +533,7 @@ public class PublicPumpOperatorRepository {
         }
     }
 
-    public List<PumpOperatorReadingComplianceRowDTO> listReadingCompliance(String schemaName) {
+    public List<PumpOperatorReadingComplianceRowDTO> listReadingCompliance(String schemaName, int offset, int limit) {
         validateSchemaName(schemaName);
         String timeColumn = resolveFlowReadingTimeColumn(schemaName);
 
@@ -557,6 +557,7 @@ public class PublicPumpOperatorRepository {
                 WHERE u.deleted_at IS NULL
                   AND upper(COALESCE(ut.c_name, '')) = 'PUMP_OPERATOR'
                 ORDER BY u.id DESC
+                LIMIT ? OFFSET ?
                 """, schemaName, timeColumn, schemaName, timeColumn);
 
         return jdbcTemplate.query(sql, (rs, rowNum) -> {
@@ -570,6 +571,20 @@ public class PublicPumpOperatorRepository {
                     .lastSubmissionAt(lastSubmissionAt)
                     .confirmedReading(confirmed)
                     .build();
-        });
+        }, limit, offset);
+    }
+
+    public long countReadingCompliance(String schemaName) {
+        validateSchemaName(schemaName);
+        String sql = String.format("""
+                SELECT COUNT(1)
+                FROM %s.user_table u
+                LEFT JOIN common_schema.user_type_master_table ut
+                  ON ut.id = u.user_type
+                WHERE u.deleted_at IS NULL
+                  AND upper(COALESCE(ut.c_name, '')) = 'PUMP_OPERATOR'
+                """, schemaName);
+        Long total = jdbcTemplate.queryForObject(sql, Long.class);
+        return total == null ? 0 : total;
     }
 }
