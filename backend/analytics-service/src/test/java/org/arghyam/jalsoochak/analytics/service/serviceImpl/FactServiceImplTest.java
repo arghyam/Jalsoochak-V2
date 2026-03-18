@@ -160,13 +160,13 @@ class FactServiceImplTest {
 
         ArgumentCaptor<FactEscalation> escCaptor = ArgumentCaptor.forClass(FactEscalation.class);
         verify(escalationRepository, times(1)).save(escCaptor.capture());
-        assertThat(escCaptor.getValue().getUserId()).isEqualTo(21);
+        assertThat(escCaptor.getValue().getUserId()).isEqualTo(99); // officerId
         assertThat(escCaptor.getValue().getSchemeId()).isEqualTo(11);
-        assertThat(escCaptor.getValue().getCorrelationId()).isEqualTo("corr-1");
+        assertThat(escCaptor.getValue().getCorrelationId()).isEqualTo("6fb1ad94-c7e2-3dcf-a7dd-fc24e1b2b6e2");
 
         ArgumentCaptor<Anomaly> anomalyCaptor = ArgumentCaptor.forClass(Anomaly.class);
         verify(anomalyRepository, times(1)).save(anomalyCaptor.capture());
-        assertThat(anomalyCaptor.getValue().getUserId()).isEqualTo(21);
+        assertThat(anomalyCaptor.getValue().getUserId()).isEqualTo(21); // operator userId
         assertThat(anomalyCaptor.getValue().getConsecutiveDaysMissed()).isEqualTo(5);
     }
 
@@ -227,15 +227,14 @@ class FactServiceImplTest {
     }
 
     @Test
-    void ingestTenantEscalation_invalidSchemeId_doesNotThrow() {
+    void ingestTenantEscalation_invalidSchemeId_skipsRow() {
         TenantEscalationEvent event = buildEscalationEvent(buildOp(21, 5, "corr-3", "not-a-number"));
         when(dimTenantRepository.existsById(1)).thenReturn(true);
 
         service.ingestTenantEscalation(event);
 
-        ArgumentCaptor<FactEscalation> captor = ArgumentCaptor.forClass(FactEscalation.class);
-        verify(escalationRepository, times(1)).save(captor.capture());
-        assertThat(captor.getValue().getSchemeId()).isNull();
+        verify(escalationRepository, never()).save(any());
+        verify(anomalyRepository, never()).save(any());
     }
 
     @Test
@@ -248,7 +247,7 @@ class FactServiceImplTest {
 
         ArgumentCaptor<FactEscalation> escCaptor = ArgumentCaptor.forClass(FactEscalation.class);
         verify(escalationRepository, times(1)).save(escCaptor.capture());
-        assertThat(escCaptor.getValue().getCorrelationId()).isEqualTo("corr-never");
+        assertThat(escCaptor.getValue().getCorrelationId()).isEqualTo("6fb1ad94-c7e2-3dcf-a7dd-fc24e1b2b6e2");
         assertThat(escCaptor.getValue().getMessage()).contains("never submitted");
 
         ArgumentCaptor<Anomaly> anomalyCaptor = ArgumentCaptor.forClass(Anomaly.class);

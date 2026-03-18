@@ -172,6 +172,10 @@ public class FactServiceImpl implements FactService {
             } catch (NumberFormatException e) {
                 log.warn("Could not parse schemeId '{}' for operator row", op.getSchemeId());
             }
+            if (schemeId == null) {
+                log.warn("Skipping operator escalation row — schemeId is null/invalid (schemeId='{}', tenant={})", op.getSchemeId(), event.getTenantId());
+                continue;
+            }
 
             // Same correlation ID for both tables — allows joining fact_escalation and anomaly on the same event
             String correlationId = UUID.nameUUIDFromBytes(
