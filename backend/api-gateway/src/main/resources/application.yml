@@ -12,6 +12,11 @@ spring:
   cloud:
     gateway:
       routes:
+        - id: pumpoperator-public
+          uri: ${USER_SERVICE_URI:http://localhost:8082}
+          predicates:
+            - Path=/api/v1/pumpoperator/**
+
         - id: tenant-service
           uri: ${TENANT_SERVICE_URI:http://localhost:8081}
           predicates:
