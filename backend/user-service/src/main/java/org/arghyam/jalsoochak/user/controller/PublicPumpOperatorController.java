@@ -4,8 +4,10 @@ import lombok.RequiredArgsConstructor;
 import org.arghyam.jalsoochak.user.dto.common.ApiResponseDTO;
 import org.arghyam.jalsoochak.user.dto.common.PageResponseDTO;
 import org.arghyam.jalsoochak.user.dto.response.PumpOperatorDetailsDTO;
+import org.arghyam.jalsoochak.user.dto.response.PumpOperatorDetailsWithComplianceDTO;
 import org.arghyam.jalsoochak.user.dto.response.PumpOperatorReadingComplianceDTO;
 import org.arghyam.jalsoochak.user.dto.response.PumpOperatorReadingComplianceRowDTO;
+import org.arghyam.jalsoochak.user.dto.response.PumpOperatorSchemeComplianceRowDTO;
 import org.arghyam.jalsoochak.user.dto.response.SchemePumpOperatorsDTO;
 import org.arghyam.jalsoochak.user.service.PublicPumpOperatorService;
 import org.springframework.http.ResponseEntity;
@@ -42,6 +44,15 @@ public class PublicPumpOperatorController {
         return ResponseEntity.ok(ApiResponseDTO.of(200, "Reading compliance retrieved", dto));
     }
 
+    @GetMapping("/pump-operators/{pumpOperatorId}/details-with-compliance")
+    public ResponseEntity<ApiResponseDTO<PumpOperatorDetailsWithComplianceDTO>> getPumpOperatorDetailsWithCompliance(
+            @PathVariable long pumpOperatorId,
+            @RequestParam String tenantCode
+    ) {
+        PumpOperatorDetailsWithComplianceDTO dto = publicPumpOperatorService.getPumpOperatorDetailsWithCompliance(tenantCode, pumpOperatorId);
+        return ResponseEntity.ok(ApiResponseDTO.of(200, "Pump operator retrieved", dto));
+    }
+
     @GetMapping("/pump-operators/reading-compliance")
     public ResponseEntity<ApiResponseDTO<PageResponseDTO<PumpOperatorReadingComplianceRowDTO>>> listReadingCompliance(
             @RequestParam String tenantCode,
@@ -50,6 +61,18 @@ public class PublicPumpOperatorController {
     ) {
         PageResponseDTO<PumpOperatorReadingComplianceRowDTO> rows = publicPumpOperatorService.listReadingCompliance(tenantCode, page, size);
         return ResponseEntity.ok(ApiResponseDTO.of(200, "Reading compliance retrieved", rows));
+    }
+
+    @GetMapping("/pump-operators/by-scheme/reading-compliance")
+    public ResponseEntity<ApiResponseDTO<PageResponseDTO<PumpOperatorSchemeComplianceRowDTO>>> listPumpOperatorsBySchemeWithCompliance(
+            @RequestParam String tenantCode,
+            @RequestParam long schemeId,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size
+    ) {
+        PageResponseDTO<PumpOperatorSchemeComplianceRowDTO> rows =
+                publicPumpOperatorService.listPumpOperatorsBySchemeWithCompliance(tenantCode, schemeId, page, size);
+        return ResponseEntity.ok(ApiResponseDTO.of(200, "Pump operators retrieved", rows));
     }
 
     @GetMapping("/pump-operators/by-scheme")

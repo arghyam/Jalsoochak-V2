@@ -4,8 +4,10 @@ import lombok.RequiredArgsConstructor;
 import org.arghyam.jalsoochak.user.dto.response.PumpOperatorDetailsDTO;
 import org.arghyam.jalsoochak.user.dto.response.PumpOperatorReadingComplianceDTO;
 import org.arghyam.jalsoochak.user.dto.response.PumpOperatorReadingComplianceRowDTO;
+import org.arghyam.jalsoochak.user.dto.response.PumpOperatorSchemeComplianceRowDTO;
 import org.arghyam.jalsoochak.user.dto.response.PumpOperatorSummaryDTO;
 import org.arghyam.jalsoochak.user.dto.response.SchemePumpOperatorsDTO;
+import org.arghyam.jalsoochak.user.enums.TenantUserStatus;
 import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
@@ -62,6 +64,19 @@ public class PublicPumpOperatorRepository {
         return Boolean.TRUE.equals(exists);
     }
 
+    private boolean tableExists(String schemaName, String tableName) {
+        String sql = """
+                SELECT EXISTS (
+                    SELECT 1
+                    FROM information_schema.tables
+                    WHERE table_schema = ?
+                      AND table_name = ?
+                )
+                """;
+        Boolean exists = jdbcTemplate.queryForObject(sql, Boolean.class, schemaName, tableName);
+        return Boolean.TRUE.equals(exists);
+    }
+
     /**
      * flow_reading_table time column differs across tenant schema versions:
      * - legacy: reading_at
@@ -74,6 +89,35 @@ public class PublicPumpOperatorRepository {
     public PumpOperatorDetailsDTO findPumpOperatorById(String schemaName, long pumpOperatorId) {
         validateSchemaName(schemaName);
         String timeColumn = resolveFlowReadingTimeColumn(schemaName);
+        String schemeJoin;
+        if (tableExists(schemaName, "user_scheme_mapping_table")) {
+            schemeJoin = String.format("""
+                    LEFT JOIN LATERAL (
+                        SELECT sm.id AS scheme_id,
+                               sm.scheme_name,
+                               sm.latitude,
+                               sm.longitude
+                        FROM %s.user_scheme_mapping_table usm
+                        JOIN %s.scheme_master_table sm
+                          ON sm.id = usm.scheme_id
+                         AND sm.deleted_at IS NULL
+                        WHERE usm.deleted_at IS NULL
+                          AND usm.user_id = u.id
+                          AND usm.status = 1
+                        ORDER BY usm.id DESC
+                        LIMIT 1
+                    ) sch ON true
+                    """, schemaName, schemaName);
+        } else {
+            schemeJoin = """
+                    LEFT JOIN LATERAL (
+                        SELECT NULL::integer AS scheme_id,
+                               NULL::text AS scheme_name,
+                               NULL::double precision AS latitude,
+                               NULL::double precision AS longitude
+                    ) sch ON true
+                    """;
+        }
         String sql = String.format("""
                 SELECT u.id,
                        u.uuid,
@@ -95,21 +139,7 @@ public class PublicPumpOperatorRepository {
                 FROM %s.user_table u
                 LEFT JOIN common_schema.user_type_master_table ut
                   ON ut.id = u.user_type
-                LEFT JOIN LATERAL (
-                    SELECT sm.id AS scheme_id,
-                           sm.scheme_name,
-                           sm.latitude,
-                           sm.longitude
-                    FROM %s.user_scheme_mapping_table usm
-                    JOIN %s.scheme_master_table sm
-                      ON sm.id = usm.scheme_id
-                     AND sm.deleted_at IS NULL
-                    WHERE usm.deleted_at IS NULL
-                      AND usm.user_id = u.id
-                      AND usm.status = 1
-                    ORDER BY usm.id DESC
-                    LIMIT 1
-                ) sch ON true
+                %s
                 LEFT JOIN LATERAL (
                     SELECT
                         MAX(fr.%s) AS last_submission_at,
@@ -158,7 +188,7 @@ public class PublicPumpOperatorRepository {
                   AND u.id = ?
                   AND upper(COALESCE(ut.c_name, '')) = 'PUMP_OPERATOR'
                 LIMIT 1
-                """, schemaName, schemaName, schemaName, schemaName, schemaName, timeColumn);
+                """, schemaName, schemeJoin, timeColumn, schemaName, schemaName);
         try {
             return jdbcTemplate.queryForObject(sql, (rs, rowNum) -> {
                 Timestamp lastTs = (Timestamp) rs.getObject("last_submission_at");
@@ -586,5 +616,104 @@ public class PublicPumpOperatorRepository {
                 """, schemaName);
         Long total = jdbcTemplate.queryForObject(sql, Long.class);
         return total == null ? 0 : total;
+    }
+
+    public List<PumpOperatorSchemeComplianceRowDTO> listPumpOperatorsBySchemeWithCompliance(
+            String schemaName,
+            long schemeId,
+            int offset,
+            int limit
+    ) {
+        validateSchemaName(schemaName);
+        if (!tableExists(schemaName, "user_scheme_mapping_table")) {
+            return List.of();
+        }
+        String timeColumn = resolveFlowReadingTimeColumn(schemaName);
+
+        String sql = String.format("""
+                SELECT u.id,
+                       u.uuid,
+                       u.title AS name,
+                       u.email,
+                       u.phone_number,
+                       u.status,
+                       sm.id AS scheme_id,
+                       sm.scheme_name,
+                       fr.last_submission_at,
+                       fr.confirmed_reading
+                FROM %s.user_scheme_mapping_table usm
+                JOIN %s.scheme_master_table sm
+                  ON sm.id = usm.scheme_id
+                 AND sm.deleted_at IS NULL
+                JOIN %s.user_table u
+                  ON u.id = usm.user_id
+                 AND u.deleted_at IS NULL
+                JOIN common_schema.user_type_master_table ut
+                  ON ut.id = u.user_type
+                LEFT JOIN LATERAL (
+                    SELECT %s AS last_submission_at, confirmed_reading
+                    FROM %s.flow_reading_table
+                    WHERE deleted_at IS NULL
+                      AND created_by = u.id
+                    ORDER BY %s DESC, id DESC
+                    LIMIT 1
+                ) fr ON true
+                WHERE usm.deleted_at IS NULL
+                  AND usm.status = 1
+                  AND sm.id = ?
+                  AND lower(COALESCE(ut.c_name, '')) = 'pump_operator'
+                ORDER BY u.id DESC
+                LIMIT ? OFFSET ?
+                """, schemaName, schemaName, schemaName, timeColumn, schemaName, timeColumn);
+
+        return jdbcTemplate.query(sql, (rs, rowNum) -> {
+            Timestamp ts = (Timestamp) rs.getObject("last_submission_at");
+            LocalDateTime lastSubmissionAt = ts == null ? null : ts.toLocalDateTime();
+            BigDecimal confirmed = (BigDecimal) rs.getObject("confirmed_reading");
+            return PumpOperatorSchemeComplianceRowDTO.builder()
+                    .id(rs.getLong("id"))
+                    .uuid(rs.getString("uuid"))
+                    .name(rs.getString("name"))
+                    .email(rs.getString("email"))
+                    .phoneNumber(rs.getString("phone_number"))
+                    .status(mapStatus(getNullableInt(rs, "status")))
+                    .schemeId(rs.getLong("scheme_id"))
+                    .schemeName(rs.getString("scheme_name"))
+                    .lastSubmissionAt(lastSubmissionAt)
+                    .confirmedReading(confirmed)
+                    .build();
+        }, schemeId, limit, offset);
+    }
+
+    public long countPumpOperatorsBySchemeWithCompliance(String schemaName, long schemeId) {
+        validateSchemaName(schemaName);
+        if (!tableExists(schemaName, "user_scheme_mapping_table")) {
+            return 0;
+        }
+        String sql = String.format("""
+                SELECT COUNT(DISTINCT u.id)
+                FROM %s.user_scheme_mapping_table usm
+                JOIN %s.scheme_master_table sm
+                  ON sm.id = usm.scheme_id
+                 AND sm.deleted_at IS NULL
+                JOIN %s.user_table u
+                  ON u.id = usm.user_id
+                 AND u.deleted_at IS NULL
+                JOIN common_schema.user_type_master_table ut
+                  ON ut.id = u.user_type
+                WHERE usm.deleted_at IS NULL
+                  AND usm.status = 1
+                  AND sm.id = ?
+                  AND lower(COALESCE(ut.c_name, '')) = 'pump_operator'
+                """, schemaName, schemaName, schemaName);
+        Long total = jdbcTemplate.queryForObject(sql, Long.class, schemeId);
+        return total == null ? 0 : total;
+    }
+
+    private TenantUserStatus mapStatus(Integer status) {
+        if (status == null) {
+            return null;
+        }
+        return TenantUserStatus.fromCode(status);
     }
 }
