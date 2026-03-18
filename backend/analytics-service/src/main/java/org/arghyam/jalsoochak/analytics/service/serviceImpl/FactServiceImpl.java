@@ -22,7 +22,6 @@ import org.arghyam.jalsoochak.analytics.service.FactService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -178,8 +177,7 @@ public class FactServiceImpl implements FactService {
             }
 
             // Same correlation ID for both tables — allows joining fact_escalation and anomaly on the same event
-            String correlationId = UUID.nameUUIDFromBytes(
-                    (event.getTenantId() + ":" + schemeId + ":" + EscalationType.NO_SUBMISSION.label).getBytes(StandardCharsets.UTF_8)).toString();
+            String correlationId = buildCorrelationId(EscalationType.NO_SUBMISSION, op.getUserId(), event.getTenantId(), schemeId);
 
             // Idempotency: delegate to the DB unique constraint; catch duplicate-key on concurrent delivery
             if (event.getOfficerId() == null) {
@@ -203,7 +201,7 @@ public class FactServiceImpl implements FactService {
                             .build();
                     escalationRepository.save(escalationFact);
                     escalationRowsCreated++;
-                } catch (DuplicateKeyException e) {
+                } catch (DataIntegrityViolationException e) {
                     log.debug("Skipping duplicate fact_escalation for correlationId={}", correlationId);
                 }
             }
@@ -237,7 +235,7 @@ public class FactServiceImpl implements FactService {
                         .build();
                 anomalyRepository.save(anomaly);
                 anomalyRowsCreated++;
-            } catch (DuplicateKeyException e) {
+            } catch (DataIntegrityViolationException e) {
                 log.debug("Skipping duplicate anomaly for correlationId={}", correlationId);
             }
         }
@@ -289,6 +287,22 @@ public class FactServiceImpl implements FactService {
             log.warn("Could not parse date '{}', falling back to today", value);
             return LocalDate.now();
         }
+    }
+
+    /**
+     * Builds a deterministic correlation ID for an anomaly event.
+     * <ul>
+     *   <li>Water anomalies ({@link EscalationType#WATER_ANOMALIES}): keyed on {@code tenantId:schemeId:type}
+     *       — one record per supply event regardless of which user reported it.</li>
+     *   <li>User anomalies ({@link EscalationType#USER_ANOMALIES}): keyed on {@code userId:tenantId:schemeId:type}
+     *       — distinct per operator so concurrent violations from different users are not collapsed.</li>
+     * </ul>
+     */
+    private String buildCorrelationId(EscalationType type, Integer userId, Integer tenantId, Integer schemeId) {
+        String key = EscalationType.USER_ANOMALIES.contains(type)
+                ? userId + ":" + tenantId + ":" + schemeId + ":" + type.label
+                : tenantId + ":" + schemeId + ":" + type.label;
+        return UUID.nameUUIDFromBytes(key.getBytes(StandardCharsets.UTF_8)).toString();
     }
 
     private LocalDate parseDateOrNull(String value) {

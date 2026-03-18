@@ -1,5 +1,8 @@
 package org.arghyam.jalsoochak.analytics.constant;
 
+import java.util.EnumSet;
+import java.util.Set;
+
 /** Mirrors AnomalyConstants in telemetry-service. Integer codes must stay in sync. */
 public enum EscalationType {
     UNREADABLE_IMAGE(1, "UNREADABLE_IMAGE"),
@@ -19,4 +22,13 @@ public enum EscalationType {
         this.code = code;
         this.label = label;
     }
+
+    /** Anomalies scoped to a water supply event — correlationId keyed on (tenantId, schemeId, type). */
+    public static final Set<EscalationType> WATER_ANOMALIES = EnumSet.of(
+            NO_WATER_SUPPLY, LOW_WATER_SUPPLY, OVER_WATER_SUPPLY);
+
+    /** Anomalies scoped to a specific user action — correlationId keyed on (userId, tenantId, schemeId, type). */
+    public static final Set<EscalationType> USER_ANOMALIES = EnumSet.of(
+            UNREADABLE_IMAGE, MANUAL_OVERRIDE, CONSECUTIVE_OVERRIDE_5_DAYS,
+            DUPLICATE_IMAGE_SUBMISSION, READING_LESS_THAN_PREVIOUS, NO_SUBMISSION);
 }
