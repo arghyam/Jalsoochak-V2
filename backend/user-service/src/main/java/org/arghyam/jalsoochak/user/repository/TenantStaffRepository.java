@@ -10,6 +10,7 @@ import org.springframework.stereotype.Repository;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 import java.util.Optional;
 
 @Repository
@@ -36,7 +37,7 @@ public class TenantStaffRepository {
 
     public List<TenantStaffResponseDTO> listStaff(
             String schemaName,
-            String role,
+            List<String> roles,
             Integer status,
             String name,
             String sortBy,
@@ -46,7 +47,7 @@ public class TenantStaffRepository {
     ) {
         validateSchemaName(schemaName);
 
-        SqlAndArgs where = buildWhere(role, status, name);
+        SqlAndArgs where = buildWhere(roles, status, name);
         String orderBy = orderBy(sortBy, sortDir);
 
         String sql = String.format("""
@@ -98,9 +99,9 @@ public class TenantStaffRepository {
         }, id);
     }
 
-    public long countStaff(String schemaName, String role, Integer status, String name) {
+    public long countStaff(String schemaName, List<String> roles, Integer status, String name) {
         validateSchemaName(schemaName);
-        SqlAndArgs where = buildWhere(role, status, name);
+        SqlAndArgs where = buildWhere(roles, status, name);
 
         String sql = String.format("""
                 SELECT COUNT(1)
@@ -117,7 +118,7 @@ public class TenantStaffRepository {
 
     public List<RoleCountDTO> countByRole(String schemaName, Integer status, String name) {
         validateSchemaName(schemaName);
-        SqlAndArgs where = buildWhere(null, status, name);
+        SqlAndArgs where = buildWhere(List.of(), status, name);
 
         String sql = String.format("""
                 SELECT COALESCE(ut.c_name, 'UNKNOWN') AS role,
@@ -139,13 +140,22 @@ public class TenantStaffRepository {
 
     private record SqlAndArgs(String sql, List<Object> args) {}
 
-    private SqlAndArgs buildWhere(String role, Integer status, String name) {
+    private SqlAndArgs buildWhere(List<String> roles, Integer status, String name) {
         List<String> clauses = new ArrayList<>();
         List<Object> args = new ArrayList<>();
 
-        if (role != null && !role.isBlank()) {
-            clauses.add("lower(ut.c_name) = ?");
-            args.add(role.trim().toLowerCase(Locale.ROOT));
+        if (roles != null && !roles.isEmpty()) {
+            List<String> cleaned = roles.stream()
+                    .filter(Objects::nonNull)
+                    .map(String::trim)
+                    .filter(s -> !s.isEmpty())
+                    .map(s -> s.toLowerCase(Locale.ROOT))
+                    .toList();
+            if (!cleaned.isEmpty()) {
+                String placeholders = String.join(", ", cleaned.stream().map(r -> "?").toList());
+                clauses.add("lower(ut.c_name) IN (" + placeholders + ")");
+                args.addAll(cleaned);
+            }
         }
         if (status != null) {
             clauses.add("u.status = ?");
@@ -178,4 +188,3 @@ public class TenantStaffRepository {
         return "ORDER BY " + col + " " + dir;
     }
 }
-
