@@ -382,6 +382,7 @@ public class NotificationEventRouter {
     private void handleEscalation(JsonNode root) throws Exception {
         String officerPhone = root.path("officerPhone").asText("");
         String officerName = root.path("officerName").asText("Officer");
+        String officerUserType = root.path("officerUserType").asText("");
         int level = root.path("escalationLevel").asInt(1);
         int tenantId = root.path("tenantId").asInt(0);
         int officerLanguageId = root.path("officerLanguageId").asInt(0);
@@ -407,7 +408,7 @@ public class NotificationEventRouter {
             return;
         }
 
-        String filename = escalationPdfService.generate(operators, level, officerName);
+        String filename = escalationPdfService.generate(operators, level, officerName, officerUserType);
         java.nio.file.Path localPath = Paths.get(reportDir, filename);
         String minioUrl;
         try {

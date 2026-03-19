@@ -41,10 +41,11 @@ public class EscalationPdfService {
     /**
      * Generates the escalation PDF and saves it to the report directory.
      *
+     * @param officerUserType the officer's configured role/designation (e.g. "JE", "SECTION_OFFICER")
      * @return the filename (not the full path) of the saved PDF
      */
-    public String generate(List<OperatorEscalationDetail> operators, int level, String officerName)
-            throws IOException {
+    public String generate(List<OperatorEscalationDetail> operators, int level, String officerName,
+                           String officerUserType) throws IOException {
         ensureReportDirExists();
 
         String dateStr = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd"));
@@ -53,6 +54,9 @@ public class EscalationPdfService {
         String filename = String.format("escalation_L%d_%s_%s-%s.pdf",
                 level, safeOfficerName, dateStr, UUID.randomUUID());
         Path filePath = Paths.get(reportDir, filename);
+
+        String roleLabel = (officerUserType != null && !officerUserType.isBlank())
+                ? officerUserType : ("Level " + level);
 
         try (PDDocument doc = new PDDocument()) {
             PDType1Font boldFont = new PDType1Font(Standard14Fonts.FontName.HELVETICA_BOLD);
@@ -66,8 +70,8 @@ public class EscalationPdfService {
 
             // Title
             y = writeLine(cs, boldFont, 14,
-                    String.format("Jalmitra Escalations — %s — Level %d Officer: %s",
-                            dateStr, level, officerName),
+                    String.format("Jalmitra Escalations — %s — %s Officer: %s",
+                            dateStr, roleLabel, officerName),
                     MARGIN, y);
             y -= LINE_HEIGHT;
 
