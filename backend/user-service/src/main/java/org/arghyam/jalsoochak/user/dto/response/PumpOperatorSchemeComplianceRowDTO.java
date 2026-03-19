@@ -6,6 +6,7 @@ import org.arghyam.jalsoochak.user.enums.TenantUserStatus;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Builder
 public record PumpOperatorSchemeComplianceRowDTO(
@@ -25,6 +26,7 @@ public record PumpOperatorSchemeComplianceRowDTO(
         Integer inactiveDays,
         Integer missingSubmissionCount,
         BigDecimal reportingRatePercent,
+        List<PumpOperatorReadingHistoryRowDTO> readingHistory,
         LocalDate readingDate,
         LocalDateTime readingAt,
         LocalDateTime lastSubmissionAt,
