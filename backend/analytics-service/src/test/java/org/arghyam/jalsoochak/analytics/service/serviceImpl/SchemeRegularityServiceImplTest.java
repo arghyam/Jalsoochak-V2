@@ -172,7 +172,9 @@ class SchemeRegularityServiceImplTest {
                                 LocalDate.of(2026, 1, 12),
                                 "2026-W02",
                                 new BigDecimal("50.1250"),
-                                77)
+                                77,
+                                70,
+                                80)
                 ));
 
         PeriodicWaterQuantityResponse response =
@@ -230,7 +232,7 @@ class SchemeRegularityServiceImplTest {
         when(valueOperations.get(any())).thenReturn(null);
         when(schemeRegularityRepository.getAverageWaterSupplyPerCurrentRegion(10, START, END))
                 .thenReturn(List.of(new SchemeRegularityRepository.SchemeWaterSupplyMetrics(
-                        1, "Scheme X", 100, 1000L, 2, new BigDecimal("5.0000")
+                        1, "Scheme X", 100, 90, 110, 1000L, 2, new BigDecimal("5.0000")
                 )));
         when(dimTenantRepository.findById(10)).thenReturn(Optional.empty());
 
@@ -242,7 +244,7 @@ class SchemeRegularityServiceImplTest {
     @Test
     void getAverageWaterSupplyPerNation_cacheHit_skipsRepository() throws Exception {
         mockRedisValueOps();
-        String key = ":water_supply:nation:start:2026-01-01:end:2026-01-03:v3";
+        String key = ":water_supply:nation:start:2026-01-01:end:2026-01-03:v4";
         AverageWaterSupplyResponse cached = AverageWaterSupplyResponse.builder()
                 .childRegionCount(1)
                 .build();
@@ -292,7 +294,7 @@ class SchemeRegularityServiceImplTest {
         when(schemeRegularityRepository.getAverageWaterSupplyPerCurrentRegionByLgd(10, 101, START, END))
                 .thenReturn(List.of(
                         new SchemeRegularityRepository.ChildRegionWaterSupplyMetrics(
-                                null, null, 401, null, "Village A", 100, 10000L, 2, new BigDecimal("50.0000"))
+                                null, null, 401, null, "Village A", 100, 90, 110, 10000L, 2, new BigDecimal("50.0000"))
                 ));
         when(dimTenantRepository.findById(10)).thenReturn(Optional.of(tenant(10, "mp")));
         when(objectMapper.writeValueAsString(any())).thenReturn("{json}");
@@ -412,7 +414,7 @@ class SchemeRegularityServiceImplTest {
         when(schemeRegularityRepository.getAverageWaterSupplyPerCurrentRegion(10, START, END))
                 .thenReturn(List.of(
                         new SchemeRegularityRepository.SchemeWaterSupplyMetrics(
-                                1, "Scheme-A", 100, 1200L, 2, new BigDecimal("4.0000"))
+                                1, "Scheme-A", 100, 90, 110, 1200L, 2, new BigDecimal("4.0000"))
                 ));
         when(dimTenantRepository.findById(10)).thenReturn(Optional.of(tenant(10, "mp")));
         when(objectMapper.writeValueAsString(any())).thenReturn("{json}");
@@ -434,7 +436,7 @@ class SchemeRegularityServiceImplTest {
         when(schemeRegularityRepository.getAverageWaterSupplyPerCurrentRegionByDepartment(10, 201, START, END))
                 .thenReturn(List.of(
                         new SchemeRegularityRepository.ChildRegionWaterSupplyMetrics(
-                                null, null, null, 501, "Dept-1", 120, 9000L, 3, new BigDecimal("3000.0000"))
+                                null, null, null, 501, "Dept-1", 120, 100, 140, 9000L, 3, new BigDecimal("3000.0000"))
                 ));
         when(dimTenantRepository.findById(10)).thenReturn(Optional.of(tenant(10, "mp")));
         when(objectMapper.writeValueAsString(any())).thenReturn("{json}");
@@ -452,7 +454,7 @@ class SchemeRegularityServiceImplTest {
         when(schemeRegularityRepository.getLgdLevel(101)).thenReturn(2);
         when(schemeRegularityRepository.getRegionWiseWaterQuantityByLgd(101, START, END))
                 .thenReturn(List.of(
-                        new SchemeRegularityRepository.ChildRegionWaterQuantityMetrics(401, null, "LGD-A", 120L, 10)
+                        new SchemeRegularityRepository.ChildRegionWaterQuantityMetrics(401, null, "LGD-A", 120L, 10, 9, 12)
                 ));
 
         var response = service.getRegionWiseWaterQuantityByLgd(101, START, END);
@@ -467,7 +469,7 @@ class SchemeRegularityServiceImplTest {
         when(schemeRegularityRepository.getDepartmentLevel(201)).thenReturn(2);
         when(schemeRegularityRepository.getRegionWiseWaterQuantityByDepartment(201, START, END))
                 .thenReturn(List.of(
-                        new SchemeRegularityRepository.ChildRegionWaterQuantityMetrics(null, 501, "Dept-A", 150L, 11)
+                        new SchemeRegularityRepository.ChildRegionWaterQuantityMetrics(null, 501, "Dept-A", 150L, 11, 10, 13)
                 ));
 
         var response = service.getRegionWiseWaterQuantityByDepartment(201, START, END);
@@ -482,7 +484,7 @@ class SchemeRegularityServiceImplTest {
         when(schemeRegularityRepository.getPeriodicWaterQuantityByDepartment(201, START, END, PeriodScale.DAY))
                 .thenReturn(List.of(
                         new SchemeRegularityRepository.PeriodicWaterQuantityMetrics(
-                                START, START, "2026-01-01", new BigDecimal("22.1250"), 44)
+                                START, START, "2026-01-01", new BigDecimal("22.1250"), 44, 40, 50)
                 ));
 
         PeriodicWaterQuantityResponse response =
@@ -725,12 +727,12 @@ class SchemeRegularityServiceImplTest {
     @Test
     void refreshNationalDashboard_computesAndWritesCache() throws Exception {
         mockRedisValueOps();
-        String key = ":national:dashboard:start:2026-01-01:end:2026-01-03:v1";
+        String key = ":national:dashboard:start:2026-01-01:end:2026-01-03:v2";
 
         when(schemeRegularityRepository.getAverageWaterSupplyPerNation(START, END))
                 .thenReturn(List.of(
                         new SchemeRegularityRepository.ChildRegionWaterSupplyMetrics(
-                                1, "mp", null, null, "Madhya Pradesh", 120, 64000L, 5, new BigDecimal("12800.0000"))
+                                1, "mp", null, null, "Madhya Pradesh", 120, 110, 140, 64000L, 5, new BigDecimal("12800.0000"))
                 ));
         when(schemeRegularityRepository.getStateWiseRegularityMetrics(START, END))
                 .thenReturn(List.of(
