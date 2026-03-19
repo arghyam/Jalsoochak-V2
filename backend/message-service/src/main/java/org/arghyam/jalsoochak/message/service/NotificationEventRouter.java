@@ -339,10 +339,23 @@ public class NotificationEventRouter {
 
         long contactId;
         if (!glificId.isBlank()) {
-            contactId = Long.parseLong(glificId);
+            try {
+                contactId = Long.parseLong(glificId);
+            } catch (NumberFormatException e) {
+                log.warn("[Router/SEND_LOGIN_OTP] Invalid glific_id '{}', skipping", glificId);
+                return;
+            }
+            if (contactId <= 0) {
+                log.warn("[Router/SEND_LOGIN_OTP] glific_id must be > 0, got {}, skipping", contactId);
+                return;
+            }
         } else if (!phone.isBlank()) {
             log.info("[Router/SEND_LOGIN_OTP] glific_id not provided, opting in via phone");
             contactId = glificWhatsAppService.optIn(phone);
+            if (contactId <= 0) {
+                log.warn("[Router/SEND_LOGIN_OTP] optIn returned invalid contactId {}, skipping", contactId);
+                return;
+            }
         } else {
             log.warn("[Router/SEND_LOGIN_OTP] Neither glific_id nor officerPhoneNumber provided, skipping");
             return;

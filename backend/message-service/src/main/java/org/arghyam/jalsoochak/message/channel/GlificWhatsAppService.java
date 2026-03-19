@@ -113,7 +113,8 @@ public class GlificWhatsAppService {
                     "glific.flow.nudge-id, glific.template.escalation-id and glific.flow.welcome-id must be configured");
         }
         if (loginOtpTemplateId == null || loginOtpTemplateId.isBlank()) {
-            log.warn("[Glific] glific.template.login-otp-id is not configured — SEND_LOGIN_OTP events will fail");
+            throw new IllegalStateException(
+                    "glific.template.login-otp-id must be configured — SEND_LOGIN_OTP events cannot be delivered without it");
         }
     }
 
