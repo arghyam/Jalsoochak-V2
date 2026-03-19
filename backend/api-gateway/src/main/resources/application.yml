@@ -66,6 +66,23 @@ spring:
           filters:
             - StripPrefix=1
 
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+    urls:
+      - name: user-service
+        url: /user/v3/api-docs
+      - name: tenant-service
+        url: /tenant/v3/api-docs
+      - name: telemetry-service
+        url: /telemetry/v3/api-docs
+      - name: message-service
+        url: /message/v3/api-docs
+      - name: scheme-service
+        url: /scheme/v3/api-docs
+      - name: analytics-service
+        url: /analytics/v3/api-docs
+
 eureka:
   client:
     enabled: ${EUREKA_ENABLED:false}
