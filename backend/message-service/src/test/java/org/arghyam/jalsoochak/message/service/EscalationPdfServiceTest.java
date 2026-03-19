@@ -114,6 +114,28 @@ class EscalationPdfServiceTest {
     }
 
     @Test
+    void generate_pdfTitleFallsBackToLevelN_whenOfficerUserTypeIsBlank() throws Exception {
+        List<OperatorEscalationDetail> operators = List.of(buildOperator("Op", "S", 3, "2024-01-08"));
+
+        String filename = service.generate(operators, 1, "SO Verma", "");
+        String pdfText = extractText(tempDir.resolve(filename));
+
+        assertThat(pdfText).contains("Level 1");
+        assertThat(pdfText).contains("SO Verma");
+    }
+
+    @Test
+    void generate_pdfTitleFallsBackToLevelN_whenOfficerUserTypeIsNull() throws Exception {
+        List<OperatorEscalationDetail> operators = List.of(buildOperator("Op", "S", 3, "2024-01-08"));
+
+        String filename = service.generate(operators, 2, "DO Sharma", null);
+        String pdfText = extractText(tempDir.resolve(filename));
+
+        assertThat(pdfText).contains("Level 2");
+        assertThat(pdfText).contains("DO Sharma");
+    }
+
+    @Test
     void generate_showsNeverForNullLastRecordedDate() throws Exception {
         OperatorEscalationDetail op = OperatorEscalationDetail.builder()
                 .name("Op").phoneNumber("911111111111")
