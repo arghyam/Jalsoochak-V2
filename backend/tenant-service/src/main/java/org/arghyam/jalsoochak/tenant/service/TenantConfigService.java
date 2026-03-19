@@ -80,9 +80,9 @@ public class TenantConfigService {
                     .hour(sched.path("hour").asInt(defaultEscalationHour))
                     .minute(sched.path("minute").asInt(defaultEscalationMinute))
                     .level1Days(l1.path("threshold").path("days").asInt(defaultLevel1Days))
-                    .level1OfficerType(l1.path("officer").path("user_type").asText(defaultLevel1OfficerType))
+                    .level1OfficerType(l1.path("officer").path("userType").asText(defaultLevel1OfficerType))
                     .level2Days(l2.path("threshold").path("days").asInt(defaultLevel2Days))
-                    .level2OfficerType(l2.path("officer").path("user_type").asText(defaultLevel2OfficerType))
+                    .level2OfficerType(l2.path("officer").path("userType").asText(defaultLevel2OfficerType))
                     .build();
         } catch (Exception e) {
             log.warn("[TenantConfig] Failed to parse escalation config for tenant={}: {}", tenantId, e.getMessage());
