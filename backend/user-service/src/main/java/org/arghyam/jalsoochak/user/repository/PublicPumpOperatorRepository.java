@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import org.arghyam.jalsoochak.user.dto.response.PumpOperatorDetailsDTO;
 import org.arghyam.jalsoochak.user.dto.response.PumpOperatorReadingComplianceDTO;
 import org.arghyam.jalsoochak.user.dto.response.PumpOperatorReadingComplianceRowDTO;
+import org.arghyam.jalsoochak.user.dto.response.PumpOperatorReadingHistoryRowDTO;
 import org.arghyam.jalsoochak.user.dto.response.PumpOperatorSchemeComplianceRowDTO;
 import org.arghyam.jalsoochak.user.dto.response.PumpOperatorSummaryDTO;
 import org.arghyam.jalsoochak.user.dto.response.SchemePumpOperatorsDTO;
@@ -20,6 +21,7 @@ import java.sql.Timestamp;
 import java.time.LocalDateTime;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -721,35 +723,102 @@ public class PublicPumpOperatorRepository {
                 LIMIT ? OFFSET ?
                 """, schemaName, schemaName, schemaName, schemaName, timeColumn, timeColumn, schemaName, timeColumn);
 
-        return jdbcTemplate.query(sql, (rs, rowNum) -> {
+        record RowData(
+                Long id,
+                String uuid,
+                String name,
+                String email,
+                String phoneNumber,
+                Integer status,
+                Long schemeId,
+                String schemeName,
+                Integer schemeMappingStatus,
+                LocalDate onboardingDate,
+                Integer totalActiveDays,
+                Integer submittedDays,
+                Integer missedSubmissionDays,
+                Integer inactiveDays,
+                Integer missingSubmissionCount,
+                BigDecimal reportingRatePercent,
+                LocalDate readingDate,
+                LocalDateTime readingAt,
+                LocalDateTime lastSubmissionAt,
+                BigDecimal confirmedReading
+        ) {
+        }
+
+        List<RowData> rows = jdbcTemplate.query(sql, (rs, rowNum) -> {
             Timestamp ts = (Timestamp) rs.getObject("reading_at");
             LocalDateTime readingAt = ts == null ? null : ts.toLocalDateTime();
             Timestamp lastTs = (Timestamp) rs.getObject("last_submission_at");
             LocalDateTime lastSubmissionAt = lastTs == null ? null : lastTs.toLocalDateTime();
             BigDecimal confirmed = (BigDecimal) rs.getObject("confirmed_reading");
-            return PumpOperatorSchemeComplianceRowDTO.builder()
-                    .id(rs.getLong("id"))
-                    .uuid(rs.getString("uuid"))
-                    .name(rs.getString("name"))
-                    .email(rs.getString("email"))
-                    .phoneNumber(rs.getString("phone_number"))
-                    .status(mapStatus(getNullableInt(rs, "status")))
-                    .schemeId(rs.getLong("scheme_id"))
-                    .schemeName(rs.getString("scheme_name"))
-                    .schemeMappingStatus(getNullableInt(rs, "scheme_mapping_status"))
-                    .onboardingDate(rs.getObject("onboarding_date", LocalDate.class))
-                    .totalActiveDays(getNullableInt(rs, "total_active_days"))
-                    .submittedDays(getNullableInt(rs, "submitted_days"))
-                    .missedSubmissionDays(getNullableInt(rs, "missed_submission_days"))
-                    .inactiveDays(getNullableInt(rs, "inactive_days"))
-                    .missingSubmissionCount(getNullableInt(rs, "missing_submission_count"))
-                    .reportingRatePercent((BigDecimal) rs.getObject("reporting_rate_percent"))
-                    .readingDate(rs.getObject("reading_date", LocalDate.class))
-                    .readingAt(readingAt)
-                    .lastSubmissionAt(lastSubmissionAt)
-                    .confirmedReading(confirmed)
-                    .build();
+            return new RowData(
+                    rs.getLong("id"),
+                    rs.getString("uuid"),
+                    rs.getString("name"),
+                    rs.getString("email"),
+                    rs.getString("phone_number"),
+                    getNullableInt(rs, "status"),
+                    rs.getLong("scheme_id"),
+                    rs.getString("scheme_name"),
+                    getNullableInt(rs, "scheme_mapping_status"),
+                    rs.getObject("onboarding_date", LocalDate.class),
+                    getNullableInt(rs, "total_active_days"),
+                    getNullableInt(rs, "submitted_days"),
+                    getNullableInt(rs, "missed_submission_days"),
+                    getNullableInt(rs, "inactive_days"),
+                    getNullableInt(rs, "missing_submission_count"),
+                    (BigDecimal) rs.getObject("reporting_rate_percent"),
+                    rs.getObject("reading_date", LocalDate.class),
+                    readingAt,
+                    lastSubmissionAt,
+                    confirmed
+            );
         }, schemeId, limit, offset);
+
+        if (rows.isEmpty()) {
+            return List.of();
+        }
+
+        List<Long> operatorIds = new ArrayList<>(rows.size());
+        for (RowData r : rows) {
+            operatorIds.add(r.id());
+        }
+
+        Map<Long, List<PumpOperatorReadingHistoryRowDTO>> historyByOperator =
+                listReadingHistoryByOperators(schemaName, schemeId, operatorIds);
+
+        List<PumpOperatorSchemeComplianceRowDTO> results = new ArrayList<>(rows.size());
+        for (RowData r : rows) {
+            List<PumpOperatorReadingHistoryRowDTO> history =
+                    historyByOperator.getOrDefault(r.id(), List.of());
+            results.add(PumpOperatorSchemeComplianceRowDTO.builder()
+                    .id(r.id())
+                    .uuid(r.uuid())
+                    .name(r.name())
+                    .email(r.email())
+                    .phoneNumber(r.phoneNumber())
+                    .status(mapStatus(r.status()))
+                    .schemeId(r.schemeId())
+                    .schemeName(r.schemeName())
+                    .schemeMappingStatus(r.schemeMappingStatus())
+                    .onboardingDate(r.onboardingDate())
+                    .totalActiveDays(r.totalActiveDays())
+                    .submittedDays(r.submittedDays())
+                    .missedSubmissionDays(r.missedSubmissionDays())
+                    .inactiveDays(r.inactiveDays())
+                    .missingSubmissionCount(r.missingSubmissionCount())
+                    .reportingRatePercent(r.reportingRatePercent())
+                    .readingHistory(history)
+                    .readingDate(r.readingDate())
+                    .readingAt(r.readingAt())
+                    .lastSubmissionAt(r.lastSubmissionAt())
+                    .confirmedReading(r.confirmedReading())
+                    .build());
+        }
+
+        return results;
     }
 
     public long countPumpOperatorsBySchemeWithCompliance(String schemaName, long schemeId) {
@@ -780,6 +849,79 @@ public class PublicPumpOperatorRepository {
                 """, schemaName, schemaName, schemaName);
         Long total = jdbcTemplate.queryForObject(sql, Long.class, schemeId);
         return total == null ? 0 : total;
+    }
+
+    private Map<Long, List<PumpOperatorReadingHistoryRowDTO>> listReadingHistoryByOperators(
+            String schemaName,
+            long schemeId,
+            List<Long> operatorIds
+    ) {
+        validateSchemaName(schemaName);
+        if (operatorIds == null || operatorIds.isEmpty()) {
+            return Map.of();
+        }
+        String timeColumn = resolveFlowReadingTimeColumn(schemaName);
+
+        StringBuilder inClause = new StringBuilder();
+        for (int i = 0; i < operatorIds.size(); i++) {
+            if (i > 0) {
+                inClause.append(", ");
+            }
+            inClause.append("?");
+        }
+
+        String sql = String.format("""
+                WITH latest_mapping AS (
+                    SELECT DISTINCT ON (u.id)
+                           u.id,
+                           u.created_at::date AS onboarding_date
+                    FROM %s.user_scheme_mapping_table usm
+                    JOIN %s.scheme_master_table sm
+                      ON sm.id = usm.scheme_id
+                     AND sm.deleted_at IS NULL
+                    JOIN %s.user_table u
+                      ON u.id = usm.user_id
+                     AND u.deleted_at IS NULL
+                    JOIN common_schema.user_type_master_table ut
+                      ON ut.id = u.user_type
+                    WHERE usm.deleted_at IS NULL
+                      AND sm.id = ?
+                      AND lower(COALESCE(ut.c_name, '')) = 'pump_operator'
+                    ORDER BY u.id DESC, usm.id DESC
+                )
+                SELECT l.id AS operator_id,
+                       fr.reading_date,
+                       fr.%s AS reading_at,
+                       fr.confirmed_reading
+                FROM latest_mapping l
+                JOIN %s.flow_reading_table fr
+                  ON fr.created_by = l.id
+                 AND fr.deleted_at IS NULL
+                 AND l.onboarding_date IS NOT NULL
+                 AND fr.reading_date BETWEEN l.onboarding_date AND CURRENT_DATE
+                WHERE l.id IN (%s)
+                ORDER BY l.id ASC, fr.reading_date DESC, fr.id DESC
+                """, schemaName, schemaName, schemaName, timeColumn, schemaName, inClause);
+
+        List<Object> params = new ArrayList<>(1 + operatorIds.size());
+        params.add(schemeId);
+        params.addAll(operatorIds);
+
+        Map<Long, List<PumpOperatorReadingHistoryRowDTO>> grouped = new HashMap<>();
+        jdbcTemplate.query(sql, (rs) -> {
+            long operatorId = rs.getLong("operator_id");
+            Timestamp ts = (Timestamp) rs.getObject("reading_at");
+            LocalDateTime readingAt = ts == null ? null : ts.toLocalDateTime();
+            BigDecimal confirmed = (BigDecimal) rs.getObject("confirmed_reading");
+            PumpOperatorReadingHistoryRowDTO row = PumpOperatorReadingHistoryRowDTO.builder()
+                    .readingDate(rs.getObject("reading_date", LocalDate.class))
+                    .readingAt(readingAt)
+                    .confirmedReading(confirmed)
+                    .build();
+            grouped.computeIfAbsent(operatorId, k -> new ArrayList<>()).add(row);
+        }, params.toArray());
+
+        return grouped;
     }
 
     private TenantUserStatus mapStatus(Integer status) {
