@@ -93,8 +93,8 @@ class TenantConfigServiceTest {
     void getEscalationConfig_parsesAllSixFields_fromValidJson() {
         stubEscalationJson(TENANT_ID,
                 "{\"escalation\":{\"schedule\":{\"hour\":11,\"minute\":15}," +
-                "\"level1\":{\"threshold\":{\"days\":4},\"officer\":{\"user_type\":\"JE\"}}," +
-                "\"level2\":{\"threshold\":{\"days\":10},\"officer\":{\"user_type\":\"EE\"}}}}");
+                "\"level1\":{\"threshold\":{\"days\":4},\"officer\":{\"userType\":\"JE\"}}," +
+                "\"level2\":{\"threshold\":{\"days\":10},\"officer\":{\"userType\":\"EE\"}}}}");
 
         EscalationScheduleConfig cfg = service.getEscalationConfig(TENANT_ID);
 
