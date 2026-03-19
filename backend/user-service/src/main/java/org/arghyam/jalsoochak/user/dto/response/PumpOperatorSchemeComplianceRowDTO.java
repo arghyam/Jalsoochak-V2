@@ -21,6 +21,7 @@ public record PumpOperatorSchemeComplianceRowDTO(
         LocalDate onboardingDate,
         LocalDate readingDate,
         LocalDateTime readingAt,
+        LocalDateTime lastSubmissionAt,
         BigDecimal confirmedReading
 ) {
 }

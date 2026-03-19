@@ -669,20 +669,31 @@ public class PublicPumpOperatorRepository {
                        l.onboarding_date,
                        fr.reading_date,
                        fr.%s AS reading_at,
-                       fr.confirmed_reading
+                       fr.confirmed_reading,
+                       last_read.last_submission_at
                 FROM latest_mapping l
                 JOIN %s.flow_reading_table fr
                   ON fr.created_by = l.id
                  AND fr.deleted_at IS NULL
                  AND l.onboarding_date IS NOT NULL
                  AND fr.reading_date BETWEEN l.onboarding_date AND CURRENT_DATE
+                LEFT JOIN LATERAL (
+                    SELECT %s AS last_submission_at
+                    FROM %s.flow_reading_table
+                    WHERE deleted_at IS NULL
+                      AND created_by = l.id
+                    ORDER BY %s DESC, id DESC
+                    LIMIT 1
+                ) last_read ON true
                 ORDER BY fr.reading_date DESC, fr.id DESC, l.id DESC
                 LIMIT ? OFFSET ?
-                """, schemaName, schemaName, schemaName, timeColumn, schemaName, timeColumn);
+                """, schemaName, schemaName, schemaName, timeColumn, schemaName, timeColumn, schemaName, timeColumn);
 
         return jdbcTemplate.query(sql, (rs, rowNum) -> {
             Timestamp ts = (Timestamp) rs.getObject("reading_at");
             LocalDateTime readingAt = ts == null ? null : ts.toLocalDateTime();
+            Timestamp lastTs = (Timestamp) rs.getObject("last_submission_at");
+            LocalDateTime lastSubmissionAt = lastTs == null ? null : lastTs.toLocalDateTime();
             BigDecimal confirmed = (BigDecimal) rs.getObject("confirmed_reading");
             return PumpOperatorSchemeComplianceRowDTO.builder()
                     .id(rs.getLong("id"))
@@ -697,6 +708,7 @@ public class PublicPumpOperatorRepository {
                     .onboardingDate(rs.getObject("onboarding_date", LocalDate.class))
                     .readingDate(rs.getObject("reading_date", LocalDate.class))
                     .readingAt(readingAt)
+                    .lastSubmissionAt(lastSubmissionAt)
                     .confirmedReading(confirmed)
                     .build();
         }, schemeId, limit, offset);
