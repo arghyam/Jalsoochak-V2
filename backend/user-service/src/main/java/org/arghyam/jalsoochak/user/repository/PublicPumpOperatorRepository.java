@@ -656,6 +656,43 @@ public class PublicPumpOperatorRepository {
                       AND sm.id = ?
                       AND lower(COALESCE(ut.c_name, '')) = 'pump_operator'
                     ORDER BY u.id DESC, usm.id DESC
+                ),
+                readings AS (
+                    SELECT fr.id AS reading_id,
+                           fr.created_by,
+                           fr.reading_date,
+                           fr.%s AS reading_at,
+                           fr.confirmed_reading
+                    FROM %s.flow_reading_table fr
+                    JOIN latest_mapping l
+                      ON l.id = fr.created_by
+                    WHERE fr.deleted_at IS NULL
+                      AND l.onboarding_date IS NOT NULL
+                      AND fr.reading_date BETWEEN l.onboarding_date AND CURRENT_DATE
+                ),
+                paged AS (
+                    SELECT *
+                    FROM readings
+                    ORDER BY reading_date DESC, reading_id DESC
+                    LIMIT ? OFFSET ?
+                ),
+                page_ops AS (
+                    SELECT DISTINCT created_by
+                    FROM paged
+                ),
+                stats AS (
+                    SELECT fr.created_by,
+                           COUNT(DISTINCT fr.reading_date) AS submitted_days,
+                           MAX(fr.%s) AS last_submission_at
+                    FROM %s.flow_reading_table fr
+                    JOIN page_ops po
+                      ON po.created_by = fr.created_by
+                    JOIN latest_mapping l
+                      ON l.id = fr.created_by
+                    WHERE fr.deleted_at IS NULL
+                      AND l.onboarding_date IS NOT NULL
+                      AND fr.reading_date BETWEEN l.onboarding_date AND CURRENT_DATE
+                    GROUP BY fr.created_by
                 )
                 SELECT l.id,
                        l.uuid,
@@ -693,44 +730,17 @@ public class PublicPumpOperatorRepository {
                                2
                            )
                        END AS reporting_rate_percent,
-                       fr.reading_date,
-                       fr.reading_at,
-                       fr.confirmed_reading,
-                       lr.last_submission_at
-                FROM latest_mapping l
-                LEFT JOIN LATERAL (
-                    SELECT fr.reading_date,
-                           fr.%s AS reading_at,
-                           fr.confirmed_reading
-                    FROM %s.flow_reading_table fr
-                    WHERE fr.deleted_at IS NULL
-                      AND fr.created_by = l.id
-                      AND l.onboarding_date IS NOT NULL
-                      AND fr.reading_date BETWEEN l.onboarding_date AND CURRENT_DATE
-                    ORDER BY fr.reading_date DESC, fr.id DESC
-                ) fr ON true
-                LEFT JOIN LATERAL (
-                    SELECT COUNT(DISTINCT fr.reading_date) AS submitted_days
-                    FROM %s.flow_reading_table fr
-                    WHERE fr.deleted_at IS NULL
-                      AND fr.created_by = l.id
-                      AND l.onboarding_date IS NOT NULL
-                      AND fr.reading_date BETWEEN l.onboarding_date AND CURRENT_DATE
-                ) stats ON true
-                LEFT JOIN LATERAL (
-                    SELECT fr.reading_date,
-                           fr.%s AS reading_at,
-                           fr.confirmed_reading,
-                           fr.%s AS last_submission_at
-                    FROM %s.flow_reading_table fr
-                    WHERE fr.deleted_at IS NULL
-                      AND fr.created_by = l.id
-                    ORDER BY fr.%s DESC NULLS LAST, fr.id DESC
-                    LIMIT 1
-                ) lr ON true
-                ORDER BY l.name ASC NULLS LAST, l.id DESC, fr.reading_date DESC NULLS LAST
-                LIMIT ? OFFSET ?
-                """, schemaName, schemaName, schemaName, timeColumn, schemaName, schemaName, timeColumn, timeColumn, schemaName, timeColumn);
+                       paged.reading_date,
+                       paged.reading_at,
+                       paged.confirmed_reading,
+                       stats.last_submission_at
+                FROM paged
+                JOIN latest_mapping l
+                  ON l.id = paged.created_by
+                LEFT JOIN stats
+                  ON stats.created_by = l.id
+                ORDER BY paged.reading_date DESC, paged.reading_id DESC
+                """, schemaName, schemaName, schemaName, timeColumn, schemaName, timeColumn, schemaName);
 
         record RowData(
                 Long id,
@@ -843,21 +853,13 @@ public class PublicPumpOperatorRepository {
                       AND lower(COALESCE(ut.c_name, '')) = 'pump_operator'
                     ORDER BY u.id DESC, usm.id DESC
                 )
-                SELECT COALESCE(SUM(
-                    CASE
-                        WHEN COALESCE(cnt.submitted_days, 0) = 0 THEN 1
-                        ELSE cnt.submitted_days
-                    END
-                ), 0)
-                FROM latest_mapping l
-                LEFT JOIN LATERAL (
-                    SELECT COUNT(DISTINCT fr.reading_date) AS submitted_days
-                    FROM %s.flow_reading_table fr
-                    WHERE fr.deleted_at IS NULL
-                      AND fr.created_by = l.id
-                      AND l.onboarding_date IS NOT NULL
-                      AND fr.reading_date BETWEEN l.onboarding_date AND CURRENT_DATE
-                ) cnt ON true
+                SELECT COUNT(*)
+                FROM %s.flow_reading_table fr
+                JOIN latest_mapping l
+                  ON l.id = fr.created_by
+                WHERE fr.deleted_at IS NULL
+                  AND l.onboarding_date IS NOT NULL
+                  AND fr.reading_date BETWEEN l.onboarding_date AND CURRENT_DATE
                 """, schemaName, schemaName, schemaName, schemaName);
         Long total = jdbcTemplate.queryForObject(sql, Long.class, schemeId);
         return total == null ? 0 : total;
