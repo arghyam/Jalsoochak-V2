@@ -699,8 +699,7 @@ public class PublicPumpOperatorRepository {
                        lr.last_submission_at
                 FROM latest_mapping l
                 LEFT JOIN LATERAL (
-                    SELECT DISTINCT ON (fr.reading_date)
-                           fr.reading_date,
+                    SELECT fr.reading_date,
                            fr.%s AS reading_at,
                            fr.confirmed_reading
                     FROM %s.flow_reading_table fr
