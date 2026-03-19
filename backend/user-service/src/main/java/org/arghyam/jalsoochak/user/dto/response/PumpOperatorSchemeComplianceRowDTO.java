@@ -4,6 +4,7 @@ import lombok.Builder;
 import org.arghyam.jalsoochak.user.enums.TenantUserStatus;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 @Builder
@@ -16,7 +17,10 @@ public record PumpOperatorSchemeComplianceRowDTO(
         TenantUserStatus status,
         Long schemeId,
         String schemeName,
-        LocalDateTime lastSubmissionAt,
+        Integer schemeMappingStatus,
+        LocalDate onboardingDate,
+        LocalDate readingDate,
+        LocalDateTime readingAt,
         BigDecimal confirmedReading
 ) {
 }
