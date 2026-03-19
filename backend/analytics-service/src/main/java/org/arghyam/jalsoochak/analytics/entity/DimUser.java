@@ -10,6 +10,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
+import java.util.UUID;
 
 @Entity
 @Table(name = "dim_user_table", schema = "analytics_schema")
@@ -30,6 +31,9 @@ public class DimUser {
 
     @Column(name = "user_type")
     private Integer userType;
+
+    @Column(name = "uuid")
+    private UUID uuid;
 
     @Column(name = "created_at")
     private LocalDateTime createdAt;

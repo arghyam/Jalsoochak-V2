@@ -13,10 +13,12 @@ import org.arghyam.jalsoochak.analytics.dto.response.SchemeStatusAndTopReporting
 import org.arghyam.jalsoochak.analytics.dto.response.UserNonSubmissionReasonSchemeCountResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.UserOutageReasonSchemeCountResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.UserSubmissionStatusResponse;
+import org.arghyam.jalsoochak.analytics.entity.DimUser;
 import org.arghyam.jalsoochak.analytics.enums.PeriodScale;
 import org.arghyam.jalsoochak.analytics.enums.RegularityScope;
 import org.arghyam.jalsoochak.analytics.enums.SchemeStatus;
 import org.arghyam.jalsoochak.analytics.entity.DimTenant;
+import org.arghyam.jalsoochak.analytics.repository.DimUserRepository;
 import org.arghyam.jalsoochak.analytics.repository.DimTenantRepository;
 import org.arghyam.jalsoochak.analytics.repository.SchemeRegularityRepository;
 import org.arghyam.jalsoochak.analytics.service.SchemeRegularityService;
@@ -37,6 +39,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.function.Function;
 
 @Service
@@ -54,6 +57,7 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
 
     private final SchemeRegularityRepository schemeRegularityRepository;
     private final DimTenantRepository dimTenantRepository;
+    private final DimUserRepository dimUserRepository;
     private final StringRedisTemplate redisTemplate;
     private final ObjectMapper objectMapper;
 
@@ -1206,6 +1210,12 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
     }
 
     @Override
+    public UserOutageReasonSchemeCountResponse getOutageReasonSchemeCountByUserUuid(
+            UUID userUuid, LocalDate startDate, LocalDate endDate) {
+        return getOutageReasonSchemeCountByUser(resolveUserIdByUuid(userUuid), startDate, endDate);
+    }
+
+    @Override
     public NonSubmissionReasonSchemeCountResponse getNonSubmissionReasonSchemeCountByLgd(
             Integer parentLgdId, LocalDate startDate, LocalDate endDate) {
         validateLgdInput(parentLgdId);
@@ -1320,6 +1330,12 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
     }
 
     @Override
+    public UserNonSubmissionReasonSchemeCountResponse getNonSubmissionReasonSchemeCountByUserUuid(
+            UUID userUuid, LocalDate startDate, LocalDate endDate) {
+        return getNonSubmissionReasonSchemeCountByUser(resolveUserIdByUuid(userUuid), startDate, endDate);
+    }
+
+    @Override
     public UserSubmissionStatusResponse getSubmissionStatusByUser(
             Integer userId, LocalDate startDate, LocalDate endDate) {
         validateUserInput(userId);
@@ -1365,6 +1381,12 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
                                 .build())
                         .toList())
                 .build();
+    }
+
+    @Override
+    public UserSubmissionStatusResponse getSubmissionStatusByUserUuid(
+            UUID userUuid, LocalDate startDate, LocalDate endDate) {
+        return getSubmissionStatusByUser(resolveUserIdByUuid(userUuid), startDate, endDate);
     }
 
     @Override
@@ -1617,6 +1639,15 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
         if (userId == null || userId <= 0) {
             throw new IllegalArgumentException("user_id must be a positive integer");
         }
+    }
+
+    private Integer resolveUserIdByUuid(UUID userUuid) {
+        if (userUuid == null) {
+            throw new IllegalArgumentException("Authenticated user UUID is required");
+        }
+        return dimUserRepository.findByUuid(userUuid)
+                .map(DimUser::getUserId)
+                .orElseThrow(() -> new IllegalArgumentException("No user found for uuid: " + userUuid));
     }
 
     private void validateDepartmentInput(Integer parentDepartmentId) {

@@ -22,6 +22,7 @@ import org.arghyam.jalsoochak.analytics.dto.response.UserSubmissionStatusRespons
 import org.arghyam.jalsoochak.analytics.enums.PeriodScale;
 import org.arghyam.jalsoochak.analytics.enums.RegularityScope;
 import org.arghyam.jalsoochak.analytics.enums.WaterSupplyScope;
+import org.arghyam.jalsoochak.analytics.helper.AnalyticsControllerHelper;
 import org.arghyam.jalsoochak.analytics.repository.DimSchemeRepository;
 import org.arghyam.jalsoochak.analytics.repository.DimTenantRepository;
 import org.arghyam.jalsoochak.analytics.repository.FactEscalationRepository;
@@ -40,6 +41,8 @@ import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -52,7 +55,6 @@ import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 @RestController
@@ -61,8 +63,6 @@ import java.util.stream.Collectors;
 @Tag(name = "Analytics", description = "Data warehouse query endpoints")
 public class AnalyticsController {
     private static final String CSV_OUTPUT_FORMAT = "csv";
-    private static final Pattern NON_FILENAME_SAFE_CHARS = Pattern.compile("[^a-zA-Z0-9._-]");
-    private static final Pattern MULTIPLE_UNDERSCORES = Pattern.compile("_+");
 
     private final DimTenantRepository dimTenantRepository;
     private final DimSchemeRepository dimSchemeRepository;
@@ -262,12 +262,14 @@ public class AnalyticsController {
 
     @GetMapping("/outage-reasons/user")
     @Operation(summary = "Get outage reason wise scheme count for a user")
+    @PreAuthorize("hasAnyRole('SUPER_USER', 'STATE_ADMIN')")
     public ResponseEntity<UserOutageReasonSchemeCountResponse> getOutageReasonWiseSchemeCountByUser(
-            @RequestParam(name = "user_id") Integer userId,
+            JwtAuthenticationToken authentication,
             @RequestParam(name = "start_date") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
             @RequestParam(name = "end_date") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
         return ResponseEntity.ok(
-                schemeRegularityService.getOutageReasonSchemeCountByUser(userId, startDate, endDate));
+                schemeRegularityService.getOutageReasonSchemeCountByUserUuid(
+                        AnalyticsControllerHelper.extractAuthenticatedUserUuid(authentication), startDate, endDate));
     }
 
     @GetMapping("/non-submission-reasons")
@@ -294,22 +296,26 @@ public class AnalyticsController {
 
     @GetMapping("/non-submission-reasons/user")
     @Operation(summary = "Get non submission reason wise scheme count for a user")
+    @PreAuthorize("hasAnyRole('SUPER_USER', 'STATE_ADMIN')")
     public ResponseEntity<UserNonSubmissionReasonSchemeCountResponse> getNonSubmissionReasonWiseSchemeCountByUser(
-            @RequestParam(name = "user_id") Integer userId,
+            JwtAuthenticationToken authentication,
             @RequestParam(name = "start_date") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
             @RequestParam(name = "end_date") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
         return ResponseEntity.ok(
-                schemeRegularityService.getNonSubmissionReasonSchemeCountByUser(userId, startDate, endDate));
+                schemeRegularityService.getNonSubmissionReasonSchemeCountByUserUuid(
+                        AnalyticsControllerHelper.extractAuthenticatedUserUuid(authentication), startDate, endDate));
     }
 
     @GetMapping("/submission-status/user")
     @Operation(summary = "Get submission status counts for a user")
+    @PreAuthorize("hasAnyRole('SUPER_USER', 'STATE_ADMIN')")
     public ResponseEntity<UserSubmissionStatusResponse> getSubmissionStatusByUser(
-            @RequestParam(name = "user_id") Integer userId,
+            JwtAuthenticationToken authentication,
             @RequestParam(name = "start_date") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
             @RequestParam(name = "end_date") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
         return ResponseEntity.ok(
-                schemeRegularityService.getSubmissionStatusByUser(userId, startDate, endDate));
+                schemeRegularityService.getSubmissionStatusByUserUuid(
+                        AnalyticsControllerHelper.extractAuthenticatedUserUuid(authentication), startDate, endDate));
     }
 
     @GetMapping("/schemes/status-count")
@@ -385,8 +391,8 @@ public class AnalyticsController {
             return ResponseEntity.ok(reportResponse);
         }
 
-        String csvContent = buildSchemeRegionReportCsv(reportResponse);
-        String filename = buildSchemeRegionReportFilename(reportResponse, startDate, endDate);
+        String csvContent = AnalyticsControllerHelper.buildSchemeRegionReportCsv(reportResponse);
+        String filename = AnalyticsControllerHelper.buildSchemeRegionReportFilename(reportResponse, startDate, endDate);
 
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + filename + "\"")
@@ -567,54 +573,4 @@ public class AnalyticsController {
         return ResponseEntity.ok("Date dimension populated from " + startDate + " to " + endDate);
     }
 
-    private String buildSchemeRegionReportCsv(SchemeRegularityListResponse response) {
-        StringBuilder csvBuilder = new StringBuilder();
-        csvBuilder.append("scheme_id,scheme_name,status_code,status,supply_days,average_regularity,submission_days,submission_rate")
-                .append('\n');
-        if (response.getSchemes() == null || response.getSchemes().isEmpty()) {
-            return csvBuilder.toString();
-        }
-        for (SchemeRegularityListResponse.SchemeMetrics scheme : response.getSchemes()) {
-            csvBuilder.append(toCsvField(scheme.getSchemeId())).append(',')
-                    .append(toCsvField(scheme.getSchemeName())).append(',')
-                    .append(toCsvField(scheme.getStatusCode())).append(',')
-                    .append(toCsvField(scheme.getStatus())).append(',')
-                    .append(toCsvField(scheme.getSupplyDays())).append(',')
-                    .append(toCsvField(scheme.getAverageRegularity())).append(',')
-                    .append(toCsvField(scheme.getSubmissionDays())).append(',')
-                    .append(toCsvField(scheme.getSubmissionRate())).append('\n');
-        }
-        return csvBuilder.toString();
-    }
-
-    private String buildSchemeRegionReportFilename(
-            SchemeRegularityListResponse response, LocalDate startDate, LocalDate endDate) {
-        String parentName = response.getParentLgdCName();
-        if (parentName == null || parentName.isBlank()) {
-            parentName = response.getParentDepartmentCName();
-        }
-        String safeParentName = sanitizeFilenamePart(parentName);
-        return "scheme-region-report_" + safeParentName + "_" + startDate + "_to_" + endDate + ".csv";
-    }
-
-    private String sanitizeFilenamePart(String input) {
-        if (input == null || input.isBlank()) {
-            return "unknown_parent";
-        }
-        String normalized = NON_FILENAME_SAFE_CHARS.matcher(input.trim().toLowerCase()).replaceAll("_");
-        normalized = MULTIPLE_UNDERSCORES.matcher(normalized).replaceAll("_");
-        normalized = normalized.replaceAll("^_|_$", "");
-        return normalized.isBlank() ? "unknown_parent" : normalized;
-    }
-
-    private String toCsvField(Object value) {
-        if (value == null) {
-            return "";
-        }
-        String text = String.valueOf(value);
-        if (text.contains(",") || text.contains("\"") || text.contains("\n") || text.contains("\r")) {
-            return "\"" + text.replace("\"", "\"\"") + "\"";
-        }
-        return text;
-    }
 }

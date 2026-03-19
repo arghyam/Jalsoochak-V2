@@ -20,6 +20,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 public interface SchemeRegularityService {
 
     AverageSchemeRegularityResponse getAverageSchemeRegularity(Integer parentLgdId, LocalDate startDate, LocalDate endDate);
@@ -95,6 +96,9 @@ public interface SchemeRegularityService {
     UserOutageReasonSchemeCountResponse getOutageReasonSchemeCountByUser(
             Integer userId, LocalDate startDate, LocalDate endDate);
 
+    UserOutageReasonSchemeCountResponse getOutageReasonSchemeCountByUserUuid(
+            UUID userUuid, LocalDate startDate, LocalDate endDate);
+
     NonSubmissionReasonSchemeCountResponse getNonSubmissionReasonSchemeCountByLgd(
             Integer parentLgdId, LocalDate startDate, LocalDate endDate);
 
@@ -104,8 +108,14 @@ public interface SchemeRegularityService {
     UserNonSubmissionReasonSchemeCountResponse getNonSubmissionReasonSchemeCountByUser(
             Integer userId, LocalDate startDate, LocalDate endDate);
 
+    UserNonSubmissionReasonSchemeCountResponse getNonSubmissionReasonSchemeCountByUserUuid(
+            UUID userUuid, LocalDate startDate, LocalDate endDate);
+
     UserSubmissionStatusResponse getSubmissionStatusByUser(
             Integer userId, LocalDate startDate, LocalDate endDate);
+
+    UserSubmissionStatusResponse getSubmissionStatusByUserUuid(
+            UUID userUuid, LocalDate startDate, LocalDate endDate);
 
     Map<String, Integer> getSchemeStatusCountByLgd(Integer lgdId);
 

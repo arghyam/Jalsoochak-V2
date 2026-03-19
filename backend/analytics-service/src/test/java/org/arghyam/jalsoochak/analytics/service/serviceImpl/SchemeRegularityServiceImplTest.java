@@ -12,7 +12,9 @@ import org.arghyam.jalsoochak.analytics.dto.response.SchemeRegularityListRespons
 import org.arghyam.jalsoochak.analytics.dto.response.UserNonSubmissionReasonSchemeCountResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.UserOutageReasonSchemeCountResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.UserSubmissionStatusResponse;
+import org.arghyam.jalsoochak.analytics.entity.DimUser;
 import org.arghyam.jalsoochak.analytics.entity.DimTenant;
+import org.arghyam.jalsoochak.analytics.repository.DimUserRepository;
 import org.arghyam.jalsoochak.analytics.enums.PeriodScale;
 import org.arghyam.jalsoochak.analytics.repository.DimTenantRepository;
 import org.arghyam.jalsoochak.analytics.repository.SchemeRegularityRepository;
@@ -30,6 +32,7 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -48,6 +51,8 @@ class SchemeRegularityServiceImplTest {
     @Mock
     private DimTenantRepository dimTenantRepository;
     @Mock
+    private DimUserRepository dimUserRepository;
+    @Mock
     private StringRedisTemplate redisTemplate;
     @Mock
     private ObjectMapper objectMapper;
@@ -59,6 +64,7 @@ class SchemeRegularityServiceImplTest {
 
     private static final LocalDate START = LocalDate.of(2026, 1, 1);
     private static final LocalDate END = LocalDate.of(2026, 1, 3);
+    private static final UUID USER_UUID = UUID.fromString("11111111-1111-1111-1111-111111111111");
 
     @Test
     void getAverageSchemeRegularity_invalidLgd_throwsBadRequest() {
@@ -543,6 +549,23 @@ class SchemeRegularityServiceImplTest {
     }
 
     @Test
+    void getOutageReasonSchemeCountByUserUuid_resolvesUserIdFromUuid() {
+        when(dimUserRepository.findByUuid(USER_UUID))
+                .thenReturn(Optional.of(DimUser.builder().userId(11).uuid(USER_UUID).build()));
+        when(schemeRegularityRepository.getOutageReasonSchemeCountByUser(11, START, END))
+                .thenReturn(List.of(new SchemeRegularityRepository.OutageReasonSchemeCount("motor_burnt", 2)));
+        when(schemeRegularityRepository.getDailyOutageReasonSchemeCountByUser(11, START, END))
+                .thenReturn(List.of());
+        when(schemeRegularityRepository.getSchemeCountByUser(11)).thenReturn(2);
+
+        UserOutageReasonSchemeCountResponse response =
+                service.getOutageReasonSchemeCountByUserUuid(USER_UUID, START, END);
+
+        assertThat(response.getUserId()).isEqualTo(11);
+        verify(dimUserRepository, times(1)).findByUuid(USER_UUID);
+    }
+
+    @Test
     void getNonSubmissionReasonSchemeCountByLgd_usesTableReasonValues() {
         when(schemeRegularityRepository.getLgdLevel(101)).thenReturn(3);
         when(schemeRegularityRepository.getNonSubmissionReasonSchemeCountByLgd(101, START, END))
@@ -621,6 +644,23 @@ class SchemeRegularityServiceImplTest {
     }
 
     @Test
+    void getNonSubmissionReasonSchemeCountByUserUuid_resolvesUserIdFromUuid() {
+        when(dimUserRepository.findByUuid(USER_UUID))
+                .thenReturn(Optional.of(DimUser.builder().userId(11).uuid(USER_UUID).build()));
+        when(schemeRegularityRepository.getNonSubmissionReasonSchemeCountByUser(11, START, END))
+                .thenReturn(List.of(new SchemeRegularityRepository.NonSubmissionReasonSchemeCount("device_issue", 2)));
+        when(schemeRegularityRepository.getDailyNonSubmissionReasonSchemeCountByUser(11, START, END))
+                .thenReturn(List.of());
+        when(schemeRegularityRepository.getSchemeCountByUser(11)).thenReturn(2);
+
+        UserNonSubmissionReasonSchemeCountResponse response =
+                service.getNonSubmissionReasonSchemeCountByUserUuid(USER_UUID, START, END);
+
+        assertThat(response.getUserId()).isEqualTo(11);
+        verify(dimUserRepository, times(1)).findByUuid(USER_UUID);
+    }
+
+    @Test
     void getSubmissionStatusByUser_returnsCompliantAndAnomalousCounts() {
         when(schemeRegularityRepository.getSchemeCountByUser(11)).thenReturn(2);
         when(schemeRegularityRepository.getSubmissionStatusCountByUser(11, START, END))
@@ -644,10 +684,36 @@ class SchemeRegularityServiceImplTest {
     }
 
     @Test
+    void getSubmissionStatusByUserUuid_resolvesUserIdFromUuid() {
+        when(dimUserRepository.findByUuid(USER_UUID))
+                .thenReturn(Optional.of(DimUser.builder().userId(11).uuid(USER_UUID).build()));
+        when(schemeRegularityRepository.getSchemeCountByUser(11)).thenReturn(2);
+        when(schemeRegularityRepository.getSubmissionStatusCountByUser(11, START, END))
+                .thenReturn(new SchemeRegularityRepository.SubmissionStatusCount(4, 1));
+        when(schemeRegularityRepository.getDailySubmissionSchemeCountByUser(11, START, END))
+                .thenReturn(List.of());
+
+        UserSubmissionStatusResponse response =
+                service.getSubmissionStatusByUserUuid(USER_UUID, START, END);
+
+        assertThat(response.getUserId()).isEqualTo(11);
+        verify(dimUserRepository, times(1)).findByUuid(USER_UUID);
+    }
+
+    @Test
     void getOutageReasonSchemeCountByUser_withInvalidUser_throwsBadRequest() {
         assertThatThrownBy(() -> service.getOutageReasonSchemeCountByUser(0, START, END))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("user_id must be a positive integer");
+    }
+
+    @Test
+    void getOutageReasonSchemeCountByUserUuid_withUnknownUuid_throwsBadRequest() {
+        when(dimUserRepository.findByUuid(USER_UUID)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.getOutageReasonSchemeCountByUserUuid(USER_UUID, START, END))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("No user found for uuid");
     }
 
     @Test

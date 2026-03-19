@@ -33,13 +33,18 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.annotation.Import;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.stream.Stream;
 
 import static org.hamcrest.Matchers.containsString;
@@ -64,6 +69,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class AnalyticsControllerInputCombinationTest {
 
     private static final String BASE = "/api/v1/analytics";
+    private static final UUID USER_UUID = UUID.fromString("11111111-1111-1111-1111-111111111111");
     private static final LocalDate START = LocalDate.of(2026, 1, 1);
     private static final LocalDate END = LocalDate.of(2026, 1, 31);
 
@@ -359,16 +365,16 @@ class AnalyticsControllerInputCombinationTest {
 
     @Test
     void getOutageReasonsByUser_validRequest_routesToUserService() throws Exception {
-        when(schemeRegularityService.getOutageReasonSchemeCountByUser(11, START, END))
+        when(schemeRegularityService.getOutageReasonSchemeCountByUserUuid(USER_UUID, START, END))
                 .thenReturn(userOutageReasonResponse());
 
         mockMvc.perform(get(BASE + "/outage-reasons/user")
-                        .param("user_id", "11")
+                        .principal(buildJwtAuthentication())
                         .param("start_date", START.toString())
                         .param("end_date", END.toString()))
                 .andExpect(status().isOk());
 
-        verify(schemeRegularityService, times(1)).getOutageReasonSchemeCountByUser(11, START, END);
+        verify(schemeRegularityService, times(1)).getOutageReasonSchemeCountByUserUuid(USER_UUID, START, END);
     }
 
     @ParameterizedTest
@@ -409,30 +415,30 @@ class AnalyticsControllerInputCombinationTest {
 
     @Test
     void getNonSubmissionReasonsByUser_validRequest_routesToUserService() throws Exception {
-        when(schemeRegularityService.getNonSubmissionReasonSchemeCountByUser(11, START, END))
+        when(schemeRegularityService.getNonSubmissionReasonSchemeCountByUserUuid(USER_UUID, START, END))
                 .thenReturn(userNonSubmissionReasonResponse());
 
         mockMvc.perform(get(BASE + "/non-submission-reasons/user")
-                        .param("user_id", "11")
+                        .principal(buildJwtAuthentication())
                         .param("start_date", START.toString())
                         .param("end_date", END.toString()))
                 .andExpect(status().isOk());
 
-        verify(schemeRegularityService, times(1)).getNonSubmissionReasonSchemeCountByUser(11, START, END);
+        verify(schemeRegularityService, times(1)).getNonSubmissionReasonSchemeCountByUserUuid(USER_UUID, START, END);
     }
 
     @Test
     void getSubmissionStatusByUser_validRequest_routesToUserService() throws Exception {
-        when(schemeRegularityService.getSubmissionStatusByUser(11, START, END))
+        when(schemeRegularityService.getSubmissionStatusByUserUuid(USER_UUID, START, END))
                 .thenReturn(userSubmissionStatusResponse());
 
         mockMvc.perform(get(BASE + "/submission-status/user")
-                        .param("user_id", "11")
+                        .principal(buildJwtAuthentication())
                         .param("start_date", START.toString())
                         .param("end_date", END.toString()))
                 .andExpect(status().isOk());
 
-        verify(schemeRegularityService, times(1)).getSubmissionStatusByUser(11, START, END);
+        verify(schemeRegularityService, times(1)).getSubmissionStatusByUserUuid(USER_UUID, START, END);
     }
 
     @ParameterizedTest
@@ -1052,6 +1058,16 @@ class AnalyticsControllerInputCombinationTest {
                 Arguments.of("child", "10", null, null, 400),
                 Arguments.of("child", "10", "101", "201", 400)
         );
+    }
+
+    private static JwtAuthenticationToken buildJwtAuthentication() {
+        Jwt jwt = Jwt.withTokenValue("token")
+                .header("alg", "none")
+                .subject(USER_UUID.toString())
+                .issuedAt(Instant.now())
+                .expiresAt(Instant.now().plusSeconds(3600))
+                .build();
+        return new JwtAuthenticationToken(jwt, List.of(new SimpleGrantedAuthority("ROLE_SUPER_USER")));
     }
 
     private static AverageSchemeRegularityResponse averageRegularityResponse() {

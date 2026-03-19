@@ -23,6 +23,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.Optional;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.times;
@@ -71,6 +72,7 @@ class DimensionServiceImplTest {
         event.setTenantId(1);
         event.setEmail("user@test.local");
         event.setUserType(2);
+        event.setUuid(UUID.fromString("11111111-1111-1111-1111-111111111111"));
         when(dimUserRepository.findById(11)).thenReturn(Optional.of(DimUser.builder().userId(11).build()));
 
         service.upsertUser(event);
@@ -79,6 +81,7 @@ class DimensionServiceImplTest {
         verify(dimUserRepository, times(1)).save(captor.capture());
         assertThat(captor.getValue().getEmail()).isEqualTo("user@test.local");
         assertThat(captor.getValue().getTenantId()).isEqualTo(1);
+        assertThat(captor.getValue().getUuid()).isEqualTo(event.getUuid());
     }
 
     @Test
