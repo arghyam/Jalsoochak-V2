@@ -110,6 +110,7 @@ public class NotificationEventRouter {
                 case "STAFF_SYNC_COMPLETED" -> handleStaffSyncCompleted(root);
                 case "UPDATE_USER_LANGUAGE" -> handleUpdateUserLanguage(root);
                 case "SEND_WELCOME_MESSAGE" -> handleSendWelcomeMessage(root);
+                case "SEND_LOGIN_OTP" -> handleSendLoginOtp(root);
                 default -> log.warn("[Router] Unknown eventType '{}', ignoring message", eventType);
             }
         } catch (Exception e) {
@@ -323,6 +324,48 @@ public class NotificationEventRouter {
         payload.put("phone", phone);
         log.debug("[Router/WELCOME] Publishing to DLT for schema={}", tenantSchema);
         kafkaProducer.publishJson(WELCOME_DLT_TOPIC, payload);
+    }
+
+    private void handleSendLoginOtp(JsonNode root) {
+        String officerName = root.path("officerName").asText("Officer");
+        String otp = root.path("OTP").asText("");
+        String glificId = root.path("glific_id").asText("").strip();
+        String phone = root.path("officerPhoneNumber").asText("").strip();
+
+        if (otp.isBlank()) {
+            log.warn("[Router/SEND_LOGIN_OTP] OTP is missing, skipping");
+            return;
+        }
+
+        long contactId;
+        if (!glificId.isBlank()) {
+            try {
+                contactId = Long.parseLong(glificId);
+            } catch (NumberFormatException e) {
+                log.warn("[Router/SEND_LOGIN_OTP] Invalid glific_id '{}', skipping", glificId);
+                return;
+            }
+            if (contactId <= 0) {
+                log.warn("[Router/SEND_LOGIN_OTP] glific_id must be > 0, got {}, skipping", contactId);
+                return;
+            }
+        } else if (!phone.isBlank()) {
+            log.info("[Router/SEND_LOGIN_OTP] glific_id not provided, opting in via phone");
+            contactId = glificWhatsAppService.optIn(phone);
+            if (contactId <= 0) {
+                log.warn("[Router/SEND_LOGIN_OTP] optIn returned invalid contactId {}, skipping", contactId);
+                return;
+            }
+        } else {
+            log.warn("[Router/SEND_LOGIN_OTP] Neither glific_id nor officerPhoneNumber provided, skipping");
+            return;
+        }
+
+        boolean sent = whatsAppChannel.sendLoginOtp(contactId, officerName, otp);
+        if (!sent) {
+            throw new IllegalStateException("[Router/SEND_LOGIN_OTP] WhatsApp login OTP delivery failed");
+        }
+        log.info("[Router/SEND_LOGIN_OTP] → SENT contactId={}", contactId);
     }
 
     /**
