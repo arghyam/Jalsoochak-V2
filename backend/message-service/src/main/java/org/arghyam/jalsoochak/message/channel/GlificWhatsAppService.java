@@ -126,20 +126,19 @@ public class GlificWhatsAppService {
 
     /**
      * Sends the login OTP HSM template to an officer.
-     * Template variable {{1}} = officer name, {{2}} = OTP.
+     * Template variable {{1}} = OTP.
      *
-     * @param contactId    Glific contact ID of the officer
-     * @param officerName  officer name for template {@code {{1}}}
-     * @param otp          one-time password for template {@code {{2}}}
+     * @param contactId Glific contact ID of the officer
+     * @param otp       one-time password for template {@code {{1}}}
      */
-    public void sendLoginOtpHsm(Long contactId, String officerName, String otp) {
+    public void sendLoginOtpHsm(Long contactId, String otp) {
         if (loginOtpTemplateId == null || loginOtpTemplateId.isBlank()) {
             throw new IllegalStateException("glific.template.login-otp-id is not configured");
         }
         JsonNode response = client.execute(NUDGE_HSM_MUTATION, Map.of(
                 "templateId", loginOtpTemplateId,
                 "receiverId", contactId,
-                "parameters", List.of(officerName, otp)));
+                "parameters", List.of(otp)));
         checkErrors(response, "sendHsmMessage");
         log.debug("[Glific] Login OTP HSM sent to contactId={}", contactId);
     }

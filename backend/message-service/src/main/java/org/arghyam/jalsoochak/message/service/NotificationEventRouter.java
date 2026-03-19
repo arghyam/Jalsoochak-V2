@@ -361,7 +361,7 @@ public class NotificationEventRouter {
             return;
         }
 
-        boolean sent = whatsAppChannel.sendLoginOtp(contactId, officerName, otp);
+        boolean sent = whatsAppChannel.sendLoginOtp(contactId, otp);
         if (!sent) {
             throw new IllegalStateException("[Router/SEND_LOGIN_OTP] WhatsApp login OTP delivery failed");
         }
