@@ -80,9 +80,9 @@ public class TenantConfigService {
                     .hour(sched.path("hour").asInt(defaultEscalationHour))
                     .minute(sched.path("minute").asInt(defaultEscalationMinute))
                     .level1Days(l1.path("threshold").path("days").asInt(defaultLevel1Days))
-                    .level1OfficerType(l1.path("officer").path("userType").asText(defaultLevel1OfficerType))
+                    .level1OfficerType(officerType(l1.path("officer"), defaultLevel1OfficerType))
                     .level2Days(l2.path("threshold").path("days").asInt(defaultLevel2Days))
-                    .level2OfficerType(l2.path("officer").path("userType").asText(defaultLevel2OfficerType))
+                    .level2OfficerType(officerType(l2.path("officer"), defaultLevel2OfficerType))
                     .build();
         } catch (Exception e) {
             log.warn("[TenantConfig] Failed to parse escalation config for tenant={}: {}", tenantId, e.getMessage());
@@ -103,6 +103,13 @@ public class TenantConfigService {
             log.warn("[TenantConfig] Error reading key '{}' for tenant={}: {}", key, tenantId, e.getMessage());
             return null;
         }
+    }
+
+    /** Reads officer user-type from a JSON node, accepting both camelCase and snake_case keys. */
+    private String officerType(JsonNode officer, String defaultValue) {
+        JsonNode node = officer.path("userType");
+        if (!node.isMissingNode() && !node.isNull()) return node.asText(defaultValue);
+        return officer.path("user_type").asText(defaultValue);
     }
 
     private NudgeScheduleConfig defaultNudgeConfig() {
