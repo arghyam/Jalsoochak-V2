@@ -1648,9 +1648,9 @@ public class SchemeRegularityRepository {
                     SELECT
                         s.scheme_id,
                         s.scheme_name,
-                        s.house_hold_count,
-                        COALESCE(s.fhtc_count, 0)::int AS fhtc_count,
-                        COALESCE(s.planned_fhtc, 0)::int AS planned_fhtc
+                        s.house_hold_count::bigint AS house_hold_count,
+                        COALESCE(s.fhtc_count, 0)::bigint AS fhtc_count,
+                        COALESCE(s.planned_fhtc, 0)::bigint AS planned_fhtc
                     FROM analytics_schema.dim_scheme_table s
                     WHERE s.tenant_id = ?
                       AND s.house_hold_count IS NOT NULL
@@ -1680,14 +1680,14 @@ public class SchemeRegularityRepository {
                 (rs, rowNum) -> new SchemeWaterSupplyMetrics(
                         rs.getInt("scheme_id"),
                         rs.getString("scheme_name"),
-                        rs.getInt("house_hold_count"),
-                        rs.getInt("fhtc_count"),
-                        rs.getInt("planned_fhtc"),
+                        rs.getLong("house_hold_count"),
+                        rs.getLong("fhtc_count"),
+                        rs.getLong("planned_fhtc"),
                         rs.getLong("total_water_supplied_liters"),
                         rs.getInt("supply_days"),
                         BigDecimal.valueOf(rs.getLong("total_water_supplied_liters"))
                                 .divide(
-                                        BigDecimal.valueOf((long) rs.getInt("house_hold_count") * daysInRange),
+                                        BigDecimal.valueOf(rs.getLong("house_hold_count") * daysInRange),
                                         4,
                                         java.math.RoundingMode.HALF_UP)),
                 tenantId,
@@ -1713,9 +1713,9 @@ public class SchemeRegularityRepository {
                     t.tenant_id,
                     t.state_code,
                     t.title,
-                    COALESCE(SUM(COALESCE(s.house_hold_count, 0)), 0)::int AS total_household_count,
-                    COALESCE(SUM(COALESCE(s.fhtc_count, 0)), 0)::int AS total_fhtc_count,
-                    COALESCE(SUM(COALESCE(s.planned_fhtc, 0)), 0)::int AS total_planned_fhtc,
+                    COALESCE(SUM(COALESCE(s.house_hold_count, 0)), 0)::bigint AS total_household_count,
+                    COALESCE(SUM(COALESCE(s.fhtc_count, 0)), 0)::bigint AS total_fhtc_count,
+                    COALESCE(SUM(COALESCE(s.planned_fhtc, 0)), 0)::bigint AS total_planned_fhtc,
                     COALESCE(SUM(w.total_water_supplied_liters), 0)::bigint AS total_water_supplied_liters,
                     COALESCE(COUNT(s.scheme_id), 0)::int AS scheme_count,
                     CASE
@@ -1741,9 +1741,9 @@ public class SchemeRegularityRepository {
                         null,
                         null,
                         rs.getString("title"),
-                        rs.getInt("total_household_count"),
-                        rs.getInt("total_fhtc_count"),
-                        rs.getInt("total_planned_fhtc"),
+                        rs.getLong("total_household_count"),
+                        rs.getLong("total_fhtc_count"),
+                        rs.getLong("total_planned_fhtc"),
                         rs.getLong("total_water_supplied_liters"),
                         rs.getInt("scheme_count"),
                         rs.getBigDecimal("avg_water_supply_per_scheme")),
@@ -1904,9 +1904,9 @@ public class SchemeRegularityRepository {
                 SELECT
                     c.child_lgd_id AS lgd_id,
                     c.title,
-                    COALESCE(SUM(s.house_hold_count), 0)::int AS total_household_count,
-                    COALESCE(SUM(s.fhtc_count), 0)::int AS total_fhtc_count,
-                    COALESCE(SUM(s.planned_fhtc), 0)::int AS total_planned_fhtc,
+                    COALESCE(SUM(s.house_hold_count), 0)::bigint AS total_household_count,
+                    COALESCE(SUM(s.fhtc_count), 0)::bigint AS total_fhtc_count,
+                    COALESCE(SUM(s.planned_fhtc), 0)::bigint AS total_planned_fhtc,
                     COALESCE(SUM(w.total_water_supplied_liters), 0)::bigint AS total_water_supplied_liters,
                     COALESCE(COUNT(s.scheme_id), 0)::int AS scheme_count,
                     CASE
@@ -1931,9 +1931,9 @@ public class SchemeRegularityRepository {
                         rs.getInt("lgd_id"),
                         null,
                         rs.getString("title"),
-                        rs.getInt("total_household_count"),
-                        rs.getInt("total_fhtc_count"),
-                        rs.getInt("total_planned_fhtc"),
+                        rs.getLong("total_household_count"),
+                        rs.getLong("total_fhtc_count"),
+                        rs.getLong("total_planned_fhtc"),
                         rs.getLong("total_water_supplied_liters"),
                         rs.getInt("scheme_count"),
                         rs.getBigDecimal("avg_water_supply_per_scheme")),
@@ -1997,9 +1997,9 @@ public class SchemeRegularityRepository {
                 SELECT
                     c.child_department_id AS department_id,
                     c.title,
-                    COALESCE(SUM(s.house_hold_count), 0)::int AS total_household_count,
-                    COALESCE(SUM(s.fhtc_count), 0)::int AS total_fhtc_count,
-                    COALESCE(SUM(s.planned_fhtc), 0)::int AS total_planned_fhtc,
+                    COALESCE(SUM(s.house_hold_count), 0)::bigint AS total_household_count,
+                    COALESCE(SUM(s.fhtc_count), 0)::bigint AS total_fhtc_count,
+                    COALESCE(SUM(s.planned_fhtc), 0)::bigint AS total_planned_fhtc,
                     COALESCE(SUM(w.total_water_supplied_liters), 0)::bigint AS total_water_supplied_liters,
                     COALESCE(COUNT(s.scheme_id), 0)::int AS scheme_count,
                     CASE
@@ -2024,9 +2024,9 @@ public class SchemeRegularityRepository {
                         null,
                         rs.getInt("department_id"),
                         rs.getString("title"),
-                        rs.getInt("total_household_count"),
-                        rs.getInt("total_fhtc_count"),
-                        rs.getInt("total_planned_fhtc"),
+                        rs.getLong("total_household_count"),
+                        rs.getLong("total_fhtc_count"),
+                        rs.getLong("total_planned_fhtc"),
                         rs.getLong("total_water_supplied_liters"),
                         rs.getInt("scheme_count"),
                         rs.getBigDecimal("avg_water_supply_per_scheme")),
@@ -2085,9 +2085,9 @@ public class SchemeRegularityRepository {
                 SELECT
                     c.child_lgd_id AS lgd_id,
                     c.title,
-                    COALESCE(SUM(s.house_hold_count), 0)::int AS household_count,
-                    COALESCE(SUM(s.fhtc_count), 0)::int AS fhtc_count,
-                    COALESCE(SUM(s.planned_fhtc), 0)::int AS planned_fhtc,
+                    COALESCE(SUM(s.house_hold_count), 0)::bigint AS household_count,
+                    COALESCE(SUM(s.fhtc_count), 0)::bigint AS fhtc_count,
+                    COALESCE(SUM(s.planned_fhtc), 0)::bigint AS planned_fhtc,
                     COALESCE(SUM(w.total_ewater_quantity), 0)::bigint AS ewater_quantity
                 FROM child_regions c
                 LEFT JOIN schemes_in_scope s
@@ -2105,9 +2105,9 @@ public class SchemeRegularityRepository {
                         null,
                         rs.getString("title"),
                         rs.getLong("ewater_quantity"),
-                        rs.getInt("household_count"),
-                        rs.getInt("fhtc_count"),
-                        rs.getInt("planned_fhtc")),
+                        rs.getLong("household_count"),
+                        rs.getLong("fhtc_count"),
+                        rs.getLong("planned_fhtc")),
                 childLevel,
                 parentLgdId,
                 parentLgdId,
@@ -2161,9 +2161,9 @@ public class SchemeRegularityRepository {
                 SELECT
                     c.child_department_id AS department_id,
                     c.title,
-                    COALESCE(SUM(s.house_hold_count), 0)::int AS household_count,
-                    COALESCE(SUM(s.fhtc_count), 0)::int AS fhtc_count,
-                    COALESCE(SUM(s.planned_fhtc), 0)::int AS planned_fhtc,
+                    COALESCE(SUM(s.house_hold_count), 0)::bigint AS household_count,
+                    COALESCE(SUM(s.fhtc_count), 0)::bigint AS fhtc_count,
+                    COALESCE(SUM(s.planned_fhtc), 0)::bigint AS planned_fhtc,
                     COALESCE(SUM(w.total_ewater_quantity), 0)::bigint AS ewater_quantity
                 FROM child_regions c
                 LEFT JOIN schemes_in_scope s
@@ -2181,9 +2181,9 @@ public class SchemeRegularityRepository {
                         rs.getInt("department_id"),
                         rs.getString("title"),
                         rs.getLong("ewater_quantity"),
-                        rs.getInt("household_count"),
-                        rs.getInt("fhtc_count"),
-                        rs.getInt("planned_fhtc")),
+                        rs.getLong("household_count"),
+                        rs.getLong("fhtc_count"),
+                        rs.getLong("planned_fhtc")),
                 childLevel,
                 parentDepartmentId,
                 parentDepartmentId,
@@ -2222,9 +2222,9 @@ public class SchemeRegularityRepository {
                 WITH schemes_in_scope AS (
                     SELECT
                         s.scheme_id,
-                        COALESCE(s.house_hold_count, 0)::int AS house_hold_count,
-                        COALESCE(s.fhtc_count, 0)::int AS fhtc_count,
-                        COALESCE(s.planned_fhtc, 0)::int AS planned_fhtc
+                        COALESCE(s.house_hold_count, 0)::bigint AS house_hold_count,
+                        COALESCE(s.fhtc_count, 0)::bigint AS fhtc_count,
+                        COALESCE(s.planned_fhtc, 0)::bigint AS planned_fhtc
                     FROM analytics_schema.dim_scheme_table s
                     WHERE s.%1$s = ?
                 ),
@@ -2247,9 +2247,9 @@ public class SchemeRegularityRepository {
                 ),
                 household_total AS (
                     SELECT
-                        COALESCE(SUM(house_hold_count), 0)::int AS household_count,
-                        COALESCE(SUM(fhtc_count), 0)::int AS fhtc_count,
-                        COALESCE(SUM(planned_fhtc), 0)::int AS planned_fhtc
+                        COALESCE(SUM(house_hold_count), 0)::bigint AS household_count,
+                        COALESCE(SUM(fhtc_count), 0)::bigint AS fhtc_count,
+                        COALESCE(SUM(planned_fhtc), 0)::bigint AS planned_fhtc
                     FROM schemes_in_scope
                 )
                 SELECT
@@ -2279,9 +2279,9 @@ public class SchemeRegularityRepository {
                         rs.getObject("period_end_date", LocalDate.class),
                         rs.getString("scope"),
                         rs.getBigDecimal("average_water_quantity").setScale(4, RoundingMode.HALF_UP),
-                        rs.getInt("household_count"),
-                        rs.getInt("fhtc_count"),
-                        rs.getInt("planned_fhtc")),
+                        rs.getLong("household_count"),
+                        rs.getLong("fhtc_count"),
+                        rs.getLong("planned_fhtc")),
                 locationId,
                 startDate,
                 endDate,
@@ -2390,9 +2390,9 @@ public class SchemeRegularityRepository {
     public record SchemeWaterSupplyMetrics(
             Integer schemeId,
             String schemeName,
-            Integer householdCount,
-            Integer fhtcCount,
-            Integer plannedFhtc,
+            Long householdCount,
+            Long fhtcCount,
+            Long plannedFhtc,
             Long totalWaterSuppliedLiters,
             Integer supplyDays,
             BigDecimal averageLitersPerHousehold) {
@@ -2404,9 +2404,9 @@ public class SchemeRegularityRepository {
             Integer lgdId,
             Integer departmentId,
             String title,
-            Integer totalHouseholdCount,
-            Integer totalFhtcCount,
-            Integer totalPlannedFhtc,
+            Long totalHouseholdCount,
+            Long totalFhtcCount,
+            Long totalPlannedFhtc,
             Long totalWaterSuppliedLiters,
             Integer schemeCount,
             BigDecimal avgWaterSupplyPerScheme) {
@@ -2417,9 +2417,9 @@ public class SchemeRegularityRepository {
             Integer departmentId,
             String title,
             Long waterQuantity,
-            Integer householdCount,
-            Integer fhtcCount,
-            Integer plannedFhtc) {
+            Long householdCount,
+            Long fhtcCount,
+            Long plannedFhtc) {
     }
 
     public record ChildRegionSchemeRegularityMetrics(
@@ -2542,8 +2542,8 @@ public class SchemeRegularityRepository {
             LocalDate periodEndDate,
             String scope,
             BigDecimal averageWaterQuantity,
-            Integer householdCount,
-            Integer fhtcCount,
-            Integer plannedFhtc) {
+            Long householdCount,
+            Long fhtcCount,
+            Long plannedFhtc) {
     }
 }

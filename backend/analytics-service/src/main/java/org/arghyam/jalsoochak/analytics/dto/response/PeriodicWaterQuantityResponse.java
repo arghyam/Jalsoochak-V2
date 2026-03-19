@@ -31,8 +31,8 @@ public class PeriodicWaterQuantityResponse {
         private LocalDate periodStartDate;
         private LocalDate periodEndDate;
         private BigDecimal averageWaterQuantity;
-        private Integer householdCount;
-        private Integer fhtcCount;
-        private Integer plannedFhtc;
+        private Long householdCount;
+        private Long fhtcCount;
+        private Long plannedFhtc;
     }
 }
