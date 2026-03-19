@@ -667,27 +667,59 @@ public class PublicPumpOperatorRepository {
                        l.scheme_name,
                        l.scheme_mapping_status,
                        l.onboarding_date,
-                       fr.reading_date,
-                       fr.%s AS reading_at,
-                       fr.confirmed_reading,
-                       last_read.last_submission_at
+                       CASE
+                           WHEN l.onboarding_date IS NULL THEN NULL
+                           ELSE (CURRENT_DATE - l.onboarding_date + 1)
+                       END AS total_active_days,
+                       COALESCE(stats.submitted_days, 0) AS submitted_days,
+                       CASE
+                           WHEN l.onboarding_date IS NULL THEN NULL
+                           ELSE GREATEST((CURRENT_DATE - l.onboarding_date + 1) - COALESCE(stats.submitted_days, 0), 0)
+                       END AS missed_submission_days,
+                       CASE
+                           WHEN l.onboarding_date IS NULL THEN NULL
+                           ELSE GREATEST((CURRENT_DATE - l.onboarding_date + 1) - COALESCE(stats.submitted_days, 0), 0)
+                       END AS inactive_days,
+                       CASE
+                           WHEN l.onboarding_date IS NULL THEN NULL
+                           ELSE GREATEST((CURRENT_DATE - l.onboarding_date + 1) - COALESCE(stats.submitted_days, 0), 0)
+                       END AS missing_submission_count,
+                       CASE
+                           WHEN l.onboarding_date IS NULL THEN NULL
+                           WHEN (CURRENT_DATE - l.onboarding_date + 1) <= 0 THEN NULL
+                           ELSE ROUND(
+                               (COALESCE(stats.submitted_days, 0)::numeric * 100.0)
+                               / (CURRENT_DATE - l.onboarding_date + 1),
+                               2
+                           )
+                       END AS reporting_rate_percent,
+                       lr.reading_date,
+                       lr.reading_at,
+                       lr.confirmed_reading,
+                       lr.last_submission_at
                 FROM latest_mapping l
-                JOIN %s.flow_reading_table fr
-                  ON fr.created_by = l.id
-                 AND fr.deleted_at IS NULL
-                 AND l.onboarding_date IS NOT NULL
-                 AND fr.reading_date BETWEEN l.onboarding_date AND CURRENT_DATE
                 LEFT JOIN LATERAL (
-                    SELECT %s AS last_submission_at
-                    FROM %s.flow_reading_table
-                    WHERE deleted_at IS NULL
-                      AND created_by = l.id
-                    ORDER BY %s DESC, id DESC
+                    SELECT COUNT(DISTINCT fr.reading_date) AS submitted_days
+                    FROM %s.flow_reading_table fr
+                    WHERE fr.deleted_at IS NULL
+                      AND fr.created_by = l.id
+                      AND l.onboarding_date IS NOT NULL
+                      AND fr.reading_date BETWEEN l.onboarding_date AND CURRENT_DATE
+                ) stats ON true
+                LEFT JOIN LATERAL (
+                    SELECT fr.reading_date,
+                           fr.%s AS reading_at,
+                           fr.confirmed_reading,
+                           fr.%s AS last_submission_at
+                    FROM %s.flow_reading_table fr
+                    WHERE fr.deleted_at IS NULL
+                      AND fr.created_by = l.id
+                    ORDER BY fr.%s DESC NULLS LAST, fr.id DESC
                     LIMIT 1
-                ) last_read ON true
-                ORDER BY fr.reading_date DESC, fr.id DESC, l.id DESC
+                ) lr ON true
+                ORDER BY l.name ASC NULLS LAST, l.id DESC
                 LIMIT ? OFFSET ?
-                """, schemaName, schemaName, schemaName, timeColumn, schemaName, timeColumn, schemaName, timeColumn);
+                """, schemaName, schemaName, schemaName, schemaName, timeColumn, timeColumn, schemaName, timeColumn);
 
         return jdbcTemplate.query(sql, (rs, rowNum) -> {
             Timestamp ts = (Timestamp) rs.getObject("reading_at");
@@ -706,6 +738,12 @@ public class PublicPumpOperatorRepository {
                     .schemeName(rs.getString("scheme_name"))
                     .schemeMappingStatus(getNullableInt(rs, "scheme_mapping_status"))
                     .onboardingDate(rs.getObject("onboarding_date", LocalDate.class))
+                    .totalActiveDays(getNullableInt(rs, "total_active_days"))
+                    .submittedDays(getNullableInt(rs, "submitted_days"))
+                    .missedSubmissionDays(getNullableInt(rs, "missed_submission_days"))
+                    .inactiveDays(getNullableInt(rs, "inactive_days"))
+                    .missingSubmissionCount(getNullableInt(rs, "missing_submission_count"))
+                    .reportingRatePercent((BigDecimal) rs.getObject("reporting_rate_percent"))
                     .readingDate(rs.getObject("reading_date", LocalDate.class))
                     .readingAt(readingAt)
                     .lastSubmissionAt(lastSubmissionAt)
@@ -722,8 +760,7 @@ public class PublicPumpOperatorRepository {
         String sql = String.format("""
                 WITH latest_mapping AS (
                     SELECT DISTINCT ON (u.id)
-                           u.id,
-                           u.created_at::date AS onboarding_date
+                           u.id
                     FROM %s.user_scheme_mapping_table usm
                     JOIN %s.scheme_master_table sm
                       ON sm.id = usm.scheme_id
@@ -740,12 +777,7 @@ public class PublicPumpOperatorRepository {
                 )
                 SELECT COUNT(1)
                 FROM latest_mapping l
-                JOIN %s.flow_reading_table fr
-                  ON fr.created_by = l.id
-                 AND fr.deleted_at IS NULL
-                 AND l.onboarding_date IS NOT NULL
-                 AND fr.reading_date BETWEEN l.onboarding_date AND CURRENT_DATE
-                """, schemaName, schemaName, schemaName, schemaName);
+                """, schemaName, schemaName, schemaName);
         Long total = jdbcTemplate.queryForObject(sql, Long.class, schemeId);
         return total == null ? 0 : total;
     }
