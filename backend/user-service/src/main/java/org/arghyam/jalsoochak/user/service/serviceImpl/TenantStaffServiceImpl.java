@@ -53,7 +53,7 @@ public class TenantStaffServiceImpl implements TenantStaffService {
             String sortBy,
             String sortDir,
             List<String> role,
-            Integer status,
+            String status,
             String name
     ) {
         String schemaName = TenantSchemaResolver.requireSchemaNameFromTenantCode(tenantCode);
@@ -63,15 +63,17 @@ public class TenantStaffServiceImpl implements TenantStaffService {
         int offset = p * size;
 
         List<String> normalizedRoles = normalizeRoles(role);
-        List<TenantStaffResponseDTO> rows = tenantStaffRepository.listStaff(schemaName, normalizedRoles, status, name, sortBy, sortDir, offset, size);
-        long total = tenantStaffRepository.countStaff(schemaName, normalizedRoles, status, name);
+        Integer statusCode = parseStatus(status);
+        List<TenantStaffResponseDTO> rows = tenantStaffRepository.listStaff(schemaName, normalizedRoles, statusCode, name, sortBy, sortDir, offset, size);
+        long total = tenantStaffRepository.countStaff(schemaName, normalizedRoles, statusCode, name);
         return PageResponseDTO.of(rows, total, p, size);
     }
 
     @Override
-    public List<RoleCountDTO> countStaffByRole(String tenantCode, Integer status, String name) {
+    public List<RoleCountDTO> countStaffByRole(String tenantCode, String status, String name) {
         String schemaName = TenantSchemaResolver.requireSchemaNameFromTenantCode(tenantCode);
-        return tenantStaffRepository.countByRole(schemaName, status, name);
+        Integer statusCode = parseStatus(status);
+        return tenantStaffRepository.countByRole(schemaName, statusCode, name);
     }
 
     @Override
@@ -180,5 +182,20 @@ public class TenantStaffServiceImpl implements TenantStaffService {
             }
         }
         return List.copyOf(normalized);
+    }
+
+    private Integer parseStatus(String status) {
+        if (status == null || status.isBlank()) {
+            return null;
+        }
+        String normalized = status.trim();
+        if (normalized.matches("^[0-9]+$")) {
+            return Integer.parseInt(normalized);
+        }
+        return switch (normalized.toUpperCase(Locale.ROOT)) {
+            case "ACTIVE" -> 1;
+            case "INACTIVE" -> 0;
+            default -> throw new IllegalArgumentException("Unknown status: " + status);
+        };
     }
 }
