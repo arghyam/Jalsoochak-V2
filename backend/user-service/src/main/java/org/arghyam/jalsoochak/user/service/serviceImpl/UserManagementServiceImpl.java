@@ -23,8 +23,9 @@ import org.arghyam.jalsoochak.user.exceptions.UserAlreadyExistsException;
 import org.arghyam.jalsoochak.user.repository.UserCommonRepository;
 import org.arghyam.jalsoochak.user.repository.UserTenantRepository;
 import org.arghyam.jalsoochak.user.repository.records.AdminUserRow;
+import org.arghyam.jalsoochak.user.event.InviteEmailEvent;
+import org.arghyam.jalsoochak.user.event.UserEmailEventPublisher;
 import org.arghyam.jalsoochak.user.service.KeycloakAdminHelper;
-import org.arghyam.jalsoochak.user.service.MailService;
 import org.arghyam.jalsoochak.user.service.TokenService;
 import org.arghyam.jalsoochak.user.service.UserManagementService;
 import org.arghyam.jalsoochak.user.util.SecurityUtils;
@@ -54,7 +55,7 @@ public class UserManagementServiceImpl implements UserManagementService {
     private final KeycloakClient keycloakClient;
     private final UserCommonRepository userCommonRepository;
     private final UserTenantRepository userTenantRepository;
-    private final MailService mailService;
+    private final UserEmailEventPublisher userEmailEventPublisher;
     private final KeycloakAdminHelper keycloakAdminHelper;
     private final InviteProperties inviteProperties;
     private final FrontendProperties frontendProperties;
@@ -110,10 +111,11 @@ public class UserManagementServiceImpl implements UserManagementService {
                 throw new BadRequestException(
                         "A pending invitation exists for this email with different role or tenant. Revoke it before re-inviting.");
             }
-            // Same role+tenant: fall through to re-send the invite token below
+            // Same role+tenant: update phone number and re-send invite token
+            userCommonRepository.updatePendingAdminUserPhone(pending.id(), request.getPhoneNumber());
         } else {
-            userCommonRepository.createAdminUserPending(request.getEmail(), tenantId, adminLevelId,
-                    callerRow.id() != null ? callerRow.id().intValue() : null);
+            userCommonRepository.createAdminUserPending(request.getEmail(), request.getPhoneNumber(), tenantId,
+                    adminLevelId, callerRow.id() != null ? callerRow.id().intValue() : null);
         }
 
         String tenantName = "STATE_ADMIN".equals(request.getRole())
@@ -124,6 +126,8 @@ public class UserManagementServiceImpl implements UserManagementService {
         metaMap.put("role", request.getRole());
         if (request.getTenantCode() != null) metaMap.put("tenantCode", request.getTenantCode());
         if (tenantName != null) metaMap.put("tenantName", tenantName);
+        metaMap.put("firstName", request.getFirstName());
+        metaMap.put("lastName", request.getLastName());
 
         String metadataJson;
         try {
@@ -144,7 +148,15 @@ public class UserManagementServiceImpl implements UserManagementService {
                 .queryParam("token", raw)
                 .build()
                 .toUriString();
-        mailService.sendMailAfterCommit(() -> mailService.sendInviteMail(request.getEmail(), inviteUrl));
+        String name = (request.getFirstName() + " " + request.getLastName()).trim();
+        userEmailEventPublisher.publishInviteEmailAfterCommit(InviteEmailEvent.builder()
+                .eventType("SEND_INVITE_EMAIL")
+                .to(request.getEmail())
+                .name(name)
+                .role(request.getRole())
+                .inviteLink(inviteUrl)
+                .expiryHours(inviteProperties.expiryHours())
+                .build());
     }
 
     @Override
@@ -183,10 +195,20 @@ public class UserManagementServiceImpl implements UserManagementService {
         String tenantName = tenantCode != null
                 ? userCommonRepository.findTenantTitleByStateCode(tenantCode).orElse(null) : null;
 
+        // Carry over firstName/lastName from the existing active token
+        Optional<org.arghyam.jalsoochak.user.repository.records.AdminUserTokenRow> existingToken =
+                userCommonRepository.findActiveInviteTokenByEmail(target.email());
+
         Map<String, Object> metaMap = new HashMap<>();
         metaMap.put("role", targetRole);
         if (tenantCode != null) metaMap.put("tenantCode", tenantCode);
         if (tenantName != null) metaMap.put("tenantName", tenantName);
+        existingToken.ifPresent(t -> {
+            String firstName = parseMetadata(t.metadata(), "firstName");
+            String lastName = parseMetadata(t.metadata(), "lastName");
+            if (firstName != null) metaMap.put("firstName", firstName);
+            if (lastName != null) metaMap.put("lastName", lastName);
+        });
 
         String metadataJson;
         try {
@@ -207,7 +229,28 @@ public class UserManagementServiceImpl implements UserManagementService {
                 .queryParam("token", raw)
                 .build()
                 .toUriString();
-        mailService.sendMailAfterCommit(() -> mailService.sendInviteMail(target.email(), inviteUrl));
+        String name = existingToken.map(t -> {
+            String fn = parseMetadata(t.metadata(), "firstName");
+            String ln = parseMetadata(t.metadata(), "lastName");
+            return ((fn != null ? fn : "") + " " + (ln != null ? ln : "")).trim();
+        }).orElse(null);
+        userEmailEventPublisher.publishInviteEmailAfterCommit(InviteEmailEvent.builder()
+                .eventType("SEND_REINVITE_EMAIL")
+                .to(target.email())
+                .name(name)
+                .role(targetRole)
+                .inviteLink(inviteUrl)
+                .expiryHours(inviteProperties.expiryHours())
+                .build());
+    }
+
+    private String parseMetadata(String json, String key) {
+        if (json == null) return null;
+        try {
+            return objectMapper.readTree(json).path(key).asText(null);
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     @Override

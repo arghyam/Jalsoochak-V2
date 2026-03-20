@@ -30,9 +30,10 @@ import org.arghyam.jalsoochak.user.repository.UserCommonRepository;
 import org.arghyam.jalsoochak.user.repository.UserTenantRepository;
 import org.arghyam.jalsoochak.user.repository.records.AdminUserRow;
 import org.arghyam.jalsoochak.user.repository.records.AdminUserTokenRow;
+import org.arghyam.jalsoochak.user.event.ResetPasswordEmailEvent;
+import org.arghyam.jalsoochak.user.event.UserEmailEventPublisher;
 import org.arghyam.jalsoochak.user.service.AuthService;
 import org.arghyam.jalsoochak.user.service.KeycloakAdminHelper;
-import org.arghyam.jalsoochak.user.service.MailService;
 import org.arghyam.jalsoochak.user.service.TokenService;
 import org.arghyam.jalsoochak.user.util.SecurityUtils;
 import org.keycloak.admin.client.resource.UserResource;
@@ -58,7 +59,7 @@ public class AuthServiceImpl implements AuthService {
     private final KeycloakClient keycloakClient;
     private final UserCommonRepository userCommonRepository;
     private final UserTenantRepository userTenantRepository;
-    private final MailService mailService;
+    private final UserEmailEventPublisher userEmailEventPublisher;
     private final KeycloakAdminHelper keycloakAdminHelper;
     private final PasswordResetProperties passwordResetProperties;
     private final FrontendProperties frontendProperties;
@@ -122,12 +123,18 @@ public class AuthServiceImpl implements AuthService {
         String email = tokenRow.email();
         String role = parseMetadata(tokenRow.metadata(), "role");
         String tenantName = parseMetadata(tokenRow.metadata(), "tenantName");
+        String firstName = parseMetadata(tokenRow.metadata(), "firstName");
+        String lastName = parseMetadata(tokenRow.metadata(), "lastName");
 
         if (userCommonRepository.existsActiveAdminUserByEmail(email)) {
             throw new UserAlreadyExistsException("Account already exists");
         }
 
-        return new InviteInfoResponseDTO(email, role, tenantName);
+        String phoneNumber = userCommonRepository.findAdminUserByEmail(email)
+                .map(AdminUserRow::phoneNumber)
+                .orElse(null);
+
+        return new InviteInfoResponseDTO(email, role, tenantName, firstName, lastName, phoneNumber);
     }
 
     @Override
@@ -239,7 +246,12 @@ public class AuthServiceImpl implements AuthService {
                 .queryParam("token", raw)
                 .build()
                 .toUriString();
-        mailService.sendMailAfterCommit(() -> mailService.sendPasswordResetMail(request.getEmail(), resetUrl));
+        userEmailEventPublisher.publishResetPasswordEmailAfterCommit(ResetPasswordEmailEvent.builder()
+                .eventType("SEND_PASSWORD_RESET_EMAIL")
+                .to(request.getEmail())
+                .resetLink(resetUrl)
+                .expiryMinutes(passwordResetProperties.expiryMinutes())
+                .build());
     }
 
     @Override

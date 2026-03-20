@@ -38,6 +38,8 @@ import org.arghyam.jalsoochak.user.repository.UserCommonRepository;
 import org.arghyam.jalsoochak.user.repository.UserTenantRepository;
 import org.arghyam.jalsoochak.user.repository.records.AdminUserRow;
 import org.arghyam.jalsoochak.user.repository.records.AdminUserTokenRow;
+import org.arghyam.jalsoochak.user.event.ResetPasswordEmailEvent;
+import org.arghyam.jalsoochak.user.event.UserEmailEventPublisher;
 import org.arghyam.jalsoochak.user.service.serviceImpl.AuthServiceImpl;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -74,7 +76,7 @@ class AuthServiceImplTest {
     private UserTenantRepository userTenantRepository;
 
     @Mock
-    private MailService mailService;
+    private UserEmailEventPublisher userEmailEventPublisher;
 
     @Mock
     private KeycloakAdminHelper keycloakAdminHelper;
@@ -94,7 +96,7 @@ class AuthServiceImplTest {
     void setUp() {
         authService = new AuthServiceImpl(
                 keycloakProvider, keycloakClient, userCommonRepository, userTenantRepository,
-                mailService, keycloakAdminHelper, passwordResetProperties,
+                userEmailEventPublisher, keycloakAdminHelper, passwordResetProperties,
                 frontendProperties, tokenService, new ObjectMapper()
         );
     }
@@ -271,15 +273,21 @@ class AuthServiceImplTest {
             when(tokenService.hash(rawToken)).thenReturn(hash);
             when(userCommonRepository.findActiveTokenByHash(hash)).thenReturn(Optional.of(
                     activeTokenRow("invited@example.com", hash, "INVITE",
-                            "{\"role\":\"STATE_ADMIN\",\"tenantName\":\"Madhya Pradesh\"}")));
+                            "{\"role\":\"STATE_ADMIN\",\"tenantName\":\"Madhya Pradesh\",\"firstName\":\"John\",\"lastName\":\"Doe\"}")));
             // getInviteInfo checks existsActiveAdminUserByEmail (not existsAdminUserByEmail)
             when(userCommonRepository.existsActiveAdminUserByEmail("invited@example.com")).thenReturn(false);
+            // phoneNumber is fetched from the PENDING user record
+            AdminUserRow pendingUser = new AdminUserRow(5L, "placeholder-uuid", "invited@example.com", "9112345678", 1, 2, AdminUserStatus.PENDING, 0, null);
+            when(userCommonRepository.findAdminUserByEmail("invited@example.com")).thenReturn(Optional.of(pendingUser));
 
             InviteInfoResponseDTO info = authService.getInviteInfo(rawToken);
 
             assertEquals("invited@example.com", info.getEmail());
             assertEquals("STATE_ADMIN", info.getRole());
             assertEquals("Madhya Pradesh", info.getTenantName());
+            assertEquals("John", info.getFirstName());
+            assertEquals("Doe", info.getLastName());
+            assertEquals("9112345678", info.getPhoneNumber());
         }
 
         @Test
@@ -321,7 +329,7 @@ class AuthServiceImplTest {
 
             authService.forgotPassword(req); // no exception
 
-            verify(mailService, never()).sendMailAfterCommit(any());
+            verify(userEmailEventPublisher, never()).publishResetPasswordEmailAfterCommit(any(ResetPasswordEmailEvent.class));
         }
 
         @Test
@@ -343,7 +351,7 @@ class AuthServiceImplTest {
 
             verify(userCommonRepository).upsertToken(
                     eq("user@example.com"), eq("reset-hash"), eq("RESET"), eq(null), any(), eq(null));
-            verify(mailService).sendMailAfterCommit(any());
+            verify(userEmailEventPublisher).publishResetPasswordEmailAfterCommit(any(ResetPasswordEmailEvent.class));
         }
     }
 

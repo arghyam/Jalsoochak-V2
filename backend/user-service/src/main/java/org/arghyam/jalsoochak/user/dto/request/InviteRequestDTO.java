@@ -19,4 +19,14 @@ public class InviteRequestDTO {
 
     @Pattern(regexp = "^[A-Z]{2,4}$", message = "Tenant code must be 2-4 uppercase letters")
     private String tenantCode;
+
+    @NotBlank(message = "First name is required")
+    private String firstName;
+
+    @NotBlank(message = "Last name is required")
+    private String lastName;
+
+    @NotBlank(message = "Phone number is required")
+    @Pattern(regexp = "^\\d{10}$", message = "Phone number must be 10 digits")
+    private String phoneNumber;
 }
