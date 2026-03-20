@@ -3,6 +3,8 @@ package org.arghyam.jalsoochak.message.service;
 import org.arghyam.jalsoochak.message.channel.GlificWhatsAppService;
 import org.arghyam.jalsoochak.message.channel.WhatsAppChannel;
 import org.arghyam.jalsoochak.message.dto.OperatorEscalationDetail;
+import org.arghyam.jalsoochak.message.event.InviteEmailEvent;
+import org.arghyam.jalsoochak.message.event.ResetPasswordEmailEvent;
 import org.arghyam.jalsoochak.message.event.WhatsAppContactRegisteredEvent;
 import org.arghyam.jalsoochak.message.kafka.KafkaProducer;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -63,6 +65,7 @@ public class NotificationEventRouter {
      * idempotent downstream reprocessing.
      */
     private static final String WELCOME_DLT_TOPIC = "welcome-message-dlt";
+    private static final String ACCOUNT_EMAIL_DLT_TOPIC = "account-email-dlt";
 
     private final ObjectMapper objectMapper;
     private final WhatsAppChannel whatsAppChannel;
@@ -71,6 +74,7 @@ public class NotificationEventRouter {
     private final EscalationPdfService escalationPdfService;
     private final MinioStorageService minioStorageService;
     private final MessageTemplateService messageTemplateService;
+    private final AccountEmailService accountEmailService;
     private final JdbcTemplate jdbcTemplate;
 
     @Value("${escalation.report.dir:/tmp/escalation-reports/}")
@@ -110,6 +114,9 @@ public class NotificationEventRouter {
                 case "STAFF_SYNC_COMPLETED" -> handleStaffSyncCompleted(root);
                 case "UPDATE_USER_LANGUAGE" -> handleUpdateUserLanguage(root);
                 case "SEND_WELCOME_MESSAGE" -> handleSendWelcomeMessage(root);
+                case "SEND_INVITE_EMAIL" -> handleInviteEmail(root);
+                case "SEND_REINVITE_EMAIL" -> handleReinviteEmail(root);
+                case "SEND_PASSWORD_RESET_EMAIL" -> handlePasswordResetEmail(root);
                 default -> log.warn("[Router] Unknown eventType '{}', ignoring message", eventType);
             }
         } catch (Exception e) {
@@ -323,6 +330,92 @@ public class NotificationEventRouter {
         payload.put("phone", phone);
         log.debug("[Router/WELCOME] Publishing to DLT for schema={}", tenantSchema);
         kafkaProducer.publishJson(WELCOME_DLT_TOPIC, payload);
+    }
+
+    private void handleInviteEmail(JsonNode root) {
+        InviteEmailEvent event;
+        try {
+            event = objectMapper.treeToValue(root, InviteEmailEvent.class);
+        } catch (Exception e) {
+            log.error("[Router/INVITE_EMAIL] Malformed event, routing to DLT: {}", e.getMessage());
+            publishEmailDlt("SEND_INVITE_EMAIL", null, "malformed_event: " + e.getMessage());
+            return;
+        }
+        if (event.getTo() == null || event.getTo().isBlank()) {
+            log.warn("[Router/INVITE_EMAIL] Missing 'to' field, routing to DLT");
+            publishEmailDlt("SEND_INVITE_EMAIL", null, "missing_to");
+            return;
+        }
+        if (event.getInviteLink() == null || event.getInviteLink().isBlank()) {
+            log.warn("[Router/INVITE_EMAIL] Missing 'inviteLink' field, routing to DLT");
+            publishEmailDlt("SEND_INVITE_EMAIL", event.getTo(), "missing_invite_link");
+            return;
+        }
+        accountEmailService.sendInviteEmail(event.getTo(), event.getName(), event.getRole(), event.getInviteLink(), event.getExpiryHours());
+        log.info("[Router/INVITE_EMAIL] Invite email dispatched recipientRole={}", event.getRole());
+    }
+
+    private void handleReinviteEmail(JsonNode root) {
+        InviteEmailEvent event;
+        try {
+            event = objectMapper.treeToValue(root, InviteEmailEvent.class);
+        } catch (Exception e) {
+            log.error("[Router/REINVITE_EMAIL] Malformed event, routing to DLT: {}", e.getMessage());
+            publishEmailDlt("SEND_REINVITE_EMAIL", null, "malformed_event: " + e.getMessage());
+            return;
+        }
+        if (event.getTo() == null || event.getTo().isBlank()) {
+            log.warn("[Router/REINVITE_EMAIL] Missing 'to' field, routing to DLT");
+            publishEmailDlt("SEND_REINVITE_EMAIL", null, "missing_to");
+            return;
+        }
+        if (event.getInviteLink() == null || event.getInviteLink().isBlank()) {
+            log.warn("[Router/REINVITE_EMAIL] Missing 'inviteLink' field, routing to DLT");
+            publishEmailDlt("SEND_REINVITE_EMAIL", event.getTo(), "missing_invite_link");
+            return;
+        }
+        accountEmailService.sendReinviteEmail(event.getTo(), event.getName(), event.getInviteLink(), event.getExpiryHours());
+        log.info("[Router/REINVITE_EMAIL] Reinvite email dispatched recipientRole={}", event.getRole());
+    }
+
+    private void handlePasswordResetEmail(JsonNode root) {
+        ResetPasswordEmailEvent event;
+        try {
+            event = objectMapper.treeToValue(root, ResetPasswordEmailEvent.class);
+        } catch (Exception e) {
+            log.error("[Router/PASSWORD_RESET_EMAIL] Malformed event, routing to DLT: {}", e.getMessage());
+            publishEmailDlt("SEND_PASSWORD_RESET_EMAIL", null, "malformed_event: " + e.getMessage());
+            return;
+        }
+        if (event.getTo() == null || event.getTo().isBlank()) {
+            log.warn("[Router/PASSWORD_RESET_EMAIL] Missing 'to' field, routing to DLT");
+            publishEmailDlt("SEND_PASSWORD_RESET_EMAIL", null, "missing_to");
+            return;
+        }
+        if (event.getResetLink() == null || event.getResetLink().isBlank()) {
+            log.warn("[Router/PASSWORD_RESET_EMAIL] Missing 'resetLink' field, routing to DLT");
+            publishEmailDlt("SEND_PASSWORD_RESET_EMAIL", event.getTo(), "missing_reset_link");
+            return;
+        }
+        accountEmailService.sendPasswordResetEmail(event.getTo(), event.getResetLink(), event.getExpiryMinutes());
+        log.info("[Router/PASSWORD_RESET_EMAIL] Password reset email dispatched");
+    }
+
+    private void publishEmailDlt(String originalEventType, String to, String errorReason) {
+        String retryId = UUID.nameUUIDFromBytes(
+                ("ACCOUNT_EMAIL_FAILED:" + originalEventType + ":" + (to != null ? to : "unknown"))
+                        .getBytes(StandardCharsets.UTF_8))
+                .toString();
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("retryId", retryId);
+        payload.put("eventType", "ACCOUNT_EMAIL_FAILED");
+        payload.put("originalEventType", originalEventType);
+        payload.put("failedAt", Instant.now().toString());
+        payload.put("errorReason", errorReason);
+        // to is PII — included for reprocessing, must not surface in INFO logs
+        payload.put("to", to != null ? to : "unknown");
+        log.debug("[Router/EMAIL_DLT] Publishing to DLT originalEventType={}", originalEventType);
+        kafkaProducer.publishJson(ACCOUNT_EMAIL_DLT_TOPIC, payload);
     }
 
     /**

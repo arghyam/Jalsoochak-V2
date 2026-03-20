@@ -31,6 +31,26 @@ spring:
         max.poll.interval.ms: 600000
         fetch.max.wait.ms: 500
 
+  mail:
+    host: smtp.office365.com
+    port: 587
+    username: ${SPRING_MAIL_USERNAME}
+    password: ${SPRING_MAIL_PASSWORD}
+    protocol: smtp
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+            required: true
+          ssl:
+            enable: false
+            protocols: TLSv1.2
+          connectiontimeout: 30000
+          timeout: 30000
+          writetimeout: 30000
+
   security:
     oauth2:
       resourceserver:
@@ -54,6 +74,11 @@ notification:
       sendgrid-api-key: ""             # SendGrid API key
       from-address: "noreply@example.com"
       from-name: "Water Management Platform"
+
+    # ── Email via SMTP (JavaMailSender) ─────────────────────
+    smtp:
+      from-address: ${MAIL_FROM_EMAIL:noreply@example.com}
+      from-name: ${MAIL_FROM_NAME:Jalsoochak}
 
 keycloak:
   realm: jalsoochak-realm
