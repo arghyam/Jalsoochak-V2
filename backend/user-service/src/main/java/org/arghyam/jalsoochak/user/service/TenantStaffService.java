@@ -17,11 +17,11 @@ public interface TenantStaffService {
             String sortBy,
             String sortDir,
             List<String> role,
-            Integer status,
+            String status,
             String name
     );
 
-    List<RoleCountDTO> countStaffByRole(String tenantCode, Integer status, String name);
+    List<RoleCountDTO> countStaffByRole(String tenantCode, String status, String name);
 
     TenantStaffResponseDTO updateStaffRole(Long id, UpdateStaffRoleRequestDTO request, Authentication caller);
 }

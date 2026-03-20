@@ -95,6 +95,9 @@ public class GlificWhatsAppService {
     @Value("${glific.template.escalation-id:}")
     private String escalationTemplateId;
 
+    @Value("${glific.template.login-otp-id:}")
+    private String loginOtpTemplateId;
+
     @Value("${glific.flow.nudge-id:}")
     private String nudgeFlowId;
 
@@ -109,6 +112,10 @@ public class GlificWhatsAppService {
             throw new IllegalStateException(
                     "glific.flow.nudge-id, glific.template.escalation-id and glific.flow.welcome-id must be configured");
         }
+        if (loginOtpTemplateId == null || loginOtpTemplateId.isBlank()) {
+            throw new IllegalStateException(
+                    "glific.template.login-otp-id must be configured — SEND_LOGIN_OTP events cannot be delivered without it");
+        }
     }
 
     @Value("${glific.media.escalation-caption:Escalations}")
@@ -116,6 +123,25 @@ public class GlificWhatsAppService {
 
     @Value("${glific.media.escalation-thumbnail:}")
     private String escalationThumbnail;
+
+    /**
+     * Sends the login OTP HSM template to an officer.
+     * Template variable {{1}} = OTP.
+     *
+     * @param contactId Glific contact ID of the officer
+     * @param otp       one-time password for template {@code {{1}}}
+     */
+    public void sendLoginOtpHsm(Long contactId, String otp) {
+        if (loginOtpTemplateId == null || loginOtpTemplateId.isBlank()) {
+            throw new IllegalStateException("glific.template.login-otp-id is not configured");
+        }
+        JsonNode response = client.execute(NUDGE_HSM_MUTATION, Map.of(
+                "templateId", loginOtpTemplateId,
+                "receiverId", contactId,
+                "parameters", List.of(otp)));
+        checkErrors(response, "sendHsmMessage");
+        log.debug("[Glific] Login OTP HSM sent to contactId={}", contactId);
+    }
 
     /**
      * Opts in the contact by phone number and returns the Glific contact ID.

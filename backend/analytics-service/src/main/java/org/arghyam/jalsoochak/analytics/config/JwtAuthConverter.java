@@ -35,6 +35,7 @@ public class JwtAuthConverter implements Converter<Jwt, AbstractAuthenticationTo
                         extractRealmRoles(jwt),
                         extractClientRoles(jwt),
                         extractTenantAuthority(jwt),
+                        extractUuidAuthority(jwt),
                         extractUserTypeAuthority(jwt))
                 .flatMap(Collection::stream)
                 .collect(Collectors.toSet());
@@ -84,6 +85,14 @@ public class JwtAuthConverter implements Converter<Jwt, AbstractAuthenticationTo
             return Collections.emptySet();
         }
         return Set.of(new SimpleGrantedAuthority("TENANT_" + tenantCode.toUpperCase()));
+    }
+
+    private Collection<GrantedAuthority> extractUuidAuthority(Jwt jwt) {
+        String uuid = jwt.getSubject();
+        if (uuid == null || uuid.isBlank()) {
+            return Collections.emptySet();
+        }
+        return Set.of(new SimpleGrantedAuthority("UUID_" + uuid));
     }
 
     private Collection<GrantedAuthority> extractUserTypeAuthority(Jwt jwt) {

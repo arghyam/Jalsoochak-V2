@@ -1,6 +1,14 @@
 server:
   port: 8085
 
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+    tags-sorter: alpha
+    operations-sorter: method
+  api-docs:
+    path: /v3/api-docs
+
 spring:
   application:
     name: message-service
@@ -118,11 +126,13 @@ app:
 glific:
   api-url: ${GLIFIC_API_URL:https://api.arghyam.glific.com/api}
   auth-url: ${GLIFIC_AUTH_URL:https://api.arghyam.glific.com/api/v1/session}
+  request-interval-ms: ${GLIFIC_REQUEST_INTERVAL_MS:500}
   username: ${GLIFIC_USERNAME:}
   password: ${GLIFIC_PASSWORD:}
   template:
     nudge-id: ${GLIFIC_NUDGE_TEMPLATE_ID:}
     escalation-id: ${GLIFIC_ESCALATION_TEMPLATE_ID:}
+    login-otp-id: ${GLIFIC_LOGIN_OTP_TEMPLATE_ID:}
   flow:
     nudge-id: ${GLIFIC_NUDGE_FLOW_ID:}
     welcome-id: ${GLIFIC_WELCOME_FLOW_ID:}

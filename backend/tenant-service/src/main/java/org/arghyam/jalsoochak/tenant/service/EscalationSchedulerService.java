@@ -155,10 +155,11 @@ public class EscalationSchedulerService {
                     .correlationId(opCorrelationId)
                     .build();
 
+            String userType = escalationLevel == 2 ? level2UserType : level1UserType;
             String groupKey = "LEVEL_" + escalationLevel + "|" + officerPhone;
             officerGroups.computeIfAbsent(groupKey, k ->
                     new OfficerGroup(officerPhone, officerName, escalationLevel, officerLanguageId,
-                            officerId, officerWhatsappConnectionId))
+                            officerId, officerWhatsappConnectionId, userType))
                     .details.add(detail);
         });
         log.info("[EscalationJob] schema={} → {} users exceeded level1 threshold", schema, total);
@@ -181,6 +182,7 @@ public class EscalationSchedulerService {
                     .officerWhatsappConnectionId(group.officerWhatsappConnectionId)
                     .tenantSchema(schema)
                     .correlationId(officerCorrelationId)
+                    .officerUserType(group.officerUserType)
                     .build();
             kafkaProducer.publishJson(COMMON_TOPIC, event);
             log.info("[EscalationJob] Published EscalationEvent level={} with {} operators",
@@ -195,16 +197,18 @@ public class EscalationSchedulerService {
         final Integer officerLanguageId;
         final Long officerId;
         final Long officerWhatsappConnectionId;
+        final String officerUserType;
         final List<OperatorEscalationDetail> details = new ArrayList<>();
 
         OfficerGroup(String officerPhone, String officerName, int level, Integer officerLanguageId,
-                     Long officerId, Long officerWhatsappConnectionId) {
+                     Long officerId, Long officerWhatsappConnectionId, String officerUserType) {
             this.officerPhone = officerPhone;
             this.officerName = officerName;
             this.level = level;
             this.officerLanguageId = officerLanguageId;
             this.officerId = officerId;
             this.officerWhatsappConnectionId = officerWhatsappConnectionId;
+            this.officerUserType = officerUserType;
         }
     }
 }

@@ -136,7 +136,30 @@ class NotificationEventRouterTest {
 
     @Test
     void route_generatesAndSendsEscalation_usingStoredContactId_whenPresent() throws Exception {
-        when(escalationPdfService.generate(anyList(), anyInt(), anyString())).thenReturn("report.pdf");
+        when(escalationPdfService.generate(anyList(), anyInt(), anyString(), anyString())).thenReturn("report.pdf");
+        when(minioStorageService.upload(any(Path.class))).thenReturn("https://minio.example.com/report.pdf");
+        when(whatsAppChannel.sendDocument(anyLong(), anyString())).thenReturn(true);
+
+        router.route("""
+                {"eventType":"ESCALATION","officerPhone":"919876500000","officerName":"DO Singh",
+                 "escalationLevel":2,"tenantId":1,"officerLanguageId":1,
+                 "officerId":20,"officerWhatsappConnectionId":77,"tenantSchema":"tenant_mp",
+                 "officerUserType":"JE",
+                 "operators":[{"name":"Op A","phoneNumber":"911111111111","schemeName":"S1",
+                               "schemeId":"1","soName":"SO X","consecutiveDaysMissed":8,
+                               "lastRecordedBfmDate":"2024-01-01"}]}
+                """);
+
+        verify(escalationPdfService).generate(anyList(), eq(2), eq("DO Singh"), eq("JE"));
+        verify(minioStorageService).upload(any(Path.class));
+        verify(whatsAppChannel).sendDocument(eq(77L), eq("https://minio.example.com/report.pdf"));
+        verify(glificWhatsAppService, never()).optIn(anyString());
+        verify(kafkaProducer, never()).publishJson(anyString(), any());
+    }
+
+    @Test
+    void route_passesEmptyOfficerUserType_toGeneratePdf_whenFieldAbsentInPayload() throws Exception {
+        when(escalationPdfService.generate(anyList(), anyInt(), anyString(), anyString())).thenReturn("report.pdf");
         when(minioStorageService.upload(any(Path.class))).thenReturn("https://minio.example.com/report.pdf");
         when(whatsAppChannel.sendDocument(anyLong(), anyString())).thenReturn(true);
 
@@ -149,16 +172,12 @@ class NotificationEventRouterTest {
                                "lastRecordedBfmDate":"2024-01-01"}]}
                 """);
 
-        verify(escalationPdfService).generate(anyList(), eq(2), eq("DO Singh"));
-        verify(minioStorageService).upload(any(Path.class));
-        verify(whatsAppChannel).sendDocument(eq(77L), eq("https://minio.example.com/report.pdf"));
-        verify(glificWhatsAppService, never()).optIn(anyString());
-        verify(kafkaProducer, never()).publishJson(anyString(), any());
+        verify(escalationPdfService).generate(anyList(), eq(2), eq("DO Singh"), eq(""));
     }
 
     @Test
     void route_fallsBackToOptIn_andPublishesEvent_forEscalation_whenNoStoredContactId() throws Exception {
-        when(escalationPdfService.generate(anyList(), anyInt(), anyString())).thenReturn("r.pdf");
+        when(escalationPdfService.generate(anyList(), anyInt(), anyString(), anyString())).thenReturn("r.pdf");
         when(minioStorageService.upload(any(Path.class))).thenReturn("https://minio.example.com/r.pdf");
         when(glificWhatsAppService.optIn("919876500000")).thenReturn(88L);
         when(whatsAppChannel.sendDocument(anyLong(), anyString())).thenReturn(true);
@@ -204,7 +223,7 @@ class NotificationEventRouterTest {
 
     @Test
     void route_isCaseInsensitive_forEscalationEventType() throws Exception {
-        when(escalationPdfService.generate(anyList(), anyInt(), anyString())).thenReturn("r.pdf");
+        when(escalationPdfService.generate(anyList(), anyInt(), anyString(), anyString())).thenReturn("r.pdf");
         when(minioStorageService.upload(any(Path.class))).thenReturn("https://minio.example.com/r.pdf");
         when(glificWhatsAppService.optIn(anyString())).thenReturn(11L);
         when(whatsAppChannel.sendDocument(anyLong(), anyString())).thenReturn(true);
@@ -245,7 +264,7 @@ class NotificationEventRouterTest {
 
     @Test
     void route_rethrowsException_forKafkaRetry_whenPdfGenerationFails() throws Exception {
-        when(escalationPdfService.generate(anyList(), anyInt(), anyString()))
+        when(escalationPdfService.generate(anyList(), anyInt(), anyString(), anyString()))
                 .thenThrow(new RuntimeException("PDF write failed"));
 
         assertThatThrownBy(() -> router.route("""
@@ -260,7 +279,7 @@ class NotificationEventRouterTest {
 
     @Test
     void route_rethrowsException_forKafkaRetry_whenMinioUploadFails() throws Exception {
-        when(escalationPdfService.generate(anyList(), anyInt(), anyString())).thenReturn("r.pdf");
+        when(escalationPdfService.generate(anyList(), anyInt(), anyString(), anyString())).thenReturn("r.pdf");
         when(minioStorageService.upload(any(Path.class))).thenThrow(new Exception("MinIO error"));
 
         assertThatThrownBy(() -> router.route("""

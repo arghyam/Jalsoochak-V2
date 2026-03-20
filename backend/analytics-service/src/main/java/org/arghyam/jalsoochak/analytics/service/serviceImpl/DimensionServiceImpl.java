@@ -67,6 +67,7 @@ public class DimensionServiceImpl implements DimensionService {
         user.setTenantId(event.getTenantId());
         user.setEmail(event.getEmail());
         user.setUserType(event.getUserType());
+        user.setUuid(event.getUuid());
         user.setUpdatedAt(LocalDateTime.now());
 
         dimUserRepository.save(user);

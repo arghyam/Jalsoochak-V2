@@ -38,7 +38,17 @@ public class SecurityConfig {
                         // Gateway and service health
                         .pathMatchers(
                                 "/actuator/health",
-                                "/actuator/info"
+                                "/actuator/info",
+                                "/swagger-ui.html",
+                                "/swagger-ui/**",
+                                "/webjars/swagger-ui/**",
+                                "/v3/api-docs/**",
+                                "/user/v3/api-docs/**",
+                                "/tenant/v3/api-docs/**",
+                                "/telemetry/v3/api-docs/**",
+                                "/message/v3/api-docs/**",
+                                "/scheme/v3/api-docs/**",
+                                "/analytics/v3/api-docs/**"
                         ).permitAll()
                         // All other routes require a valid JWT
                         .anyExchange().authenticated()

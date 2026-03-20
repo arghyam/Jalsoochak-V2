@@ -96,8 +96,8 @@ class TenantConfigServiceIntegrationTest {
     void getEscalationConfig_returnsAllSixParsedFields_whenKeyPresent() {
         insertConfig(1, "FIELD_STAFF_ESCALATION_RULES",
                 "{\"escalation\":{\"schedule\":{\"hour\":11,\"minute\":15}," +
-                "\"level1\":{\"threshold\":{\"days\":4},\"officer\":{\"user_type\":\"JE\"}}," +
-                "\"level2\":{\"threshold\":{\"days\":10},\"officer\":{\"user_type\":\"EE\"}}}}");
+                "\"level1\":{\"threshold\":{\"days\":4},\"officer\":{\"userType\":\"JE\"}}," +
+                "\"level2\":{\"threshold\":{\"days\":10},\"officer\":{\"userType\":\"EE\"}}}}");
 
         EscalationScheduleConfig cfg = tenantConfigService.getEscalationConfig(1);
 
@@ -115,12 +115,12 @@ class TenantConfigServiceIntegrationTest {
     void getEscalationConfig_returnsDifferentValues_forDifferentTenants() {
         insertConfig(1, "FIELD_STAFF_ESCALATION_RULES",
                 "{\"escalation\":{\"schedule\":{\"hour\":9,\"minute\":0}," +
-                "\"level1\":{\"threshold\":{\"days\":3},\"officer\":{\"user_type\":\"SECTION_OFFICER\"}}," +
-                "\"level2\":{\"threshold\":{\"days\":7},\"officer\":{\"user_type\":\"DISTRICT_OFFICER\"}}}}");
+                "\"level1\":{\"threshold\":{\"days\":3},\"officer\":{\"userType\":\"SECTION_OFFICER\"}}," +
+                "\"level2\":{\"threshold\":{\"days\":7},\"officer\":{\"userType\":\"DISTRICT_OFFICER\"}}}}");
         insertConfig(2, "FIELD_STAFF_ESCALATION_RULES",
                 "{\"escalation\":{\"schedule\":{\"hour\":10,\"minute\":30}," +
-                "\"level1\":{\"threshold\":{\"days\":5},\"officer\":{\"user_type\":\"JE\"}}," +
-                "\"level2\":{\"threshold\":{\"days\":14},\"officer\":{\"user_type\":\"EE\"}}}}");
+                "\"level1\":{\"threshold\":{\"days\":5},\"officer\":{\"userType\":\"JE\"}}," +
+                "\"level2\":{\"threshold\":{\"days\":14},\"officer\":{\"userType\":\"EE\"}}}}");
 
         EscalationScheduleConfig cfg1 = tenantConfigService.getEscalationConfig(1);
         EscalationScheduleConfig cfg2 = tenantConfigService.getEscalationConfig(2);
@@ -158,8 +158,8 @@ class TenantConfigServiceIntegrationTest {
         // Only tenant 2 has a row; tenant 1 should get defaults
         insertConfig(2, "FIELD_STAFF_ESCALATION_RULES",
                 "{\"escalation\":{\"schedule\":{\"hour\":10,\"minute\":0}," +
-                "\"level1\":{\"threshold\":{\"days\":9},\"officer\":{\"user_type\":\"JE\"}}," +
-                "\"level2\":{\"threshold\":{\"days\":20},\"officer\":{\"user_type\":\"EE\"}}}}");
+                "\"level1\":{\"threshold\":{\"days\":9},\"officer\":{\"userType\":\"JE\"}}," +
+                "\"level2\":{\"threshold\":{\"days\":20},\"officer\":{\"userType\":\"EE\"}}}}");
 
         EscalationScheduleConfig cfg1 = tenantConfigService.getEscalationConfig(1);
 

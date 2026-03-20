@@ -114,6 +114,7 @@ public class NotificationEventRouter {
                 case "STAFF_SYNC_COMPLETED" -> handleStaffSyncCompleted(root);
                 case "UPDATE_USER_LANGUAGE" -> handleUpdateUserLanguage(root);
                 case "SEND_WELCOME_MESSAGE" -> handleSendWelcomeMessage(root);
+                case "SEND_LOGIN_OTP" -> handleSendLoginOtp(root);
                 case "SEND_INVITE_EMAIL" -> handleInviteEmail(root);
                 case "SEND_REINVITE_EMAIL" -> handleReinviteEmail(root);
                 case "SEND_PASSWORD_RESET_EMAIL" -> handlePasswordResetEmail(root);
@@ -332,6 +333,48 @@ public class NotificationEventRouter {
         kafkaProducer.publishJson(WELCOME_DLT_TOPIC, payload);
     }
 
+    private void handleSendLoginOtp(JsonNode root) {
+        String officerName = root.path("officerName").asText("Officer");
+        String otp = root.path("OTP").asText("");
+        String glificId = root.path("glific_id").asText("").strip();
+        String phone = root.path("officerPhoneNumber").asText("").strip();
+
+        if (otp.isBlank()) {
+            log.warn("[Router/SEND_LOGIN_OTP] OTP is missing, skipping");
+            return;
+        }
+
+        long contactId;
+        if (!glificId.isBlank()) {
+            try {
+                contactId = Long.parseLong(glificId);
+            } catch (NumberFormatException e) {
+                log.warn("[Router/SEND_LOGIN_OTP] Invalid glific_id '{}', skipping", glificId);
+                return;
+            }
+            if (contactId <= 0) {
+                log.warn("[Router/SEND_LOGIN_OTP] glific_id must be > 0, got {}, skipping", contactId);
+                return;
+            }
+        } else if (!phone.isBlank()) {
+            log.info("[Router/SEND_LOGIN_OTP] glific_id not provided, opting in via phone");
+            contactId = glificWhatsAppService.optIn(phone);
+            if (contactId <= 0) {
+                log.warn("[Router/SEND_LOGIN_OTP] optIn returned invalid contactId {}, skipping", contactId);
+                return;
+            }
+        } else {
+            log.warn("[Router/SEND_LOGIN_OTP] Neither glific_id nor officerPhoneNumber provided, skipping");
+            return;
+        }
+
+        boolean sent = whatsAppChannel.sendLoginOtp(contactId, otp);
+        if (!sent) {
+            throw new IllegalStateException("[Router/SEND_LOGIN_OTP] WhatsApp login OTP delivery failed");
+        }
+        log.info("[Router/SEND_LOGIN_OTP] → SENT contactId={}", contactId);
+    }
+
     private void handleInviteEmail(JsonNode root) {
         InviteEmailEvent event;
         try {
@@ -432,6 +475,7 @@ public class NotificationEventRouter {
     private void handleEscalation(JsonNode root) throws Exception {
         String officerPhone = root.path("officerPhone").asText("");
         String officerName = root.path("officerName").asText("Officer");
+        String officerUserType = root.path("officerUserType").asText("");
         int level = root.path("escalationLevel").asInt(1);
         int tenantId = root.path("tenantId").asInt(0);
         int officerLanguageId = root.path("officerLanguageId").asInt(0);
@@ -457,7 +501,7 @@ public class NotificationEventRouter {
             return;
         }
 
-        String filename = escalationPdfService.generate(operators, level, officerName);
+        String filename = escalationPdfService.generate(operators, level, officerName, officerUserType);
         java.nio.file.Path localPath = Paths.get(reportDir, filename);
         String minioUrl;
         try {

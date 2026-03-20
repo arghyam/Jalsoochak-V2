@@ -23,4 +23,5 @@ public class EscalationEvent {
     private Long officerWhatsappConnectionId;
     private String tenantSchema;
     private String correlationId;
+    private String officerUserType;
 }

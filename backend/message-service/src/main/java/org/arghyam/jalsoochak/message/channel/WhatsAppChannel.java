@@ -113,6 +113,26 @@ public class WhatsAppChannel implements NotificationChannel {
     }
 
     /**
+     * Sends the login OTP HSM to an officer using an already-resolved Glific contact ID.
+     * Template {{1}} = OTP.
+     *
+     * @param contactId Glific contact ID of the officer
+     * @param otp       one-time password for template variable
+     * @return {@code true} if the message was accepted by Glific
+     */
+    public boolean sendLoginOtp(long contactId, String otp) {
+        try {
+            glificWhatsAppService.sendLoginOtpHsm(contactId, otp);
+            log.info("[WHATSAPP] Login OTP HSM sent");
+            log.debug("[WHATSAPP] Login OTP HSM sent to contactId={}", contactId);
+            return true;
+        } catch (Exception ex) {
+            log.error("[WHATSAPP] Failed login OTP delivery: {}", ex.getMessage(), ex);
+            return false;
+        }
+    }
+
+    /**
      * Sends the escalation PDF (document HSM) to the officer via Glific using an
      * already-resolved Glific contact ID.
      *

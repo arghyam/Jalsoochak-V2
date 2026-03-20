@@ -39,7 +39,7 @@ public class TenantStaffController {
             @RequestParam(defaultValue = "id") String sortBy,
             @RequestParam(defaultValue = "desc") String sortDir,
             @RequestParam(required = false) List<String> role,
-            @RequestParam(required = false) Integer status,
+            @RequestParam(required = false) String status,
             @RequestParam(required = false) String name
     ) {
         return ResponseEntity.ok(ApiResponseDTO.of(200, "Staff retrieved",
@@ -59,7 +59,7 @@ public class TenantStaffController {
     @GetMapping("/staff/counts/by-role")
     public ResponseEntity<ApiResponseDTO<List<RoleCountDTO>>> countStaffByRole(
             @RequestParam String tenantCode,
-            @RequestParam(required = false) Integer status,
+            @RequestParam(required = false) String status,
             @RequestParam(required = false) String name
     ) {
         return ResponseEntity.ok(ApiResponseDTO.of(200, "Staff counts retrieved",

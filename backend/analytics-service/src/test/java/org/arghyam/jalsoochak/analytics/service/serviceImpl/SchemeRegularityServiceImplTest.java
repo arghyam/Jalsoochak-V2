@@ -12,7 +12,9 @@ import org.arghyam.jalsoochak.analytics.dto.response.SchemeRegularityListRespons
 import org.arghyam.jalsoochak.analytics.dto.response.UserNonSubmissionReasonSchemeCountResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.UserOutageReasonSchemeCountResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.UserSubmissionStatusResponse;
+import org.arghyam.jalsoochak.analytics.entity.DimUser;
 import org.arghyam.jalsoochak.analytics.entity.DimTenant;
+import org.arghyam.jalsoochak.analytics.repository.DimUserRepository;
 import org.arghyam.jalsoochak.analytics.enums.PeriodScale;
 import org.arghyam.jalsoochak.analytics.repository.DimTenantRepository;
 import org.arghyam.jalsoochak.analytics.repository.SchemeRegularityRepository;
@@ -30,6 +32,7 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -48,6 +51,8 @@ class SchemeRegularityServiceImplTest {
     @Mock
     private DimTenantRepository dimTenantRepository;
     @Mock
+    private DimUserRepository dimUserRepository;
+    @Mock
     private StringRedisTemplate redisTemplate;
     @Mock
     private ObjectMapper objectMapper;
@@ -59,6 +64,7 @@ class SchemeRegularityServiceImplTest {
 
     private static final LocalDate START = LocalDate.of(2026, 1, 1);
     private static final LocalDate END = LocalDate.of(2026, 1, 3);
+    private static final UUID USER_UUID = UUID.fromString("11111111-1111-1111-1111-111111111111");
 
     @Test
     void getAverageSchemeRegularity_invalidLgd_throwsBadRequest() {
@@ -172,9 +178,9 @@ class SchemeRegularityServiceImplTest {
                                 LocalDate.of(2026, 1, 12),
                                 "2026-W02",
                                 new BigDecimal("50.1250"),
-                                77,
-                                70,
-                                80)
+                                77L,
+                                70L,
+                                80L)
                 ));
 
         PeriodicWaterQuantityResponse response =
@@ -232,7 +238,7 @@ class SchemeRegularityServiceImplTest {
         when(valueOperations.get(any())).thenReturn(null);
         when(schemeRegularityRepository.getAverageWaterSupplyPerCurrentRegion(10, START, END))
                 .thenReturn(List.of(new SchemeRegularityRepository.SchemeWaterSupplyMetrics(
-                        1, "Scheme X", 100, 90, 110, 1000L, 2, new BigDecimal("5.0000")
+                        1, "Scheme X", 100L, 90L, 110L, 1000L, 2, new BigDecimal("5.0000")
                 )));
         when(dimTenantRepository.findById(10)).thenReturn(Optional.empty());
 
@@ -294,7 +300,7 @@ class SchemeRegularityServiceImplTest {
         when(schemeRegularityRepository.getAverageWaterSupplyPerCurrentRegionByLgd(10, 101, START, END))
                 .thenReturn(List.of(
                         new SchemeRegularityRepository.ChildRegionWaterSupplyMetrics(
-                                null, null, 401, null, "Village A", 100, 90, 110, 10000L, 2, new BigDecimal("50.0000"))
+                                null, null, 401, null, "Village A", 100L, 90L, 110L, 10000L, 2, new BigDecimal("50.0000"))
                 ));
         when(dimTenantRepository.findById(10)).thenReturn(Optional.of(tenant(10, "mp")));
         when(objectMapper.writeValueAsString(any())).thenReturn("{json}");
@@ -414,7 +420,7 @@ class SchemeRegularityServiceImplTest {
         when(schemeRegularityRepository.getAverageWaterSupplyPerCurrentRegion(10, START, END))
                 .thenReturn(List.of(
                         new SchemeRegularityRepository.SchemeWaterSupplyMetrics(
-                                1, "Scheme-A", 100, 90, 110, 1200L, 2, new BigDecimal("4.0000"))
+                                1, "Scheme-A", 100L, 90L, 110L, 1200L, 2, new BigDecimal("4.0000"))
                 ));
         when(dimTenantRepository.findById(10)).thenReturn(Optional.of(tenant(10, "mp")));
         when(objectMapper.writeValueAsString(any())).thenReturn("{json}");
@@ -436,7 +442,7 @@ class SchemeRegularityServiceImplTest {
         when(schemeRegularityRepository.getAverageWaterSupplyPerCurrentRegionByDepartment(10, 201, START, END))
                 .thenReturn(List.of(
                         new SchemeRegularityRepository.ChildRegionWaterSupplyMetrics(
-                                null, null, null, 501, "Dept-1", 120, 100, 140, 9000L, 3, new BigDecimal("3000.0000"))
+                                null, null, null, 501, "Dept-1", 120L, 100L, 140L, 9000L, 3, new BigDecimal("3000.0000"))
                 ));
         when(dimTenantRepository.findById(10)).thenReturn(Optional.of(tenant(10, "mp")));
         when(objectMapper.writeValueAsString(any())).thenReturn("{json}");
@@ -454,7 +460,7 @@ class SchemeRegularityServiceImplTest {
         when(schemeRegularityRepository.getLgdLevel(101)).thenReturn(2);
         when(schemeRegularityRepository.getRegionWiseWaterQuantityByLgd(101, START, END))
                 .thenReturn(List.of(
-                        new SchemeRegularityRepository.ChildRegionWaterQuantityMetrics(401, null, "LGD-A", 120L, 10, 9, 12)
+                        new SchemeRegularityRepository.ChildRegionWaterQuantityMetrics(401, null, "LGD-A", 120L, 10L, 9L, 12L)
                 ));
 
         var response = service.getRegionWiseWaterQuantityByLgd(101, START, END);
@@ -469,7 +475,7 @@ class SchemeRegularityServiceImplTest {
         when(schemeRegularityRepository.getDepartmentLevel(201)).thenReturn(2);
         when(schemeRegularityRepository.getRegionWiseWaterQuantityByDepartment(201, START, END))
                 .thenReturn(List.of(
-                        new SchemeRegularityRepository.ChildRegionWaterQuantityMetrics(null, 501, "Dept-A", 150L, 11, 10, 13)
+                        new SchemeRegularityRepository.ChildRegionWaterQuantityMetrics(null, 501, "Dept-A", 150L, 11L, 10L, 13L)
                 ));
 
         var response = service.getRegionWiseWaterQuantityByDepartment(201, START, END);
@@ -484,7 +490,7 @@ class SchemeRegularityServiceImplTest {
         when(schemeRegularityRepository.getPeriodicWaterQuantityByDepartment(201, START, END, PeriodScale.DAY))
                 .thenReturn(List.of(
                         new SchemeRegularityRepository.PeriodicWaterQuantityMetrics(
-                                START, START, "2026-01-01", new BigDecimal("22.1250"), 44, 40, 50)
+                                START, START, "2026-01-01", new BigDecimal("22.1250"), 44L, 40L, 50L)
                 ));
 
         PeriodicWaterQuantityResponse response =
@@ -540,6 +546,23 @@ class SchemeRegularityServiceImplTest {
         assertThat(response.getDailyOutageReasonDistribution().get(1).getOutageReasonSchemeCount())
                 .containsEntry("motor_burnt", 2);
         assertThat(response.getDailyOutageReasonDistribution().get(2).getOutageReasonSchemeCount()).isEmpty();
+    }
+
+    @Test
+    void getOutageReasonSchemeCountByUserUuid_resolvesUserIdFromUuid() {
+        when(dimUserRepository.findByUuid(USER_UUID))
+                .thenReturn(Optional.of(DimUser.builder().userId(11).uuid(USER_UUID).build()));
+        when(schemeRegularityRepository.getOutageReasonSchemeCountByUser(11, START, END))
+                .thenReturn(List.of(new SchemeRegularityRepository.OutageReasonSchemeCount("motor_burnt", 2)));
+        when(schemeRegularityRepository.getDailyOutageReasonSchemeCountByUser(11, START, END))
+                .thenReturn(List.of());
+        when(schemeRegularityRepository.getSchemeCountByUser(11)).thenReturn(2);
+
+        UserOutageReasonSchemeCountResponse response =
+                service.getOutageReasonSchemeCountByUserUuid(USER_UUID, START, END);
+
+        assertThat(response.getUserId()).isEqualTo(11);
+        verify(dimUserRepository, times(1)).findByUuid(USER_UUID);
     }
 
     @Test
@@ -621,6 +644,23 @@ class SchemeRegularityServiceImplTest {
     }
 
     @Test
+    void getNonSubmissionReasonSchemeCountByUserUuid_resolvesUserIdFromUuid() {
+        when(dimUserRepository.findByUuid(USER_UUID))
+                .thenReturn(Optional.of(DimUser.builder().userId(11).uuid(USER_UUID).build()));
+        when(schemeRegularityRepository.getNonSubmissionReasonSchemeCountByUser(11, START, END))
+                .thenReturn(List.of(new SchemeRegularityRepository.NonSubmissionReasonSchemeCount("device_issue", 2)));
+        when(schemeRegularityRepository.getDailyNonSubmissionReasonSchemeCountByUser(11, START, END))
+                .thenReturn(List.of());
+        when(schemeRegularityRepository.getSchemeCountByUser(11)).thenReturn(2);
+
+        UserNonSubmissionReasonSchemeCountResponse response =
+                service.getNonSubmissionReasonSchemeCountByUserUuid(USER_UUID, START, END);
+
+        assertThat(response.getUserId()).isEqualTo(11);
+        verify(dimUserRepository, times(1)).findByUuid(USER_UUID);
+    }
+
+    @Test
     void getSubmissionStatusByUser_returnsCompliantAndAnomalousCounts() {
         when(schemeRegularityRepository.getSchemeCountByUser(11)).thenReturn(2);
         when(schemeRegularityRepository.getSubmissionStatusCountByUser(11, START, END))
@@ -644,10 +684,36 @@ class SchemeRegularityServiceImplTest {
     }
 
     @Test
+    void getSubmissionStatusByUserUuid_resolvesUserIdFromUuid() {
+        when(dimUserRepository.findByUuid(USER_UUID))
+                .thenReturn(Optional.of(DimUser.builder().userId(11).uuid(USER_UUID).build()));
+        when(schemeRegularityRepository.getSchemeCountByUser(11)).thenReturn(2);
+        when(schemeRegularityRepository.getSubmissionStatusCountByUser(11, START, END))
+                .thenReturn(new SchemeRegularityRepository.SubmissionStatusCount(4, 1));
+        when(schemeRegularityRepository.getDailySubmissionSchemeCountByUser(11, START, END))
+                .thenReturn(List.of());
+
+        UserSubmissionStatusResponse response =
+                service.getSubmissionStatusByUserUuid(USER_UUID, START, END);
+
+        assertThat(response.getUserId()).isEqualTo(11);
+        verify(dimUserRepository, times(1)).findByUuid(USER_UUID);
+    }
+
+    @Test
     void getOutageReasonSchemeCountByUser_withInvalidUser_throwsBadRequest() {
         assertThatThrownBy(() -> service.getOutageReasonSchemeCountByUser(0, START, END))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("user_id must be a positive integer");
+    }
+
+    @Test
+    void getOutageReasonSchemeCountByUserUuid_withUnknownUuid_throwsBadRequest() {
+        when(dimUserRepository.findByUuid(USER_UUID)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.getOutageReasonSchemeCountByUserUuid(USER_UUID, START, END))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("No user found for uuid");
     }
 
     @Test
@@ -732,7 +798,7 @@ class SchemeRegularityServiceImplTest {
         when(schemeRegularityRepository.getAverageWaterSupplyPerNation(START, END))
                 .thenReturn(List.of(
                         new SchemeRegularityRepository.ChildRegionWaterSupplyMetrics(
-                                1, "mp", null, null, "Madhya Pradesh", 120, 110, 140, 64000L, 5, new BigDecimal("12800.0000"))
+                                1, "mp", null, null, "Madhya Pradesh", 120L, 110L, 140L, 64000L, 5, new BigDecimal("12800.0000"))
                 ));
         when(schemeRegularityRepository.getStateWiseRegularityMetrics(START, END))
                 .thenReturn(List.of(
