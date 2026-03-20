@@ -37,7 +37,9 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> {
                     auth.requestMatchers("/error", "/actuator/health/**", "/actuator/info").permitAll();
                     auth.requestMatchers(HttpMethod.GET,
-                            "/api/v1/tenants", 
+                            "/api/v1/tenants",
+                            "/api/v1/tenants/*/public-config",
+                            "/api/v1/tenants/*/logo",
                             "/api/v1/tenants/*/location-hierarchy/*",
                             "/api/v1/tenants/*/locations/*/children/*").permitAll();
                     if (isProd) {

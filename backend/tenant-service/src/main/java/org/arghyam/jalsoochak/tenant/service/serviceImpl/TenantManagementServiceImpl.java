@@ -1,17 +1,23 @@
 package org.arghyam.jalsoochak.tenant.service.serviceImpl;
 
+import java.io.IOException;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 import org.arghyam.jalsoochak.tenant.config.TenantDefaultsProperties;
 import org.arghyam.jalsoochak.tenant.dto.common.PageResponseDTO;
 import org.arghyam.jalsoochak.tenant.dto.internal.ConfigDTO;
 import org.arghyam.jalsoochak.tenant.dto.internal.ConfigValueDTO;
+import org.arghyam.jalsoochak.tenant.dto.internal.LogoSource;
+import org.arghyam.jalsoochak.tenant.dto.internal.TenantLogoResult;
 import org.arghyam.jalsoochak.tenant.dto.internal.LanguageConfigDTO;
 import org.arghyam.jalsoochak.tenant.dto.internal.LanguageListConfigDTO;
 import org.arghyam.jalsoochak.tenant.dto.internal.LocationConfigDTO;
@@ -40,6 +46,9 @@ import org.arghyam.jalsoochak.tenant.exception.ConfigurationException;
 import org.arghyam.jalsoochak.tenant.exception.InvalidConfigKeyException;
 import org.arghyam.jalsoochak.tenant.exception.InvalidConfigValueException;
 import org.arghyam.jalsoochak.tenant.exception.ResourceNotFoundException;
+import org.arghyam.jalsoochak.tenant.exception.StorageException;
+import org.arghyam.jalsoochak.tenant.storage.ObjectStorageService;
+import org.springframework.web.multipart.MultipartFile;
 import org.arghyam.jalsoochak.tenant.repository.TenantCommonRepository;
 import org.arghyam.jalsoochak.tenant.repository.TenantSchemaRepository;
 import org.arghyam.jalsoochak.tenant.service.TenantManagementService;
@@ -70,6 +79,11 @@ public class TenantManagementServiceImpl implements TenantManagementService {
     private final TenantDefaultsProperties tenantDefaults;
     private final ApplicationEventPublisher eventPublisher;
     private final TenantSchedulerManager schedulerManager;
+    private final ObjectStorageService objectStorageService;
+
+
+    private static final Set<String> ALLOWED_LOGO_TYPES =
+            Set.of("image/png", "image/jpeg", "image/svg+xml", "image/webp");
 
     @Override
     @Transactional
@@ -216,6 +230,10 @@ public class TenantManagementServiceImpl implements TenantManagementService {
 
         for (Map.Entry<TenantConfigKeyEnum, JsonNode> entry : request.getConfigs().entrySet()) {
             TenantConfigKeyEnum key = entry.getKey();
+            if (key.isManagedValue()) {
+                throw new InvalidConfigKeyException(
+                        key + " is managed by a dedicated endpoint and cannot be set via the generic config API.");
+            }
             ConfigValueDTO dto;
             try {
                 dto = objectMapper.treeToValue(entry.getValue(), key.getDtoClass());
@@ -510,6 +528,145 @@ public class TenantManagementServiceImpl implements TenantManagementService {
             throw new IllegalArgumentException(
                     "Invalid hierarchy type: " + hierarchyType + ". Valid values: LGD, DEPARTMENT", e);
         }
+    }
+
+    @Override
+    @Transactional
+    public TenantConfigResponseDTO setTenantLogo(Integer tenantId, LogoSource source) {
+        log.info("Setting tenant logo [id={}, source={}]", tenantId, source.getClass().getSimpleName());
+        validateNotSystemTenant(tenantId);
+        tenantCommonRepository.findById(tenantId)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Tenant with tenantId " + tenantId + " does not exist"));
+
+        String oldValue = tenantCommonRepository
+                .findConfigByTenantAndKey(tenantId, TenantConfigKeyEnum.TENANT_LOGO.name())
+                .map(cfg -> parseLogoValue(cfg.getConfigValue()))
+                .orElse(null);
+
+        String newValue = switch (source) {
+            case LogoSource.FileSource fs -> {
+                validateLogoFile(fs.file());
+                String ext = resolveLogoExtension(fs.file().getContentType());
+                String objectKey = "logos/" + tenantId + "/" + UUID.randomUUID() + "." + ext;
+                try {
+                    objectStorageService.upload(objectKey, fs.file().getInputStream(),
+                            fs.file().getSize(), fs.file().getContentType());
+                } catch (IOException e) {
+                    throw new StorageException("Failed to read uploaded logo file", e);
+                }
+                yield objectKey;
+            }
+            case LogoSource.UrlSource us -> {
+                validateLogoUrl(us.url());
+                yield us.url();
+            }
+        };
+
+        Integer currentUserId = resolveCurrentUserId();
+        String serialized;
+        try {
+            serialized = objectMapper.writeValueAsString(new SimpleConfigValueDTO(newValue));
+        } catch (JsonProcessingException e) {
+            throw new InvalidConfigValueException("Failed to serialize logo value", e);
+        }
+
+        tenantCommonRepository
+                .upsertConfig(tenantId, TenantConfigKeyEnum.TENANT_LOGO.name(), serialized, currentUserId)
+                .orElseThrow(() -> new RuntimeException("Failed to upsert TENANT_LOGO config"));
+
+        // Best-effort delete of the previous logo object after a successful DB upsert.
+        // Skip if the old value was an external URL — we don't own that resource.
+        if (oldValue != null && !isExternalUrl(oldValue)) {
+            try {
+                log.info("Deleting previous logo object from storage [key={}]", oldValue);
+                objectStorageService.delete(oldValue);
+                log.info("Deleted previous logo object [key={}]", oldValue);
+            } catch (Exception e) {
+                log.warn("Failed to delete previous logo object [key={}]: {}", oldValue, e.getMessage());
+            }
+        } else {
+            log.info("No previous managed logo to delete [oldValue={}]", oldValue);
+        }
+
+        Map<TenantConfigKeyEnum, ConfigValueDTO> result = new HashMap<>();
+        result.put(TenantConfigKeyEnum.TENANT_LOGO, new SimpleConfigValueDTO(newValue));
+
+        return TenantConfigResponseDTO.builder().tenantId(tenantId).configs(result).build();
+    }
+
+    @Override
+    public TenantLogoResult resolveTenantLogo(Integer tenantId) {
+        validateNotSystemTenant(tenantId);
+        tenantCommonRepository.findById(tenantId)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Tenant with tenantId " + tenantId + " does not exist"));
+        String logoValue = tenantCommonRepository
+                .findConfigByTenantAndKey(tenantId, TenantConfigKeyEnum.TENANT_LOGO.name())
+                .map(cfg -> parseLogoValue(cfg.getConfigValue()))
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Logo not configured for tenant [id=" + tenantId + "]"));
+        if (isExternalUrl(logoValue)) {
+            return new TenantLogoResult.External(logoValue);
+        }
+        return new TenantLogoResult.Managed(objectStorageService.download(logoValue), resolveLogoContentType(logoValue));
+    }
+
+    private static String resolveLogoContentType(String objectKey) {
+        String lower = objectKey.toLowerCase();
+        if (lower.endsWith(".png")) return "image/png";
+        if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "image/jpeg";
+        if (lower.endsWith(".svg")) return "image/svg+xml";
+        if (lower.endsWith(".webp")) return "image/webp";
+        return "application/octet-stream";
+    }
+
+    private void validateLogoUrl(String url) {
+        try {
+            URI uri = new URI(url);
+            String scheme = uri.getScheme();
+            if (!"http".equals(scheme) && !"https".equals(scheme)) {
+                throw new IllegalArgumentException("Logo URL must use http or https scheme.");
+            }
+            if (uri.getHost() == null || uri.getHost().isBlank()) {
+                throw new IllegalArgumentException("Logo URL must have a valid host.");
+            }
+        } catch (URISyntaxException e) {
+            throw new IllegalArgumentException("Invalid logo URL: " + e.getMessage(), e);
+        }
+    }
+
+    private void validateLogoFile(MultipartFile file) {
+        if (file.isEmpty()) {
+            throw new IllegalArgumentException("Logo file must not be empty");
+        }
+        String contentType = file.getContentType();
+        if (contentType == null || !ALLOWED_LOGO_TYPES.contains(contentType)) {
+            throw new IllegalArgumentException(
+                    "Unsupported logo file type: " + contentType + ". Allowed: " + ALLOWED_LOGO_TYPES);
+        }
+    }
+
+    private String resolveLogoExtension(String contentType) {
+        return switch (contentType) {
+            case "image/png" -> "png";
+            case "image/jpeg" -> "jpg";
+            case "image/svg+xml" -> "svg";
+            case "image/webp" -> "webp";
+            default -> "bin";
+        };
+    }
+
+    private String parseLogoValue(String configJson) {
+        try {
+            return objectMapper.readValue(configJson, SimpleConfigValueDTO.class).getValue();
+        } catch (JsonProcessingException e) {
+            return null;
+        }
+    }
+
+    private boolean isExternalUrl(String value) {
+        return value.startsWith("http://") || value.startsWith("https://");
     }
 
     private Integer resolveCurrentUserId() {

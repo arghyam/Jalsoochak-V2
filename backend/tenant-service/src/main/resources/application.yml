@@ -111,6 +111,18 @@ escalation:
       days: 7 # Days before level-2 officer is notified
     officer:
       user_type: DISTRICT_OFFICER
+storage:
+  provider: s3
+  endpoint: ${STORAGE_ENDPOINT:}               # blank = real AWS S3; set to MinIO/R2/etc. URL for custom providers
+  region: ${STORAGE_REGION:ap-south-1}
+  access-key: ${STORAGE_ACCESS_KEY:}           # leave blank to disable storage (no-op fallback activates)
+  secret-key: ${STORAGE_SECRET_KEY:}
+  bucket: ${STORAGE_BUCKET:tenant-assets}
+
+spring.servlet.multipart:
+  max-file-size: 2MB
+  max-request-size: 2MB
+
 logging:
   file:
     name: ${LOG_FILE_PATH:../logger/logs/backend-services.log}

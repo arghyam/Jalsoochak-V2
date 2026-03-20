@@ -1,0 +1,38 @@
+package org.arghyam.jalsoochak.tenant.dto.internal;
+
+import org.springframework.web.multipart.MultipartFile;
+
+/**
+ * Represents the two mutually exclusive ways a tenant logo can be set:
+ * {@link FileSource} for a binary file upload to internal storage, or
+ * {@link UrlSource} for an external URL stored as-is.
+ *
+ * Use {@link #from(MultipartFile, String)} to construct an instance — it enforces that
+ * exactly one of the two inputs is present. The service always receives exactly one subtype.
+ */
+public sealed interface LogoSource permits LogoSource.FileSource, LogoSource.UrlSource {
+
+    /** Logo provided as a binary file for upload to internal object storage. */
+    record FileSource(MultipartFile file) implements LogoSource {}
+
+    /** Logo provided as an external URL (http/https). */
+    record UrlSource(String url) implements LogoSource {}
+
+    /**
+     * Constructs a {@link LogoSource} from the two optional request parameters.
+     * Exactly one of {@code file} or {@code url} must be non-empty.
+     *
+     * @throws IllegalArgumentException if neither or both are provided.
+     */
+    static LogoSource from(MultipartFile file, String url) {
+        boolean hasFile = file != null && !file.isEmpty();
+        boolean hasUrl = url != null && !url.isBlank();
+        if (!hasFile && !hasUrl) {
+            throw new IllegalArgumentException("Either a logo file or an external URL must be provided.");
+        }
+        if (hasFile && hasUrl) {
+            throw new IllegalArgumentException("Provide either a logo file or an external URL, not both.");
+        }
+        return hasFile ? new FileSource(file) : new UrlSource(url);
+    }
+}

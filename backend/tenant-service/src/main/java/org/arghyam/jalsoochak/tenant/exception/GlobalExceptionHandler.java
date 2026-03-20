@@ -168,6 +168,12 @@ public class GlobalExceptionHandler {
         return build(HttpStatus.UNSUPPORTED_MEDIA_TYPE, message);
     }
 
+    @ExceptionHandler(StorageException.class)
+    public ResponseEntity<ApiErrorResponseDTO> handleStorageException(StorageException ex) {
+        log.error("Storage operation failed: {}", ex.getMessage(), ex);
+        return build(HttpStatus.INTERNAL_SERVER_ERROR, "File storage operation failed");
+    }
+
     @ExceptionHandler(RuntimeException.class)
     public ResponseEntity<ApiErrorResponseDTO> handleRuntimeException(RuntimeException ex) {
         log.error("Unexpected runtime error: {}", ex.getMessage(), ex);

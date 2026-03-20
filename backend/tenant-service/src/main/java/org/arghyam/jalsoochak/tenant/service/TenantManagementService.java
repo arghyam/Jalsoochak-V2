@@ -1,6 +1,8 @@
 package org.arghyam.jalsoochak.tenant.service;
 
 import org.arghyam.jalsoochak.tenant.dto.common.PageResponseDTO;
+import org.arghyam.jalsoochak.tenant.dto.internal.LogoSource;
+import org.arghyam.jalsoochak.tenant.dto.internal.TenantLogoResult;
 import org.arghyam.jalsoochak.tenant.dto.request.CreateTenantRequestDTO;
 import org.arghyam.jalsoochak.tenant.dto.request.SetTenantConfigRequestDTO;
 import org.arghyam.jalsoochak.tenant.dto.request.UpdateTenantRequestDTO;
@@ -13,7 +15,6 @@ import org.arghyam.jalsoochak.tenant.dto.response.LocationHierarchyEditConstrain
 import org.arghyam.jalsoochak.tenant.dto.response.LocationHierarchyResponseDTO;
 import org.arghyam.jalsoochak.tenant.dto.internal.LocationLevelConfigDTO;
 import org.arghyam.jalsoochak.tenant.enums.TenantConfigKeyEnum;
-
 import java.util.List;
 import java.util.Set;
 
@@ -80,6 +81,30 @@ public interface TenantManagementService {
      * @return Tenant configurations response.
      */
     TenantConfigResponseDTO setTenantConfigs(Integer tenantId, SetTenantConfigRequestDTO request);
+
+    /**
+     * Sets the tenant logo from either a file upload or an external URL.
+     * For {@link LogoSource.FileSource}: uploads the file to internal storage and saves the object key.
+     * For {@link LogoSource.UrlSource}: validates and saves the URL directly.
+     * In both cases, if the previous logo was a managed object (not an external URL),
+     * it is deleted from storage after a successful DB upsert.
+     *
+     * @param tenantId ID of the tenant.
+     * @param source   Exactly one of {@link LogoSource.FileSource} or {@link LogoSource.UrlSource}.
+     * @return Updated config response containing the new TENANT_LOGO value.
+     */
+    TenantConfigResponseDTO setTenantLogo(Integer tenantId, LogoSource source);
+
+    /**
+     * Resolves the logo for the given tenant.
+     * Returns {@link TenantLogoResult.Managed} when the logo is stored in internal
+     * object storage, or {@link TenantLogoResult.External} when an external URL was
+     * configured via PUT /logo.
+     *
+     * @param tenantId ID of the tenant.
+     * @return resolved logo result.
+     */
+    TenantLogoResult resolveTenantLogo(Integer tenantId);
 
     /**
      * Returns the configuration completeness status for a tenant.

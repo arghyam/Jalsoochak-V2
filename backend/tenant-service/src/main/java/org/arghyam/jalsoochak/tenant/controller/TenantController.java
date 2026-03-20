@@ -21,9 +21,14 @@ import org.arghyam.jalsoochak.tenant.dto.response.TenantConfigStatusResponseDTO;
 import org.arghyam.jalsoochak.tenant.dto.response.TenantResponseDTO;
 import org.arghyam.jalsoochak.tenant.dto.response.TenantSummaryResponseDTO;
 import org.arghyam.jalsoochak.tenant.enums.TenantConfigKeyEnum;
+import org.arghyam.jalsoochak.tenant.dto.internal.LogoSource;
+import org.arghyam.jalsoochak.tenant.dto.internal.TenantLogoResult;
 import org.arghyam.jalsoochak.tenant.service.TenantManagementService;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -84,7 +89,7 @@ public class TenantController {
         /**
          * Get tenant status summary
          */
-        @Operation(summary = "Get all tenant's status summary", description = "Returns aggregate counts of all non-system tenants grouped by status: total, active, inactive, and archived.")
+        @Operation(summary = "Get all tenant's status summary", description = "Returns aggregate counts of all non-system tenants grouped by status: total, onboarded, configured, active, inactive, suspended, degraded, and archived.")
         @ApiResponses({
                         @ApiResponse(responseCode = "200", description = "Tenant summary retrieved successfully"),
                         @ApiResponse(responseCode = "401", description = "Unauthorized — valid Bearer token required"),
@@ -241,6 +246,57 @@ public class TenantController {
                 log.info("PUT /api/v1/tenants/{}/config mapping received", tenantId);
                 return ResponseEntity.ok(ApiResponseDTO.of(200, "Tenant configurations set successfully",
                                 tenantManagementService.setTenantConfigs(tenantId, request)));
+        }
+
+        /**
+         * Set tenant logo
+         */
+        @Operation(summary = "Set tenant logo", description = "Sets the tenant logo from either a file upload or an external URL — exactly one must be provided. "
+                        + "File (PNG, JPEG, SVG, WebP — max 2 MB): uploaded to internal object storage. "
+                        + "URL (http/https): stored as a reference. "
+                        + "In both cases, the previous managed object is deleted from storage if one existed.")
+        @ApiResponses({
+                        @ApiResponse(responseCode = "200", description = "Logo set and TENANT_LOGO config updated successfully"),
+                        @ApiResponse(responseCode = "400", description = "Neither or both of file/url provided, unsupported MIME type, or invalid URL"),
+                        @ApiResponse(responseCode = "401", description = "Unauthorized — valid Bearer token required"),
+                        @ApiResponse(responseCode = "403", description = "Forbidden — insufficient scope or role"),
+                        @ApiResponse(responseCode = "404", description = "Tenant not found"),
+                        @ApiResponse(responseCode = "500", description = "Storage or server error")
+        })
+        @PreAuthorize("hasAnyRole('SUPER_USER', 'STATE_ADMIN')")
+        @PutMapping(value = "/{tenantId}/logo", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+        public ResponseEntity<ApiResponseDTO<TenantConfigResponseDTO>> setTenantLogo(
+                        @PathVariable Integer tenantId,
+                        @RequestParam(required = false) MultipartFile file,
+                        @RequestParam(required = false) String url) {
+                log.info("PUT /api/v1/tenants/{}/logo", tenantId);
+                return ResponseEntity.ok(ApiResponseDTO.of(200, "Logo set successfully",
+                                tenantManagementService.setTenantLogo(tenantId, LogoSource.from(file, url))));
+        }
+
+        /**
+         * Get (proxy) tenant logo
+         */
+        @Operation(summary = "Get tenant logo", description = "Proxies the tenant logo from internal object storage. "
+                        + "For external logos (set via PUT /logo), responds with a 302 redirect to the external URL. "
+                        + "Returns 404 if no logo has been configured for the tenant.")
+        @ApiResponses({
+                        @ApiResponse(responseCode = "200", description = "Logo image returned"),
+                        @ApiResponse(responseCode = "302", description = "Redirect to external logo URL"),
+                        @ApiResponse(responseCode = "404", description = "Tenant not found or logo not configured"),
+                        @ApiResponse(responseCode = "500", description = "Internal server error")
+        })
+        @GetMapping("/{tenantId}/logo")
+        public ResponseEntity<StreamingResponseBody> getTenantLogo(@PathVariable Integer tenantId) {
+                log.info("GET /api/v1/tenants/{}/logo", tenantId);
+                return switch (tenantManagementService.resolveTenantLogo(tenantId)) {
+                        case TenantLogoResult.Managed m -> ResponseEntity.ok()
+                                        .contentType(MediaType.parseMediaType(m.contentType()))
+                                        .body(out -> m.stream().transferTo(out));
+                        case TenantLogoResult.External e -> ResponseEntity.status(HttpStatus.FOUND)
+                                        .location(URI.create(e.redirectUrl()))
+                                        .body(null);
+                };
         }
 
         /**

@@ -1,0 +1,93 @@
+package org.arghyam.jalsoochak.tenant.config;
+
+import lombok.extern.slf4j.Slf4j;
+
+import org.arghyam.jalsoochak.tenant.config.properties.StorageProperties;
+import org.arghyam.jalsoochak.tenant.exception.StorageException;
+import org.arghyam.jalsoochak.tenant.storage.ObjectStorageService;
+import org.arghyam.jalsoochak.tenant.storage.S3CompatibleStorageService;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
+import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
+import software.amazon.awssdk.regions.Region;
+import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.S3ClientBuilder;
+import software.amazon.awssdk.services.s3.S3Configuration;
+
+import java.io.InputStream;
+import java.net.URI;
+
+@Configuration
+@EnableConfigurationProperties(StorageProperties.class)
+@Slf4j
+public class StorageConfig {
+
+    /**
+     * S3Client bean — created only when {@code storage.access-key} is configured.
+     * Setting {@code storage.endpoint} activates path-style access for MinIO and
+     * other S3-compatible providers that require it.
+     */
+    @Bean
+    @ConditionalOnProperty(name = "storage.access-key")
+    public S3Client s3Client(StorageProperties props) {
+        S3ClientBuilder builder = S3Client.builder()
+                .credentialsProvider(StaticCredentialsProvider.create(
+                        AwsBasicCredentials.create(props.getAccessKey(), props.getSecretKey())))
+                .region(Region.of(props.getRegion()));
+
+        if (props.getEndpoint() != null && !props.getEndpoint().isBlank()) {
+            log.info("[Storage] Using custom endpoint: {} (path-style enabled)", props.getEndpoint());
+            builder.endpointOverride(URI.create(props.getEndpoint()))
+                    .serviceConfiguration(S3Configuration.builder()
+                            .pathStyleAccessEnabled(true)
+                            .build());
+        }
+
+        return builder.build();
+    }
+
+    /**
+     * S3-compatible storage service — activated when {@code storage.access-key} is set.
+     * Covers AWS S3, MinIO, Cloudflare R2, DigitalOcean Spaces, GCS (interop mode), etc.
+     */
+    @Bean
+    @ConditionalOnProperty(name = "storage.access-key")
+    public ObjectStorageService s3CompatibleStorageService(S3Client s3Client, StorageProperties props) {
+        log.info("[Storage] Activating S3-compatible storage service [bucket={}, endpoint={}]",
+                props.getBucket(), props.getEndpoint() != null ? props.getEndpoint() : "AWS default");
+        return new S3CompatibleStorageService(s3Client, props);
+    }
+
+    /**
+     * No-op fallback — active when {@code storage.access-key} is absent (e.g. in tests
+     * or when storage is intentionally not configured). Throws {@link StorageException}
+     * at call time so the application starts cleanly but fails fast on actual use.
+     */
+    @Bean
+    @ConditionalOnMissingBean(ObjectStorageService.class)
+    public ObjectStorageService noOpObjectStorageService() {
+        log.warn("[Storage] No storage credentials configured — file upload will be unavailable. " +
+                "Set STORAGE_ACCESS_KEY to activate object storage.");
+        return new ObjectStorageService() {
+            @Override
+            public String upload(String objectKey, InputStream content, long contentLength, String contentType) {
+                throw new StorageException(
+                        "Object storage is not configured. Set STORAGE_ACCESS_KEY to enable file uploads.");
+            }
+
+            @Override
+            public void delete(String objectKey) {
+                throw new StorageException("Object storage is not configured.");
+            }
+
+            @Override
+            public InputStream download(String objectKey) {
+                throw new StorageException("Object storage is not configured.");
+            }
+        };
+    }
+}
