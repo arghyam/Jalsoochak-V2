@@ -93,7 +93,7 @@ public class TenantCommonRepository {
                 request.getLgdCode(),
                 request.getName(),
                 currentUserId,
-                TenantStatusEnum.ACTIVE.getCode());
+                TenantStatusEnum.ONBOARDED.getCode());
         return results.stream().findFirst();
     }
 
@@ -178,8 +178,12 @@ public class TenantCommonRepository {
         String sql = """
                 SELECT
                     COUNT(*)                                       AS total,
+                    COUNT(*) FILTER (WHERE status = ?)            AS onboarded,
+                    COUNT(*) FILTER (WHERE status = ?)            AS configured,
                     COUNT(*) FILTER (WHERE status = ?)            AS active,
                     COUNT(*) FILTER (WHERE status = ?)            AS inactive,
+                    COUNT(*) FILTER (WHERE status = ?)            AS suspended,
+                    COUNT(*) FILTER (WHERE status = ?)            AS degraded,
                     COUNT(*) FILTER (WHERE status = ?)            AS archived
                 FROM common_schema.tenant_master_table
                 WHERE id != 0
@@ -187,12 +191,20 @@ public class TenantCommonRepository {
         return jdbcTemplate.queryForObject(sql,
                 (rs, rn) -> TenantSummaryResponseDTO.builder()
                         .totalTenants(rs.getLong("total"))
+                        .onboardedTenants(rs.getLong("onboarded"))
+                        .configuredTenants(rs.getLong("configured"))
                         .activeTenants(rs.getLong("active"))
                         .inactiveTenants(rs.getLong("inactive"))
+                        .suspendedTenants(rs.getLong("suspended"))
+                        .degradedTenants(rs.getLong("degraded"))
                         .archivedTenants(rs.getLong("archived"))
                         .build(),
+                TenantStatusEnum.ONBOARDED.getCode(),
+                TenantStatusEnum.CONFIGURED.getCode(),
                 TenantStatusEnum.ACTIVE.getCode(),
                 TenantStatusEnum.INACTIVE.getCode(),
+                TenantStatusEnum.SUSPENDED.getCode(),
+                TenantStatusEnum.DEGRADED.getCode(),
                 TenantStatusEnum.ARCHIVED.getCode());
     }
 

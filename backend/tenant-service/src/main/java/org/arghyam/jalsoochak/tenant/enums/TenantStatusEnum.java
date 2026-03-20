@@ -4,9 +4,13 @@ import java.util.Arrays;
 
 public enum TenantStatusEnum {
 
-    ACTIVE(1),
     INACTIVE(0),
-    ARCHIVED(2);
+    ONBOARDED(1),
+    CONFIGURED(2),
+    ACTIVE(3),
+    SUSPENDED(4),
+    DEGRADED(5),
+    ARCHIVED(6);
 
     private final int code;
 
