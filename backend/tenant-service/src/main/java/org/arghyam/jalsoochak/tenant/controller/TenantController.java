@@ -1,7 +1,11 @@
 package org.arghyam.jalsoochak.tenant.controller;
 
+import java.net.URI;
+import java.util.Arrays;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 import org.arghyam.jalsoochak.tenant.dto.common.ApiResponseDTO;
 import org.arghyam.jalsoochak.tenant.dto.common.PageResponseDTO;
@@ -173,6 +177,27 @@ public class TenantController {
                 log.info("GET /api/v1/tenants/{}/config with keys: {}", tenantId, keys);
                 return ResponseEntity.ok(ApiResponseDTO.of(200, "Tenant configurations retrieved successfully",
                                 tenantManagementService.getTenantConfigs(tenantId, keys)));
+        }
+
+        /**
+         * Get public configurations for a tenant (no authentication required)
+         */
+        @Operation(summary = "Get public configurations for a tenant", description = "Returns only the configuration keys explicitly marked as public (isPublic=true). "
+                        + "No authentication required. Suitable for use by public-facing dashboards.")
+        @ApiResponses({
+                        @ApiResponse(responseCode = "200", description = "Public tenant configurations retrieved successfully"),
+                        @ApiResponse(responseCode = "404", description = "Tenant not found"),
+                        @ApiResponse(responseCode = "500", description = "Internal server error")
+        })
+        @GetMapping("/{tenantId}/public-config")
+        public ResponseEntity<ApiResponseDTO<TenantConfigResponseDTO>> getPublicTenantConfigs(
+                        @PathVariable Integer tenantId) {
+                log.info("GET /api/v1/tenants/{}/public-config", tenantId);
+                Set<TenantConfigKeyEnum> publicKeys = Arrays.stream(TenantConfigKeyEnum.values())
+                                .filter(TenantConfigKeyEnum::isPublic)
+                                .collect(Collectors.toCollection(() -> EnumSet.noneOf(TenantConfigKeyEnum.class)));
+                return ResponseEntity.ok(ApiResponseDTO.of(200, "Public tenant configurations retrieved successfully",
+                                tenantManagementService.getTenantConfigs(tenantId, publicKeys)));
         }
 
         /**
