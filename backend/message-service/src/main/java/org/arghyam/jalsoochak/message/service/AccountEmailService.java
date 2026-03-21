@@ -5,6 +5,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.arghyam.jalsoochak.message.channel.SmtpMailChannel;
 import org.arghyam.jalsoochak.message.dto.NotificationRequest;
 import org.springframework.stereotype.Service;
+import org.springframework.web.util.HtmlUtils;
 
 /**
  * Builds and dispatches account lifecycle emails (invite, reinvite, password reset)
@@ -156,22 +157,27 @@ public class AccountEmailService {
 
     public void sendInviteEmail(String to, String name, String role, String inviteLink, int expiryHours) {
         String subject = resolveInviteSubject(role);
+        String safeGreeting = resolveGreeting(name);
+        String safeLink = HtmlUtils.htmlEscape(inviteLink);
         String body = EMAIL_WRAPPER.formatted(subject,
-                INVITE_BODY.formatted(resolveGreeting(name), inviteLink, expiryHours, inviteLink));
+                INVITE_BODY.formatted(safeGreeting, safeLink, expiryHours, safeLink));
         dispatch(to, subject, body);
     }
 
     public void sendReinviteEmail(String to, String name, String inviteLink, int expiryHours) {
         String subject = "Reminder: Your JalSoochak Invitation";
+        String safeGreeting = resolveGreeting(name);
+        String safeLink = HtmlUtils.htmlEscape(inviteLink);
         String body = EMAIL_WRAPPER.formatted(subject,
-                REINVITE_BODY.formatted(resolveGreeting(name), inviteLink, expiryHours, inviteLink));
+                REINVITE_BODY.formatted(safeGreeting, safeLink, expiryHours, safeLink));
         dispatch(to, subject, body);
     }
 
     public void sendPasswordResetEmail(String to, String resetLink, int expiryMinutes) {
         String subject = "Reset Your JalSoochak Password";
+        String safeLink = HtmlUtils.htmlEscape(resetLink);
         String body = EMAIL_WRAPPER.formatted(subject,
-                RESET_PASSWORD_BODY.formatted(resetLink, expiryMinutes, resetLink));
+                RESET_PASSWORD_BODY.formatted(safeLink, expiryMinutes, safeLink));
         dispatch(to, subject, body);
     }
 
@@ -191,7 +197,7 @@ public class AccountEmailService {
     }
 
     private static String resolveGreeting(String name) {
-        return (name != null && !name.isBlank()) ? name : "User";
+        return (name != null && !name.isBlank()) ? HtmlUtils.htmlEscape(name) : "User";
     }
 
     private static String resolveInviteSubject(String role) {

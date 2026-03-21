@@ -45,6 +45,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 @Slf4j
 @Service
@@ -148,7 +149,10 @@ public class UserManagementServiceImpl implements UserManagementService {
                 .queryParam("token", raw)
                 .build()
                 .toUriString();
-        String name = (request.getFirstName() + " " + request.getLastName()).trim();
+        String name = Stream.of(request.getFirstName(), request.getLastName())
+                .filter(s -> s != null && !s.isBlank())
+                .collect(Collectors.joining(" "));
+        if (name.isEmpty()) name = "User";
         userEmailEventPublisher.publishInviteEmailAfterCommit(InviteEmailEvent.builder()
                 .eventType("SEND_INVITE_EMAIL")
                 .to(request.getEmail())

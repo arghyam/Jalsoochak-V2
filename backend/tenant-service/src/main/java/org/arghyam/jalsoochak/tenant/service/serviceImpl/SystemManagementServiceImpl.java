@@ -9,6 +9,7 @@ import org.arghyam.jalsoochak.tenant.dto.response.SystemConfigResponseDTO;
 import org.arghyam.jalsoochak.tenant.enums.SystemConfigKeyEnum;
 import org.arghyam.jalsoochak.tenant.exception.InvalidConfigKeyException;
 import org.arghyam.jalsoochak.tenant.exception.InvalidConfigValueException;
+import org.arghyam.jalsoochak.tenant.exception.ResourceNotFoundException;
 import org.arghyam.jalsoochak.tenant.repository.TenantCommonRepository;
 import org.arghyam.jalsoochak.tenant.service.SystemManagementService;
 import org.arghyam.jalsoochak.tenant.util.SecurityUtils;
@@ -67,7 +68,8 @@ public class SystemManagementServiceImpl implements SystemManagementService {
     public SystemConfigResponseDTO setSystemConfigs(SetSystemConfigRequestDTO request) {
         log.info("Setting system configurations");
         String currentUuid = SecurityUtils.getCurrentUserUuid();
-        Integer currentUserId = tenantCommonRepository.findUserIdByUuid(currentUuid).orElse(null);
+        Integer currentUserId = tenantCommonRepository.findUserIdByUuid(currentUuid)
+                .orElseThrow(() -> new ResourceNotFoundException("Current user not found for uuid: " + currentUuid));
 
         Map<SystemConfigKeyEnum, ConfigValueDTO> results = new HashMap<>();
 

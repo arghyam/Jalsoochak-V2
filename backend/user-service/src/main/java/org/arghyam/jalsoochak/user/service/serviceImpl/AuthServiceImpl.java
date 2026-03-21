@@ -5,6 +5,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import org.arghyam.jalsoochak.user.clients.KeycloakClient;
 import org.arghyam.jalsoochak.user.clients.KeycloakTokenResponse;
@@ -340,7 +341,11 @@ public class AuthServiceImpl implements AuthService {
      */
     private void validateTenantStatus(Integer tenantId, Integer adminLevel) {
         if (tenantId == null || tenantId == 0) return;
-        int status = userCommonRepository.findTenantStatusByTenantId(tenantId).orElse(-1);
+        Optional<Integer> statusOpt = userCommonRepository.findTenantStatusByTenantId(tenantId);
+        if (statusOpt.isEmpty()) {
+            throw new AccountDeactivatedException("Tenant not found or no longer exists.");
+        }
+        int status = statusOpt.get();
         boolean isStateAdmin = adminLevel != null && adminLevel == 2;
         if (status == 3 || status == 5) return; // ACTIVE or DEGRADED — always allowed
         if (isStateAdmin && status == 2) return; // CONFIGURED — allowed for STATE_ADMIN only

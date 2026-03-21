@@ -484,10 +484,9 @@ public class NotificationEventRouter {
     }
 
     private void publishEmailDlt(String originalEventType, String to, String errorReason) {
-        String retryId = UUID.nameUUIDFromBytes(
-                ("ACCOUNT_EMAIL_FAILED:" + originalEventType + ":" + (to != null ? to : "unknown"))
-                        .getBytes(StandardCharsets.UTF_8))
-                .toString();
+        String seed = "ACCOUNT_EMAIL_FAILED:" + originalEventType + ":"
+                + (to != null ? to : "unknown:" + Instant.now().toEpochMilli());
+        String retryId = UUID.nameUUIDFromBytes(seed.getBytes(StandardCharsets.UTF_8)).toString();
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("retryId", retryId);
         payload.put("eventType", "ACCOUNT_EMAIL_FAILED");

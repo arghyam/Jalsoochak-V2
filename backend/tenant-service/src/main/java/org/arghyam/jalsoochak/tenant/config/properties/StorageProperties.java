@@ -1,7 +1,9 @@
 package org.arghyam.jalsoochak.tenant.config.properties;
 
+import jakarta.validation.constraints.NotBlank;
 import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.validation.annotation.Validated;
 
 /**
  * Configuration properties for object storage.
@@ -14,6 +16,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  */
 @ConfigurationProperties(prefix = "storage")
 @Data
+@Validated
 public class StorageProperties {
 
     /** Storage provider key. Currently only {@code s3} is supported. */
@@ -26,6 +29,7 @@ public class StorageProperties {
     private String endpoint;
 
     /** AWS region (or a dummy value like {@code us-east-1} for MinIO). */
+    @NotBlank
     private String region = "ap-south-1";
 
     /** Access key / access key ID. */
@@ -35,6 +39,7 @@ public class StorageProperties {
     private String secretKey;
 
     /** Bucket name for tenant assets. */
+    @NotBlank
     private String bucket = "tenant-assets";
 
 }

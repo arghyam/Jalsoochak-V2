@@ -34,6 +34,14 @@ public class StorageConfig {
     @Bean
     @ConditionalOnProperty(name = "storage.access-key")
     public S3Client s3Client(StorageProperties props) {
+        if (props.getAccessKey() == null || props.getAccessKey().isBlank()) {
+            throw new IllegalStateException(
+                    "[Storage] storage.access-key is set but blank — provide a valid access key.");
+        }
+        if (props.getSecretKey() == null || props.getSecretKey().isBlank()) {
+            throw new IllegalStateException(
+                    "[Storage] storage.secret-key is set but blank — provide a valid secret key.");
+        }
         S3ClientBuilder builder = S3Client.builder()
                 .credentialsProvider(StaticCredentialsProvider.create(
                         AwsBasicCredentials.create(props.getAccessKey(), props.getSecretKey())))

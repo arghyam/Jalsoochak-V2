@@ -112,7 +112,7 @@ escalation:
     officer:
       user_type: DISTRICT_OFFICER
 storage:
-  provider: s3
+  provider: ${STORAGE_PROVIDER:s3}
   endpoint: ${STORAGE_ENDPOINT:}               # blank = real AWS S3; set to MinIO/R2/etc. URL for custom providers
   region: ${STORAGE_REGION:ap-south-1}
   access-key: ${STORAGE_ACCESS_KEY:}           # leave blank to disable storage (no-op fallback activates)

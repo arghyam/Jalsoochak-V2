@@ -26,6 +26,7 @@ import org.arghyam.jalsoochak.tenant.dto.response.SystemConfigResponseDTO;
 import org.arghyam.jalsoochak.tenant.enums.SystemConfigKeyEnum;
 import org.arghyam.jalsoochak.tenant.exception.InvalidConfigKeyException;
 import org.arghyam.jalsoochak.tenant.exception.InvalidConfigValueException;
+import org.arghyam.jalsoochak.tenant.exception.ResourceNotFoundException;
 import org.arghyam.jalsoochak.tenant.repository.TenantCommonRepository;
 import org.arghyam.jalsoochak.tenant.util.SecurityUtils;
 import org.junit.jupiter.api.AfterEach;
@@ -240,28 +241,17 @@ class SystemManagementServiceImplTest {
         }
 
         @Test
-        @DisplayName("Should use null userId when user UUID is not found")
-        void setSystemConfigs_UserNotFound_UsesNullUserId() throws Exception {
+        @DisplayName("Should throw ResourceNotFoundException when user UUID is not found in the database")
+        void setSystemConfigs_UserNotFound_ThrowsResourceNotFoundException() throws Exception {
             Map<SystemConfigKeyEnum, JsonNode> newConfigs = new HashMap<>();
             newConfigs.put(SystemConfigKeyEnum.WATER_QUANTITY_SUPPLY_THRESHOLD,
                     objectMapper.readTree("{\"undersupplyThresholdPercent\": 20.0, \"oversupplyThresholdPercent\": 30.0}"));
             SetSystemConfigRequestDTO request = SetSystemConfigRequestDTO.builder().configs(newConfigs).build();
 
-            ConfigDTO savedConfig = ConfigDTO.builder()
-                    .configKey(SystemConfigKeyEnum.WATER_QUANTITY_SUPPLY_THRESHOLD.name())
-                    .configValue("{\"undersupplyThresholdPercent\": 20.0, \"oversupplyThresholdPercent\": 30.0}")
-                    .build();
-
             when(SecurityUtils.getCurrentUserUuid()).thenReturn("unknown-uuid");
             when(tenantCommonRepository.findUserIdByUuid("unknown-uuid")).thenReturn(Optional.empty());
-            when(tenantCommonRepository.upsertConfig(eq(0),
-                    eq(SystemConfigKeyEnum.WATER_QUANTITY_SUPPLY_THRESHOLD.name()), anyString(), eq(null)))
-                    .thenReturn(Optional.of(savedConfig));
 
-            SystemConfigResponseDTO result = systemManagementService.setSystemConfigs(request);
-
-            assertNotNull(result);
-            assertNotNull(result.getConfigs().get(SystemConfigKeyEnum.WATER_QUANTITY_SUPPLY_THRESHOLD));
+            assertThrows(ResourceNotFoundException.class, () -> systemManagementService.setSystemConfigs(request));
         }
     }
 }

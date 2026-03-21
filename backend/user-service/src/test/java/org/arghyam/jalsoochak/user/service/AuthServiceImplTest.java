@@ -171,6 +171,7 @@ class AuthServiceImplTest {
         @DisplayName("STATE_ADMIN: should call findUserByEmail and populate name")
         void login_stateAdmin_populatesName() {
             when(userCommonRepository.findAdminUserByEmail("sa@example.com")).thenReturn(Optional.of(stateAdminRow()));
+            when(userCommonRepository.findTenantStatusByTenantId(1)).thenReturn(Optional.of(3)); // ACTIVE
             when(keycloakClient.obtainToken("sa@example.com", "pass")).thenReturn(tokenResponse());
             when(userCommonRepository.findUserTypeNameById(2)).thenReturn(Optional.of("STATE_ADMIN"));
             when(userCommonRepository.findTenantStateCodeById(1)).thenReturn(Optional.of("MP"));
@@ -189,6 +190,7 @@ class AuthServiceImplTest {
         @DisplayName("STATE_ADMIN: name is null when tenant user record not found")
         void login_stateAdmin_nameNullIfTenantUserMissing() {
             when(userCommonRepository.findAdminUserByEmail("sa@example.com")).thenReturn(Optional.of(stateAdminRow()));
+            when(userCommonRepository.findTenantStatusByTenantId(1)).thenReturn(Optional.of(3)); // ACTIVE
             when(keycloakClient.obtainToken("sa@example.com", "pass")).thenReturn(tokenResponse());
             when(userCommonRepository.findUserTypeNameById(2)).thenReturn(Optional.of("STATE_ADMIN"));
             when(userCommonRepository.findTenantStateCodeById(1)).thenReturn(Optional.of("MP"));
@@ -215,6 +217,18 @@ class AuthServiceImplTest {
 
             assertThrows(AccountDeactivatedException.class,
                     () -> authService.login(loginRequest("user@example.com", "pass")));
+
+            verify(keycloakClient, never()).obtainToken(anyString(), anyString());
+        }
+
+        @Test
+        @DisplayName("STATE_ADMIN: should throw AccountDeactivatedException when tenant does not exist")
+        void login_stateAdmin_tenantNotFound_throwsAccountDeactivated() {
+            when(userCommonRepository.findAdminUserByEmail("sa@example.com")).thenReturn(Optional.of(stateAdminRow()));
+            when(userCommonRepository.findTenantStatusByTenantId(1)).thenReturn(Optional.empty());
+
+            assertThrows(AccountDeactivatedException.class,
+                    () -> authService.login(loginRequest("sa@example.com", "pass")));
 
             verify(keycloakClient, never()).obtainToken(anyString(), anyString());
         }

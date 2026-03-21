@@ -3,6 +3,7 @@ package org.arghyam.jalsoochak.user.repository;
 import lombok.RequiredArgsConstructor;
 import org.arghyam.jalsoochak.user.enums.AdminUserStatus;
 import org.arghyam.jalsoochak.user.exceptions.BadRequestException;
+import org.arghyam.jalsoochak.user.exceptions.ResourceNotFoundException;
 import org.arghyam.jalsoochak.user.repository.records.AdminUserRow;
 import org.arghyam.jalsoochak.user.repository.records.AdminUserTokenRow;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -134,11 +135,15 @@ public class UserCommonRepository {
     }
 
     public void updatePendingAdminUserPhone(Long id, String phoneNumber) {
-        jdbcTemplate.update("""
+        int updated = jdbcTemplate.update("""
                 UPDATE common_schema.tenant_admin_user_master_table
                 SET phone_number = ?, updated_at = NOW()
                 WHERE id = ? AND status = 2 AND deleted_at IS NULL
                 """, phoneNumber, id);
+        if (updated == 0) {
+            throw new ResourceNotFoundException(
+                    "Pending admin user not found or already activated [id=" + id + "]");
+        }
     }
 
     /**
@@ -368,7 +373,7 @@ public class UserCommonRepository {
         String sql = """
                 SELECT id, email, token_hash, token_type, metadata::TEXT, expires_at, used_at, deleted_at, created_at
                 FROM common_schema.admin_user_token_table
-                WHERE LOWER(email) = LOWER(?) AND token_type = 'INVITE' AND used_at IS NULL AND deleted_at IS NULL
+                WHERE LOWER(email) = LOWER(?) AND token_type = 'INVITE' AND used_at IS NULL AND deleted_at IS NULL AND expires_at > NOW()
                 LIMIT 1
                 """;
         List<AdminUserTokenRow> rows = jdbcTemplate.query(sql, (rs, n) -> mapTokenRow(rs), email);

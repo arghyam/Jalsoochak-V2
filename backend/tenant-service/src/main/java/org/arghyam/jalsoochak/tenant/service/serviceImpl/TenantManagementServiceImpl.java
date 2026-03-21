@@ -8,6 +8,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -462,6 +463,11 @@ public class TenantManagementServiceImpl implements TenantManagementService {
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "Tenant with tenantId " + tenantId + " does not exist"));
 
+        if (levels.stream().anyMatch(Objects::isNull)
+                || levels.stream().map(LocationLevelConfigDTO::getLevel).anyMatch(Objects::isNull)) {
+            throw new InvalidConfigValueException("Each hierarchy level must be non-null and include a level number");
+        }
+
         RegionTypeEnum regionType = resolveRegionType(hierarchyType);
         String schemaName = "tenant_" + tenant.getStateCode().toLowerCase();
         Integer currentUserId = resolveCurrentUserId();
@@ -471,11 +477,6 @@ public class TenantManagementServiceImpl implements TenantManagementService {
                 existing != null && existing.getLocationHierarchy() != null
                         ? existing.getLocationHierarchy()
                         : List.of();
-
-        if (levels.stream().anyMatch(java.util.Objects::isNull)
-                || levels.stream().map(LocationLevelConfigDTO::getLevel).anyMatch(java.util.Objects::isNull)) {
-            throw new InvalidConfigValueException("Each hierarchy level must be non-null and include a level number");
-        }
 
         boolean isStructuralChange = isStructuralChange(existingLevels, levels);
 
@@ -661,6 +662,7 @@ public class TenantManagementServiceImpl implements TenantManagementService {
         try {
             return objectMapper.readValue(configJson, SimpleConfigValueDTO.class).getValue();
         } catch (JsonProcessingException e) {
+            log.warn("[TenantManagementService] Failed to parse logo config JSON: {} | raw={}", e.getMessage(), configJson);
             return null;
         }
     }
@@ -671,10 +673,8 @@ public class TenantManagementServiceImpl implements TenantManagementService {
 
     private Integer resolveCurrentUserId() {
         String uuid = SecurityUtils.getCurrentUserUuid();
-        // TODO: uncomment below to enforce non-null actor once ResourceNotFoundException is wired for auth context
-        // return tenantCommonRepository.findUserIdByUuid(uuid)
-        //         .orElseThrow(() -> new ResourceNotFoundException("Current user not found for uuid: " + uuid));
-        return tenantCommonRepository.findUserIdByUuid(uuid).orElse(null);
+        return tenantCommonRepository.findUserIdByUuid(uuid)
+                .orElseThrow(() -> new ResourceNotFoundException("Current user not found for uuid: " + uuid));
     }
 
     private void setDefaultConfigs(TenantResponseDTO tenant, String schemaName, Integer currentUserId) {

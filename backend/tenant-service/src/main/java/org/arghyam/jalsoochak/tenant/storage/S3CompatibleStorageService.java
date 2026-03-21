@@ -69,6 +69,22 @@ public class S3CompatibleStorageService implements ObjectStorageService {
         }
     }
 
+    /**
+     * Downloads the object identified by {@code objectKey} from S3.
+     *
+     * <p><strong>Caller is responsible for closing the returned {@link InputStream}.</strong>
+     * The stream wraps an active HTTP connection; failing to close it will leak the connection.
+     * Always consume the stream inside a try-with-resources block, e.g.:
+     * <pre>{@code
+     * try (InputStream in = storageService.download(key)) {
+     *     // read from in
+     * }
+     * }</pre>
+     *
+     * @param objectKey the storage key of the object to download
+     * @return an {@link InputStream} backed by the S3 HTTP response — must be closed by the caller
+     * @throws StorageException if the object does not exist or the download fails
+     */
     @Override
     public InputStream download(String objectKey) {
         try {

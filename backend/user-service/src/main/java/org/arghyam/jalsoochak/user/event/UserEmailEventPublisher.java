@@ -44,7 +44,10 @@ public class UserEmailEventPublisher {
             });
         } else {
             log.warn("[email-events] No active transaction; publishing {} event immediately", label);
-            kafkaProducer.publishJson(COMMON_TOPIC, event);
+            boolean ok = kafkaProducer.publishJson(COMMON_TOPIC, event);
+            if (!ok) {
+                log.warn("[email-events] Failed to publish {} event to topic={}", label, COMMON_TOPIC);
+            }
         }
     }
 }

@@ -16,7 +16,22 @@ public sealed interface LogoSource permits LogoSource.FileSource, LogoSource.Url
     record FileSource(MultipartFile file) implements LogoSource {}
 
     /** Logo provided as an external URL (http/https). */
-    record UrlSource(String url) implements LogoSource {}
+    record UrlSource(String url) implements LogoSource {
+        public UrlSource {
+            try {
+                java.net.URI uri = new java.net.URI(url);
+                String scheme = uri.getScheme();
+                if (!"http".equals(scheme) && !"https".equals(scheme)) {
+                    throw new IllegalArgumentException("URL must use http or https scheme: " + url);
+                }
+                if (uri.getHost() == null || uri.getHost().isBlank()) {
+                    throw new IllegalArgumentException("URL must have a valid host: " + url);
+                }
+            } catch (java.net.URISyntaxException e) {
+                throw new IllegalArgumentException("Invalid URL: " + url, e);
+            }
+        }
+    }
 
     /**
      * Constructs a {@link LogoSource} from the two optional request parameters.

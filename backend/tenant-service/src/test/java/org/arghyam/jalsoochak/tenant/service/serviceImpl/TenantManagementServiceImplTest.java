@@ -1448,9 +1448,7 @@ class TenantManagementServiceImplTest {
         @Test
         @DisplayName("Should throw IllegalArgumentException for invalid URL scheme")
         void setTenantLogo_urlSource_invalidScheme_throwsIllegalArgumentException() {
-            when(tenantCommonRepository.findById(TENANT_ID)).thenReturn(Optional.of(TENANT));
-            when(tenantCommonRepository.findConfigByTenantAndKey(TENANT_ID, "TENANT_LOGO")).thenReturn(Optional.empty());
-
+            // Validation now happens in UrlSource canonical constructor — service is never reached.
             assertThrows(IllegalArgumentException.class,
                     () -> tenantManagementService.setTenantLogo(TENANT_ID, new LogoSource.UrlSource("ftp://example.com/logo.png")));
             verify(tenantCommonRepository, never()).upsertConfig(any(), any(), any(), any());
@@ -1459,9 +1457,7 @@ class TenantManagementServiceImplTest {
         @Test
         @DisplayName("Should throw IllegalArgumentException for malformed URL")
         void setTenantLogo_urlSource_malformedUrl_throwsIllegalArgumentException() {
-            when(tenantCommonRepository.findById(TENANT_ID)).thenReturn(Optional.of(TENANT));
-            when(tenantCommonRepository.findConfigByTenantAndKey(TENANT_ID, "TENANT_LOGO")).thenReturn(Optional.empty());
-
+            // Validation now happens in UrlSource canonical constructor — service is never reached.
             assertThrows(IllegalArgumentException.class,
                     () -> tenantManagementService.setTenantLogo(TENANT_ID, new LogoSource.UrlSource("not a url")));
             verify(tenantCommonRepository, never()).upsertConfig(any(), any(), any(), any());

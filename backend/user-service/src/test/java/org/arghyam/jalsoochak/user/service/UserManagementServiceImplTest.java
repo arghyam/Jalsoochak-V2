@@ -53,6 +53,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -389,6 +390,31 @@ class UserManagementServiceImplTest {
             req.setEmail("new@example.com");
             req.setRole("STATE_ADMIN");
             req.setTenantCode("XX");
+
+            assertThrows(ResourceNotFoundException.class, () -> userManagementService.inviteUser(req, auth));
+        }
+
+        @Test
+        @DisplayName("Should propagate ResourceNotFoundException when pending user was activated between lookup and phone update")
+        void inviteUser_pendingUserActivatedBetweenLookupAndUpdate_throwsResourceNotFound() {
+            Authentication auth = superUserAuth("kc-super");
+            AdminUserRow callerRow = userRow(1L, "kc-super", "super@example.com", 0, 1, AdminUserStatus.ACTIVE);
+            AdminUserRow pendingUser = userRow(5L, "placeholder-uuid", "pending@example.com", 0, 1, AdminUserStatus.PENDING);
+
+            when(userCommonRepository.findAdminUserByUuid("kc-super")).thenReturn(Optional.of(callerRow));
+            when(userCommonRepository.findUserTypeNameById(1)).thenReturn(Optional.of("SUPER_USER"));
+            when(userCommonRepository.findAdminUserByEmail("pending@example.com")).thenReturn(Optional.of(pendingUser));
+            when(userCommonRepository.findUserTypeIdByName("SUPER_USER")).thenReturn(Optional.of(1));
+            // Simulate the row vanishing (activated or deleted) between SELECT and UPDATE
+            doThrow(new ResourceNotFoundException("Pending admin user not found or already activated [id=5]"))
+                    .when(userCommonRepository).updatePendingAdminUserPhone(eq(5L), anyString());
+
+            InviteRequestDTO req = new InviteRequestDTO();
+            req.setEmail("pending@example.com");
+            req.setRole("SUPER_USER");
+            req.setFirstName("New");
+            req.setLastName("User");
+            req.setPhoneNumber("91XXXXXXXXXX");
 
             assertThrows(ResourceNotFoundException.class, () -> userManagementService.inviteUser(req, auth));
         }

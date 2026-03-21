@@ -1,14 +1,25 @@
 package org.arghyam.jalsoochak.message.event;
 
-import lombok.Data;
+import lombok.AllArgsConstructor;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
+import lombok.ToString;
 
-@Data
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
+@ToString(onlyExplicitlyIncluded = true)
 public class InviteEmailEvent {
 
+    @ToString.Include
     private String eventType;
     private String to;
     private String name;
+    @ToString.Include
     private String role;
     private String inviteLink;
+    @ToString.Include
     private int expiryHours;
 }

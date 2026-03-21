@@ -292,7 +292,11 @@ public class TenantController {
                 return switch (tenantManagementService.resolveTenantLogo(tenantId)) {
                         case TenantLogoResult.Managed m -> ResponseEntity.ok()
                                         .contentType(MediaType.parseMediaType(m.contentType()))
-                                        .body(out -> m.stream().transferTo(out));
+                                        .body(out -> {
+                                                try (var stream = m.stream()) {
+                                                        stream.transferTo(out);
+                                                }
+                                        });
                         case TenantLogoResult.External e -> ResponseEntity.status(HttpStatus.FOUND)
                                         .location(URI.create(e.redirectUrl()))
                                         .body(null);

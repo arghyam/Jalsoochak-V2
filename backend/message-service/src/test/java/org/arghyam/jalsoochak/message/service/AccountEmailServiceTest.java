@@ -139,6 +139,32 @@ class AccountEmailServiceTest {
                 .hasMessageContaining("Failed to send email");
     }
 
+    @Test
+    void sendInviteEmail_escapesHtmlInName() {
+        ArgumentCaptor<NotificationRequest> captor = ArgumentCaptor.forClass(NotificationRequest.class);
+
+        accountEmailService.sendInviteEmail(
+                "admin@state.gov", "<script>alert('xss')</script>", "STATE_ADMIN",
+                "https://app.jalsoochak.in/activate?token=abc", 24);
+
+        verify(smtpMailChannel).send(captor.capture());
+        assertThat(captor.getValue().getBody()).doesNotContain("<script>");
+        assertThat(captor.getValue().getBody()).contains("&lt;script&gt;");
+    }
+
+    @Test
+    void sendInviteEmail_escapesHtmlInInviteLink() {
+        ArgumentCaptor<NotificationRequest> captor = ArgumentCaptor.forClass(NotificationRequest.class);
+
+        accountEmailService.sendInviteEmail(
+                "admin@state.gov", "Ravi", "STATE_ADMIN",
+                "https://app.jalsoochak.in/activate?token=abc&next=<evil>", 24);
+
+        verify(smtpMailChannel).send(captor.capture());
+        assertThat(captor.getValue().getBody()).doesNotContain("<evil>");
+        assertThat(captor.getValue().getBody()).contains("&amp;next=&lt;evil&gt;");
+    }
+
     // ─────────────────────────── sendReinviteEmail ─────────────────────────────
 
     @Test
@@ -178,6 +204,20 @@ class AccountEmailServiceTest {
                 .hasMessageContaining("Failed to send email");
     }
 
+    @Test
+    void sendReinviteEmail_escapesHtmlInNameAndLink() {
+        ArgumentCaptor<NotificationRequest> captor = ArgumentCaptor.forClass(NotificationRequest.class);
+
+        accountEmailService.sendReinviteEmail(
+                "op@tenant.in", "<b>User</b>",
+                "https://app.jalsoochak.in/activate?token=re&next=<evil>", 48);
+
+        verify(smtpMailChannel).send(captor.capture());
+        assertThat(captor.getValue().getBody()).doesNotContain("<b>User</b>").doesNotContain("<evil>");
+        assertThat(captor.getValue().getBody()).contains("&lt;b&gt;User&lt;/b&gt;");
+        assertThat(captor.getValue().getBody()).contains("&amp;next=&lt;evil&gt;");
+    }
+
     // ──────────────────────── sendPasswordResetEmail ───────────────────────────
 
     @Test
@@ -215,5 +255,17 @@ class AccountEmailServiceTest {
                 "user@example.com", "https://link", 30))
                 .isInstanceOf(RuntimeException.class)
                 .hasMessageContaining("Failed to send email");
+    }
+
+    @Test
+    void sendPasswordResetEmail_escapesHtmlInResetLink() {
+        ArgumentCaptor<NotificationRequest> captor = ArgumentCaptor.forClass(NotificationRequest.class);
+
+        accountEmailService.sendPasswordResetEmail(
+                "user@example.com", "https://app.jalsoochak.in/reset?token=r1&next=<evil>", 30);
+
+        verify(smtpMailChannel).send(captor.capture());
+        assertThat(captor.getValue().getBody()).doesNotContain("<evil>");
+        assertThat(captor.getValue().getBody()).contains("&amp;next=&lt;evil&gt;");
     }
 }

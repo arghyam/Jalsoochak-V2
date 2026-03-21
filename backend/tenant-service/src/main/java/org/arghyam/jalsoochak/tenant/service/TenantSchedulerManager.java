@@ -49,6 +49,7 @@ public class TenantSchedulerManager {
         tenants.stream()
             .filter(t -> {
                 String s = t.getStatus();
+                if (s == null) return false;
                 return !TenantStatusEnum.INACTIVE.name().equals(s)
                     && !TenantStatusEnum.SUSPENDED.name().equals(s)
                     && !TenantStatusEnum.ARCHIVED.name().equals(s);

@@ -1,6 +1,8 @@
 package org.arghyam.jalsoochak.message.channel;
 
+import jakarta.mail.internet.MimeBodyPart;
 import jakarta.mail.internet.MimeMessage;
+import jakarta.mail.internet.MimeMultipart;
 import org.arghyam.jalsoochak.message.dto.NotificationRequest;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -70,7 +72,7 @@ class SmtpMailChannelTest {
     }
 
     @Test
-    void send_forwardsHtmlBodyAsIs() {
+    void send_forwardsHtmlBodyAsIs() throws Exception {
         stubMimeMessage();
         ArgumentCaptor<MimeMessage> captor = ArgumentCaptor.forClass(MimeMessage.class);
 
@@ -81,10 +83,15 @@ class SmtpMailChannelTest {
                 .build());
 
         verify(mailSender).send(captor.capture());
-        // A MimeMessage was built and handed off to the sender — detailed content
-        // is set inside MimeMessageHelper; the key invariant is that send() was
-        // called exactly once with a non-null MimeMessage.
-        assertThat(captor.getValue()).isNotNull();
+        MimeMessage captured = captor.getValue();
+        // MimeMessageHelper(message, multipart=true) wraps content in multipart/mixed →
+        // multipart/related → text/html body part.
+        MimeMultipart mixed = (MimeMultipart) captured.getContent();
+        MimeBodyPart bodyPart = (MimeBodyPart) mixed.getBodyPart(0);
+        MimeMultipart related = (MimeMultipart) bodyPart.getContent();
+        MimeBodyPart htmlPart = (MimeBodyPart) related.getBodyPart(0);
+        assertThat(htmlPart.getContentType()).startsWith("text/html");
+        assertThat((String) htmlPart.getContent()).isEqualTo("<html><body>Click here</body></html>");
     }
 
     // ─────────────────────────── send — failure ────────────────────────────────
