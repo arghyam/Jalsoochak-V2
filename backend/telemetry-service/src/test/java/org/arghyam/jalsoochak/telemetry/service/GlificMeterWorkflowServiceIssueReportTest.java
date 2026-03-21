@@ -2,6 +2,7 @@ package org.arghyam.jalsoochak.telemetry.service;
 
 import org.arghyam.jalsoochak.telemetry.dto.requests.IssueReportRequest;
 import org.arghyam.jalsoochak.telemetry.dto.response.IntroResponse;
+import org.arghyam.jalsoochak.telemetry.event.TelemetryEventPublisher;
 import org.arghyam.jalsoochak.telemetry.repository.TenantConfigRepository;
 import org.arghyam.jalsoochak.telemetry.repository.TelemetryOperator;
 import org.arghyam.jalsoochak.telemetry.repository.TelemetryOperatorWithSchema;
@@ -41,6 +42,9 @@ class GlificMeterWorkflowServiceIssueReportTest {
 
     @Mock
     private TelemetryTenantRepository telemetryTenantRepository;
+
+    @Mock
+    private TelemetryEventPublisher telemetryEventPublisher;
 
     @Spy
     private com.fasterxml.jackson.databind.ObjectMapper objectMapper = new com.fasterxml.jackson.databind.ObjectMapper();
@@ -89,6 +93,13 @@ class GlificMeterWorkflowServiceIssueReportTest {
                 eq(0),
                 eq("Meter not working"),
                 eq(AnomalyConstants.STATUS_OPEN)
+        );
+        verify(telemetryEventPublisher).publishOutageOrNonSubmissionReason(
+                eq(1),
+                eq(10L),
+                eq(1L),
+                org.mockito.ArgumentMatchers.any(),
+                eq(AnomalyConstants.TYPE_NO_SUBMISSION)
         );
         verify(telemetryTenantRepository, never()).createIssueReportRecord(
                 eq("tenant_test"),
@@ -195,6 +206,13 @@ class GlificMeterWorkflowServiceIssueReportTest {
                 eq("No Water Supply"),
                 eq(AnomalyConstants.STATUS_OPEN)
         );
+        verify(telemetryEventPublisher).publishOutageOrNonSubmissionReason(
+                eq(1),
+                eq(10L),
+                eq(1L),
+                org.mockito.ArgumentMatchers.any(),
+                eq(AnomalyConstants.TYPE_NO_WATER_SUPPLY)
+        );
         verify(telemetryTenantRepository, never()).createIssueReportRecord(
                 org.mockito.ArgumentMatchers.anyString(),
                 org.mockito.ArgumentMatchers.anyLong(),
@@ -245,6 +263,13 @@ class GlificMeterWorkflowServiceIssueReportTest {
                 eq("pipe leakage"),
                 eq(AnomalyConstants.STATUS_OPEN)
         );
+        verify(telemetryEventPublisher).publishOutageOrNonSubmissionReason(
+                eq(1),
+                eq(10L),
+                eq(1L),
+                org.mockito.ArgumentMatchers.any(),
+                eq(AnomalyConstants.TYPE_NO_SUBMISSION)
+        );
         verify(telemetryTenantRepository, never()).createIssueReportRecord(
                 org.mockito.ArgumentMatchers.anyString(),
                 org.mockito.ArgumentMatchers.anyLong(),
@@ -293,6 +318,13 @@ class GlificMeterWorkflowServiceIssueReportTest {
                 eq(0),
                 eq("No Water Supply"),
                 eq(AnomalyConstants.STATUS_OPEN)
+        );
+        verify(telemetryEventPublisher).publishOutageOrNonSubmissionReason(
+                eq(1),
+                eq(10L),
+                eq(1L),
+                org.mockito.ArgumentMatchers.any(),
+                eq(AnomalyConstants.TYPE_NO_WATER_SUPPLY)
         );
         verify(telemetryTenantRepository, never()).createIssueReportRecord(
                 org.mockito.ArgumentMatchers.anyString(),
