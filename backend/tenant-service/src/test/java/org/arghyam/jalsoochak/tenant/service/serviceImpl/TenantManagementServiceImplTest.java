@@ -12,6 +12,7 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.never;
@@ -50,6 +51,8 @@ import org.arghyam.jalsoochak.tenant.dto.response.TenantSummaryResponseDTO;
 import org.arghyam.jalsoochak.tenant.enums.ConfigStatusEnum;
 import org.arghyam.jalsoochak.tenant.enums.RegionTypeEnum;
 import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.io.InputStream;
 import org.arghyam.jalsoochak.tenant.enums.StatusEnum;
 import org.arghyam.jalsoochak.tenant.enums.TenantConfigKeyEnum;
 import org.arghyam.jalsoochak.tenant.enums.TenantStatusEnum;
@@ -1598,6 +1601,26 @@ class TenantManagementServiceImplTest {
             when(tenantCommonRepository.findById(TENANT_ID)).thenReturn(Optional.empty());
 
             assertThrows(ResourceNotFoundException.class,
+                    () -> tenantManagementService.resolveTenantLogo(TENANT_ID));
+        }
+
+        @Test
+        @DisplayName("Should throw StorageException when download stream throws IOException")
+        void resolveTenantLogo_downloadIOException_throwsStorageException() throws Exception {
+            String objectKey = "logos/1/uuid.png";
+            ConfigDTO logoConfig = ConfigDTO.builder()
+                    .configKey(TenantConfigKeyEnum.TENANT_LOGO.name())
+                    .configValue("{\"value\":\"" + objectKey + "\"}")
+                    .build();
+            InputStream brokenStream = mock(InputStream.class);
+            when(brokenStream.readAllBytes()).thenThrow(new IOException("S3 connection reset"));
+
+            when(tenantCommonRepository.findById(TENANT_ID)).thenReturn(Optional.of(TENANT));
+            when(tenantCommonRepository.findConfigByTenantAndKey(TENANT_ID, "TENANT_LOGO"))
+                    .thenReturn(Optional.of(logoConfig));
+            when(objectStorageService.download(objectKey)).thenReturn(brokenStream);
+
+            assertThrows(StorageException.class,
                     () -> tenantManagementService.resolveTenantLogo(TENANT_ID));
         }
 

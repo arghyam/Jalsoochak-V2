@@ -29,20 +29,29 @@ VALUES (1, 'MP', 'Madhya Pradesh', 3);
 -- ── System users (SUPER_USER / STATE_ADMIN) ────────────────────────────────
 
 CREATE TABLE common_schema.tenant_admin_user_master_table (
-    id               BIGSERIAL    PRIMARY KEY,
-    uuid             VARCHAR(36)  UNIQUE,
-    email            VARCHAR(255) NOT NULL UNIQUE,
-    phone_number     VARCHAR(20)  NOT NULL,
-    tenant_id        INTEGER      NOT NULL DEFAULT 0,
-    admin_level      INTEGER      REFERENCES common_schema.user_type_master_table(id),
-    password         TEXT         NOT NULL DEFAULT 'KEYCLOAK_MANAGED',
-    status           INTEGER      NOT NULL DEFAULT 1,
-    created_by       INTEGER,
-    updated_by       INTEGER,
-    deleted_by       INTEGER,
-    deleted_at       TIMESTAMP,
-    created_at       TIMESTAMP    DEFAULT NOW(),
-    updated_at       TIMESTAMP    DEFAULT NOW()
+    id                          SERIAL       PRIMARY KEY,
+    uuid                        VARCHAR(36)  NOT NULL UNIQUE DEFAULT gen_random_uuid()::TEXT,
+    email                       VARCHAR(255) NOT NULL UNIQUE,
+    phone_number                VARCHAR(20)  NOT NULL,
+    tenant_id                   INTEGER      NOT NULL DEFAULT 0,
+    admin_level                 INTEGER      REFERENCES common_schema.user_type_master_table(id),
+    password                    TEXT         NOT NULL DEFAULT 'KEYCLOAK_MANAGED',
+    email_verification_status   BOOLEAN      NOT NULL DEFAULT FALSE,
+    phone_verification_status   BOOLEAN      NOT NULL DEFAULT FALSE,
+    status                      INTEGER      NOT NULL DEFAULT 1,
+    created_by                  INTEGER,
+    updated_by                  INTEGER,
+    deleted_by                  INTEGER,
+    deleted_at                  TIMESTAMP,
+    created_at                  TIMESTAMP    DEFAULT NOW(),
+    updated_at                  TIMESTAMP    DEFAULT NOW(),
+
+    CONSTRAINT fk_admin_user_created_by
+        FOREIGN KEY (created_by) REFERENCES common_schema.tenant_admin_user_master_table(id),
+    CONSTRAINT fk_admin_user_updated_by
+        FOREIGN KEY (updated_by) REFERENCES common_schema.tenant_admin_user_master_table(id),
+    CONSTRAINT fk_admin_user_deleted_by
+        FOREIGN KEY (deleted_by) REFERENCES common_schema.tenant_admin_user_master_table(id)
 );
 
 CREATE INDEX idx_admin_user_uuid
@@ -56,13 +65,20 @@ CREATE TABLE common_schema.admin_user_token_table (
     token_hash  VARCHAR(64)  NOT NULL,
     token_type  VARCHAR(20)  NOT NULL,
     metadata    JSONB,
-    expires_at  TIMESTAMP    NOT NULL,
-    used_at     TIMESTAMP,
-    deleted_at  TIMESTAMP,
+    expires_at  TIMESTAMPTZ  NOT NULL,
+    used_at     TIMESTAMPTZ,
+    deleted_at  TIMESTAMPTZ,
     deleted_by  INTEGER,
-    created_at  TIMESTAMP    NOT NULL DEFAULT NOW(),
+    created_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
     created_by  INTEGER,
 
+    CONSTRAINT chk_aut_token_type
+        CHECK (token_type IN ('INVITE', 'RESET')),
+    CONSTRAINT chk_aut_metadata
+        CHECK (
+            (token_type = 'INVITE' AND metadata IS NOT NULL) OR
+            (token_type = 'RESET'  AND metadata IS NULL)
+        ),
     CONSTRAINT fk_aut_deleted_by
         FOREIGN KEY (deleted_by)
         REFERENCES common_schema.tenant_admin_user_master_table(id),
@@ -84,19 +100,21 @@ CREATE INDEX idx_admin_token_email
 -- ── Tenant-scoped user table (one example: tenant_mp) ─────────────────────
 
 CREATE TABLE tenant_mp.user_table (
-    id                        BIGSERIAL PRIMARY KEY,
-    uuid                      VARCHAR(36),
-    tenant_id                 INTEGER   NOT NULL,
+    id                        BIGSERIAL    PRIMARY KEY,
+    uuid                      VARCHAR(36)  NOT NULL UNIQUE DEFAULT gen_random_uuid()::TEXT,
+    tenant_id                 INTEGER      NOT NULL,
     user_type                 INTEGER,
     title                     VARCHAR(255),
-    email                     VARCHAR(255),
+    email                     VARCHAR(255) UNIQUE,
     phone_number              VARCHAR(20),
     password                  TEXT,
     status                    INTEGER,
     email_verification_status BOOLEAN,
     phone_verification_status BOOLEAN,
     created_by                BIGINT,
-    created_at                TIMESTAMP DEFAULT NOW(),
+    created_at                TIMESTAMP    DEFAULT NOW(),
     updated_by                BIGINT,
-    updated_at                TIMESTAMP DEFAULT NOW()
+    updated_at                TIMESTAMP    DEFAULT NOW(),
+    deleted_at                TIMESTAMP,
+    deleted_by                INTEGER
 );

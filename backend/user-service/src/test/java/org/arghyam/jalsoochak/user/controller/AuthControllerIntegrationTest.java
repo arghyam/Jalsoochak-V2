@@ -126,8 +126,8 @@ class AuthControllerIntegrationTest {
     private void seedUser(String uuid, String email, int tenantId, int adminLevel, int status) {
         jdbcTemplate.update("""
                 INSERT INTO common_schema.tenant_admin_user_master_table
-                    (uuid, email, phone_number, tenant_id, admin_level, password, status, created_by)
-                VALUES (?, ?, '91XXXXXXXXXX', ?, ?, 'KEYCLOAK_MANAGED', ?, 0)
+                    (uuid, email, phone_number, tenant_id, admin_level, password, status)
+                VALUES (?, ?, '91XXXXXXXXXX', ?, ?, 'KEYCLOAK_MANAGED', ?)
                 """, uuid, email, tenantId, adminLevel, status);
     }
 
@@ -199,8 +199,8 @@ class AuthControllerIntegrationTest {
         void login_stateAdmin_populatesNameInResponse() throws Exception {
             jdbcTemplate.update("""
                     INSERT INTO common_schema.tenant_admin_user_master_table
-                        (uuid, email, phone_number, tenant_id, admin_level, password, status, created_by)
-                    VALUES ('kc-sa-1', 'sa@example.com', '91XXXXXXXXXX', 1, 2, 'KEYCLOAK_MANAGED', 1, 0)
+                        (uuid, email, phone_number, tenant_id, admin_level, password, status)
+                    VALUES ('kc-sa-1', 'sa@example.com', '91XXXXXXXXXX', 1, 2, 'KEYCLOAK_MANAGED', 1)
                     """);
             jdbcTemplate.update("""
                     INSERT INTO tenant_mp.user_table
@@ -239,8 +239,8 @@ class AuthControllerIntegrationTest {
             jdbcTemplate.update("UPDATE common_schema.tenant_master_table SET status = 2 WHERE id = 1");
             jdbcTemplate.update("""
                     INSERT INTO common_schema.tenant_admin_user_master_table
-                        (uuid, email, phone_number, tenant_id, admin_level, password, status, created_by)
-                    VALUES ('kc-cfg-sa', 'configured-sa@example.com', '91XXXXXXXXXX', 1, 2, 'KEYCLOAK_MANAGED', 1, 0)
+                        (uuid, email, phone_number, tenant_id, admin_level, password, status)
+                    VALUES ('kc-cfg-sa', 'configured-sa@example.com', '91XXXXXXXXXX', 1, 2, 'KEYCLOAK_MANAGED', 1)
                     """);
             jdbcTemplate.update("""
                     INSERT INTO tenant_mp.user_table
@@ -265,8 +265,8 @@ class AuthControllerIntegrationTest {
             jdbcTemplate.update("UPDATE common_schema.tenant_master_table SET status = 1 WHERE id = 1");
             jdbcTemplate.update("""
                     INSERT INTO common_schema.tenant_admin_user_master_table
-                        (uuid, email, phone_number, tenant_id, admin_level, password, status, created_by)
-                    VALUES ('kc-onb', 'onboarded@example.com', '91XXXXXXXXXX', 1, 2, 'KEYCLOAK_MANAGED', 1, 0)
+                        (uuid, email, phone_number, tenant_id, admin_level, password, status)
+                    VALUES ('kc-onb', 'onboarded@example.com', '91XXXXXXXXXX', 1, 2, 'KEYCLOAK_MANAGED', 1)
                     """);
 
             mockMvc.perform(post("/api/v1/auth/login")
@@ -283,8 +283,8 @@ class AuthControllerIntegrationTest {
             jdbcTemplate.update("UPDATE common_schema.tenant_master_table SET status = 5 WHERE id = 1");
             jdbcTemplate.update("""
                     INSERT INTO common_schema.tenant_admin_user_master_table
-                        (uuid, email, phone_number, tenant_id, admin_level, password, status, created_by)
-                    VALUES ('kc-deg', 'degraded@example.com', '91XXXXXXXXXX', 1, 2, 'KEYCLOAK_MANAGED', 1, 0)
+                        (uuid, email, phone_number, tenant_id, admin_level, password, status)
+                    VALUES ('kc-deg', 'degraded@example.com', '91XXXXXXXXXX', 1, 2, 'KEYCLOAK_MANAGED', 1)
                     """);
             jdbcTemplate.update("""
                     INSERT INTO tenant_mp.user_table
@@ -384,8 +384,8 @@ class AuthControllerIntegrationTest {
             // Seed the PENDING user so phone number can be fetched from DB
             jdbcTemplate.update("""
                     INSERT INTO common_schema.tenant_admin_user_master_table
-                        (uuid, email, phone_number, tenant_id, admin_level, password, status, created_by)
-                    VALUES (gen_random_uuid()::TEXT, 'new@example.com', '9112345678', 1, 2, 'KEYCLOAK_MANAGED', 2, 0)
+                        (uuid, email, phone_number, tenant_id, admin_level, password, status)
+                    VALUES (gen_random_uuid()::TEXT, 'new@example.com', '9112345678', 1, 2, 'KEYCLOAK_MANAGED', 2)
                     """);
             String rawToken = "raw-invite-token-info";
             seedToken("new@example.com", rawToken, "INVITE",

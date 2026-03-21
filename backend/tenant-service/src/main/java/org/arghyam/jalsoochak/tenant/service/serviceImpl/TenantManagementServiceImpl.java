@@ -1,6 +1,8 @@
 package org.arghyam.jalsoochak.tenant.service.serviceImpl;
 
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.EnumSet;
@@ -631,7 +633,12 @@ public class TenantManagementServiceImpl implements TenantManagementService {
         if (isExternalUrl(logoValue)) {
             return new TenantLogoResult.External(logoValue);
         }
-        return new TenantLogoResult.Managed(objectStorageService.download(logoValue), resolveLogoContentType(logoValue));
+        try (InputStream rawStream = objectStorageService.download(logoValue)) {
+            byte[] bytes = rawStream.readAllBytes();
+            return new TenantLogoResult.Managed(new ByteArrayInputStream(bytes), resolveLogoContentType(logoValue));
+        } catch (IOException e) {
+            throw new StorageException("Failed to read logo from storage [key=" + logoValue + "]", e);
+        }
     }
 
     private static String resolveLogoContentType(String objectKey) {
@@ -647,7 +654,7 @@ public class TenantManagementServiceImpl implements TenantManagementService {
         try {
             URI uri = new URI(url);
             String scheme = uri.getScheme();
-            if (!"http".equals(scheme) && !"https".equals(scheme)) {
+            if (!"http".equalsIgnoreCase(scheme) && !"https".equalsIgnoreCase(scheme)) {
                 throw new IllegalArgumentException("Logo URL must use http or https scheme.");
             }
             if (uri.getHost() == null || uri.getHost().isBlank()) {
