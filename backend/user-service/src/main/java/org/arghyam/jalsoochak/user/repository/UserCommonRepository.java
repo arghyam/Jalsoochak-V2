@@ -45,6 +45,17 @@ public class UserCommonRepository {
         return rows.stream().findFirst();
     }
 
+    public Optional<Integer> findTenantStatusByTenantId(Integer tenantId) {
+        String sql = """
+                SELECT status
+                FROM common_schema.tenant_master_table
+                WHERE id = ?
+                LIMIT 1
+                """;
+        List<Integer> rows = jdbcTemplate.query(sql, (rs, n) -> rs.getInt("status"), tenantId);
+        return rows.stream().findFirst();
+    }
+
     public Optional<String> findTenantStateCodeById(Integer tenantId) {
         String sql = """
                 SELECT state_code
