@@ -60,6 +60,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @DisplayName("AuthController Integration Tests")
 class AuthControllerIntegrationTest {
 
+    // Tenant status codes — mirrors TenantStatusEnum in tenant-service
+    private static final int TENANT_STATUS_ONBOARDED  = 1;
+    private static final int TENANT_STATUS_CONFIGURED = 2;
+    private static final int TENANT_STATUS_DEGRADED   = 5;
+
     private static final String KEYCLOAK_TOKEN_RESPONSE = """
             {"access_token":"test-at","refresh_token":"test-rt","expires_in":300,\
              "refresh_expires_in":1800,"token_type":"Bearer","scope":"openid"}
@@ -247,7 +252,7 @@ class AuthControllerIntegrationTest {
         @Test
         @DisplayName("STATE_ADMIN login with CONFIGURED tenant → 200")
         void login_stateAdmin_configuredTenant_returns200() throws Exception {
-            jdbcTemplate.update("UPDATE common_schema.tenant_master_table SET status = 2 WHERE id = 1");
+            jdbcTemplate.update("UPDATE common_schema.tenant_master_table SET status = ? WHERE id = 1", TENANT_STATUS_CONFIGURED);
             jdbcTemplate.update("""
                     INSERT INTO common_schema.tenant_admin_user_master_table
                         (uuid, email, phone_number, tenant_id, admin_level, password, status)
@@ -271,7 +276,7 @@ class AuthControllerIntegrationTest {
         @Test
         @DisplayName("Login with ONBOARDED tenant → 403 (not accessible for any user)")
         void login_onboardedTenant_returns403() throws Exception {
-            jdbcTemplate.update("UPDATE common_schema.tenant_master_table SET status = 1 WHERE id = 1");
+            jdbcTemplate.update("UPDATE common_schema.tenant_master_table SET status = ? WHERE id = 1", TENANT_STATUS_ONBOARDED);
             jdbcTemplate.update("""
                     INSERT INTO common_schema.tenant_admin_user_master_table
                         (uuid, email, phone_number, tenant_id, admin_level, password, status)
@@ -287,7 +292,7 @@ class AuthControllerIntegrationTest {
         @Test
         @DisplayName("Login with DEGRADED tenant → 200 (still operational)")
         void login_degradedTenant_returns200() throws Exception {
-            jdbcTemplate.update("UPDATE common_schema.tenant_master_table SET status = 5 WHERE id = 1");
+            jdbcTemplate.update("UPDATE common_schema.tenant_master_table SET status = ? WHERE id = 1", TENANT_STATUS_DEGRADED);
             jdbcTemplate.update("""
                     INSERT INTO common_schema.tenant_admin_user_master_table
                         (uuid, email, phone_number, tenant_id, admin_level, password, status)

@@ -567,19 +567,8 @@ public class TenantManagementServiceImpl implements TenantManagementService {
             }
         };
 
-        Integer currentUserId = resolveCurrentUserId();
-        String serialized;
-        try {
-            serialized = objectMapper.writeValueAsString(new SimpleConfigValueDTO(newValue));
-        } catch (JsonProcessingException e) {
-            throw new InvalidConfigValueException("Failed to serialize logo value", e);
-        }
-
-        tenantCommonRepository
-                .upsertConfig(tenantId, TenantConfigKeyEnum.TENANT_LOGO.name(), serialized, currentUserId)
-                .orElseThrow(() -> new RuntimeException("Failed to upsert TENANT_LOGO config"));
-
-        // Tie S3 side-effects to the DB transaction:
+        // Register S3 side-effect cleanup immediately after upload, before any subsequent call can
+        // fail and orphan the uploaded object:
         //  - afterCommit: delete the old logo object (we own it; external URLs are skipped).
         //  - afterCompletion on rollback: delete the newly uploaded object to avoid orphaned storage.
         final String uploadedKey = (source instanceof LogoSource.FileSource) ? newValue : null;
@@ -612,6 +601,18 @@ public class TenantManagementServiceImpl implements TenantManagementService {
                 }
             }
         });
+
+        Integer currentUserId = resolveCurrentUserId();
+        String serialized;
+        try {
+            serialized = objectMapper.writeValueAsString(new SimpleConfigValueDTO(newValue));
+        } catch (JsonProcessingException e) {
+            throw new InvalidConfigValueException("Failed to serialize logo value", e);
+        }
+
+        tenantCommonRepository
+                .upsertConfig(tenantId, TenantConfigKeyEnum.TENANT_LOGO.name(), serialized, currentUserId)
+                .orElseThrow(() -> new RuntimeException("Failed to upsert TENANT_LOGO config"));
 
         Map<TenantConfigKeyEnum, ConfigValueDTO> result = new HashMap<>();
         result.put(TenantConfigKeyEnum.TENANT_LOGO, new SimpleConfigValueDTO(newValue));
@@ -697,13 +698,15 @@ public class TenantManagementServiceImpl implements TenantManagementService {
     }
 
     private boolean isExternalUrl(String value) {
-        return value.startsWith("http://") || value.startsWith("https://");
+        String lower = value.toLowerCase();
+        return lower.startsWith("http://") || lower.startsWith("https://");
     }
 
     private Integer resolveCurrentUserId() {
         String uuid = SecurityUtils.getCurrentUserUuid();
+        log.debug("[TenantManagementService] Resolving user id for uuid={}", uuid);
         return tenantCommonRepository.findUserIdByUuid(uuid)
-                .orElseThrow(() -> new ResourceNotFoundException("Current user not found for uuid: " + uuid));
+                .orElseThrow(() -> new ResourceNotFoundException("Current user not found"));
     }
 
     private void setDefaultConfigs(TenantResponseDTO tenant, String schemaName, Integer currentUserId) {

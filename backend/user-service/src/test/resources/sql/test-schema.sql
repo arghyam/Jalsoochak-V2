@@ -43,8 +43,8 @@ CREATE TABLE common_schema.tenant_admin_user_master_table (
     updated_by                  INTEGER,
     deleted_by                  INTEGER,
     deleted_at                  TIMESTAMP,
-    created_at                  TIMESTAMP    DEFAULT NOW(),
-    updated_at                  TIMESTAMP    DEFAULT NOW(),
+    created_at                  TIMESTAMP    NOT NULL DEFAULT NOW(),
+    updated_at                  TIMESTAMP    NOT NULL DEFAULT NOW(),
 
     CONSTRAINT fk_admin_user_created_by
         FOREIGN KEY (created_by) REFERENCES common_schema.tenant_admin_user_master_table(id),
@@ -113,9 +113,9 @@ CREATE TABLE tenant_mp.user_table (
     phone_verification_status BOOLEAN,
     language_id               INTEGER,
     created_by                BIGINT,
-    created_at                TIMESTAMP    DEFAULT NOW(),
+    created_at                TIMESTAMP    NOT NULL DEFAULT NOW(),
     updated_by                BIGINT,
-    updated_at                TIMESTAMP    DEFAULT NOW(),
+    updated_at                TIMESTAMP    NOT NULL DEFAULT NOW(),
     deleted_at                TIMESTAMP,
     deleted_by                INTEGER
 );

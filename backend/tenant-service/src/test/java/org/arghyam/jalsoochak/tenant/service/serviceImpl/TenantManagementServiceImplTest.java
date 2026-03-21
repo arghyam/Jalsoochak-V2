@@ -1444,6 +1444,26 @@ class TenantManagementServiceImplTest {
             verify(objectStorageService).delete(uploadedKey);
         }
 
+        @Test
+        @DisplayName("Should delete uploaded object when resolveCurrentUserId fails after upload")
+        void setTenantLogo_fileSource_resolveUserFails_deletesUploadedObject() throws Exception {
+            String uploadedKey = "logos/1/orphan-uuid.png";
+            MockMultipartFile file = new MockMultipartFile(
+                    "file", "logo.png", "image/png", "fake-image-bytes".getBytes());
+
+            when(tenantCommonRepository.findById(TENANT_ID)).thenReturn(Optional.of(TENANT));
+            when(tenantCommonRepository.findConfigByTenantAndKey(TENANT_ID, "TENANT_LOGO")).thenReturn(Optional.empty());
+            when(objectStorageService.upload(anyString(), any(), anyLong(), eq("image/png"))).thenReturn(uploadedKey);
+            when(SecurityUtils.getCurrentUserUuid()).thenReturn("unknown-uuid");
+            when(tenantCommonRepository.findUserIdByUuid("unknown-uuid")).thenReturn(Optional.empty());
+
+            assertThrows(ResourceNotFoundException.class,
+                    () -> tenantManagementService.setTenantLogo(TENANT_ID, new LogoSource.FileSource(file)));
+            fireAfterRollback();
+
+            verify(objectStorageService).delete(uploadedKey);
+        }
+
         // --- UrlSource tests ---
 
         @Test
