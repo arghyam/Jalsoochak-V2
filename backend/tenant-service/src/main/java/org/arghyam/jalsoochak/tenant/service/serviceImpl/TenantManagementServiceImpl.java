@@ -645,7 +645,6 @@ public class TenantManagementServiceImpl implements TenantManagementService {
         String lower = objectKey.toLowerCase();
         if (lower.endsWith(".png")) return "image/png";
         if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "image/jpeg";
-        if (lower.endsWith(".svg")) return "image/svg+xml";
         if (lower.endsWith(".webp")) return "image/webp";
         return "application/octet-stream";
     }
@@ -668,6 +667,9 @@ public class TenantManagementServiceImpl implements TenantManagementService {
     private void validateLogoFile(MultipartFile file) {
         if (file.isEmpty()) {
             throw new IllegalArgumentException("Logo file must not be empty");
+        }
+        if (file.getSize() > 2 * 1024 * 1024) {
+            throw new IllegalArgumentException("Logo file must not exceed 2 MB");
         }
         String contentType = file.getContentType();
         if (contentType == null || !ALLOWED_LOGO_TYPES.contains(contentType)) {

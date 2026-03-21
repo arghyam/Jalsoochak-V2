@@ -1364,6 +1364,20 @@ class TenantManagementServiceImplTest {
         }
 
         @Test
+        @DisplayName("Should throw IllegalArgumentException when file exceeds 2 MB")
+        void setTenantLogo_fileSource_fileTooLarge_throwsIllegalArgumentException() {
+            byte[] oversized = new byte[2 * 1024 * 1024 + 1];
+            MockMultipartFile file = new MockMultipartFile(
+                    "file", "logo.png", "image/png", oversized);
+
+            when(tenantCommonRepository.findById(TENANT_ID)).thenReturn(Optional.of(TENANT));
+
+            assertThrows(IllegalArgumentException.class,
+                    () -> tenantManagementService.setTenantLogo(TENANT_ID, new LogoSource.FileSource(file)));
+            verify(objectStorageService, never()).upload(any(), any(), anyLong(), any());
+        }
+
+        @Test
         @DisplayName("Should throw IllegalArgumentException for unsupported content type")
         void setTenantLogo_fileSource_unsupportedType_throwsIllegalArgumentException() {
             MockMultipartFile file = new MockMultipartFile(

@@ -114,6 +114,7 @@ class AuthControllerIntegrationTest {
         jdbcTemplate.execute("DELETE FROM common_schema.admin_user_token_table");
         jdbcTemplate.execute("DELETE FROM common_schema.tenant_admin_user_master_table");
         jdbcTemplate.execute("DELETE FROM tenant_mp.user_table");
+        jdbcTemplate.update("UPDATE common_schema.tenant_master_table SET status = 3 WHERE id = 1");
 
         // Default deep-stub for Keycloak admin (void chains are no-ops by default)
         Keycloak mockAdmin = mock(Keycloak.class, Answers.RETURNS_DEEP_STUBS);
@@ -164,6 +165,16 @@ class AuthControllerIntegrationTest {
                                 .withStatus(httpStatus)
                                 .withHeader("Content-Type", "application/json")
                                 .withBody(body)));
+    }
+
+    private void stubKeycloakUserCreation(String returnedUuid) {
+        Keycloak deepAdmin = mock(Keycloak.class, Answers.RETURNS_DEEP_STUBS);
+        when(keycloakProvider.getAdminInstance()).thenReturn(deepAdmin);
+        when(keycloakProvider.getRealm()).thenReturn("jalsoochak-realm");
+        Response createResp = Response
+                .created(URI.create("http://localhost/admin/realms/jalsoochak-realm/users/" + returnedUuid))
+                .build();
+        when(deepAdmin.realm(anyString()).users().create(any())).thenReturn(createResp);
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -255,8 +266,6 @@ class AuthControllerIntegrationTest {
                             .contentType(MediaType.APPLICATION_JSON)
                             .content("{\"email\":\"configured-sa@example.com\",\"password\":\"Pass@123\"}"))
                     .andExpect(status().isOk());
-
-            jdbcTemplate.update("UPDATE common_schema.tenant_master_table SET status = 3 WHERE id = 1");
         }
 
         @Test
@@ -273,8 +282,6 @@ class AuthControllerIntegrationTest {
                             .contentType(MediaType.APPLICATION_JSON)
                             .content("{\"email\":\"onboarded@example.com\",\"password\":\"Pass@123\"}"))
                     .andExpect(status().isForbidden());
-
-            jdbcTemplate.update("UPDATE common_schema.tenant_master_table SET status = 3 WHERE id = 1");
         }
 
         @Test
@@ -299,8 +306,6 @@ class AuthControllerIntegrationTest {
                             .contentType(MediaType.APPLICATION_JSON)
                             .content("{\"email\":\"degraded@example.com\",\"password\":\"Pass@123\"}"))
                     .andExpect(status().isOk());
-
-            jdbcTemplate.update("UPDATE common_schema.tenant_master_table SET status = 3 WHERE id = 1");
         }
 
         @Test
@@ -453,14 +458,7 @@ class AuthControllerIntegrationTest {
                     "{\"role\":\"SUPER_USER\"}",
                     LocalDateTime.now().plusHours(24));
 
-            Keycloak deepAdmin = mock(Keycloak.class, Answers.RETURNS_DEEP_STUBS);
-            when(keycloakProvider.getAdminInstance()).thenReturn(deepAdmin);
-            when(keycloakProvider.getRealm()).thenReturn("jalsoochak-realm");
-            Response createResp = Response
-                    .created(URI.create("http://localhost/admin/realms/jalsoochak-realm/users/new-kc-uuid"))
-                    .build();
-            when(deepAdmin.realm(anyString()).users().create(any())).thenReturn(createResp);
-
+            stubKeycloakUserCreation("new-kc-uuid");
             stubKeycloakToken(200, KEYCLOAK_TOKEN_RESPONSE);
 
             String payload = String.format("""
@@ -497,14 +495,7 @@ class AuthControllerIntegrationTest {
                     "{\"role\":\"STATE_ADMIN\",\"tenantCode\":\"MP\",\"tenantName\":\"Madhya Pradesh\"}",
                     LocalDateTime.now().plusHours(24));
 
-            Keycloak deepAdmin = mock(Keycloak.class, Answers.RETURNS_DEEP_STUBS);
-            when(keycloakProvider.getAdminInstance()).thenReturn(deepAdmin);
-            when(keycloakProvider.getRealm()).thenReturn("jalsoochak-realm");
-            Response createResp = Response
-                    .created(URI.create("http://localhost/admin/realms/jalsoochak-realm/users/sa-kc-uuid"))
-                    .build();
-            when(deepAdmin.realm(anyString()).users().create(any())).thenReturn(createResp);
-
+            stubKeycloakUserCreation("sa-kc-uuid");
             stubKeycloakToken(200, KEYCLOAK_TOKEN_RESPONSE);
 
             String payload = String.format("""
