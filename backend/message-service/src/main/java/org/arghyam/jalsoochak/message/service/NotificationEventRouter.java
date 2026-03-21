@@ -65,6 +65,30 @@ public class NotificationEventRouter {
      * idempotent downstream reprocessing.
      */
     private static final String WELCOME_DLT_TOPIC = "welcome-message-dlt";
+
+    /**
+     * Dead-letter topic for {@code SEND_INVITE_EMAIL}, {@code SEND_REINVITE_EMAIL},
+     * and {@code SEND_PASSWORD_RESET_EMAIL} per-recipient failures.
+     *
+     * <p>Messages are published here — and the handler returns without rethrowing —
+     * for all failure modes: malformed event payload, missing required fields
+     * ({@code to}, {@code inviteLink}, {@code resetLink}), or an SMTP-level error.
+     *
+     * <p>Email delivery is <em>not</em> idempotent: rethrowing on failure would
+     * trigger Kafka's retry/back-off policy and could cause duplicate emails to be
+     * sent to the same recipient. Routing to this DLT instead lets the Kafka
+     * container move on while preserving the failed record for ops investigation
+     * and controlled replay.
+     *
+     * <p>This service intentionally does <em>not</em> consume this topic.
+     * Re-consuming from the same service that produces here would create an
+     * unbounded retry loop. Instead, configure external monitoring/alerting
+     * (e.g. a Kafka consumer lag alert or a separate ops consumer) on
+     * {@code account-email-dlt} to detect and replay failed records.
+     * Each dead-lettered record carries a {@code retryId} (UUID) field for
+     * idempotent downstream reprocessing, and an {@code originalEventType} field
+     * so the replaying consumer can re-route to the correct handler.
+     */
     private static final String ACCOUNT_EMAIL_DLT_TOPIC = "account-email-dlt";
 
     private final ObjectMapper objectMapper;
@@ -394,8 +418,13 @@ public class NotificationEventRouter {
             publishEmailDlt("SEND_INVITE_EMAIL", event.getTo(), "missing_invite_link");
             return;
         }
-        accountEmailService.sendInviteEmail(event.getTo(), event.getName(), event.getRole(), event.getInviteLink(), event.getExpiryHours());
-        log.info("[Router/INVITE_EMAIL] Invite email dispatched recipientRole={}", event.getRole());
+        try {
+            accountEmailService.sendInviteEmail(event.getTo(), event.getName(), event.getRole(), event.getInviteLink(), event.getExpiryHours());
+            log.info("[Router/INVITE_EMAIL] Invite email dispatched recipientRole={}", event.getRole());
+        } catch (Exception e) {
+            log.error("[Router/INVITE_EMAIL] SMTP failure, routing to DLT: {}", e.getMessage());
+            publishEmailDlt("SEND_INVITE_EMAIL", event.getTo(), "smtp_error: " + e.getMessage());
+        }
     }
 
     private void handleReinviteEmail(JsonNode root) {
@@ -417,8 +446,13 @@ public class NotificationEventRouter {
             publishEmailDlt("SEND_REINVITE_EMAIL", event.getTo(), "missing_invite_link");
             return;
         }
-        accountEmailService.sendReinviteEmail(event.getTo(), event.getName(), event.getInviteLink(), event.getExpiryHours());
-        log.info("[Router/REINVITE_EMAIL] Reinvite email dispatched recipientRole={}", event.getRole());
+        try {
+            accountEmailService.sendReinviteEmail(event.getTo(), event.getName(), event.getInviteLink(), event.getExpiryHours());
+            log.info("[Router/REINVITE_EMAIL] Reinvite email dispatched recipientRole={}", event.getRole());
+        } catch (Exception e) {
+            log.error("[Router/REINVITE_EMAIL] SMTP failure, routing to DLT: {}", e.getMessage());
+            publishEmailDlt("SEND_REINVITE_EMAIL", event.getTo(), "smtp_error: " + e.getMessage());
+        }
     }
 
     private void handlePasswordResetEmail(JsonNode root) {
@@ -440,8 +474,13 @@ public class NotificationEventRouter {
             publishEmailDlt("SEND_PASSWORD_RESET_EMAIL", event.getTo(), "missing_reset_link");
             return;
         }
-        accountEmailService.sendPasswordResetEmail(event.getTo(), event.getResetLink(), event.getExpiryMinutes());
-        log.info("[Router/PASSWORD_RESET_EMAIL] Password reset email dispatched");
+        try {
+            accountEmailService.sendPasswordResetEmail(event.getTo(), event.getResetLink(), event.getExpiryMinutes());
+            log.info("[Router/PASSWORD_RESET_EMAIL] Password reset email dispatched");
+        } catch (Exception e) {
+            log.error("[Router/PASSWORD_RESET_EMAIL] SMTP failure, routing to DLT: {}", e.getMessage());
+            publishEmailDlt("SEND_PASSWORD_RESET_EMAIL", event.getTo(), "smtp_error: " + e.getMessage());
+        }
     }
 
     private void publishEmailDlt(String originalEventType, String to, String errorReason) {
