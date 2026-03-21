@@ -86,8 +86,8 @@ public class TenantManagementServiceImpl implements TenantManagementService {
 
 
     // TODO: Re-enable "image/svg+xml" only after implementing SVG sanitization and serving from an isolated origin.
-    private static final Set<String> ALLOWED_LOGO_TYPES =
-            Set.of("image/png", "image/jpeg", "image/webp");
+    private static final Map<String, String> ALLOWED_LOGO_TYPES =
+            Map.of("image/png", "png", "image/jpeg", "jpg", "image/webp", "webp");
 
     @Override
     @Transactional
@@ -471,6 +471,13 @@ public class TenantManagementServiceImpl implements TenantManagementService {
             throw new InvalidConfigValueException("Each hierarchy level must be non-null and include a level number");
         }
 
+        Set<Integer> levelNumbers = levels.stream()
+                .map(LocationLevelConfigDTO::getLevel)
+                .collect(Collectors.toSet());
+        if (levelNumbers.size() < levels.size()) {
+            throw new InvalidConfigValueException("Hierarchy level numbers must be unique");
+        }
+
         RegionTypeEnum regionType = resolveRegionType(hierarchyType);
         String schemaName = "tenant_" + tenant.getStateCode().toLowerCase();
         Integer currentUserId = resolveCurrentUserId();
@@ -553,12 +560,17 @@ public class TenantManagementServiceImpl implements TenantManagementService {
                 validateLogoFile(fs.file());
                 String ext = resolveLogoExtension(fs.file().getContentType());
                 String objectKey = "logos/" + tenantId + "/" + UUID.randomUUID() + "." + ext;
+                final InputStream logoStream;
                 try {
-                    String storedKey = objectStorageService.upload(objectKey, fs.file().getInputStream(),
-                            fs.file().getSize(), fs.file().getContentType());
-                    yield storedKey;
+                    logoStream = fs.file().getInputStream();
                 } catch (IOException e) {
-                    throw new StorageException("Failed to read uploaded logo file", e);
+                    throw new StorageException("Failed to open uploaded logo file", e);
+                }
+                try (InputStream stream = logoStream) {
+                    yield objectStorageService.upload(objectKey, stream,
+                            fs.file().getSize(), fs.file().getContentType());
+                } catch (IOException e) {
+                    throw new StorageException("Failed to read or close uploaded logo stream", e);
                 }
             }
             case LogoSource.UrlSource us -> {
@@ -673,19 +685,19 @@ public class TenantManagementServiceImpl implements TenantManagementService {
             throw new IllegalArgumentException("Logo file must not exceed 2 MB");
         }
         String contentType = file.getContentType();
-        if (contentType == null || !ALLOWED_LOGO_TYPES.contains(contentType)) {
+        if (contentType == null || !ALLOWED_LOGO_TYPES.containsKey(contentType)) {
             throw new IllegalArgumentException(
-                    "Unsupported logo file type: " + contentType + ". Allowed: " + ALLOWED_LOGO_TYPES);
+                    "Unsupported logo file type: " + contentType + ". Allowed: " + ALLOWED_LOGO_TYPES.keySet());
         }
     }
 
     private String resolveLogoExtension(String contentType) {
-        return switch (contentType) {
-            case "image/png" -> "png";
-            case "image/jpeg" -> "jpg";
-            case "image/webp" -> "webp";
-            default -> "bin";
-        };
+        String ext = ALLOWED_LOGO_TYPES.get(contentType);
+        if (ext == null) {
+            throw new IllegalArgumentException(
+                    "Unsupported logo file type: " + contentType + ". Allowed: " + ALLOWED_LOGO_TYPES.keySet());
+        }
+        return ext;
     }
 
     private String parseLogoValue(String configJson) {

@@ -1215,6 +1215,22 @@ class TenantManagementServiceImplTest {
             assertThrows(InvalidConfigValueException.class,
                     () -> tenantManagementService.updateLocationHierarchy(tenantId, "LGD", levelsWithNullField));
         }
+
+        @Test
+        @DisplayName("Should throw InvalidConfigValueException when level numbers contain duplicates")
+        void testUpdateLocationHierarchy_DuplicateLevelNumbers_Rejected() {
+            Integer tenantId = 1;
+            TenantResponseDTO tenant = TenantResponseDTO.builder().id(tenantId).stateCode("mp").build();
+            when(tenantCommonRepository.findById(tenantId)).thenReturn(Optional.of(tenant));
+
+            List<LocationLevelConfigDTO> levelsWithDuplicates = List.of(
+                    LocationLevelConfigDTO.builder().level(1).levelName(List.of()).build(),
+                    LocationLevelConfigDTO.builder().level(1).levelName(List.of()).build());
+
+            InvalidConfigValueException ex = assertThrows(InvalidConfigValueException.class,
+                    () -> tenantManagementService.updateLocationHierarchy(tenantId, "LGD", levelsWithDuplicates));
+            assertTrue(ex.getMessage().contains("unique"));
+        }
     }
 
     @Nested
