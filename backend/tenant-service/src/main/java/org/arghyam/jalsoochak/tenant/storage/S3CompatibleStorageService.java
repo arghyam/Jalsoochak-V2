@@ -5,13 +5,13 @@ import lombok.extern.slf4j.Slf4j;
 
 import org.arghyam.jalsoochak.tenant.config.properties.StorageProperties;
 import org.arghyam.jalsoochak.tenant.exception.StorageException;
+import software.amazon.awssdk.core.exception.SdkException;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
 import software.amazon.awssdk.services.s3.model.GetObjectRequest;
 import software.amazon.awssdk.services.s3.model.NoSuchKeyException;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
-import software.amazon.awssdk.services.s3.model.S3Exception;
 
 import java.io.InputStream;
 
@@ -48,7 +48,7 @@ public class S3CompatibleStorageService implements ObjectStorageService {
                     RequestBody.fromInputStream(content, contentLength));
             log.debug("[Storage] Upload complete [key={}]", objectKey);
             return objectKey;
-        } catch (S3Exception e) {
+        } catch (SdkException e) {
             throw new StorageException("Upload failed for key: " + objectKey, e);
         }
     }
@@ -64,7 +64,7 @@ public class S3CompatibleStorageService implements ObjectStorageService {
                             .build());
         } catch (NoSuchKeyException e) {
             log.debug("[Storage] Object not found during delete — already removed [key={}]", objectKey);
-        } catch (S3Exception e) {
+        } catch (SdkException e) {
             throw new StorageException("Delete failed for key: " + objectKey, e);
         }
     }
@@ -95,7 +95,7 @@ public class S3CompatibleStorageService implements ObjectStorageService {
                     .build());
         } catch (NoSuchKeyException e) {
             throw new StorageException("Object not found: " + objectKey, e);
-        } catch (S3Exception e) {
+        } catch (SdkException e) {
             throw new StorageException("Download failed for key: " + objectKey, e);
         }
     }

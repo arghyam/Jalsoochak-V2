@@ -21,7 +21,7 @@ public sealed interface LogoSource permits LogoSource.FileSource, LogoSource.Url
             try {
                 java.net.URI uri = new java.net.URI(url);
                 String scheme = uri.getScheme();
-                if (!"http".equals(scheme) && !"https".equals(scheme)) {
+                if (scheme == null || (!"http".equalsIgnoreCase(scheme) && !"https".equalsIgnoreCase(scheme))) {
                     throw new IllegalArgumentException("URL must use http or https scheme: " + url);
                 }
                 if (uri.getHost() == null || uri.getHost().isBlank()) {

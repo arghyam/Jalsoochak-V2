@@ -83,8 +83,9 @@ public class TenantManagementServiceImpl implements TenantManagementService {
     private final ObjectStorageService objectStorageService;
 
 
+    // TODO: Re-enable "image/svg+xml" only after implementing SVG sanitization and serving from an isolated origin.
     private static final Set<String> ALLOWED_LOGO_TYPES =
-            Set.of("image/png", "image/jpeg", "image/svg+xml", "image/webp");
+            Set.of("image/png", "image/jpeg", "image/webp");
 
     @Override
     @Transactional
@@ -551,12 +552,12 @@ public class TenantManagementServiceImpl implements TenantManagementService {
                 String ext = resolveLogoExtension(fs.file().getContentType());
                 String objectKey = "logos/" + tenantId + "/" + UUID.randomUUID() + "." + ext;
                 try {
-                    objectStorageService.upload(objectKey, fs.file().getInputStream(),
+                    String storedKey = objectStorageService.upload(objectKey, fs.file().getInputStream(),
                             fs.file().getSize(), fs.file().getContentType());
+                    yield storedKey;
                 } catch (IOException e) {
                     throw new StorageException("Failed to read uploaded logo file", e);
                 }
-                yield objectKey;
             }
             case LogoSource.UrlSource us -> {
                 validateLogoUrl(us.url());
@@ -576,19 +577,39 @@ public class TenantManagementServiceImpl implements TenantManagementService {
                 .upsertConfig(tenantId, TenantConfigKeyEnum.TENANT_LOGO.name(), serialized, currentUserId)
                 .orElseThrow(() -> new RuntimeException("Failed to upsert TENANT_LOGO config"));
 
-        // Best-effort delete of the previous logo object after a successful DB upsert.
-        // Skip if the old value was an external URL — we don't own that resource.
-        if (oldValue != null && !isExternalUrl(oldValue)) {
-            try {
-                log.info("Deleting previous logo object from storage [key={}]", oldValue);
-                objectStorageService.delete(oldValue);
-                log.info("Deleted previous logo object [key={}]", oldValue);
-            } catch (Exception e) {
-                log.warn("Failed to delete previous logo object [key={}]: {}", oldValue, e.getMessage());
+        // Tie S3 side-effects to the DB transaction:
+        //  - afterCommit: delete the old logo object (we own it; external URLs are skipped).
+        //  - afterCompletion on rollback: delete the newly uploaded object to avoid orphaned storage.
+        final String uploadedKey = (source instanceof LogoSource.FileSource) ? newValue : null;
+        final String prevKey = (oldValue != null && !isExternalUrl(oldValue)) ? oldValue : null;
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                if (prevKey != null) {
+                    try {
+                        log.info("Deleting previous logo object from storage [key={}]", prevKey);
+                        objectStorageService.delete(prevKey);
+                        log.info("Deleted previous logo object [key={}]", prevKey);
+                    } catch (Exception e) {
+                        log.warn("Failed to delete previous logo object [key={}]: {}", prevKey, e.getMessage());
+                    }
+                } else {
+                    log.debug("No previous managed logo to delete");
+                }
             }
-        } else {
-            log.info("No previous managed logo to delete [oldValue={}]", oldValue);
-        }
+
+            @Override
+            public void afterCompletion(int status) {
+                if (status == TransactionSynchronization.STATUS_ROLLED_BACK && uploadedKey != null) {
+                    try {
+                        log.warn("Transaction rolled back — cleaning up uploaded logo [key={}]", uploadedKey);
+                        objectStorageService.delete(uploadedKey);
+                    } catch (Exception e) {
+                        log.warn("Failed to clean up uploaded logo after rollback [key={}]: {}", uploadedKey, e.getMessage());
+                    }
+                }
+            }
+        });
 
         Map<TenantConfigKeyEnum, ConfigValueDTO> result = new HashMap<>();
         result.put(TenantConfigKeyEnum.TENANT_LOGO, new SimpleConfigValueDTO(newValue));
@@ -652,7 +673,6 @@ public class TenantManagementServiceImpl implements TenantManagementService {
         return switch (contentType) {
             case "image/png" -> "png";
             case "image/jpeg" -> "jpg";
-            case "image/svg+xml" -> "svg";
             case "image/webp" -> "webp";
             default -> "bin";
         };

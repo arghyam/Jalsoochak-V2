@@ -78,6 +78,8 @@ import org.mockito.Mock;
 import org.mockito.MockedStatic;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -1220,6 +1222,25 @@ class TenantManagementServiceImplTest {
         private static final TenantResponseDTO TENANT =
                 TenantResponseDTO.builder().id(TENANT_ID).stateCode("TN").build();
 
+        @BeforeEach
+        void initTransactionSync() {
+            TransactionSynchronizationManager.initSynchronization();
+        }
+
+        @AfterEach
+        void clearTransactionSync() {
+            TransactionSynchronizationManager.clearSynchronization();
+        }
+
+        private void fireAfterCommit() {
+            TransactionSynchronizationManager.getSynchronizations().forEach(TransactionSynchronization::afterCommit);
+        }
+
+        private void fireAfterRollback() {
+            TransactionSynchronizationManager.getSynchronizations()
+                    .forEach(s -> s.afterCompletion(TransactionSynchronization.STATUS_ROLLED_BACK));
+        }
+
         // --- FileSource tests ---
 
         @Test
@@ -1241,6 +1262,7 @@ class TenantManagementServiceImplTest {
                     .thenReturn(Optional.of(saved));
 
             TenantConfigResponseDTO result = tenantManagementService.setTenantLogo(TENANT_ID, new LogoSource.FileSource(file));
+            fireAfterCommit();
 
             assertNotNull(result);
             assertEquals(TENANT_ID, result.getTenantId());
@@ -1277,6 +1299,7 @@ class TenantManagementServiceImplTest {
                     .thenReturn(Optional.of(saved));
 
             tenantManagementService.setTenantLogo(TENANT_ID, new LogoSource.FileSource(file));
+            fireAfterCommit();
 
             verify(objectStorageService).delete(oldKey);
         }
@@ -1306,6 +1329,7 @@ class TenantManagementServiceImplTest {
                     .thenReturn(Optional.of(saved));
 
             tenantManagementService.setTenantLogo(TENANT_ID, new LogoSource.FileSource(file));
+            fireAfterCommit();
 
             verify(objectStorageService, never()).delete(any());
         }
@@ -1365,6 +1389,44 @@ class TenantManagementServiceImplTest {
             verify(tenantCommonRepository, never()).upsertConfig(any(), any(), any(), any());
         }
 
+        @Test
+        @DisplayName("Should throw IllegalArgumentException for SVG content type (XSS vector)")
+        void setTenantLogo_fileSource_svgType_throwsIllegalArgumentException() {
+            MockMultipartFile file = new MockMultipartFile(
+                    "file", "logo.svg", "image/svg+xml", "<svg></svg>".getBytes());
+
+            when(tenantCommonRepository.findById(TENANT_ID)).thenReturn(Optional.of(TENANT));
+
+            assertThrows(IllegalArgumentException.class,
+                    () -> tenantManagementService.setTenantLogo(TENANT_ID, new LogoSource.FileSource(file)));
+            verify(objectStorageService, never()).upload(any(), any(), anyLong(), any());
+        }
+
+        @Test
+        @DisplayName("Should delete uploaded object when transaction is rolled back (file source)")
+        void setTenantLogo_fileSource_rollback_deletesUploadedObject() throws Exception {
+            String uploadedKey = "logos/1/new-uuid.png";
+            MockMultipartFile file = new MockMultipartFile(
+                    "file", "logo.png", "image/png", "fake-image-bytes".getBytes());
+            ConfigDTO saved = ConfigDTO.builder()
+                    .configKey(TenantConfigKeyEnum.TENANT_LOGO.name())
+                    .configValue("{\"value\":\"" + uploadedKey + "\"}")
+                    .build();
+
+            when(tenantCommonRepository.findById(TENANT_ID)).thenReturn(Optional.of(TENANT));
+            when(tenantCommonRepository.findConfigByTenantAndKey(TENANT_ID, "TENANT_LOGO")).thenReturn(Optional.empty());
+            when(objectStorageService.upload(anyString(), any(), anyLong(), eq("image/png"))).thenReturn(uploadedKey);
+            when(SecurityUtils.getCurrentUserUuid()).thenReturn("user-uuid");
+            when(tenantCommonRepository.findUserIdByUuid("user-uuid")).thenReturn(Optional.of(100));
+            when(tenantCommonRepository.upsertConfig(eq(TENANT_ID), eq("TENANT_LOGO"), anyString(), eq(100)))
+                    .thenReturn(Optional.of(saved));
+
+            tenantManagementService.setTenantLogo(TENANT_ID, new LogoSource.FileSource(file));
+            fireAfterRollback();
+
+            verify(objectStorageService).delete(uploadedKey);
+        }
+
         // --- UrlSource tests ---
 
         @Test
@@ -1384,6 +1446,7 @@ class TenantManagementServiceImplTest {
                     .thenReturn(Optional.of(saved));
 
             TenantConfigResponseDTO result = tenantManagementService.setTenantLogo(TENANT_ID, new LogoSource.UrlSource(externalUrl));
+            fireAfterCommit();
 
             assertNotNull(result);
             assertEquals(TENANT_ID, result.getTenantId());
@@ -1415,6 +1478,7 @@ class TenantManagementServiceImplTest {
                     .thenReturn(Optional.of(saved));
 
             tenantManagementService.setTenantLogo(TENANT_ID, new LogoSource.UrlSource(externalUrl));
+            fireAfterCommit();
 
             verify(objectStorageService).delete(oldKey);
         }
@@ -1441,6 +1505,7 @@ class TenantManagementServiceImplTest {
                     .thenReturn(Optional.of(saved));
 
             tenantManagementService.setTenantLogo(TENANT_ID, new LogoSource.UrlSource(newExternalUrl));
+            fireAfterCommit();
 
             verify(objectStorageService, never()).delete(any());
         }

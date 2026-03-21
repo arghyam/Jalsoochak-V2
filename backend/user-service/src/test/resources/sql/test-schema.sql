@@ -38,6 +38,7 @@ CREATE TABLE common_schema.tenant_admin_user_master_table (
     password         TEXT         NOT NULL DEFAULT 'KEYCLOAK_MANAGED',
     status           INTEGER      NOT NULL DEFAULT 1,
     created_by       INTEGER,
+    updated_by       INTEGER,
     deleted_by       INTEGER,
     deleted_at       TIMESTAMP,
     created_at       TIMESTAMP    DEFAULT NOW(),

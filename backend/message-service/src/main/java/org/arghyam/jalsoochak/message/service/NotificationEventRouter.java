@@ -496,7 +496,12 @@ public class NotificationEventRouter {
         // to is PII — included for reprocessing, must not surface in INFO logs
         payload.put("to", to != null ? to : "unknown");
         log.debug("[Router/EMAIL_DLT] Publishing to DLT originalEventType={}", originalEventType);
-        kafkaProducer.publishJson(ACCOUNT_EMAIL_DLT_TOPIC, payload);
+        try {
+            kafkaProducer.publishJson(ACCOUNT_EMAIL_DLT_TOPIC, payload);
+        } catch (Exception e) {
+            log.error("[Router/EMAIL_DLT] Failed to publish to DLT originalEventType={}: {}", originalEventType, e.getMessage());
+            // Do not rethrow — DLT publish failure must not trigger Kafka retries on the original handler.
+        }
     }
 
     /**

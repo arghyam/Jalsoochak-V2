@@ -1,6 +1,7 @@
 package org.arghyam.jalsoochak.tenant.util;
 
 import lombok.experimental.UtilityClass;
+import org.springframework.security.authentication.AuthenticationCredentialsNotFoundException;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.oauth2.jwt.Jwt;
@@ -17,7 +18,7 @@ public class SecurityUtils {
         if (authentication != null && authentication.getPrincipal() instanceof Jwt jwt) {
             return jwt.getSubject();
         }
-        throw new IllegalStateException("getCurrentUserUuid() called outside an authenticated request context");
+        throw new AuthenticationCredentialsNotFoundException("getCurrentUserUuid() called outside an authenticated request context");
     }
 
     /**
@@ -35,6 +36,6 @@ public class SecurityUtils {
             if (preferredUsername != null) return preferredUsername;
             return jwt.getSubject();
         }
-        throw new IllegalStateException("getCurrentUserName() called outside an authenticated request context");
+        throw new AuthenticationCredentialsNotFoundException("getCurrentUserName() called outside an authenticated request context");
     }
 }

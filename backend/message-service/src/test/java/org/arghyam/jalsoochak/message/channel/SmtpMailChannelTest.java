@@ -84,6 +84,9 @@ class SmtpMailChannelTest {
 
         verify(mailSender).send(captor.capture());
         MimeMessage captured = captor.getValue();
+        // Commit MIME headers (normally done by JavaMailSender.send → MimeMessage.saveChanges).
+        // Required so Content-Type headers are written before we inspect them.
+        captured.saveChanges();
         // MimeMessageHelper(message, multipart=true) wraps content in multipart/mixed →
         // multipart/related → text/html body part.
         MimeMultipart mixed = (MimeMultipart) captured.getContent();

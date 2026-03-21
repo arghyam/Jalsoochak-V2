@@ -19,6 +19,12 @@ import org.springframework.validation.annotation.Validated;
 @Validated
 public class StorageProperties {
 
+    /**
+     * Set to {@code true} to activate S3-compatible object storage.
+     * When {@code false} (the default), the no-op fallback is used and file uploads are unavailable.
+     */
+    private boolean enabled = false;
+
     /** Storage provider key. Currently only {@code s3} is supported. */
     private String provider = "s3";
 

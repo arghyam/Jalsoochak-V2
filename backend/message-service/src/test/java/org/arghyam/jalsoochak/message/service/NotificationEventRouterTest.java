@@ -589,4 +589,22 @@ class NotificationEventRouterTest {
             return s.contains("ACCOUNT_EMAIL_FAILED") && s.contains("smtp_error");
         }));
     }
+
+    @Test
+    void route_doesNotThrow_whenDltPublishFails() {
+        // SMTP fails triggering DLT publish, but DLT publish itself also throws.
+        // The handler must swallow the DLT failure and complete normally (no rethrow → no Kafka retry).
+        doThrow(new RuntimeException("SMTP down"))
+                .when(accountEmailService).sendPasswordResetEmail(anyString(), anyString(), anyInt());
+        doThrow(new RuntimeException("Kafka unavailable"))
+                .when(kafkaProducer).publishJson(anyString(), any());
+
+        // Should not throw
+        router.route("""
+                {"eventType":"SEND_PASSWORD_RESET_EMAIL","to":"user@example.com",
+                 "resetLink":"https://link","expiryMinutes":30}
+                """);
+
+        verify(kafkaProducer).publishJson(eq("account-email-dlt"), any());
+    }
 }

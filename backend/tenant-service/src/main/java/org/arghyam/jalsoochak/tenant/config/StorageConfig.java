@@ -6,7 +6,6 @@ import org.arghyam.jalsoochak.tenant.config.properties.StorageProperties;
 import org.arghyam.jalsoochak.tenant.exception.StorageException;
 import org.arghyam.jalsoochak.tenant.storage.ObjectStorageService;
 import org.arghyam.jalsoochak.tenant.storage.S3CompatibleStorageService;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
@@ -32,7 +31,7 @@ public class StorageConfig {
      * other S3-compatible providers that require it.
      */
     @Bean
-    @ConditionalOnProperty(name = "storage.access-key")
+    @ConditionalOnProperty(name = "storage.enabled", havingValue = "true")
     public S3Client s3Client(StorageProperties props) {
         if (props.getAccessKey() == null || props.getAccessKey().isBlank()) {
             throw new IllegalStateException(
@@ -63,7 +62,7 @@ public class StorageConfig {
      * Covers AWS S3, MinIO, Cloudflare R2, DigitalOcean Spaces, GCS (interop mode), etc.
      */
     @Bean
-    @ConditionalOnProperty(name = "storage.access-key")
+    @ConditionalOnProperty(name = "storage.enabled", havingValue = "true")
     public ObjectStorageService s3CompatibleStorageService(S3Client s3Client, StorageProperties props) {
         log.info("[Storage] Activating S3-compatible storage service [bucket={}, endpoint={}]",
                 props.getBucket(), props.getEndpoint() != null ? props.getEndpoint() : "AWS default");
@@ -76,7 +75,7 @@ public class StorageConfig {
      * at call time so the application starts cleanly but fails fast on actual use.
      */
     @Bean
-    @ConditionalOnMissingBean(ObjectStorageService.class)
+    @ConditionalOnProperty(name = "storage.enabled", havingValue = "false", matchIfMissing = true)
     public ObjectStorageService noOpObjectStorageService() {
         log.warn("[Storage] No storage credentials configured — file upload will be unavailable. " +
                 "Set STORAGE_ACCESS_KEY to activate object storage.");

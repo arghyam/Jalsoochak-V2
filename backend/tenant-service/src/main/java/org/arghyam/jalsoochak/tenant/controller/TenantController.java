@@ -2,6 +2,7 @@ package org.arghyam.jalsoochak.tenant.controller;
 
 import java.net.URI;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Set;
@@ -201,6 +202,10 @@ public class TenantController {
                 Set<TenantConfigKeyEnum> publicKeys = Arrays.stream(TenantConfigKeyEnum.values())
                                 .filter(TenantConfigKeyEnum::isPublic)
                                 .collect(Collectors.toCollection(() -> EnumSet.noneOf(TenantConfigKeyEnum.class)));
+                if (publicKeys.isEmpty()) {
+                        return ResponseEntity.ok(ApiResponseDTO.of(200, "Public tenant configurations retrieved successfully",
+                                        TenantConfigResponseDTO.builder().tenantId(tenantId).configs(Collections.emptyMap()).build()));
+                }
                 return ResponseEntity.ok(ApiResponseDTO.of(200, "Public tenant configurations retrieved successfully",
                                 tenantManagementService.getTenantConfigs(tenantId, publicKeys)));
         }

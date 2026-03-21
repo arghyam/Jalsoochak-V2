@@ -60,4 +60,21 @@ class LogoSourceTest {
 
         assertInstanceOf(LogoSource.UrlSource.class, result);
     }
+
+    @Test
+    @DisplayName("Should accept uppercase HTTP scheme (case-insensitive)")
+    void urlSource_uppercaseHttpScheme_isAccepted() {
+        // Should not throw — equalsIgnoreCase must handle uppercase schemes
+        LogoSource result = LogoSource.from(null, "HTTPS://cdn.example.com/logo.png");
+
+        assertInstanceOf(LogoSource.UrlSource.class, result);
+    }
+
+    @Test
+    @DisplayName("Should reject URL with no scheme (null scheme)")
+    void urlSource_nullScheme_throwsIllegalArgumentException() {
+        // A protocol-relative URL like "//cdn.example.com/logo.png" has a null scheme
+        assertThrows(IllegalArgumentException.class,
+                () -> LogoSource.from(null, "//cdn.example.com/logo.png"));
+    }
 }

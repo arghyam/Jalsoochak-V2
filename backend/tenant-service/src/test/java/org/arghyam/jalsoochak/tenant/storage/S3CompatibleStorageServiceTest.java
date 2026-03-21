@@ -21,6 +21,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import software.amazon.awssdk.core.ResponseInputStream;
+import software.amazon.awssdk.core.exception.SdkClientException;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
@@ -81,6 +82,18 @@ class S3CompatibleStorageServiceTest {
                     .isInstanceOf(StorageException.class)
                     .hasMessageContaining(OBJECT_KEY);
         }
+
+        @Test
+        void upload_networkFailure_throwsStorageException() {
+            byte[] content = "fake-image".getBytes();
+            when(s3Client.putObject(any(PutObjectRequest.class), any(RequestBody.class)))
+                    .thenThrow(SdkClientException.builder().message("Connection refused").build());
+
+            assertThatThrownBy(() -> service.upload(OBJECT_KEY,
+                    new ByteArrayInputStream(content), content.length, "image/png"))
+                    .isInstanceOf(StorageException.class)
+                    .hasMessageContaining(OBJECT_KEY);
+        }
     }
 
     @Nested
@@ -106,6 +119,16 @@ class S3CompatibleStorageServiceTest {
         @Test
         void delete_s3Failure_throwsStorageException() {
             doThrow(S3Exception.builder().message("Internal error").build())
+                    .when(s3Client).deleteObject(any(DeleteObjectRequest.class));
+
+            assertThatThrownBy(() -> service.delete(OBJECT_KEY))
+                    .isInstanceOf(StorageException.class)
+                    .hasMessageContaining(OBJECT_KEY);
+        }
+
+        @Test
+        void delete_networkFailure_throwsStorageException() {
+            doThrow(SdkClientException.builder().message("Connection refused").build())
                     .when(s3Client).deleteObject(any(DeleteObjectRequest.class));
 
             assertThatThrownBy(() -> service.delete(OBJECT_KEY))
@@ -144,6 +167,16 @@ class S3CompatibleStorageServiceTest {
         @Test
         void download_s3Failure_throwsStorageException() {
             doThrow(S3Exception.builder().message("Internal error").build())
+                    .when(s3Client).getObject(any(GetObjectRequest.class));
+
+            assertThatThrownBy(() -> service.download(OBJECT_KEY))
+                    .isInstanceOf(StorageException.class)
+                    .hasMessageContaining(OBJECT_KEY);
+        }
+
+        @Test
+        void download_networkFailure_throwsStorageException() {
+            doThrow(SdkClientException.builder().message("Connection refused").build())
                     .when(s3Client).getObject(any(GetObjectRequest.class));
 
             assertThatThrownBy(() -> service.download(OBJECT_KEY))
