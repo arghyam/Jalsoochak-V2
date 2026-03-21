@@ -11,6 +11,7 @@ import org.arghyam.jalsoochak.telemetry.dto.requests.MeterChangeRequest;
 import org.arghyam.jalsoochak.telemetry.dto.requests.UpdatedPreviousReadingRequest;
 import org.arghyam.jalsoochak.telemetry.dto.response.CreateReadingResponse;
 import org.arghyam.jalsoochak.telemetry.dto.response.IntroResponse;
+import org.arghyam.jalsoochak.telemetry.event.TelemetryEventPublisher;
 import org.arghyam.jalsoochak.telemetry.repository.TenantConfigRepository;
 import org.arghyam.jalsoochak.telemetry.repository.TelemetryConfirmedReadingSnapshot;
 import org.arghyam.jalsoochak.telemetry.repository.TelemetryFlowReadingDetails;
@@ -105,6 +106,7 @@ public class GlificMeterWorkflowService {
     private final TenantConfigRepository tenantConfigRepository;
     private final GlificMessageTemplatesService templatesService;
     private final TelemetryTenantRepository telemetryTenantRepository;
+    private final TelemetryEventPublisher telemetryEventPublisher;
     private final ObjectMapper objectMapper;
 
     public GlificMeterWorkflowService(GlificOperatorContextService operatorContextService,
@@ -112,12 +114,14 @@ public class GlificMeterWorkflowService {
                                       TenantConfigRepository tenantConfigRepository,
                                       GlificMessageTemplatesService templatesService,
                                       TelemetryTenantRepository telemetryTenantRepository,
+                                      TelemetryEventPublisher telemetryEventPublisher,
                                       ObjectMapper objectMapper) {
         this.operatorContextService = operatorContextService;
         this.localizationService = localizationService;
         this.tenantConfigRepository = tenantConfigRepository;
         this.templatesService = templatesService;
         this.telemetryTenantRepository = telemetryTenantRepository;
+        this.telemetryEventPublisher = telemetryEventPublisher;
         this.objectMapper = objectMapper;
     }
 
@@ -345,6 +349,13 @@ public class GlificMeterWorkflowService {
                         resolvedIssueReason,
                         AnomalyConstants.STATUS_OPEN
                 );
+                telemetryEventPublisher.publishOutageOrNonSubmissionReason(
+                        tenantId,
+                        schemeId,
+                        operatorWithSchema.operator().id(),
+                        LocalDate.now(),
+                        anomalyType
+                );
             } else {
                 telemetryTenantRepository.createIssueReportRecord(
                         operatorWithSchema.schemaName(),
@@ -503,6 +514,13 @@ public class GlificMeterWorkflowService {
                         resolvedIssueReason,
                         AnomalyConstants.STATUS_OPEN
                 );
+                telemetryEventPublisher.publishOutageOrNonSubmissionReason(
+                        tenantId,
+                        schemeId,
+                        operatorWithSchema.operator().id(),
+                        LocalDate.now(),
+                        anomalyType
+                );
             } else {
                 telemetryTenantRepository.createIssueReportRecord(
                         operatorWithSchema.schemaName(),
@@ -573,6 +591,13 @@ public class GlificMeterWorkflowService {
                     0,
                     issueReason,
                     AnomalyConstants.STATUS_OPEN
+            );
+            telemetryEventPublisher.publishOutageOrNonSubmissionReason(
+                    tenantId,
+                    schemeId,
+                    operatorWithSchema.operator().id(),
+                    LocalDate.now(),
+                    AnomalyConstants.TYPE_NO_SUBMISSION
             );
 
             String languageKey = localizationService.normalizeLanguageKey(
@@ -729,6 +754,13 @@ public class GlificMeterWorkflowService {
                                 0,
                                 "Manual reading is below allowed minimum (" + toPlain(minAllowed) + ").",
                                 AnomalyConstants.STATUS_OPEN
+                        );
+                        telemetryEventPublisher.publishOutageOrNonSubmissionReason(
+                                tenantId,
+                                schemeId,
+                                operatorWithSchema.operator().id(),
+                                today,
+                                AnomalyConstants.TYPE_LOW_WATER_SUPPLY
                         );
                         return CreateReadingResponse.builder()
                                 .success(false)

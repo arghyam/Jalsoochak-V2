@@ -3,6 +3,7 @@ package org.arghyam.jalsoochak.telemetry.service;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.arghyam.jalsoochak.telemetry.dto.requests.UpdatedPreviousReadingRequest;
 import org.arghyam.jalsoochak.telemetry.dto.response.CreateReadingResponse;
+import org.arghyam.jalsoochak.telemetry.event.TelemetryEventPublisher;
 import org.arghyam.jalsoochak.telemetry.repository.TenantConfigRepository;
 import org.arghyam.jalsoochak.telemetry.repository.TelemetryFlowReadingDetails;
 import org.arghyam.jalsoochak.telemetry.repository.TelemetryOperator;
@@ -45,6 +46,9 @@ class GlificMeterWorkflowServiceUpdatePreviousReadingTest {
 
     @Mock
     private TelemetryTenantRepository telemetryTenantRepository;
+
+    @Mock
+    private TelemetryEventPublisher telemetryEventPublisher;
 
     @Spy
     private ObjectMapper objectMapper = new ObjectMapper();

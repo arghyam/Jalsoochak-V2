@@ -2,6 +2,7 @@ package org.arghyam.jalsoochak.telemetry.service;
 
 import org.arghyam.jalsoochak.telemetry.dto.requests.ManualReadingRequest;
 import org.arghyam.jalsoochak.telemetry.dto.response.CreateReadingResponse;
+import org.arghyam.jalsoochak.telemetry.event.TelemetryEventPublisher;
 import org.arghyam.jalsoochak.telemetry.repository.TenantConfigRepository;
 import org.arghyam.jalsoochak.telemetry.repository.TelemetryFlowReadingDetails;
 import org.arghyam.jalsoochak.telemetry.repository.TelemetryOperator;
@@ -50,6 +51,9 @@ class GlificMeterWorkflowServiceManualReadingTest {
 
     @Mock
     private TelemetryTenantRepository telemetryTenantRepository;
+
+    @Mock
+    private TelemetryEventPublisher telemetryEventPublisher;
 
     @Spy
     private com.fasterxml.jackson.databind.ObjectMapper objectMapper = new com.fasterxml.jackson.databind.ObjectMapper();
@@ -266,6 +270,13 @@ class GlificMeterWorkflowServiceManualReadingTest {
                 anyInt(),
                 anyString(),
                 ArgumentMatchers.eq(AnomalyConstants.STATUS_OPEN)
+        );
+        verify(telemetryEventPublisher).publishOutageOrNonSubmissionReason(
+                ArgumentMatchers.eq(1),
+                ArgumentMatchers.eq(10L),
+                ArgumentMatchers.eq(1L),
+                any(),
+                ArgumentMatchers.eq(AnomalyConstants.TYPE_LOW_WATER_SUPPLY)
         );
 
         verify(telemetryTenantRepository, never()).updateConfirmedReading(anyString(), anyLong(), any(), anyLong());
