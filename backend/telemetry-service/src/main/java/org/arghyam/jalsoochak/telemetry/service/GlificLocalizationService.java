@@ -115,6 +115,9 @@ public class GlificLocalizationService {
         if (normalized.contains("invalid media")) {
             return localizeMessage("Invalid media. Please submit a clear meter image.", languageKey);
         }
+        if (normalized.contains("issuereason contains invalid characters")) {
+            return localizeMessage("Issue reason can only contain letters, numbers, and spaces.", languageKey);
+        }
         return localizeMessage(message.trim(), languageKey);
     }
 
@@ -187,6 +190,9 @@ public class GlificLocalizationService {
         }
         if (normalized.contains("invalid media")) {
             return "मीडिया अमान्य है। कृपया स्पष्ट मीटर इमेज भेजें।";
+        }
+        if (normalized.contains("issue reason can only contain letters, numbers, and spaces")) {
+            return "समस्या का विवरण केवल अक्षर, अंक और स्पेस में ही दें।";
         }
         if (normalized.contains("image could not be processed")) {
             return "इमेज प्रोसेस नहीं हो सकी। कृपया दोबारा प्रयास करें।";
