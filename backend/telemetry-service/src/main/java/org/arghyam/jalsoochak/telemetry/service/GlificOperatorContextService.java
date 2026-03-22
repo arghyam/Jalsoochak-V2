@@ -41,6 +41,17 @@ public class GlificOperatorContextService {
         if (operatorWithSchema == null || operatorWithSchema.operator() == null) {
             return "English";
         }
+        if (tenantId != null) {
+            String contactId = operatorWithSchema.operator().phoneNumber();
+            if (contactId != null && !contactId.isBlank()) {
+                String preferredLanguage = userLanguagePreferenceRepository
+                        .findLanguage(tenantId, contactId)
+                        .orElse(null);
+                if (preferredLanguage != null && !preferredLanguage.isBlank()) {
+                    return preferredLanguage;
+                }
+            }
+        }
         Integer languageId = operatorWithSchema.operator().languageId();
         if (languageId == null || languageId <= 0) {
             return "English";
