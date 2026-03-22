@@ -87,10 +87,10 @@ class GlificMeterWorkflowServiceManualReadingTest {
                         BigDecimal.ZERO
                 )));
 
-        when(telemetryTenantRepository.countAnomaliesByTypeForToday(anyString(), anyLong(), anyLong(), anyInt())).thenReturn(0);
-        when(telemetryTenantRepository.findAnomalyDatesByType(anyString(), anyLong(), anyLong(), anyInt(), anyInt())).thenReturn(List.of());
+        when(telemetryTenantRepository.countAnomaliesByTypeForToday(anyInt(), anyLong(), anyLong(), anyInt())).thenReturn(0);
+        when(telemetryTenantRepository.findAnomalyDatesByType(anyInt(), anyLong(), anyLong(), anyInt(), anyInt())).thenReturn(List.of());
         doNothing().when(telemetryTenantRepository).createAnomalyRecord(
-                anyString(),
+                anyInt(),
                 anyInt(),
                 anyLong(),
                 anyLong(),
@@ -149,10 +149,10 @@ class GlificMeterWorkflowServiceManualReadingTest {
                         BigDecimal.ZERO
                 )));
 
-        when(telemetryTenantRepository.countAnomaliesByTypeForToday(anyString(), anyLong(), anyLong(), anyInt())).thenReturn(0);
-        when(telemetryTenantRepository.findAnomalyDatesByType(anyString(), anyLong(), anyLong(), anyInt(), anyInt())).thenReturn(List.of());
+        when(telemetryTenantRepository.countAnomaliesByTypeForToday(anyInt(), anyLong(), anyLong(), anyInt())).thenReturn(0);
+        when(telemetryTenantRepository.findAnomalyDatesByType(anyInt(), anyLong(), anyLong(), anyInt(), anyInt())).thenReturn(List.of());
         doNothing().when(telemetryTenantRepository).createAnomalyRecord(
-                anyString(),
+                anyInt(),
                 anyInt(),
                 anyLong(),
                 anyLong(),
@@ -257,7 +257,7 @@ class GlificMeterWorkflowServiceManualReadingTest {
         assertEquals("REJECTED", resp.getQualityStatus());
 
         verify(telemetryTenantRepository).createAnomalyRecord(
-                anyString(),
+                anyInt(),
                 ArgumentMatchers.eq(AnomalyConstants.TYPE_LOW_WATER_SUPPLY),
                 anyLong(),
                 anyLong(),
@@ -317,7 +317,7 @@ class GlificMeterWorkflowServiceManualReadingTest {
         assertEquals("REJECTED", resp.getQualityStatus());
 
         verify(telemetryTenantRepository).createAnomalyRecord(
-                anyString(),
+                anyInt(),
                 ArgumentMatchers.eq(AnomalyConstants.TYPE_OVER_WATER_SUPPLY),
                 anyLong(),
                 anyLong(),
@@ -364,10 +364,10 @@ class GlificMeterWorkflowServiceManualReadingTest {
                         BigDecimal.ZERO
                 )));
 
-        when(telemetryTenantRepository.countAnomaliesByTypeForToday(anyString(), anyLong(), anyLong(), anyInt())).thenReturn(0);
-        when(telemetryTenantRepository.findAnomalyDatesByType(anyString(), anyLong(), anyLong(), anyInt(), anyInt())).thenReturn(List.of());
+        when(telemetryTenantRepository.countAnomaliesByTypeForToday(anyInt(), anyLong(), anyLong(), anyInt())).thenReturn(0);
+        when(telemetryTenantRepository.findAnomalyDatesByType(anyInt(), anyLong(), anyLong(), anyInt(), anyInt())).thenReturn(List.of());
         doNothing().when(telemetryTenantRepository).createAnomalyRecord(
-                anyString(),
+                anyInt(),
                 anyInt(),
                 anyLong(),
                 anyLong(),
@@ -429,10 +429,10 @@ class GlificMeterWorkflowServiceManualReadingTest {
                         BigDecimal.ZERO
                 )));
 
-        when(telemetryTenantRepository.countAnomaliesByTypeForToday(anyString(), anyLong(), anyLong(), anyInt())).thenReturn(0);
-        when(telemetryTenantRepository.findAnomalyDatesByType(anyString(), anyLong(), anyLong(), anyInt(), anyInt())).thenReturn(List.of());
+        when(telemetryTenantRepository.countAnomaliesByTypeForToday(anyInt(), anyLong(), anyLong(), anyInt())).thenReturn(0);
+        when(telemetryTenantRepository.findAnomalyDatesByType(anyInt(), anyLong(), anyLong(), anyInt(), anyInt())).thenReturn(List.of());
         doNothing().when(telemetryTenantRepository).createAnomalyRecord(
-                anyString(),
+                anyInt(),
                 anyInt(),
                 anyLong(),
                 anyLong(),

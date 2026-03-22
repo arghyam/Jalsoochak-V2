@@ -30,10 +30,13 @@ import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.regex.Pattern;
 
 @Service
 @Slf4j
 public class GlificMeterWorkflowService {
+    private static final Pattern ISSUE_REASON_ALLOWED =
+            Pattern.compile("^[\\p{L}\\p{N}]+(?:[\\p{L}\\p{N} ]*[\\p{L}\\p{N}])?$");
     private static final String DEFAULT_ISSUE_PROMPT_ENGLISH =
             "Please select your issue by typing any of the number";
     private static final String DEFAULT_ISSUE_PROMPT_HINDI =
@@ -335,7 +338,7 @@ public class GlificMeterWorkflowService {
                         ? AnomalyConstants.TYPE_NO_WATER_SUPPLY
                         : AnomalyConstants.TYPE_NO_SUBMISSION;
                 telemetryTenantRepository.createAnomalyRecord(
-                        operatorWithSchema.schemaName(),
+                        tenantId,
                         anomalyType,
                         operatorWithSchema.operator().id(),
                         schemeId,
@@ -500,7 +503,7 @@ public class GlificMeterWorkflowService {
                         ? AnomalyConstants.TYPE_NO_WATER_SUPPLY
                         : AnomalyConstants.TYPE_NO_SUBMISSION;
                 telemetryTenantRepository.createAnomalyRecord(
-                        operatorWithSchema.schemaName(),
+                        tenantId,
                         anomalyType,
                         operatorWithSchema.operator().id(),
                         schemeId,
@@ -576,9 +579,12 @@ public class GlificMeterWorkflowService {
 
             String correlationId = "issue-report-" + UUID.randomUUID();
             String issueReason = request.getIssueReason().trim();
+            if (!ISSUE_REASON_ALLOWED.matcher(issueReason).matches()) {
+                throw new IllegalStateException("issueReason contains invalid characters");
+            }
 
             telemetryTenantRepository.createAnomalyRecord(
-                    operatorWithSchema.schemaName(),
+                    tenantId,
                     AnomalyConstants.TYPE_NO_SUBMISSION,
                     operatorWithSchema.operator().id(),
                     schemeId,
@@ -622,7 +628,11 @@ public class GlificMeterWorkflowService {
             log.error("Error saving others issue report for contactId {}: {}", request.getContactId(), e.getMessage(), e);
             return IntroResponse.builder()
                     .success(false)
-                    .message("Issue report could not be saved.")
+                    .message(localizationService.resolveUserFacingErrorMessage(
+                            e,
+                            "Issue report could not be saved.",
+                            localizationService.resolveLanguageKeyForContact(request.getContactId())
+                    ))
                     .build();
         }
     }
@@ -692,7 +702,7 @@ public class GlificMeterWorkflowService {
                 String submittedReadingText = manualReadingValue.stripTrailingZeros().toPlainString();
                 String previousReadingText = previousSnapshot.confirmedReading().stripTrailingZeros().toPlainString();
                 telemetryTenantRepository.createAnomalyRecord(
-                        operatorWithSchema.schemaName(),
+                        tenantId,
                         AnomalyConstants.TYPE_READING_LESS_THAN_PREVIOUS,
                         operatorWithSchema.operator().id(),
                         schemeId,
@@ -741,7 +751,7 @@ public class GlificMeterWorkflowService {
 
                     if (manualReadingValue.compareTo(minAllowed) < 0) {
                         telemetryTenantRepository.createAnomalyRecord(
-                                operatorWithSchema.schemaName(),
+                                tenantId,
                                 AnomalyConstants.TYPE_LOW_WATER_SUPPLY,
                                 operatorWithSchema.operator().id(),
                                 schemeId,
@@ -777,7 +787,7 @@ public class GlificMeterWorkflowService {
                     }
                     if (manualReadingValue.compareTo(maxAllowed) > 0) {
                         telemetryTenantRepository.createAnomalyRecord(
-                                operatorWithSchema.schemaName(),
+                                tenantId,
                                 AnomalyConstants.TYPE_OVER_WATER_SUPPLY,
                                 operatorWithSchema.operator().id(),
                                 schemeId,
@@ -870,14 +880,14 @@ public class GlificMeterWorkflowService {
             }
 
             int unreadableRetryCountToday = telemetryTenantRepository.countAnomaliesByTypeForToday(
-                    operatorWithSchema.schemaName(),
+                    tenantId,
                     operatorWithSchema.operator().id(),
                     schemeId,
                     AnomalyConstants.TYPE_UNREADABLE_IMAGE
             );
 
             telemetryTenantRepository.createAnomalyRecord(
-                    operatorWithSchema.schemaName(),
+                    tenantId,
                     AnomalyConstants.TYPE_MANUAL_OVERRIDE,
                     operatorWithSchema.operator().id(),
                     schemeId,
@@ -894,7 +904,7 @@ public class GlificMeterWorkflowService {
 
             int consecutiveOverrideDays = calculateConsecutiveDays(
                     telemetryTenantRepository.findAnomalyDatesByType(
-                            operatorWithSchema.schemaName(),
+                            tenantId,
                             operatorWithSchema.operator().id(),
                             schemeId,
                             AnomalyConstants.TYPE_MANUAL_OVERRIDE,
@@ -905,7 +915,7 @@ public class GlificMeterWorkflowService {
 
             if (consecutiveOverrideDays >= 5) {
                 telemetryTenantRepository.createAnomalyRecord(
-                        operatorWithSchema.schemaName(),
+                        tenantId,
                         AnomalyConstants.TYPE_CONSECUTIVE_OVERRIDE_5_DAYS,
                         operatorWithSchema.operator().id(),
                         schemeId,

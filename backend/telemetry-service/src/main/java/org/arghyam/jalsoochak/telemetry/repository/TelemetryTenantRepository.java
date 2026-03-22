@@ -1,6 +1,7 @@
 package org.arghyam.jalsoochak.telemetry.repository;
 
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
@@ -20,6 +21,8 @@ import java.util.UUID;
 public class TelemetryTenantRepository {
 
     private final JdbcTemplate jdbcTemplate;
+    @Qualifier("analyticsJdbcTemplate")
+    private final JdbcTemplate analyticsJdbcTemplate;
     private static final int OPERATOR_LOOKUP_CACHE_SIZE = 10_000;
     private final Map<String, String> phoneToSchemaCache = Collections.synchronizedMap(
             new LinkedHashMap<>(256, 0.75f, true) {
@@ -702,37 +705,38 @@ public class TelemetryTenantRepository {
         return rows.stream().findFirst();
     }
 
-    public int countAnomaliesByTypeForToday(String schemaName, Long userId, Long schemeId, int anomalyType) {
-        validateSchemaName(schemaName);
-        String sql = String.format("""
+    public int countAnomaliesByTypeForToday(Integer tenantId, Long userId, Long schemeId, int anomalyType) {
+        String sql = """
                 SELECT COUNT(1)
-                FROM %s.anomaly_table
-                WHERE user_id = ?
+                FROM analytics_schema.anomaly_table
+                WHERE tenant_id = ?
+                  AND user_id = ?
                   AND scheme_id = ?
                   AND type = ?
                   AND DATE(created_at) = CURRENT_DATE
                   AND deleted_at IS NULL
-                """, schemaName);
-        Integer count = jdbcTemplate.queryForObject(sql, Integer.class, userId, schemeId, anomalyType);
+                """;
+        Integer count = analyticsJdbcTemplate.queryForObject(sql, Integer.class, tenantId, userId, schemeId, anomalyType);
         return count != null ? count : 0;
     }
 
-    public List<LocalDate> findAnomalyDatesByType(String schemaName, Long userId, Long schemeId, int anomalyType, int limitDays) {
-        validateSchemaName(schemaName);
-        String sql = String.format("""
+    public List<LocalDate> findAnomalyDatesByType(Integer tenantId, Long userId, Long schemeId, int anomalyType, int limitDays) {
+        String sql = """
                 SELECT DATE(created_at) AS reading_date
-                FROM %s.anomaly_table
-                WHERE user_id = ?
+                FROM analytics_schema.anomaly_table
+                WHERE tenant_id = ?
+                  AND user_id = ?
                   AND scheme_id = ?
                   AND type = ?
                   AND deleted_at IS NULL
                 GROUP BY DATE(created_at)
                 ORDER BY reading_date DESC
                 LIMIT ?
-                """, schemaName);
-        return jdbcTemplate.query(
+                """;
+        return analyticsJdbcTemplate.query(
                 sql,
                 (rs, n) -> rs.getDate("reading_date").toLocalDate(),
+                tenantId,
                 userId,
                 schemeId,
                 anomalyType,
@@ -740,7 +744,7 @@ public class TelemetryTenantRepository {
         );
     }
 
-    public void createAnomalyRecord(String schemaName,
+    public void createAnomalyRecord(Integer tenantId,
                                     Integer type,
                                     Long userId,
                                     Long schemeId,
@@ -753,18 +757,19 @@ public class TelemetryTenantRepository {
                                     Integer consecutiveDaysOverridden,
                                     String reason,
                                     Integer status) {
-        validateSchemaName(schemaName);
-        String sql = String.format("""
-                INSERT INTO %s.anomaly_table
-                    (type, user_id, scheme_id, ai_reading, ai_confidence_percentage, overridden_reading,
-                     retries, previous_reading, previous_reading_date, consecutive_days_overridden, reason, status, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
-                """, schemaName);
-        jdbcTemplate.update(
+        String sql = """
+                INSERT INTO analytics_schema.anomaly_table
+                    (uuid, type, user_id, scheme_id, tenant_id, ai_reading, ai_confidence_percentage, overridden_reading,
+                     retries, previous_reading, previous_reading_date, consecutive_days_missed, reason, status, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+                """;
+        analyticsJdbcTemplate.update(
                 sql,
+                UUID.randomUUID().toString(),
                 type,
                 userId,
                 schemeId,
+                tenantId,
                 aiReading,
                 aiConfidencePercentage,
                 overriddenReading,

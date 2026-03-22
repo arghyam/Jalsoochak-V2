@@ -80,7 +80,7 @@ class GlificMeterWorkflowServiceIssueReportTest {
         assertEquals("meterNotWorking", resp.getSelected());
 
         verify(telemetryTenantRepository).createAnomalyRecord(
-                eq("tenant_test"),
+                eq(1),
                 eq(AnomalyConstants.TYPE_NO_SUBMISSION),
                 eq(1L),
                 eq(10L),
@@ -147,7 +147,7 @@ class GlificMeterWorkflowServiceIssueReportTest {
                 eq("Meter Replaced")
         );
         verify(telemetryTenantRepository, never()).createAnomalyRecord(
-                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyInt(),
                 org.mockito.ArgumentMatchers.anyInt(),
                 org.mockito.ArgumentMatchers.anyLong(),
                 org.mockito.ArgumentMatchers.anyLong(),
@@ -192,7 +192,7 @@ class GlificMeterWorkflowServiceIssueReportTest {
 
         // Current behavior: reason "5" is treated as an anomaly selection (legacy numeric rule).
         verify(telemetryTenantRepository).createAnomalyRecord(
-                eq("tenant_test"),
+                eq(1),
                 eq(AnomalyConstants.TYPE_NO_WATER_SUPPLY),
                 eq(1L),
                 eq(10L),
@@ -249,7 +249,7 @@ class GlificMeterWorkflowServiceIssueReportTest {
         assertEquals("others", resp.getSelected());
 
         verify(telemetryTenantRepository).createAnomalyRecord(
-                eq("tenant_test"),
+                eq(1),
                 eq(AnomalyConstants.TYPE_NO_SUBMISSION),
                 eq(1L),
                 eq(10L),
@@ -305,7 +305,7 @@ class GlificMeterWorkflowServiceIssueReportTest {
 
         // Telemetry submit: "No Water Supply" should be tracked as an issue anomaly.
         verify(telemetryTenantRepository).createAnomalyRecord(
-                eq("tenant_test"),
+                eq(1),
                 eq(AnomalyConstants.TYPE_NO_WATER_SUPPLY),
                 eq(1L),
                 eq(10L),

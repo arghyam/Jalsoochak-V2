@@ -41,6 +41,7 @@ public class BfmReadingService {
         TelemetryOperator operatorInRequest = telemetryTenantRepository
                 .findOperatorById(schemaName, request.getOperatorId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Operator not found"));
+        Integer tenantId = operatorInRequest.tenantId();
 
         boolean belongsToScheme = telemetryTenantRepository
                 .isOperatorMappedToScheme(schemaName, operatorInRequest.id(), request.getSchemeId());
@@ -63,13 +64,13 @@ public class BfmReadingService {
                 ocrResult = flowVisionService.extractReading(request.getReadingUrl());
                 if (ocrResult == null || ocrResult.getAdjustedReading() == null) {
                     int retries = telemetryTenantRepository.countAnomaliesByTypeForToday(
-                            schemaName,
+                            tenantId,
                             operatorInRequest.id(),
                             request.getSchemeId(),
                             AnomalyConstants.TYPE_UNREADABLE_IMAGE
                     ) + 1;
                     telemetryTenantRepository.createAnomalyRecord(
-                            schemaName,
+                            tenantId,
                             AnomalyConstants.TYPE_UNREADABLE_IMAGE,
                             operatorInRequest.id(),
                             request.getSchemeId(),
@@ -95,13 +96,13 @@ public class BfmReadingService {
             } catch (Exception ex) {
                 log.error("FlowVision OCR failed for URL: {}", request.getReadingUrl(), ex);
                 int retries = telemetryTenantRepository.countAnomaliesByTypeForToday(
-                        schemaName,
+                        tenantId,
                         operatorInRequest.id(),
                         request.getSchemeId(),
                         AnomalyConstants.TYPE_UNREADABLE_IMAGE
                 ) + 1;
                 telemetryTenantRepository.createAnomalyRecord(
-                        schemaName,
+                        tenantId,
                         AnomalyConstants.TYPE_UNREADABLE_IMAGE,
                         operatorInRequest.id(),
                         request.getSchemeId(),
@@ -163,7 +164,7 @@ public class BfmReadingService {
             String submittedReadingText = confirmedReading.stripTrailingZeros().toPlainString();
             String previousReadingText = previousSnapshot.confirmedReading().stripTrailingZeros().toPlainString();
             telemetryTenantRepository.createAnomalyRecord(
-                    schemaName,
+                    tenantId,
                     AnomalyConstants.TYPE_READING_LESS_THAN_PREVIOUS,
                     operatorInRequest.id(),
                     request.getSchemeId(),
@@ -193,7 +194,7 @@ public class BfmReadingService {
                 && request.getReadingUrl() != null && !request.getReadingUrl().isBlank()) {
             TelemetryConfirmedReadingSnapshot previousSnapshot = latestSnapshotOpt.get();
             telemetryTenantRepository.createAnomalyRecord(
-                    schemaName,
+                    tenantId,
                     AnomalyConstants.TYPE_DUPLICATE_IMAGE_SUBMISSION,
                     operatorInRequest.id(),
                     request.getSchemeId(),
