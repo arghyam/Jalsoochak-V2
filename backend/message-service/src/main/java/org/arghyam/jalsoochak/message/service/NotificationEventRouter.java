@@ -139,7 +139,7 @@ public class NotificationEventRouter {
             contactId = storedId;
         } else {
             contactId = glificWhatsAppService.optIn(phone);
-            if (!tenantSchema.isBlank() && userId > 0) {
+            if (!tenantSchema.isBlank() && userId > 0 && contactId > 0) {
                 kafkaProducer.publishJson(COMMON_TOPIC,
                         WhatsAppContactRegisteredEvent.builder()
                                 .eventType("WHATSAPP_CONTACT_REGISTERED")
@@ -183,7 +183,7 @@ public class NotificationEventRouter {
             }
             try {
                 long contactId = whatsAppChannel.onboardOperator(phone, glificLanguageId);
-                if (!tenantSchema.isBlank() && userId > 0) {
+                if (!tenantSchema.isBlank() && userId > 0 && contactId > 0) {
                     kafkaProducer.publishJson(COMMON_TOPIC,
                             WhatsAppContactRegisteredEvent.builder()
                                     .eventType("WHATSAPP_CONTACT_REGISTERED")
@@ -427,7 +427,7 @@ public class NotificationEventRouter {
             contactId = storedId;
         } else {
             contactId = glificWhatsAppService.optIn(officerPhone);
-            if (!tenantSchema.isBlank() && officerId > 0) {
+            if (!tenantSchema.isBlank() && officerId > 0 && contactId > 0) {
                 kafkaProducer.publishJson(COMMON_TOPIC,
                         WhatsAppContactRegisteredEvent.builder()
                                 .eventType("WHATSAPP_CONTACT_REGISTERED")

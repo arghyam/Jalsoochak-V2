@@ -3,6 +3,7 @@ package org.arghyam.jalsoochak.message.channel;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -15,6 +16,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.*;
 import org.mockito.InOrder;
@@ -411,5 +413,86 @@ class GlificWhatsAppServiceTest {
     @SuppressWarnings("unchecked")
     private ArgumentCaptor<Map<String, Object>> varsCaptor() {
         return ArgumentCaptor.forClass(Map.class);
+    }
+
+    // ──────────────────────────── dry-run mode ─────────────────────────────────
+
+    @Nested
+    class DryRunMode {
+
+        @BeforeEach
+        void enableDryRun() {
+            ReflectionTestUtils.setField(service, "dryRun", true);
+        }
+
+        @Test
+        void optIn_returnsZero_andDoesNotCallClient() {
+            Long result = service.optIn("919876543210");
+
+            assertThat(result).isEqualTo(0L);
+            verifyNoInteractions(client);
+        }
+
+        @Test
+        void sendNudgeHsm_isNoOp() {
+            service.sendNudgeHsm(42L, "Ramesh", "22 March 2026");
+
+            verifyNoInteractions(client);
+        }
+
+        @Test
+        void uploadMedia_returnsDryRunId_andDoesNotCallClient() {
+            String mediaId = service.uploadMedia("https://minio.example.com/r.pdf");
+
+            assertThat(mediaId).isEqualTo("dry-run-media-id");
+            verifyNoInteractions(client);
+        }
+
+        @Test
+        void sendEscalationHsm_isNoOp() {
+            service.sendEscalationHsm(55L, "https://minio.example.com/r.pdf");
+
+            verifyNoInteractions(client);
+        }
+
+        @Test
+        void startNudgeFlow_isNoOp() {
+            service.startNudgeFlow(42L, "Ramesh", "22 March 2026");
+
+            verifyNoInteractions(client);
+        }
+
+        @Test
+        void startWelcomeFlow_isNoOp() {
+            service.startWelcomeFlow(55L);
+
+            verifyNoInteractions(client);
+        }
+
+        @Test
+        void updateContactLanguage_isNoOp() {
+            service.updateContactLanguage(42L, 2);
+
+            verifyNoInteractions(client);
+        }
+
+        @Test
+        void sendLoginOtpHsm_isNoOp() {
+            ReflectionTestUtils.setField(service, "loginOtpTemplateId", "otp-tmpl-1");
+
+            service.sendLoginOtpHsm(99L, "123456");
+
+            verifyNoInteractions(client);
+        }
+
+        @Test
+        void validateTemplates_doesNotThrowWhenTemplateIdsBlank() {
+            ReflectionTestUtils.setField(service, "nudgeFlowId", "");
+            ReflectionTestUtils.setField(service, "escalationTemplateId", "");
+            ReflectionTestUtils.setField(service, "welcomeFlowId", "");
+            ReflectionTestUtils.setField(service, "loginOtpTemplateId", "");
+
+            assertThatCode(() -> service.validateTemplates()).doesNotThrowAnyException();
+        }
     }
 }
