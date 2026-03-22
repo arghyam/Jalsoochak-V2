@@ -89,6 +89,9 @@ public class GlificWhatsAppService {
     private final GlificGraphQLClient client;
     private final ObjectMapper objectMapper;
 
+    @Value("${notifications.dry-run:false}")
+    private boolean dryRun;
+
     @Value("${glific.template.nudge-id:}")
     private String nudgeTemplateId;
 
@@ -106,6 +109,11 @@ public class GlificWhatsAppService {
 
     @PostConstruct
     void validateTemplates() {
+        if (dryRun) {
+            log.warn("[Glific] DRY-RUN mode active — all Glific API calls will be suppressed."
+                    + " Set NOTIFICATIONS_DRY_RUN=false for production.");
+            return;
+        }
         if (nudgeFlowId == null || nudgeFlowId.isBlank()
                 || escalationTemplateId == null || escalationTemplateId.isBlank()
                 || welcomeFlowId == null || welcomeFlowId.isBlank()) {
@@ -116,6 +124,14 @@ public class GlificWhatsAppService {
             throw new IllegalStateException(
                     "glific.template.login-otp-id must be configured — SEND_LOGIN_OTP events cannot be delivered without it");
         }
+    }
+
+    private boolean isDryRun(String operation) {
+        if (dryRun) {
+            log.info("[Glific] DRY-RUN: suppressing {} — no message sent", operation);
+            return true;
+        }
+        return false;
     }
 
     @Value("${glific.media.escalation-caption:Escalations}")
@@ -132,6 +148,7 @@ public class GlificWhatsAppService {
      * @param otp       one-time password for template {@code {{1}}}
      */
     public void sendLoginOtpHsm(Long contactId, String otp) {
+        if (isDryRun("sendLoginOtpHsm")) return;
         if (loginOtpTemplateId == null || loginOtpTemplateId.isBlank()) {
             throw new IllegalStateException("glific.template.login-otp-id is not configured");
         }
@@ -148,6 +165,7 @@ public class GlificWhatsAppService {
      * Phone must be in E.164 format (e.g., 919876543210).
      */
     public Long optIn(String phone) {
+        if (isDryRun("optIn")) return 0L;
         log.debug("[Glific] Opting in contact");
         JsonNode response = client.execute(OPTIN_MUTATION, Map.of("phone", phone));
         checkErrors(response, "optinContact");
@@ -159,6 +177,7 @@ public class GlificWhatsAppService {
      * Template variable {{1}} = operator name, {{2}} = today's date.
      */
     public void sendNudgeHsm(Long contactId, String operatorName, String date) {
+        if (isDryRun("sendNudgeHsm")) return;
         JsonNode response = client.execute(NUDGE_HSM_MUTATION, Map.of(
                 "templateId", nudgeTemplateId,
                 "receiverId", contactId,
@@ -174,6 +193,7 @@ public class GlificWhatsAppService {
      * @return Glific {@code messageMedia.id} to pass to {@link #sendEscalationHsm}
      */
     public String uploadMedia(String publicUrl) {
+        if (isDryRun("uploadMedia")) return "dry-run-media-id";
         log.debug("[Glific] Uploading media");
         JsonNode response = client.execute(CREATE_MESSAGE_MEDIA_MUTATION, Map.of(
                         "input", Map.of(
@@ -202,6 +222,7 @@ public class GlificWhatsAppService {
      * @param minioUrl  publicly reachable URL of the escalation PDF
      */
     public void sendEscalationHsm(Long contactId, String minioUrl) {
+        if (isDryRun("sendEscalationHsm")) return;
 
         String mediaId = uploadMedia(minioUrl);
 
@@ -245,6 +266,7 @@ public class GlificWhatsAppService {
      * @throws RuntimeException      if Glific returns GraphQL errors or {@code success=false}
      */
     public void startNudgeFlow(Long contactId, String operatorName, String date) {
+        if (isDryRun("startNudgeFlow")) return;
         if (nudgeFlowId == null || nudgeFlowId.isBlank()) {
             throw new IllegalStateException("glific.flow.nudge-id is not configured");
         }
@@ -279,6 +301,7 @@ public class GlificWhatsAppService {
      * @throws RuntimeException if Glific returns GraphQL errors or {@code success=false}
      */
     public void startWelcomeFlow(Long contactId) {
+        if (isDryRun("startWelcomeFlow")) return;
         JsonNode response = client.execute(START_CONTACT_FLOW_MUTATION, Map.of(
                 "flowId", welcomeFlowId,
                 "contactId", contactId,
@@ -298,6 +321,7 @@ public class GlificWhatsAppService {
      * @param glificLanguageId Glific-side language ID
      */
     public void updateContactLanguage(Long contactId, int glificLanguageId) {
+        if (isDryRun("updateContactLanguage")) return;
         JsonNode response = client.execute(UPDATE_CONTACT_MUTATION, Map.of(
                 "id", contactId,
                 "input", Map.of("language_id", glificLanguageId)));

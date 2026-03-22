@@ -95,6 +95,15 @@ app:
   base-url: ${APP_BASE_URL:http://localhost:8085}
 
 # ──────────────────────────────────────────────────────────────
+# Notification Guard
+# Set NOTIFICATIONS_DRY_RUN=true in dev/test to suppress all
+# outbound Glific API calls while keeping the Kafka pipeline live.
+# ──────────────────────────────────────────────────────────────
+
+notifications:
+  dry-run: ${NOTIFICATIONS_DRY_RUN:false}
+
+# ──────────────────────────────────────────────────────────────
 # Glific GraphQL API (WhatsApp HSM)
 # ──────────────────────────────────────────────────────────────
 
