@@ -8,6 +8,7 @@ import org.arghyam.jalsoochak.user.dto.response.PumpOperatorSchemeComplianceRowD
 import org.arghyam.jalsoochak.user.dto.response.PumpOperatorSummaryDTO;
 import org.arghyam.jalsoochak.user.dto.response.SchemePumpOperatorsDTO;
 import org.arghyam.jalsoochak.user.enums.TenantUserStatus;
+import org.arghyam.jalsoochak.user.service.PiiEncryptionService;
 import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
@@ -29,6 +30,7 @@ import java.util.Map;
 public class PublicPumpOperatorRepository {
 
     private final JdbcTemplate jdbcTemplate;
+    private final PiiEncryptionService pii;
 
     private static Integer getNullableInt(ResultSet rs, String column) throws SQLException {
         Object o = rs.getObject(column);
@@ -230,9 +232,9 @@ public class PublicPumpOperatorRepository {
                 return PumpOperatorDetailsDTO.builder()
                         .id(rs.getLong("id"))
                         .uuid(rs.getString("uuid"))
-                        .name(rs.getString("title"))
+                        .name(pii.decrypt(rs.getString("title")))
                         .email(rs.getString("email"))
-                        .phoneNumber(rs.getString("phone_number"))
+                        .phoneNumber(pii.decrypt(rs.getString("phone_number")))
                         .status(getNullableInt(rs, "status"))
                         .schemeId(getNullableInt(rs, "scheme_id"))
                         .schemeName(rs.getString("scheme_name"))
@@ -337,9 +339,9 @@ public class PublicPumpOperatorRepository {
                     rs.getString("scheme_name"),
                     rs.getLong("user_id"),
                     rs.getString("uuid"),
-                    rs.getString("name"),
+                    pii.decrypt(rs.getString("name")),
                     rs.getString("email"),
-                    rs.getString("phone_number"),
+                    pii.decrypt(rs.getString("phone_number")),
                     getNullableInt(rs, "status")
             ), baseParams.toArray());
 
@@ -452,7 +454,7 @@ public class PublicPumpOperatorRepository {
                     SELECT l.*,
                            ROW_NUMBER() OVER (
                                PARTITION BY l.scheme_id
-                               ORDER BY l.name ASC NULLS LAST, l.user_id ASC
+                               ORDER BY l.user_id ASC
                            ) AS rn
                     FROM latest l
                 )
@@ -488,9 +490,9 @@ public class PublicPumpOperatorRepository {
                 rs.getString("scheme_name"),
                 rs.getLong("user_id"),
                 rs.getString("uuid"),
-                rs.getString("name"),
+                pii.decrypt(rs.getString("name")),
                 rs.getString("email"),
-                rs.getString("phone_number"),
+                pii.decrypt(rs.getString("phone_number")),
                 getNullableInt(rs, "status")
         ), opsParams.toArray());
 
@@ -775,9 +777,9 @@ public class PublicPumpOperatorRepository {
             return new RowData(
                     rs.getLong("id"),
                     rs.getString("uuid"),
-                    rs.getString("name"),
+                    pii.decrypt(rs.getString("name")),
                     rs.getString("email"),
-                    rs.getString("phone_number"),
+                    pii.decrypt(rs.getString("phone_number")),
                     getNullableInt(rs, "status"),
                     rs.getLong("scheme_id"),
                     rs.getString("scheme_name"),

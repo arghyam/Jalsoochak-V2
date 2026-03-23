@@ -5,6 +5,7 @@ import org.arghyam.jalsoochak.user.dto.response.RoleCountDTO;
 import org.arghyam.jalsoochak.user.dto.response.SchemeSummaryDTO;
 import org.arghyam.jalsoochak.user.dto.response.TenantStaffResponseDTO;
 import org.arghyam.jalsoochak.user.enums.TenantUserStatus;
+import org.arghyam.jalsoochak.user.service.PiiEncryptionService;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Repository;
@@ -22,6 +23,8 @@ import java.util.Optional;
 public class TenantStaffRepository {
 
     private final JdbcTemplate jdbcTemplate;
+    private final PiiEncryptionService pii;
+
     private static final Map<Integer, String> WORK_STATUS_LABELS = Map.of(
             1, "Ongoing",
             2, "Completed",
@@ -34,16 +37,18 @@ public class TenantStaffRepository {
             3, "Partially Operative"
     );
 
-    private final RowMapper<TenantStaffResponseDTO> staffRowMapper = (rs, rowNum) -> TenantStaffResponseDTO.builder()
-            .id(rs.getLong("id"))
-            .uuid(rs.getString("uuid"))
-            .title(rs.getString("title"))
-            .email(rs.getString("email"))
-            .phoneNumber(rs.getString("phone_number"))
-            .status(mapStatus(rs.getObject("status")))
-            .role(rs.getString("role"))
-            .schemes(null)
-            .build();
+    private RowMapper<TenantStaffResponseDTO> staffRowMapper() {
+        return (rs, rowNum) -> TenantStaffResponseDTO.builder()
+                .id(rs.getLong("id"))
+                .uuid(rs.getString("uuid"))
+                .title(pii.decrypt(rs.getString("title")))
+                .email(rs.getString("email"))
+                .phoneNumber(pii.decrypt(rs.getString("phone_number")))
+                .status(mapStatus(rs.getObject("status")))
+                .role(rs.getString("role"))
+                .schemes(null)
+                .build();
+    }
 
     private void validateSchemaName(String schemaName) {
         if (schemaName == null || !schemaName.matches("^[a-z_][a-z0-9_]*$")) {
@@ -76,7 +81,10 @@ public class TenantStaffRepository {
     ) {
         validateSchemaName(schemaName);
 
-        SqlAndArgs where = buildWhere(roles, status, name);
+        // name filter cannot be applied in SQL because title is encrypted;
+        // fetch all rows matching the other filters, decrypt, then filter+paginate in Java.
+        boolean hasNameFilter = name != null && !name.isBlank();
+        SqlAndArgs where = buildWhere(roles, status);
         String orderBy = orderBy(sortBy, sortDir);
 
         String sql = String.format("""
@@ -93,14 +101,27 @@ public class TenantStaffRepository {
                 WHERE u.deleted_at IS NULL
                   %s
                 %s
-                LIMIT ? OFFSET ?
-                """, schemaName, where.sql(), orderBy);
+                %s
+                """, schemaName, where.sql(), orderBy,
+                hasNameFilter ? "" : "LIMIT ? OFFSET ?");
 
         List<Object> args = new ArrayList<>(where.args());
-        args.add(limit);
-        args.add(offset);
+        if (!hasNameFilter) {
+            args.add(limit);
+            args.add(offset);
+        }
 
-        List<TenantStaffResponseDTO> rows = jdbcTemplate.query(sql, staffRowMapper, args.toArray());
+        List<TenantStaffResponseDTO> rows = jdbcTemplate.query(sql, staffRowMapper(), args.toArray());
+
+        if (hasNameFilter) {
+            String needle = name.trim().toLowerCase(Locale.ROOT);
+            rows = rows.stream()
+                    .filter(r -> r.title() != null && r.title().toLowerCase(Locale.ROOT).contains(needle))
+                    .toList();
+            int toIdx = Math.min(offset + limit, rows.size());
+            rows = offset >= rows.size() ? List.of() : new ArrayList<>(rows.subList(offset, toIdx));
+        }
+
         attachSchemes(schemaName, rows);
         return rows;
     }
@@ -125,7 +146,7 @@ public class TenantStaffRepository {
                 """, schemaName);
 
         Optional<TenantStaffResponseDTO> result = jdbcTemplate.query(sql, rs -> {
-            if (rs.next()) return Optional.of(staffRowMapper.mapRow(rs, 0));
+            if (rs.next()) return Optional.of(staffRowMapper().mapRow(rs, 0));
             return Optional.empty();
         }, id);
         result.ifPresent(r -> attachSchemes(schemaName, List.of(r)));
@@ -134,8 +155,30 @@ public class TenantStaffRepository {
 
     public long countStaff(String schemaName, List<String> roles, Integer status, String name) {
         validateSchemaName(schemaName);
-        SqlAndArgs where = buildWhere(roles, status, name);
 
+        boolean hasNameFilter = name != null && !name.isBlank();
+
+        if (hasNameFilter) {
+            // Must decrypt and filter in Java — reuse the full fetch without pagination
+            SqlAndArgs where = buildWhere(roles, status);
+            String sql = String.format("""
+                    SELECT u.title
+                    FROM %s.user_table u
+                    LEFT JOIN common_schema.user_type_master_table ut
+                      ON ut.id = u.user_type
+                    WHERE u.deleted_at IS NULL
+                      %s
+                    """, schemaName, where.sql());
+            String needle = name.trim().toLowerCase(Locale.ROOT);
+            List<String> encryptedTitles = jdbcTemplate.query(
+                    sql, (rs, n) -> rs.getString("title"), where.args().toArray());
+            return encryptedTitles.stream()
+                    .map(pii::decrypt)
+                    .filter(t -> t != null && t.toLowerCase(Locale.ROOT).contains(needle))
+                    .count();
+        }
+
+        SqlAndArgs where = buildWhere(roles, status);
         String sql = String.format("""
                 SELECT COUNT(1)
                 FROM %s.user_table u
@@ -151,7 +194,7 @@ public class TenantStaffRepository {
 
     public List<RoleCountDTO> countByRole(String schemaName, Integer status, String name) {
         validateSchemaName(schemaName);
-        SqlAndArgs where = buildWhere(List.of(), status, name);
+        SqlAndArgs where = buildWhere(List.of(), status);
 
         String sql = String.format("""
                 SELECT COALESCE(ut.c_name, 'UNKNOWN') AS role,
@@ -173,7 +216,8 @@ public class TenantStaffRepository {
 
     private record SqlAndArgs(String sql, List<Object> args) {}
 
-    private SqlAndArgs buildWhere(List<String> roles, Integer status, String name) {
+    // name is excluded from SQL filtering because title is encrypted
+    private SqlAndArgs buildWhere(List<String> roles, Integer status) {
         List<String> clauses = new ArrayList<>();
         List<Object> args = new ArrayList<>();
 
@@ -194,10 +238,6 @@ public class TenantStaffRepository {
             clauses.add("u.status = ?");
             args.add(status);
         }
-        if (name != null && !name.isBlank()) {
-            clauses.add("u.title ILIKE ?");
-            args.add("%" + name.trim() + "%");
-        }
 
         if (clauses.isEmpty()) {
             return new SqlAndArgs("", List.of());
@@ -208,11 +248,11 @@ public class TenantStaffRepository {
     private String orderBy(String sortBy, String sortDir) {
         String dir = "asc".equalsIgnoreCase(sortDir) ? "ASC" : "DESC";
         String key = sortBy == null ? "" : sortBy.trim().toLowerCase(Locale.ROOT);
+        // title and phone_number are encrypted — sorting by ciphertext is meaningless,
+        // fall back to u.id for consistent ordering.
         String col = switch (key) {
             case "id" -> "u.id";
-            case "title", "name" -> "u.title";
             case "email" -> "u.email";
-            case "phone_number", "phone" -> "u.phone_number";
             case "status" -> "u.status";
             case "role" -> "ut.c_name";
             case "created_at" -> "u.created_at";

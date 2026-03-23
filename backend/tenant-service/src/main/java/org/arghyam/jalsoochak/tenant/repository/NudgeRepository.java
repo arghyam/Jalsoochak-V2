@@ -2,6 +2,7 @@ package org.arghyam.jalsoochak.tenant.repository;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.arghyam.jalsoochak.tenant.service.PiiEncryptionService;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
@@ -24,6 +25,7 @@ import java.util.function.Consumer;
 public class NudgeRepository {
 
     private final JdbcTemplate jdbcTemplate;
+    private final PiiEncryptionService pii;
 
     /**
      * Streams OPERATOR users who have an active scheme mapping but no flow reading for today,
@@ -61,7 +63,7 @@ public class NudgeRepository {
             Map<String, Object> row = new HashMap<>(8);
             row.put("user_id", rs.getObject("user_id"));
             row.put("name", rs.getString("name"));
-            row.put("phone_number", rs.getString("phone_number"));
+            row.put("phone_number", pii.decrypt(rs.getString("phone_number")));
             row.put("language_id", rs.getObject("language_id"));
             row.put("whatsapp_connection_id", rs.getObject("whatsapp_connection_id"));
             row.put("scheme_id", rs.getObject("scheme_id"));
@@ -142,7 +144,7 @@ public class NudgeRepository {
             Map<String, Object> row = new HashMap<>(10);
             row.put("user_id", rs.getObject("user_id"));
             row.put("name", rs.getString("name"));
-            row.put("phone_number", rs.getString("phone_number"));
+            row.put("phone_number", pii.decrypt(rs.getString("phone_number")));
             row.put("language_id", rs.getObject("language_id"));
             row.put("whatsapp_connection_id", rs.getObject("whatsapp_connection_id"));
             row.put("scheme_id", rs.getObject("scheme_id"));
@@ -173,7 +175,10 @@ public class NudgeRepository {
                 LIMIT 1
                 """, schema, schema);
         List<Map<String, Object>> rows = jdbcTemplate.queryForList(sql, schemeId, userTypeName);
-        return rows.isEmpty() ? null : rows.get(0);
+        if (rows.isEmpty()) return null;
+        Map<String, Object> row = new java.util.HashMap<>(rows.get(0));
+        row.put("phone_number", pii.decrypt((String) row.get("phone_number")));
+        return row;
     }
 
     /**
@@ -198,7 +203,9 @@ public class NudgeRepository {
         List<Map<String, Object>> rows = jdbcTemplate.queryForList(sql, userTypeName);
         Map<Object, Map<String, Object>> result = new HashMap<>(rows.size() * 2);
         for (Map<String, Object> row : rows) {
-            result.putIfAbsent(row.get("scheme_id"), row);
+            Map<String, Object> decrypted = new HashMap<>(row);
+            decrypted.put("phone_number", pii.decrypt((String) row.get("phone_number")));
+            result.putIfAbsent(decrypted.get("scheme_id"), decrypted);
         }
         return result;
     }
