@@ -23,6 +23,7 @@ import org.arghyam.jalsoochak.user.exceptions.UserAlreadyExistsException;
 import org.arghyam.jalsoochak.user.repository.UserCommonRepository;
 import org.arghyam.jalsoochak.user.repository.UserTenantRepository;
 import org.arghyam.jalsoochak.user.repository.records.AdminUserRow;
+import org.arghyam.jalsoochak.user.repository.records.AdminUserTokenRow;
 import org.arghyam.jalsoochak.user.event.InviteEmailEvent;
 import org.arghyam.jalsoochak.user.event.UserEmailEventPublisher;
 import org.arghyam.jalsoochak.user.service.KeycloakAdminHelper;
@@ -199,9 +200,9 @@ public class UserManagementServiceImpl implements UserManagementService {
         String tenantName = tenantCode != null
                 ? userCommonRepository.findTenantTitleByStateCode(tenantCode).orElse(null) : null;
 
-        // Carry over firstName/lastName from the existing active token
-        Optional<org.arghyam.jalsoochak.user.repository.records.AdminUserTokenRow> existingToken =
-                userCommonRepository.findActiveInviteTokenByEmail(target.email());
+        // Carry over firstName/lastName from the most recent unconsumed invite token (even if expired)
+        Optional<AdminUserTokenRow> existingToken =
+                userCommonRepository.findInviteTokenByEmail(target.email());
 
         Map<String, Object> metaMap = new HashMap<>();
         metaMap.put("role", targetRole);

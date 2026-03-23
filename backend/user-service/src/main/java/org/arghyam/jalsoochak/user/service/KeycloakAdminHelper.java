@@ -1,9 +1,11 @@
 package org.arghyam.jalsoochak.user.service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.arghyam.jalsoochak.user.config.KeycloakProvider;
 import org.arghyam.jalsoochak.user.dto.response.AdminUserResponseDTO;
+import org.arghyam.jalsoochak.user.enums.AdminUserStatus;
 import org.arghyam.jalsoochak.user.repository.UserCommonRepository;
 import org.arghyam.jalsoochak.user.repository.records.AdminUserRow;
 import org.keycloak.representations.idm.RoleRepresentation;
@@ -19,6 +21,7 @@ public class KeycloakAdminHelper {
 
     private final KeycloakProvider keycloakProvider;
     private final UserCommonRepository userCommonRepository;
+    private final ObjectMapper objectMapper;
 
     /**
      * Builds a full AdminUserResponseDTO by enriching an AdminUserRow with
@@ -32,7 +35,14 @@ public class KeycloakAdminHelper {
 
         String firstName = null;
         String lastName = null;
-        if (user.uuid() != null) {
+        if (user.status() == AdminUserStatus.PENDING) {
+            // No Keycloak account exists yet — read names from the invite token metadata
+            var tokenOpt = userCommonRepository.findInviteTokenByEmail(user.email());
+            if (tokenOpt.isPresent()) {
+                firstName = parseMetadata(tokenOpt.get().metadata(), "firstName");
+                lastName = parseMetadata(tokenOpt.get().metadata(), "lastName");
+            }
+        } else if (user.uuid() != null) {
             try {
                 UserRepresentation rep = keycloakProvider.getAdminInstance()
                         .realm(keycloakProvider.getRealm())
@@ -90,6 +100,16 @@ public class KeycloakAdminHelper {
         } catch (Exception e) {
             log.error("Failed to remove role '{}' from Keycloak user {}: {}", roleName, keycloakId, e.getMessage(), e);
             throw new RuntimeException("Failed to remove role '" + roleName + "' from user in Keycloak", e);
+        }
+    }
+
+    private String parseMetadata(String json, String key) {
+        if (json == null) return null;
+        try {
+            return objectMapper.readTree(json).path(key).asText(null);
+        } catch (Exception e) {
+            log.warn("Failed to parse metadata key '{}': {}", key, e.getMessage());
+            return null;
         }
     }
 

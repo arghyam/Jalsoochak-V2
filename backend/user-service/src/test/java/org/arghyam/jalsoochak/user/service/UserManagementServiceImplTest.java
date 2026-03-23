@@ -664,7 +664,38 @@ class UserManagementServiceImplTest {
             when(userCommonRepository.findAdminUserById(7L)).thenReturn(Optional.of(target));
             when(userCommonRepository.findAdminUserByUuid("kc-super")).thenReturn(Optional.of(callerRow));
             when(userCommonRepository.findUserTypeNameById(1)).thenReturn(Optional.of("SUPER_USER"));
-            when(userCommonRepository.findActiveInviteTokenByEmail("pending@example.com")).thenReturn(Optional.of(existingToken));
+            when(userCommonRepository.findInviteTokenByEmail("pending@example.com")).thenReturn(Optional.of(existingToken));
+            when(tokenService.generateRawToken()).thenReturn("new-raw-token");
+            when(tokenService.hash("new-raw-token")).thenReturn("new-hash");
+            when(inviteProperties.expiryHours()).thenReturn(24);
+            doNothing().when(userCommonRepository).upsertToken(
+                    eq("pending@example.com"), eq("new-hash"), eq("INVITE"), anyString(), any(), eq(1));
+            when(frontendProperties.baseUrl()).thenReturn("http://localhost:3000");
+            when(frontendProperties.invitePath()).thenReturn("/invite");
+
+            userManagementService.reinviteUser(7L, auth);
+
+            verify(userCommonRepository).upsertToken(
+                    eq("pending@example.com"), eq("new-hash"), eq("INVITE"), anyString(), any(), eq(1));
+            verify(userEmailEventPublisher).publishInviteEmailAfterCommit(any(InviteEmailEvent.class));
+        }
+
+        @Test
+        @DisplayName("Should carry over names from an expired invite token when reinviting")
+        void reinviteUser_expiredToken_namesCarriedOver() {
+            Authentication auth = superUserAuth("kc-super");
+            AdminUserRow target = userRow(7L, "pending-uuid", "pending@example.com", 0, 1, AdminUserStatus.PENDING);
+            AdminUserRow callerRow = userRow(1L, "kc-super", "super@example.com", 0, 1, AdminUserStatus.ACTIVE);
+
+            // Token is expired (in the past) but unconsumed — previously this would return empty via findActiveInviteTokenByEmail
+            AdminUserTokenRow expiredToken = new AdminUserTokenRow(1L, "pending@example.com", "old-hash",
+                    "INVITE", "{\"role\":\"SUPER_USER\",\"firstName\":\"Jane\",\"lastName\":\"Doe\"}",
+                    Instant.now().minus(2, ChronoUnit.HOURS), null, null, Instant.now().minus(26, ChronoUnit.HOURS));
+
+            when(userCommonRepository.findAdminUserById(7L)).thenReturn(Optional.of(target));
+            when(userCommonRepository.findAdminUserByUuid("kc-super")).thenReturn(Optional.of(callerRow));
+            when(userCommonRepository.findUserTypeNameById(1)).thenReturn(Optional.of("SUPER_USER"));
+            when(userCommonRepository.findInviteTokenByEmail("pending@example.com")).thenReturn(Optional.of(expiredToken));
             when(tokenService.generateRawToken()).thenReturn("new-raw-token");
             when(tokenService.hash("new-raw-token")).thenReturn("new-hash");
             when(inviteProperties.expiryHours()).thenReturn(24);

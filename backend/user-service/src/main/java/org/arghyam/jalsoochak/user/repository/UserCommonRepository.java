@@ -372,6 +372,19 @@ public class UserCommonRepository {
                 Timestamp.from(expiresAt), createdBy);
     }
 
+    /** Find the most recent unconsumed INVITE token by email (regardless of expiry — used to read name metadata for PENDING users). */
+    public Optional<AdminUserTokenRow> findInviteTokenByEmail(String email) {
+        String sql = """
+                SELECT id, email, token_hash, token_type, metadata::TEXT, expires_at, used_at, deleted_at, created_at
+                FROM common_schema.admin_user_token_table
+                WHERE LOWER(email) = LOWER(?) AND token_type = 'INVITE' AND used_at IS NULL AND deleted_at IS NULL
+                ORDER BY created_at DESC
+                LIMIT 1
+                """;
+        List<AdminUserTokenRow> rows = jdbcTemplate.query(sql, (rs, n) -> mapTokenRow(rs), email);
+        return rows.stream().findFirst();
+    }
+
     /** Find an active (not used, not deleted, not expired) INVITE token by email. */
     public Optional<AdminUserTokenRow> findActiveInviteTokenByEmail(String email) {
         String sql = """
