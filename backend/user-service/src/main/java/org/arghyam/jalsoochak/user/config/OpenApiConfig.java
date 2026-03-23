@@ -19,8 +19,8 @@ public class OpenApiConfig {
         return new OpenAPI()
                 .info(new Info().title("JalSoochak User Service").version("v1"))
                 .servers(List.of(
-                        new Server().url("/user").description("API gateway (same origin as docs URL)"),
-                        new Server().url("http://localhost:8080/user").description("Local API gateway (:8080)"),
+                        new Server().url("/").description("API gateway (same origin as docs URL)"),
+                        new Server().url("http://localhost:8080").description("Local API gateway (:8080)"),
                         new Server().url("http://localhost:8082").description("Local service (direct, README :8082)")))
                 .addSecurityItem(new SecurityRequirement().addList("Bearer"))
                 .components(new Components().addSecuritySchemes("Bearer",

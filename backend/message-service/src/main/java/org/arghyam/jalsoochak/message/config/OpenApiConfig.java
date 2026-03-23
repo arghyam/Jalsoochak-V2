@@ -26,8 +26,8 @@ public class OpenApiConfig {
                         .contact(new Contact()
                                 .name("JalSoochak Team")))
                 .servers(List.of(
-                        new Server().url("/message").description("API gateway (same origin as docs URL)"),
-                        new Server().url("http://localhost:8080/message").description("Local API gateway (:8080)"),
+                        new Server().url("/").description("API gateway (same origin as docs URL)"),
+                        new Server().url("http://localhost:8080").description("Local API gateway (:8080)"),
                         new Server().url("http://localhost:8085").description("Local service (direct, README :8085)")))
                 .addSecurityItem(new SecurityRequirement().addList("Bearer"))
                 .components(new Components().addSecuritySchemes("Bearer",

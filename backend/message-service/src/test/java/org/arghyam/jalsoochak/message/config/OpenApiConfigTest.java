@@ -11,8 +11,8 @@ class OpenApiConfigTest {
     void openApiListsGatewayRelativeLocalGatewayAndDirectLocal() {
         OpenAPI api = new OpenApiConfig().messageServiceOpenAPI();
         assertEquals(3, api.getServers().size());
-        assertEquals("/message", api.getServers().get(0).getUrl());
-        assertEquals("http://localhost:8080/message", api.getServers().get(1).getUrl());
+        assertEquals("/", api.getServers().get(0).getUrl());
+        assertEquals("http://localhost:8080", api.getServers().get(1).getUrl());
         assertEquals("http://localhost:8085", api.getServers().get(2).getUrl());
     }
 }

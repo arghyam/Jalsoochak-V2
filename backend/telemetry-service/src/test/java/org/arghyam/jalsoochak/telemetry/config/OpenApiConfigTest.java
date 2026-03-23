@@ -11,8 +11,8 @@ class OpenApiConfigTest {
     void openApiListsGatewayLocalGatewayYmlPortAndReadmePort() {
         OpenAPI api = new OpenApiConfig().telemetryServiceOpenAPI();
         assertEquals(4, api.getServers().size());
-        assertEquals("/telemetry", api.getServers().get(0).getUrl());
-        assertEquals("http://localhost:8080/telemetry", api.getServers().get(1).getUrl());
+        assertEquals("/", api.getServers().get(0).getUrl());
+        assertEquals("http://localhost:8080", api.getServers().get(1).getUrl());
         assertEquals("http://localhost:8089", api.getServers().get(2).getUrl());
         assertEquals("http://localhost:8084", api.getServers().get(3).getUrl());
     }

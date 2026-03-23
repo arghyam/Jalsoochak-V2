@@ -26,8 +26,8 @@ public class OpenApiConfig {
                         .contact(new Contact()
                                 .name("JalSoochak Team")))
                 .servers(List.of(
-                        new Server().url("/telemetry").description("API gateway (same origin as docs URL)"),
-                        new Server().url("http://localhost:8080/telemetry").description("Local API gateway (:8080)"),
+                        new Server().url("/").description("API gateway (same origin as docs URL)"),
+                        new Server().url("http://localhost:8080").description("Local API gateway (:8080)"),
                         new Server().url("http://localhost:8089").description("Local service (direct, this application.yml)"),
                         new Server().url("http://localhost:8084").description("Local service (README default :8084)")))
                 .addSecurityItem(new SecurityRequirement().addList("Bearer"))

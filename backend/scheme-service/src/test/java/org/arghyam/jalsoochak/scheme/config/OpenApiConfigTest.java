@@ -11,8 +11,8 @@ class OpenApiConfigTest {
     void openApiListsGatewayLocalGatewayYmlPortAndReadmePort() {
         OpenAPI api = new OpenApiConfig().schemeServiceOpenAPI();
         assertEquals(4, api.getServers().size());
-        assertEquals("/scheme", api.getServers().get(0).getUrl());
-        assertEquals("http://localhost:8080/scheme", api.getServers().get(1).getUrl());
+        assertEquals("/", api.getServers().get(0).getUrl());
+        assertEquals("http://localhost:8080", api.getServers().get(1).getUrl());
         assertEquals("http://localhost:8287", api.getServers().get(2).getUrl());
         assertEquals("http://localhost:8086", api.getServers().get(3).getUrl());
     }
