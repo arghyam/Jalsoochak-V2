@@ -167,7 +167,7 @@ tenant:
           - title: "Division"
       - level: 5
         level-name:
-          - title: "Sub-division"
+          - title: "Sub Division"
     meter-change-reasons:
       - id: "METER_REPLACED"
         name: "Meter Replaced"
