@@ -1,0 +1,18 @@
+package org.arghyam.jalsoochak.message.config;
+
+import io.swagger.v3.oas.models.OpenAPI;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+
+class OpenApiConfigTest {
+
+    @Test
+    void openApiListsGatewayRelativeLocalGatewayAndDirectLocal() {
+        OpenAPI api = new OpenApiConfig().messageServiceOpenAPI();
+        assertEquals(3, api.getServers().size());
+        assertEquals("/message", api.getServers().get(0).getUrl());
+        assertEquals("http://localhost:8080/message", api.getServers().get(1).getUrl());
+        assertEquals("http://localhost:8085", api.getServers().get(2).getUrl());
+    }
+}
