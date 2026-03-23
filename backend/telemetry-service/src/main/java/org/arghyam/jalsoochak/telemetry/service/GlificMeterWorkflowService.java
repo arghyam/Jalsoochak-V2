@@ -1080,61 +1080,30 @@ public class GlificMeterWorkflowService {
                     .orElseThrow(() -> new IllegalStateException("Operator is not mapped to any scheme"));
 
             LocalDate today = LocalDate.now();
-            LocalDate previousDay = today.minusDays(1);
-            LocalDate twoDaysAgo = today.minusDays(2);
+            LocalDate targetDay = today.minusDays(2);
+            LocalDate dayBeforeTarget = targetDay.minusDays(1);
+            LocalDate dayAfterTarget = targetDay.plusDays(1);
 
             // Use the richer lookup so we can validate bounds before updating.
-            TelemetryFlowReadingDetails previousDayRecord = telemetryTenantRepository
-                    .findLatestFlowReadingForDate(operatorWithSchema.schemaName(), schemeId, operatorId, previousDay)
+            TelemetryFlowReadingDetails targetDayRecord = telemetryTenantRepository
+                    .findLatestFlowReadingForDate(operatorWithSchema.schemaName(), schemeId, operatorId, targetDay)
                     .filter(r -> r.confirmedReading() != null && r.confirmedReading().compareTo(BigDecimal.ZERO) > 0)
-                    .orElseThrow(() -> new IllegalStateException("No previous day reading found to update"));
+                    .orElseThrow(() -> new IllegalStateException("No previous reading found to update for " + targetDay));
 
-            Optional<TelemetryFlowReadingDetails> twoDaysAgoOpt = telemetryTenantRepository
-                    .findLatestFlowReadingForDate(operatorWithSchema.schemaName(), schemeId, operatorId, twoDaysAgo)
+            Optional<TelemetryFlowReadingDetails> dayBeforeTargetOpt = telemetryTenantRepository
+                    .findLatestFlowReadingForDate(operatorWithSchema.schemaName(), schemeId, operatorId, dayBeforeTarget)
                     .filter(r -> r.confirmedReading() != null && r.confirmedReading().compareTo(BigDecimal.ZERO) > 0);
 
-            Optional<TelemetryFlowReadingDetails> todayOpt = telemetryTenantRepository
-                    .findLatestFlowReadingForDate(operatorWithSchema.schemaName(), schemeId, operatorId, today)
+            Optional<TelemetryFlowReadingDetails> dayAfterTargetOpt = telemetryTenantRepository
+                    .findLatestFlowReadingForDate(operatorWithSchema.schemaName(), schemeId, operatorId, dayAfterTarget)
                     .filter(r -> r.confirmedReading() != null && r.confirmedReading().compareTo(BigDecimal.ZERO) > 0);
-
-            // Hard bounds: keep readings monotonic across days when those adjacent readings exist.
-            if (twoDaysAgoOpt.isPresent()) {
-                BigDecimal twoDaysAgoReading = twoDaysAgoOpt.get().confirmedReading();
-                if (readingValue.compareTo(twoDaysAgoReading) < 0) {
-                    return CreateReadingResponse.builder()
-                            .success(false)
-                            .message(localizationService.localizeMessage(
-                                    "Reading cannot be less than the reading from " + twoDaysAgo + " (" + toPlain(twoDaysAgoReading) + ").",
-                                    languageKey
-                            ))
-                            .qualityStatus("REJECTED")
-                            .correlationId(request.getContactId())
-                            .meterReading(readingValue)
-                            .build();
-                }
-            }
-            if (todayOpt.isPresent()) {
-                BigDecimal todaysReading = todayOpt.get().confirmedReading();
-                if (readingValue.compareTo(todaysReading) > 0) {
-                    return CreateReadingResponse.builder()
-                            .success(false)
-                            .message(localizationService.localizeMessage(
-                                    "Reading cannot be greater than today's reading (" + toPlain(todaysReading) + ").",
-                                    languageKey
-                            ))
-                            .qualityStatus("REJECTED")
-                            .correlationId(request.getContactId())
-                            .meterReading(readingValue)
-                            .build();
-                }
-            }
 
             // Threshold bounds (water quantity implied by the reading deltas).
             // Effective thresholds:
             // - Prefer tenant-specific TENANT_WATER_QUANTITY_SUPPLY_THRESHOLD, else fall back to system-level WATER_QUANTITY_SUPPLY_THRESHOLD (tenant_id=0).
             Optional<WaterSupplyThreshold> thresholdOpt = loadWaterSupplyThreshold(tenantId);
             Optional<BigDecimal> waterNormOpt = loadWaterNorm(tenantId);
-            if (thresholdOpt.isPresent() && waterNormOpt.isPresent() && twoDaysAgoOpt.isPresent()) {
+            if (thresholdOpt.isPresent() && waterNormOpt.isPresent() && dayBeforeTargetOpt.isPresent()) {
                 WaterSupplyThreshold threshold = thresholdOpt.get();
                 BigDecimal waterNorm = waterNormOpt.get();
                 BigDecimal minAllowedQty = waterNorm
@@ -1144,12 +1113,12 @@ public class GlificMeterWorkflowService {
                         .multiply(BigDecimal.valueOf(100.0d + threshold.oversupplyThresholdPercent()))
                         .divide(BigDecimal.valueOf(100.0d), 6, RoundingMode.HALF_UP);
 
-                BigDecimal qtyForPreviousDay = readingValue.subtract(twoDaysAgoOpt.get().confirmedReading());
-                if (qtyForPreviousDay.compareTo(minAllowedQty) < 0 || qtyForPreviousDay.compareTo(maxAllowedQty) > 0) {
+                BigDecimal qtyForTargetDay = readingValue.subtract(dayBeforeTargetOpt.get().confirmedReading());
+                if (qtyForTargetDay.compareTo(minAllowedQty) < 0 || qtyForTargetDay.compareTo(maxAllowedQty) > 0) {
                     return CreateReadingResponse.builder()
                             .success(false)
                             .message(localizationService.localizeMessage(
-                                    "Updated reading implies water quantity for " + previousDay + " (" + toPlain(qtyForPreviousDay)
+                                    "Updated reading implies water quantity for " + targetDay + " (" + toPlain(qtyForTargetDay)
                                             + ") outside allowed range [" + toPlain(minAllowedQty) + ", " + toPlain(maxAllowedQty) + "].",
                                     languageKey
                             ))
@@ -1159,13 +1128,13 @@ public class GlificMeterWorkflowService {
                             .build();
                 }
 
-                if (todayOpt.isPresent()) {
-                    BigDecimal qtyForToday = todayOpt.get().confirmedReading().subtract(readingValue);
-                    if (qtyForToday.compareTo(minAllowedQty) < 0 || qtyForToday.compareTo(maxAllowedQty) > 0) {
+                if (dayAfterTargetOpt.isPresent()) {
+                    BigDecimal qtyForDayAfter = dayAfterTargetOpt.get().confirmedReading().subtract(readingValue);
+                    if (qtyForDayAfter.compareTo(minAllowedQty) < 0 || qtyForDayAfter.compareTo(maxAllowedQty) > 0) {
                         return CreateReadingResponse.builder()
                                 .success(false)
                                 .message(localizationService.localizeMessage(
-                                        "Updated reading implies water quantity for " + today + " (" + toPlain(qtyForToday)
+                                        "Updated reading implies water quantity for " + dayAfterTarget + " (" + toPlain(qtyForDayAfter)
                                                 + ") outside allowed range [" + toPlain(minAllowedQty) + ", " + toPlain(maxAllowedQty) + "].",
                                         languageKey
                                 ))
@@ -1179,19 +1148,19 @@ public class GlificMeterWorkflowService {
 
             telemetryTenantRepository.updateReadingValues(
                     operatorWithSchema.schemaName(),
-                    previousDayRecord.id(),
+                    targetDayRecord.id(),
                     readingValue,
                     operatorId
             );
 
-            String correlationId = previousDayRecord.correlationId();
+            String correlationId = targetDayRecord.correlationId();
             if (correlationId == null || correlationId.isBlank()) {
                 correlationId = "previous-day-" + UUID.randomUUID();
             }
 
             return CreateReadingResponse.builder()
                     .success(true)
-                    .message("Previous day reading updated successfully.")
+                    .message("Previous reading updated successfully.")
                     .qualityStatus("CONFIRMED")
                     .correlationId(correlationId)
                     .meterReading(readingValue)
@@ -1200,7 +1169,7 @@ public class GlificMeterWorkflowService {
             log.error("Error updating previous day reading for contactId {}: {}", request.getContactId(), e.getMessage(), e);
             return CreateReadingResponse.builder()
                     .success(false)
-                    .message("Previous day reading could not be updated.")
+                    .message("Previous reading could not be updated.")
                     .qualityStatus("REJECTED")
                     .correlationId(request.getContactId())
                     .build();

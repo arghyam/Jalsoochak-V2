@@ -388,7 +388,7 @@ public class GlificWebhookController {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(
                     CreateReadingResponse.builder()
                             .success(false)
-                            .message("Previous day reading could not be updated.")
+                            .message("Previous reading could not be updated.")
                             .qualityStatus("REJECTED")
                             .correlationId(request.getContactId())
                             .build()

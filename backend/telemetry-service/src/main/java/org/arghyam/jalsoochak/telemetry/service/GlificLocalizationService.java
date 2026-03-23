@@ -74,7 +74,7 @@ public class GlificLocalizationService {
             return localizeMessage("manualReading is required.", languageKey);
         }
         if (normalized.contains("manualreading must be numeric")) {
-            return localizeMessage("manualReading must be a numeric value.", languageKey);
+            return localizeMessage("Manual Reading must be numeric value", languageKey);
         }
         if (normalized.contains("manualreading must be greater than zero")) {
             return localizeMessage("manualReading must be greater than zero.", languageKey);
@@ -146,7 +146,8 @@ public class GlificLocalizationService {
         if (normalized.contains("manualreading is required")) {
             return "manualReading अनिवार्य है।";
         }
-        if (normalized.contains("manualreading must be a numeric value")) {
+        if (normalized.contains("manual reading must be numeric value")
+                || normalized.contains("manualreading must be numeric value")) {
             return "manualReading केवल संख्या होना चाहिए।";
         }
         if (normalized.contains("manualreading must be greater than zero")) {
