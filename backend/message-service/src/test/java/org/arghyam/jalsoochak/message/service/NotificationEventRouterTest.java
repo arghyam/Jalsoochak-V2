@@ -1,10 +1,25 @@
 package org.arghyam.jalsoochak.message.service;
 
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
+
+import java.nio.file.Path;
+
 import org.arghyam.jalsoochak.message.channel.GlificWhatsAppService;
 import org.arghyam.jalsoochak.message.channel.WhatsAppChannel;
-import org.arghyam.jalsoochak.message.dto.OperatorEscalationDetail;
 import org.arghyam.jalsoochak.message.kafka.KafkaProducer;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -14,12 +29,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
-import java.nio.file.Path;
-import java.util.List;
-
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.*;
-import static org.mockito.Mockito.*;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 /**
  * Unit tests for {@link NotificationEventRouter}.
@@ -47,6 +57,9 @@ class NotificationEventRouterTest {
 
     @Mock
     private MessageTemplateService messageTemplateService;
+
+    @Mock
+    private AccountEmailService accountEmailService;
 
     @InjectMocks
     private NotificationEventRouter router;
@@ -379,5 +392,219 @@ class NotificationEventRouterTest {
         assertThatThrownBy(() -> router.route("{not valid json"))
                 .isInstanceOf(RuntimeException.class)
                 .hasMessageContaining("Notification event processing failed");
+    }
+
+    // ───────────────────────── SEND_INVITE_EMAIL ───────────────────────────────
+
+    @Test
+    void route_dispatchesInviteEmail_forValidEvent() {
+        router.route("""
+                {"eventType":"SEND_INVITE_EMAIL","to":"admin@state.gov",
+                 "name":"Ravi Kumar","role":"STATE_ADMIN",
+                 "inviteLink":"https://app.jalsoochak.in/activate?token=abc","expiryHours":24}
+                """);
+
+        verify(accountEmailService).sendInviteEmail(
+                "admin@state.gov", "Ravi Kumar", "STATE_ADMIN",
+                "https://app.jalsoochak.in/activate?token=abc", 24);
+        verify(kafkaProducer, never()).publishJson(anyString(), any());
+    }
+
+    @Test
+    void route_isCaseInsensitive_forInviteEmailEventType() {
+        router.route("""
+                {"eventType":"send_invite_email","to":"op@tenant.in","name":"Dev",
+                 "role":"FIELD_OFFICER","inviteLink":"https://link","expiryHours":12}
+                """);
+
+        verify(accountEmailService).sendInviteEmail(anyString(), anyString(), anyString(), anyString(), anyInt());
+    }
+
+    @Test
+    void route_routesToDlt_whenInviteEmailMissingToField() {
+        router.route("""
+                {"eventType":"SEND_INVITE_EMAIL","name":"Dev",
+                 "inviteLink":"https://link","expiryHours":24}
+                """);
+
+        verify(accountEmailService, never()).sendInviteEmail(anyString(), anyString(), anyString(), anyString(), anyInt());
+        verify(kafkaProducer).publishJson(eq("account-email-dlt"), argThat(payload -> {
+            String s = payload.toString();
+            return s.contains("ACCOUNT_EMAIL_FAILED") && s.contains("missing_to");
+        }));
+    }
+
+    @Test
+    void route_routesToDlt_whenInviteEmailMissingInviteLink() {
+        router.route("""
+                {"eventType":"SEND_INVITE_EMAIL","to":"admin@state.gov","name":"Dev",
+                 "role":"STATE_ADMIN","expiryHours":24}
+                """);
+
+        verify(accountEmailService, never()).sendInviteEmail(anyString(), anyString(), anyString(), anyString(), anyInt());
+        verify(kafkaProducer).publishJson(eq("account-email-dlt"), argThat(payload -> {
+            String s = payload.toString();
+            return s.contains("ACCOUNT_EMAIL_FAILED") && s.contains("missing_invite_link");
+        }));
+    }
+
+    @Test
+    void route_routesToDlt_whenInviteEmailSmtpFails() {
+        doThrow(new RuntimeException("SMTP down"))
+                .when(accountEmailService).sendInviteEmail(anyString(), anyString(), anyString(), anyString(), anyInt());
+
+        router.route("""
+                {"eventType":"SEND_INVITE_EMAIL","to":"admin@state.gov","name":"Dev",
+                 "role":"STATE_ADMIN","inviteLink":"https://link","expiryHours":24}
+                """);
+
+        verify(kafkaProducer).publishJson(eq("account-email-dlt"), argThat(payload -> {
+            String s = payload.toString();
+            return s.contains("ACCOUNT_EMAIL_FAILED") && s.contains("smtp_error");
+        }));
+    }
+
+    // ──────────────────────── SEND_REINVITE_EMAIL ──────────────────────────────
+
+    @Test
+    void route_dispatchesReinviteEmail_forValidEvent() {
+        router.route("""
+                {"eventType":"SEND_REINVITE_EMAIL","to":"op@tenant.in",
+                 "name":"Sunita","inviteLink":"https://app.jalsoochak.in/activate?token=re","expiryHours":72}
+                """);
+
+        verify(accountEmailService).sendReinviteEmail(
+                "op@tenant.in", "Sunita",
+                "https://app.jalsoochak.in/activate?token=re", 72);
+        verify(kafkaProducer, never()).publishJson(anyString(), any());
+    }
+
+    @Test
+    void route_routesToDlt_whenReinviteEmailMissingToField() {
+        router.route("""
+                {"eventType":"SEND_REINVITE_EMAIL","name":"Sunita",
+                 "inviteLink":"https://link","expiryHours":72}
+                """);
+
+        verify(accountEmailService, never()).sendReinviteEmail(anyString(), anyString(), anyString(), anyInt());
+        verify(kafkaProducer).publishJson(eq("account-email-dlt"), argThat(payload -> {
+            String s = payload.toString();
+            return s.contains("ACCOUNT_EMAIL_FAILED") && s.contains("missing_to");
+        }));
+    }
+
+    @Test
+    void route_routesToDlt_whenReinviteEmailMissingInviteLink() {
+        router.route("""
+                {"eventType":"SEND_REINVITE_EMAIL","to":"op@tenant.in",
+                 "name":"Sunita","expiryHours":72}
+                """);
+
+        verify(accountEmailService, never()).sendReinviteEmail(anyString(), anyString(), anyString(), anyInt());
+        verify(kafkaProducer).publishJson(eq("account-email-dlt"), argThat(payload -> {
+            String s = payload.toString();
+            return s.contains("ACCOUNT_EMAIL_FAILED") && s.contains("missing_invite_link");
+        }));
+    }
+
+    @Test
+    void route_routesToDlt_whenReinviteEmailSmtpFails() {
+        doThrow(new RuntimeException("SMTP down"))
+                .when(accountEmailService).sendReinviteEmail(anyString(), anyString(), anyString(), anyInt());
+
+        router.route("""
+                {"eventType":"SEND_REINVITE_EMAIL","to":"op@tenant.in","name":"Sunita",
+                 "inviteLink":"https://link","expiryHours":72}
+                """);
+
+        verify(kafkaProducer).publishJson(eq("account-email-dlt"), argThat(payload -> {
+            String s = payload.toString();
+            return s.contains("ACCOUNT_EMAIL_FAILED") && s.contains("smtp_error");
+        }));
+    }
+
+    // ─────────────────────── SEND_PASSWORD_RESET_EMAIL ─────────────────────────
+
+    @Test
+    void route_dispatchesPasswordResetEmail_forValidEvent() {
+        router.route("""
+                {"eventType":"SEND_PASSWORD_RESET_EMAIL","to":"user@example.com",
+                 "resetLink":"https://app.jalsoochak.in/reset?token=r1","expiryMinutes":30}
+                """);
+
+        verify(accountEmailService).sendPasswordResetEmail(
+                "user@example.com", "https://app.jalsoochak.in/reset?token=r1", 30);
+        verify(kafkaProducer, never()).publishJson(anyString(), any());
+    }
+
+    @Test
+    void route_isCaseInsensitive_forPasswordResetEmailEventType() {
+        router.route("""
+                {"eventType":"send_password_reset_email","to":"user@example.com",
+                 "resetLink":"https://link","expiryMinutes":15}
+                """);
+
+        verify(accountEmailService).sendPasswordResetEmail(anyString(), anyString(), anyInt());
+    }
+
+    @Test
+    void route_routesToDlt_whenPasswordResetEmailMissingToField() {
+        router.route("""
+                {"eventType":"SEND_PASSWORD_RESET_EMAIL",
+                 "resetLink":"https://link","expiryMinutes":30}
+                """);
+
+        verify(accountEmailService, never()).sendPasswordResetEmail(anyString(), anyString(), anyInt());
+        verify(kafkaProducer).publishJson(eq("account-email-dlt"), argThat(payload -> {
+            String s = payload.toString();
+            return s.contains("ACCOUNT_EMAIL_FAILED") && s.contains("missing_to");
+        }));
+    }
+
+    @Test
+    void route_routesToDlt_whenPasswordResetEmailMissingResetLink() {
+        router.route("""
+                {"eventType":"SEND_PASSWORD_RESET_EMAIL","to":"user@example.com","expiryMinutes":30}
+                """);
+
+        verify(accountEmailService, never()).sendPasswordResetEmail(anyString(), anyString(), anyInt());
+        verify(kafkaProducer).publishJson(eq("account-email-dlt"), argThat(payload -> {
+            String s = payload.toString();
+            return s.contains("ACCOUNT_EMAIL_FAILED") && s.contains("missing_reset_link");
+        }));
+    }
+
+    @Test
+    void route_routesToDlt_whenPasswordResetEmailSmtpFails() {
+        doThrow(new RuntimeException("SMTP down"))
+                .when(accountEmailService).sendPasswordResetEmail(anyString(), anyString(), anyInt());
+
+        router.route("""
+                {"eventType":"SEND_PASSWORD_RESET_EMAIL","to":"user@example.com",
+                 "resetLink":"https://link","expiryMinutes":30}
+                """);
+
+        verify(kafkaProducer).publishJson(eq("account-email-dlt"), argThat(payload -> {
+            String s = payload.toString();
+            return s.contains("ACCOUNT_EMAIL_FAILED") && s.contains("smtp_error");
+        }));
+    }
+
+    @Test
+    void route_doesNotThrow_whenDltPublishFails() {
+        // SMTP fails triggering DLT publish, but DLT publish itself also throws.
+        // The handler must swallow the DLT failure and complete normally (no rethrow → no Kafka retry).
+        doThrow(new RuntimeException("SMTP down"))
+                .when(accountEmailService).sendPasswordResetEmail(anyString(), anyString(), anyInt());
+        doThrow(new RuntimeException("Kafka unavailable"))
+                .when(kafkaProducer).publishJson(anyString(), any());
+
+        // Should not throw
+        router.route("""
+                {"eventType":"SEND_PASSWORD_RESET_EMAIL","to":"user@example.com",
+                 "resetLink":"https://link","expiryMinutes":30}
+                """);
+
+        verify(kafkaProducer).publishJson(eq("account-email-dlt"), any());
     }
 }

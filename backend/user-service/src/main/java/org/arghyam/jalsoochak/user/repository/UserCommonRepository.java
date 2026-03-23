@@ -3,6 +3,7 @@ package org.arghyam.jalsoochak.user.repository;
 import lombok.RequiredArgsConstructor;
 import org.arghyam.jalsoochak.user.enums.AdminUserStatus;
 import org.arghyam.jalsoochak.user.exceptions.BadRequestException;
+import org.arghyam.jalsoochak.user.exceptions.ResourceNotFoundException;
 import org.arghyam.jalsoochak.user.repository.records.AdminUserRow;
 import org.arghyam.jalsoochak.user.repository.records.AdminUserTokenRow;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -42,6 +43,17 @@ public class UserCommonRepository {
                 LIMIT 1
                 """;
         List<Integer> rows = jdbcTemplate.query(sql, (rs, n) -> rs.getInt("id"), stateCode);
+        return rows.stream().findFirst();
+    }
+
+    public Optional<Integer> findTenantStatusByTenantId(Integer tenantId) {
+        String sql = """
+                SELECT status
+                FROM common_schema.tenant_master_table
+                WHERE id = ?
+                LIMIT 1
+                """;
+        List<Integer> rows = jdbcTemplate.query(sql, (rs, n) -> rs.getInt("status"), tenantId);
         return rows.stream().findFirst();
     }
 
@@ -110,16 +122,28 @@ public class UserCommonRepository {
      * Create a PENDING admin user at invite time (before Keycloak account exists).
      * status=2 (PENDING). UUID is a placeholder; replaced at activation.
      */
-    public Long createAdminUserPending(String email, Integer tenantId, Integer adminLevelId, Integer createdById) {
+    public Long createAdminUserPending(String email, String phoneNumber, Integer tenantId, Integer adminLevelId, Integer createdById) {
         String sql = """
                 INSERT INTO common_schema.tenant_admin_user_master_table
                     (uuid, email, phone_number, tenant_id, admin_level, password, status, created_by, created_at, updated_at)
-                VALUES (gen_random_uuid()::TEXT, ?, '', ?, ?, 'KEYCLOAK_MANAGED', 2, ?, NOW(), NOW())
+                VALUES (gen_random_uuid()::TEXT, ?, ?, ?, ?, 'KEYCLOAK_MANAGED', 2, ?, NOW(), NOW())
                 RETURNING id
                 """;
         Number id = jdbcTemplate.queryForObject(sql, Number.class,
-                email, tenantId, adminLevelId, createdById);
+                email, phoneNumber, tenantId, adminLevelId, createdById);
         return id != null ? id.longValue() : null;
+    }
+
+    public void updatePendingAdminUserPhone(Long id, String phoneNumber) {
+        int updated = jdbcTemplate.update("""
+                UPDATE common_schema.tenant_admin_user_master_table
+                SET phone_number = ?, updated_at = NOW()
+                WHERE id = ? AND status = 2 AND deleted_at IS NULL
+                """, phoneNumber, id);
+        if (updated == 0) {
+            throw new ResourceNotFoundException(
+                    "Pending admin user not found or already activated [id=" + id + "]");
+        }
     }
 
     /**
@@ -342,6 +366,18 @@ public class UserCommonRepository {
                 VALUES (?, ?, ?, ?::jsonb, ?, ?)
                 """, email.toLowerCase(), tokenHash, tokenType, metadataJson,
                 Timestamp.from(expiresAt), createdBy);
+    }
+
+    /** Find an active (not used, not deleted, not expired) INVITE token by email. */
+    public Optional<AdminUserTokenRow> findActiveInviteTokenByEmail(String email) {
+        String sql = """
+                SELECT id, email, token_hash, token_type, metadata::TEXT, expires_at, used_at, deleted_at, created_at
+                FROM common_schema.admin_user_token_table
+                WHERE LOWER(email) = LOWER(?) AND token_type = 'INVITE' AND used_at IS NULL AND deleted_at IS NULL AND expires_at > NOW()
+                LIMIT 1
+                """;
+        List<AdminUserTokenRow> rows = jdbcTemplate.query(sql, (rs, n) -> mapTokenRow(rs), email);
+        return rows.stream().findFirst();
     }
 
     /** Find an active (not used, not deleted, not expired) token by hash. */

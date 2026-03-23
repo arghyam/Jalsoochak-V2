@@ -86,7 +86,10 @@ class UserControllerTest {
             String payload = """
                     {
                       "email": "new@example.com",
-                      "role": "STATE_ADMIN"
+                      "role": "STATE_ADMIN",
+                      "firstName": "John",
+                      "lastName": "Doe",
+                      "phoneNumber": "9112345678"
                     }
                     """;
 
@@ -134,7 +137,10 @@ class UserControllerTest {
             String payload = """
                     {
                       "email": "existing@example.com",
-                      "role": "STATE_ADMIN"
+                      "role": "STATE_ADMIN",
+                      "firstName": "John",
+                      "lastName": "Doe",
+                      "phoneNumber": "9112345678"
                     }
                     """;
 
@@ -154,7 +160,10 @@ class UserControllerTest {
             String payload = """
                     {
                       "email": "other@example.com",
-                      "role": "STATE_ADMIN"
+                      "role": "STATE_ADMIN",
+                      "firstName": "Jane",
+                      "lastName": "Smith",
+                      "phoneNumber": "9198765432"
                     }
                     """;
 

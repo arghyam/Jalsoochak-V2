@@ -1,5 +1,5 @@
 server:
-  port: 8112
+  port: 8082
 
 spring:
   config:
@@ -13,27 +13,6 @@ spring:
       resourceserver:
         jwt:
           issuer-uri: ${KEYCLOAK_ISSUER_URI:${keycloak.auth-server-url}/realms/${keycloak.realm}}
-
-  mail:
-    host: smtp.office365.com
-    port: 587
-    username: ${SPRING_MAIL_USERNAME}
-    password: ${SPRING_MAIL_PASSWORD}
-    protocol: smtp
-    properties:
-      mail:
-        smtp:
-          auth: true
-          starttls:
-            enable: true
-            required: true
-          ssl:
-            enable: false
-            protocols: TLSv1.2
-          connectiontimeout: 30000
-          timeout: 30000
-          writetimeout: 30000
-          debug: ${env.SPRING_MAIL_DEBUG:false}
 
   datasource:
     url: ${SPRING_DATASOURCE_URL}
@@ -85,11 +64,6 @@ keycloak:
 
   # Public key
   public-key: ${KEYCLOAK_PUBLIC_KEY:}
-
-mail:
-  from:
-    email: ${MAIL_FROM_EMAIL:no-reply@example.com}
-    name: ${MAIL_FROM_NAME:Jalsoochak}
 
 staff:
   allowed-update-roles: SECTION_OFFICER,DISTRICT_OFFICER

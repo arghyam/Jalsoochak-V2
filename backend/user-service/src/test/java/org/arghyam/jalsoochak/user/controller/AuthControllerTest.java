@@ -276,7 +276,7 @@ class AuthControllerTest {
         @Test
         @DisplayName("Should return 200 with invite details for a valid token")
         void inviteInfo_validToken_returns200() throws Exception {
-            InviteInfoResponseDTO info = new InviteInfoResponseDTO("invited@example.com", "STATE_ADMIN", "Madhya Pradesh");
+            InviteInfoResponseDTO info = new InviteInfoResponseDTO("invited@example.com", "STATE_ADMIN", "Madhya Pradesh", "John", "Doe", "9112345678");
             when(authService.getInviteInfo("valid-token")).thenReturn(info);
 
             mockMvc.perform(get("/api/v1/auth/invite/info")

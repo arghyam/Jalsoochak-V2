@@ -89,6 +89,20 @@ class TenantSchedulerManagerTest {
     }
 
     @Test
+    void loadAndScheduleAll_skipsNullStatusTenants() {
+        TenantResponseDTO active = TenantResponseDTO.builder().id(1).stateCode("MP").status(TenantStatusEnum.ACTIVE.name()).build();
+        TenantResponseDTO nullStatus = TenantResponseDTO.builder().id(2).stateCode("UP").status(null).build();
+        when(tenantCommonRepository.findAll()).thenReturn(List.of(active, nullStatus));
+
+        stubConfigs(1, 8, 0, 9, 0);
+
+        manager.loadAndScheduleAll();
+
+        // Only 2 calls for the active tenant; null-status tenant is excluded
+        verify(taskScheduler, times(2)).schedule(any(Runnable.class), any(CronTrigger.class));
+    }
+
+    @Test
     void loadAndScheduleAll_buildsCronExpression_fromConfigHourAndMinute() {
         TenantResponseDTO t1 = TenantResponseDTO.builder().id(1).stateCode("MP").status(TenantStatusEnum.ACTIVE.name()).build();
         when(tenantCommonRepository.findAll()).thenReturn(List.of(t1));

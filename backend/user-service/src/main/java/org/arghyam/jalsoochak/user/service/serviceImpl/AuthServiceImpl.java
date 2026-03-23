@@ -5,6 +5,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import org.arghyam.jalsoochak.user.clients.KeycloakClient;
 import org.arghyam.jalsoochak.user.clients.KeycloakTokenResponse;
@@ -30,9 +31,10 @@ import org.arghyam.jalsoochak.user.repository.UserCommonRepository;
 import org.arghyam.jalsoochak.user.repository.UserTenantRepository;
 import org.arghyam.jalsoochak.user.repository.records.AdminUserRow;
 import org.arghyam.jalsoochak.user.repository.records.AdminUserTokenRow;
+import org.arghyam.jalsoochak.user.event.ResetPasswordEmailEvent;
+import org.arghyam.jalsoochak.user.event.UserEmailEventPublisher;
 import org.arghyam.jalsoochak.user.service.AuthService;
 import org.arghyam.jalsoochak.user.service.KeycloakAdminHelper;
-import org.arghyam.jalsoochak.user.service.MailService;
 import org.arghyam.jalsoochak.user.service.TokenService;
 import org.arghyam.jalsoochak.user.util.SecurityUtils;
 import org.keycloak.admin.client.resource.UserResource;
@@ -58,7 +60,7 @@ public class AuthServiceImpl implements AuthService {
     private final KeycloakClient keycloakClient;
     private final UserCommonRepository userCommonRepository;
     private final UserTenantRepository userTenantRepository;
-    private final MailService mailService;
+    private final UserEmailEventPublisher userEmailEventPublisher;
     private final KeycloakAdminHelper keycloakAdminHelper;
     private final PasswordResetProperties passwordResetProperties;
     private final FrontendProperties frontendProperties;
@@ -77,6 +79,8 @@ public class AuthServiceImpl implements AuthService {
         if (user.status() == AdminUserStatus.INACTIVE) {
             throw new AccountDeactivatedException("Account is deactivated");
         }
+
+        validateTenantStatus(user.tenantId(), user.adminLevel());
 
         KeycloakTokenResponse token = keycloakClient.obtainToken(request.getEmail(), request.getPassword());
         return buildEnrichedAuthResult(token, user);
@@ -100,6 +104,8 @@ public class AuthServiceImpl implements AuthService {
             throw new AccountDeactivatedException("Account is deactivated");
         }
 
+        validateTenantStatus(user.tenantId(), user.adminLevel());
+
         return buildEnrichedAuthResult(token, user);
     }
 
@@ -122,12 +128,18 @@ public class AuthServiceImpl implements AuthService {
         String email = tokenRow.email();
         String role = parseMetadata(tokenRow.metadata(), "role");
         String tenantName = parseMetadata(tokenRow.metadata(), "tenantName");
+        String firstName = parseMetadata(tokenRow.metadata(), "firstName");
+        String lastName = parseMetadata(tokenRow.metadata(), "lastName");
 
         if (userCommonRepository.existsActiveAdminUserByEmail(email)) {
             throw new UserAlreadyExistsException("Account already exists");
         }
 
-        return new InviteInfoResponseDTO(email, role, tenantName);
+        String phoneNumber = userCommonRepository.findAdminUserByEmail(email)
+                .map(AdminUserRow::phoneNumber)
+                .orElse(null);
+
+        return new InviteInfoResponseDTO(email, role, tenantName, firstName, lastName, phoneNumber);
     }
 
     @Override
@@ -239,7 +251,12 @@ public class AuthServiceImpl implements AuthService {
                 .queryParam("token", raw)
                 .build()
                 .toUriString();
-        mailService.sendMailAfterCommit(() -> mailService.sendPasswordResetMail(request.getEmail(), resetUrl));
+        userEmailEventPublisher.publishResetPasswordEmailAfterCommit(ResetPasswordEmailEvent.builder()
+                .eventType("SEND_PASSWORD_RESET_EMAIL")
+                .to(request.getEmail())
+                .resetLink(resetUrl)
+                .expiryMinutes(passwordResetProperties.expiryMinutes())
+                .build());
     }
 
     @Override
@@ -315,6 +332,32 @@ public class AuthServiceImpl implements AuthService {
         resp.setPhoneNumber(phoneNumber);
         resp.setName(name);
         return resp;
+    }
+
+    /**
+     * Blocks login for tenants that do not allow user access.
+     * Only ACTIVE (3) and DEGRADED (5) tenants permit login.
+     * tenantId == 0 is the system tenant (SUPER_USER) — always allowed.
+     */
+    private void validateTenantStatus(Integer tenantId, Integer adminLevel) {
+        if (tenantId == null || tenantId == 0) return;
+        Optional<Integer> statusOpt = userCommonRepository.findTenantStatusByTenantId(tenantId);
+        if (statusOpt.isEmpty()) {
+            throw new AccountDeactivatedException("Tenant not found or no longer exists.");
+        }
+        int status = statusOpt.get();
+        boolean isStateAdmin = adminLevel != null && adminLevel == 2;
+        if (status == 3 || status == 5) return; // ACTIVE or DEGRADED — always allowed
+        if (isStateAdmin && status == 2) return; // CONFIGURED — allowed for STATE_ADMIN only
+        String message = switch (status) {
+            case 1 -> "Tenant setup is not yet complete.";
+            case 2 -> "Tenant is not yet operational.";
+            case 0 -> "Tenant access has been deactivated.";
+            case 4 -> "Tenant has been suspended.";
+            case 6 -> "Tenant is archived and no longer accessible.";
+            default -> "Tenant is not accessible.";
+        };
+        throw new AccountDeactivatedException(message);
     }
 
     private String parseMetadata(String json, String key) {

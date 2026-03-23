@@ -2,14 +2,17 @@ package org.arghyam.jalsoochak.tenant.service.serviceImpl;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.never;
@@ -27,6 +30,8 @@ import org.arghyam.jalsoochak.tenant.config.TenantDefaultsProperties;
 import org.arghyam.jalsoochak.tenant.dto.common.PageResponseDTO;
 import org.arghyam.jalsoochak.tenant.dto.internal.ConfigDTO;
 import org.arghyam.jalsoochak.tenant.dto.internal.ConfigValueDTO;
+import org.arghyam.jalsoochak.tenant.dto.internal.LogoSource;
+import org.arghyam.jalsoochak.tenant.dto.internal.TenantLogoResult;
 import org.arghyam.jalsoochak.tenant.dto.internal.LanguageConfigDTO;
 import org.arghyam.jalsoochak.tenant.dto.internal.LocationConfigDTO;
 import org.arghyam.jalsoochak.tenant.dto.internal.LocationLevelConfigDTO;
@@ -45,20 +50,27 @@ import org.arghyam.jalsoochak.tenant.dto.response.TenantResponseDTO;
 import org.arghyam.jalsoochak.tenant.dto.response.TenantSummaryResponseDTO;
 import org.arghyam.jalsoochak.tenant.enums.ConfigStatusEnum;
 import org.arghyam.jalsoochak.tenant.enums.RegionTypeEnum;
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.io.InputStream;
 import org.arghyam.jalsoochak.tenant.enums.StatusEnum;
 import org.arghyam.jalsoochak.tenant.enums.TenantConfigKeyEnum;
 import org.arghyam.jalsoochak.tenant.enums.TenantStatusEnum;
 import org.arghyam.jalsoochak.tenant.event.TenantCreatedEvent;
 import org.arghyam.jalsoochak.tenant.event.TenantDeactivatedEvent;
 import org.arghyam.jalsoochak.tenant.event.TenantUpdatedEvent;
+import org.arghyam.jalsoochak.tenant.exception.InvalidConfigKeyException;
 import org.arghyam.jalsoochak.tenant.exception.InvalidConfigValueException;
 import org.arghyam.jalsoochak.tenant.exception.LocationHierarchyStructureLockedException;
-import org.arghyam.jalsoochak.tenant.util.TenantConstants;
 import org.arghyam.jalsoochak.tenant.exception.ResourceNotFoundException;
+import org.arghyam.jalsoochak.tenant.exception.StorageException;
 import org.arghyam.jalsoochak.tenant.repository.TenantCommonRepository;
 import org.arghyam.jalsoochak.tenant.repository.TenantSchemaRepository;
 import org.arghyam.jalsoochak.tenant.service.TenantSchedulerManager;
+import org.arghyam.jalsoochak.tenant.storage.ObjectStorageService;
 import org.arghyam.jalsoochak.tenant.util.SecurityUtils;
+import org.arghyam.jalsoochak.tenant.util.TenantConstants;
+import org.springframework.mock.web.MockMultipartFile;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -69,6 +81,8 @@ import org.mockito.Mock;
 import org.mockito.MockedStatic;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -97,6 +111,9 @@ class TenantManagementServiceImplTest {
     @Mock
     private TenantSchedulerManager schedulerManager;
 
+    @Mock
+    private ObjectStorageService objectStorageService;
+
     private ObjectMapper objectMapper;
 
     private TenantManagementServiceImpl tenantManagementService;
@@ -118,7 +135,8 @@ class TenantManagementServiceImplTest {
             objectMapper,
             tenantDefaults,
             eventPublisher,
-            schedulerManager
+            schedulerManager,
+            objectStorageService
         );
     }
 
@@ -145,7 +163,7 @@ class TenantManagementServiceImplTest {
                     .id(1)
                     .name("Test Tenant")
                     .stateCode("TT")
-                    .status(TenantStatusEnum.ACTIVE.name())
+                    .status(TenantStatusEnum.ONBOARDED.name())
                     .build();
 
             when(tenantCommonRepository.findByStateCode("TT")).thenReturn(Optional.empty());
@@ -165,8 +183,8 @@ class TenantManagementServiceImplTest {
             assertNotNull(result);
             assertEquals("Test Tenant", result.getName());
             assertEquals("TT", result.getStateCode());
-            assertEquals(TenantStatusEnum.ACTIVE.name(), result.getStatus());
-            
+            assertEquals(TenantStatusEnum.ONBOARDED.name(), result.getStatus());
+
             verify(tenantCommonRepository).findByStateCode("TT");
             verify(tenantCommonRepository).createTenant(eq(request), eq(100));
             verify(tenantCommonRepository).provisionTenantSchema("tenant_tt");
@@ -651,6 +669,24 @@ class TenantManagementServiceImplTest {
             // Assert
             verify(schedulerManager).rescheduleForTenant(tenantId, "MP");
         }
+
+        @Test
+        @DisplayName("Should throw InvalidConfigKeyException when a managed-value key is included")
+        void setTenantConfigs_managedValueKey_throwsInvalidConfigKeyException() throws Exception {
+            Integer tenantId = 1;
+            TenantResponseDTO tenant = TenantResponseDTO.builder().id(tenantId).stateCode("TN").build();
+            Map<TenantConfigKeyEnum, JsonNode> configs = new HashMap<>();
+            configs.put(TenantConfigKeyEnum.TENANT_LOGO, objectMapper.readTree("{\"value\":\"https://example.com/logo.png\"}"));
+            SetTenantConfigRequestDTO request = SetTenantConfigRequestDTO.builder().configs(configs).build();
+
+            when(tenantCommonRepository.findById(tenantId)).thenReturn(Optional.of(tenant));
+            when(SecurityUtils.getCurrentUserUuid()).thenReturn("user-uuid");
+            when(tenantCommonRepository.findUserIdByUuid("user-uuid")).thenReturn(Optional.of(100));
+
+            assertThrows(InvalidConfigKeyException.class,
+                    () -> tenantManagementService.setTenantConfigs(tenantId, request));
+            verify(tenantCommonRepository, never()).upsertConfig(any(), any(), any(), any());
+        }
     }
 
     @Nested
@@ -662,8 +698,12 @@ class TenantManagementServiceImplTest {
         void testGetTenantSummary_Success() {
             TenantSummaryResponseDTO summary = TenantSummaryResponseDTO.builder()
                     .totalTenants(10L)
-                    .activeTenants(8L)
+                    .onboardedTenants(2L)
+                    .configuredTenants(1L)
+                    .activeTenants(5L)
                     .inactiveTenants(1L)
+                    .suspendedTenants(0L)
+                    .degradedTenants(0L)
                     .archivedTenants(1L)
                     .build();
 
@@ -673,8 +713,12 @@ class TenantManagementServiceImplTest {
 
             assertNotNull(result);
             assertEquals(10L, result.getTotalTenants());
-            assertEquals(8L, result.getActiveTenants());
+            assertEquals(2L, result.getOnboardedTenants());
+            assertEquals(1L, result.getConfiguredTenants());
+            assertEquals(5L, result.getActiveTenants());
             assertEquals(1L, result.getInactiveTenants());
+            assertEquals(0L, result.getSuspendedTenants());
+            assertEquals(0L, result.getDegradedTenants());
             assertEquals(1L, result.getArchivedTenants());
             verify(tenantCommonRepository).getTenantSummary();
         }
@@ -1108,6 +1152,7 @@ class TenantManagementServiceImplTest {
 
         // --- System-tenant guard tests (tenantId = 0) ---
 
+
         @Test
         @DisplayName("Should reject getLocationHierarchy for system tenant (tenantId=0)")
         void testGetLocationHierarchy_SystemTenant_Rejected() {
@@ -1169,6 +1214,475 @@ class TenantManagementServiceImplTest {
 
             assertThrows(InvalidConfigValueException.class,
                     () -> tenantManagementService.updateLocationHierarchy(tenantId, "LGD", levelsWithNullField));
+        }
+
+        @Test
+        @DisplayName("Should throw InvalidConfigValueException when level numbers contain duplicates")
+        void testUpdateLocationHierarchy_DuplicateLevelNumbers_Rejected() {
+            Integer tenantId = 1;
+            TenantResponseDTO tenant = TenantResponseDTO.builder().id(tenantId).stateCode("mp").build();
+            when(tenantCommonRepository.findById(tenantId)).thenReturn(Optional.of(tenant));
+
+            List<LocationLevelConfigDTO> levelsWithDuplicates = List.of(
+                    LocationLevelConfigDTO.builder().level(1).levelName(List.of()).build(),
+                    LocationLevelConfigDTO.builder().level(1).levelName(List.of()).build());
+
+            InvalidConfigValueException ex = assertThrows(InvalidConfigValueException.class,
+                    () -> tenantManagementService.updateLocationHierarchy(tenantId, "LGD", levelsWithDuplicates));
+            assertTrue(ex.getMessage().contains("unique"));
+        }
+    }
+
+    @Nested
+    @DisplayName("Set Tenant Logo Tests")
+    class SetTenantLogoTests {
+
+        private static final Integer TENANT_ID = 1;
+        private static final TenantResponseDTO TENANT =
+                TenantResponseDTO.builder().id(TENANT_ID).stateCode("TN").build();
+
+        @BeforeEach
+        void initTransactionSync() {
+            TransactionSynchronizationManager.initSynchronization();
+        }
+
+        @AfterEach
+        void clearTransactionSync() {
+            TransactionSynchronizationManager.clearSynchronization();
+        }
+
+        private void fireAfterCommit() {
+            TransactionSynchronizationManager.getSynchronizations().forEach(TransactionSynchronization::afterCommit);
+        }
+
+        private void fireAfterRollback() {
+            TransactionSynchronizationManager.getSynchronizations()
+                    .forEach(s -> s.afterCompletion(TransactionSynchronization.STATUS_ROLLED_BACK));
+        }
+
+        // --- FileSource tests ---
+
+        @Test
+        @DisplayName("Should upload file and return updated config when no previous logo exists")
+        void setTenantLogo_fileSource_noExistingLogo_success() throws Exception {
+            MockMultipartFile file = new MockMultipartFile(
+                    "file", "logo.png", "image/png", "fake-image-bytes".getBytes());
+            ConfigDTO saved = ConfigDTO.builder()
+                    .configKey(TenantConfigKeyEnum.TENANT_LOGO.name())
+                    .configValue("{\"value\":\"logos/1/stub.png\"}")
+                    .build();
+
+            when(tenantCommonRepository.findById(TENANT_ID)).thenReturn(Optional.of(TENANT));
+            when(tenantCommonRepository.findConfigByTenantAndKey(TENANT_ID, "TENANT_LOGO")).thenReturn(Optional.empty());
+            when(objectStorageService.upload(anyString(), any(), anyLong(), eq("image/png"))).thenReturn("logos/1/stub.png");
+            when(SecurityUtils.getCurrentUserUuid()).thenReturn("user-uuid");
+            when(tenantCommonRepository.findUserIdByUuid("user-uuid")).thenReturn(Optional.of(100));
+            when(tenantCommonRepository.upsertConfig(eq(TENANT_ID), eq("TENANT_LOGO"), anyString(), eq(100)))
+                    .thenReturn(Optional.of(saved));
+
+            TenantConfigResponseDTO result = tenantManagementService.setTenantLogo(TENANT_ID, new LogoSource.FileSource(file));
+            fireAfterCommit();
+
+            assertNotNull(result);
+            assertEquals(TENANT_ID, result.getTenantId());
+            assertTrue(result.getConfigs().containsKey(TenantConfigKeyEnum.TENANT_LOGO));
+            String storedKey = ((SimpleConfigValueDTO) result.getConfigs().get(TenantConfigKeyEnum.TENANT_LOGO)).getValue();
+            assertTrue(storedKey.startsWith("logos/" + TENANT_ID + "/"));
+            assertTrue(storedKey.endsWith(".png"));
+            verify(objectStorageService).upload(anyString(), any(), anyLong(), eq("image/png"));
+            verify(objectStorageService, never()).delete(any());
+        }
+
+        @Test
+        @DisplayName("Should delete old managed object after successful file upload")
+        void setTenantLogo_fileSource_withManagedOldLogo_deletesOldObject() throws Exception {
+            String oldKey = "logos/1/old-uuid.png";
+            MockMultipartFile file = new MockMultipartFile(
+                    "file", "logo.png", "image/png", "fake-image-bytes".getBytes());
+            String newObjectKey = "logos/1/new-uuid.png";
+            ConfigDTO oldConfig = ConfigDTO.builder()
+                    .configKey(TenantConfigKeyEnum.TENANT_LOGO.name())
+                    .configValue("{\"value\":\"" + oldKey + "\"}")
+                    .build();
+            ConfigDTO saved = ConfigDTO.builder()
+                    .configKey(TenantConfigKeyEnum.TENANT_LOGO.name())
+                    .configValue("{\"value\":\"" + newObjectKey + "\"}")
+                    .build();
+
+            when(tenantCommonRepository.findById(TENANT_ID)).thenReturn(Optional.of(TENANT));
+            when(tenantCommonRepository.findConfigByTenantAndKey(TENANT_ID, "TENANT_LOGO")).thenReturn(Optional.of(oldConfig));
+            when(objectStorageService.upload(anyString(), any(), anyLong(), eq("image/png"))).thenReturn(newObjectKey);
+            when(SecurityUtils.getCurrentUserUuid()).thenReturn("user-uuid");
+            when(tenantCommonRepository.findUserIdByUuid("user-uuid")).thenReturn(Optional.of(100));
+            when(tenantCommonRepository.upsertConfig(eq(TENANT_ID), eq("TENANT_LOGO"), anyString(), eq(100)))
+                    .thenReturn(Optional.of(saved));
+
+            tenantManagementService.setTenantLogo(TENANT_ID, new LogoSource.FileSource(file));
+            fireAfterCommit();
+
+            verify(objectStorageService).delete(oldKey);
+        }
+
+        @Test
+        @DisplayName("Should skip delete when previous logo is external (file source)")
+        void setTenantLogo_fileSource_externalOldLogo_skipsDelete() throws Exception {
+            String externalOldUrl = "https://cdn.example.com/logo.png";
+            MockMultipartFile file = new MockMultipartFile(
+                    "file", "logo.png", "image/png", "fake-image-bytes".getBytes());
+            String newObjectKey = "logos/1/new-uuid.png";
+            ConfigDTO oldConfig = ConfigDTO.builder()
+                    .configKey(TenantConfigKeyEnum.TENANT_LOGO.name())
+                    .configValue("{\"value\":\"" + externalOldUrl + "\"}")
+                    .build();
+            ConfigDTO saved = ConfigDTO.builder()
+                    .configKey(TenantConfigKeyEnum.TENANT_LOGO.name())
+                    .configValue("{\"value\":\"" + newObjectKey + "\"}")
+                    .build();
+
+            when(tenantCommonRepository.findById(TENANT_ID)).thenReturn(Optional.of(TENANT));
+            when(tenantCommonRepository.findConfigByTenantAndKey(TENANT_ID, "TENANT_LOGO")).thenReturn(Optional.of(oldConfig));
+            when(objectStorageService.upload(anyString(), any(), anyLong(), eq("image/png"))).thenReturn(newObjectKey);
+            when(SecurityUtils.getCurrentUserUuid()).thenReturn("user-uuid");
+            when(tenantCommonRepository.findUserIdByUuid("user-uuid")).thenReturn(Optional.of(100));
+            when(tenantCommonRepository.upsertConfig(eq(TENANT_ID), eq("TENANT_LOGO"), anyString(), eq(100)))
+                    .thenReturn(Optional.of(saved));
+
+            tenantManagementService.setTenantLogo(TENANT_ID, new LogoSource.FileSource(file));
+            fireAfterCommit();
+
+            verify(objectStorageService, never()).delete(any());
+        }
+
+        @Test
+        @DisplayName("Should throw ResourceNotFoundException when tenant not found (file source)")
+        void setTenantLogo_fileSource_tenantNotFound_throwsResourceNotFoundException() {
+            MockMultipartFile file = new MockMultipartFile(
+                    "file", "logo.png", "image/png", "fake-image-bytes".getBytes());
+
+            when(tenantCommonRepository.findById(TENANT_ID)).thenReturn(Optional.empty());
+
+            assertThrows(ResourceNotFoundException.class,
+                    () -> tenantManagementService.setTenantLogo(TENANT_ID, new LogoSource.FileSource(file)));
+            verify(objectStorageService, never()).upload(any(), any(), anyLong(), any());
+        }
+
+        @Test
+        @DisplayName("Should throw IllegalArgumentException for empty file")
+        void setTenantLogo_fileSource_emptyFile_throwsIllegalArgumentException() {
+            MockMultipartFile file = new MockMultipartFile(
+                    "file", "logo.png", "image/png", new byte[0]);
+
+            when(tenantCommonRepository.findById(TENANT_ID)).thenReturn(Optional.of(TENANT));
+
+            assertThrows(IllegalArgumentException.class,
+                    () -> tenantManagementService.setTenantLogo(TENANT_ID, new LogoSource.FileSource(file)));
+            verify(objectStorageService, never()).upload(any(), any(), anyLong(), any());
+        }
+
+        @Test
+        @DisplayName("Should throw IllegalArgumentException when file exceeds 2 MB")
+        void setTenantLogo_fileSource_fileTooLarge_throwsIllegalArgumentException() {
+            byte[] oversized = new byte[2 * 1024 * 1024 + 1];
+            MockMultipartFile file = new MockMultipartFile(
+                    "file", "logo.png", "image/png", oversized);
+
+            when(tenantCommonRepository.findById(TENANT_ID)).thenReturn(Optional.of(TENANT));
+
+            assertThrows(IllegalArgumentException.class,
+                    () -> tenantManagementService.setTenantLogo(TENANT_ID, new LogoSource.FileSource(file)));
+            verify(objectStorageService, never()).upload(any(), any(), anyLong(), any());
+        }
+
+        @Test
+        @DisplayName("Should throw IllegalArgumentException for unsupported content type")
+        void setTenantLogo_fileSource_unsupportedType_throwsIllegalArgumentException() {
+            MockMultipartFile file = new MockMultipartFile(
+                    "file", "logo.gif", "image/gif", "fake-image".getBytes());
+
+            when(tenantCommonRepository.findById(TENANT_ID)).thenReturn(Optional.of(TENANT));
+
+            assertThrows(IllegalArgumentException.class,
+                    () -> tenantManagementService.setTenantLogo(TENANT_ID, new LogoSource.FileSource(file)));
+            verify(objectStorageService, never()).upload(any(), any(), anyLong(), any());
+        }
+
+        @Test
+        @DisplayName("Should propagate StorageException when upload fails")
+        void setTenantLogo_fileSource_storageUploadFails_throwsStorageException() throws Exception {
+            MockMultipartFile file = new MockMultipartFile(
+                    "file", "logo.png", "image/png", "fake-image-bytes".getBytes());
+
+            when(tenantCommonRepository.findById(TENANT_ID)).thenReturn(Optional.of(TENANT));
+            when(tenantCommonRepository.findConfigByTenantAndKey(TENANT_ID, "TENANT_LOGO")).thenReturn(Optional.empty());
+            when(objectStorageService.upload(anyString(), any(), anyLong(), eq("image/png")))
+                    .thenThrow(new StorageException("S3 error"));
+
+            assertThrows(StorageException.class,
+                    () -> tenantManagementService.setTenantLogo(TENANT_ID, new LogoSource.FileSource(file)));
+            verify(tenantCommonRepository, never()).upsertConfig(any(), any(), any(), any());
+        }
+
+        @Test
+        @DisplayName("Should throw IllegalArgumentException for SVG content type (XSS vector)")
+        void setTenantLogo_fileSource_svgType_throwsIllegalArgumentException() {
+            MockMultipartFile file = new MockMultipartFile(
+                    "file", "logo.svg", "image/svg+xml", "<svg></svg>".getBytes());
+
+            when(tenantCommonRepository.findById(TENANT_ID)).thenReturn(Optional.of(TENANT));
+
+            assertThrows(IllegalArgumentException.class,
+                    () -> tenantManagementService.setTenantLogo(TENANT_ID, new LogoSource.FileSource(file)));
+            verify(objectStorageService, never()).upload(any(), any(), anyLong(), any());
+        }
+
+        @Test
+        @DisplayName("Should delete uploaded object when transaction is rolled back (file source)")
+        void setTenantLogo_fileSource_rollback_deletesUploadedObject() throws Exception {
+            String uploadedKey = "logos/1/new-uuid.png";
+            MockMultipartFile file = new MockMultipartFile(
+                    "file", "logo.png", "image/png", "fake-image-bytes".getBytes());
+            ConfigDTO saved = ConfigDTO.builder()
+                    .configKey(TenantConfigKeyEnum.TENANT_LOGO.name())
+                    .configValue("{\"value\":\"" + uploadedKey + "\"}")
+                    .build();
+
+            when(tenantCommonRepository.findById(TENANT_ID)).thenReturn(Optional.of(TENANT));
+            when(tenantCommonRepository.findConfigByTenantAndKey(TENANT_ID, "TENANT_LOGO")).thenReturn(Optional.empty());
+            when(objectStorageService.upload(anyString(), any(), anyLong(), eq("image/png"))).thenReturn(uploadedKey);
+            when(SecurityUtils.getCurrentUserUuid()).thenReturn("user-uuid");
+            when(tenantCommonRepository.findUserIdByUuid("user-uuid")).thenReturn(Optional.of(100));
+            when(tenantCommonRepository.upsertConfig(eq(TENANT_ID), eq("TENANT_LOGO"), anyString(), eq(100)))
+                    .thenReturn(Optional.of(saved));
+
+            tenantManagementService.setTenantLogo(TENANT_ID, new LogoSource.FileSource(file));
+            fireAfterRollback();
+
+            verify(objectStorageService).delete(uploadedKey);
+        }
+
+        @Test
+        @DisplayName("Should delete uploaded object when resolveCurrentUserId fails after upload")
+        void setTenantLogo_fileSource_resolveUserFails_deletesUploadedObject() throws Exception {
+            String uploadedKey = "logos/1/orphan-uuid.png";
+            MockMultipartFile file = new MockMultipartFile(
+                    "file", "logo.png", "image/png", "fake-image-bytes".getBytes());
+
+            when(tenantCommonRepository.findById(TENANT_ID)).thenReturn(Optional.of(TENANT));
+            when(tenantCommonRepository.findConfigByTenantAndKey(TENANT_ID, "TENANT_LOGO")).thenReturn(Optional.empty());
+            when(objectStorageService.upload(anyString(), any(), anyLong(), eq("image/png"))).thenReturn(uploadedKey);
+            when(SecurityUtils.getCurrentUserUuid()).thenReturn("unknown-uuid");
+            when(tenantCommonRepository.findUserIdByUuid("unknown-uuid")).thenReturn(Optional.empty());
+
+            assertThrows(ResourceNotFoundException.class,
+                    () -> tenantManagementService.setTenantLogo(TENANT_ID, new LogoSource.FileSource(file)));
+            fireAfterRollback();
+
+            verify(objectStorageService).delete(uploadedKey);
+        }
+
+        // --- UrlSource tests ---
+
+        @Test
+        @DisplayName("Should store external URL and return updated config when no previous logo exists")
+        void setTenantLogo_urlSource_noExistingLogo_success() {
+            String externalUrl = "https://cdn.example.com/logo.png";
+            ConfigDTO saved = ConfigDTO.builder()
+                    .configKey(TenantConfigKeyEnum.TENANT_LOGO.name())
+                    .configValue("{\"value\":\"" + externalUrl + "\"}")
+                    .build();
+
+            when(tenantCommonRepository.findById(TENANT_ID)).thenReturn(Optional.of(TENANT));
+            when(tenantCommonRepository.findConfigByTenantAndKey(TENANT_ID, "TENANT_LOGO")).thenReturn(Optional.empty());
+            when(SecurityUtils.getCurrentUserUuid()).thenReturn("user-uuid");
+            when(tenantCommonRepository.findUserIdByUuid("user-uuid")).thenReturn(Optional.of(100));
+            when(tenantCommonRepository.upsertConfig(eq(TENANT_ID), eq("TENANT_LOGO"), anyString(), eq(100)))
+                    .thenReturn(Optional.of(saved));
+
+            TenantConfigResponseDTO result = tenantManagementService.setTenantLogo(TENANT_ID, new LogoSource.UrlSource(externalUrl));
+            fireAfterCommit();
+
+            assertNotNull(result);
+            assertEquals(TENANT_ID, result.getTenantId());
+            assertEquals(externalUrl,
+                    ((SimpleConfigValueDTO) result.getConfigs().get(TenantConfigKeyEnum.TENANT_LOGO)).getValue());
+            verify(objectStorageService, never()).upload(any(), any(), anyLong(), any());
+            verify(objectStorageService, never()).delete(any());
+        }
+
+        @Test
+        @DisplayName("Should delete old managed object when replacing with external URL")
+        void setTenantLogo_urlSource_withManagedOldLogo_deletesOldObject() {
+            String oldKey = "logos/1/old-uuid.png";
+            String externalUrl = "https://cdn.example.com/logo.png";
+            ConfigDTO oldConfig = ConfigDTO.builder()
+                    .configKey(TenantConfigKeyEnum.TENANT_LOGO.name())
+                    .configValue("{\"value\":\"" + oldKey + "\"}")
+                    .build();
+            ConfigDTO saved = ConfigDTO.builder()
+                    .configKey(TenantConfigKeyEnum.TENANT_LOGO.name())
+                    .configValue("{\"value\":\"" + externalUrl + "\"}")
+                    .build();
+
+            when(tenantCommonRepository.findById(TENANT_ID)).thenReturn(Optional.of(TENANT));
+            when(tenantCommonRepository.findConfigByTenantAndKey(TENANT_ID, "TENANT_LOGO")).thenReturn(Optional.of(oldConfig));
+            when(SecurityUtils.getCurrentUserUuid()).thenReturn("user-uuid");
+            when(tenantCommonRepository.findUserIdByUuid("user-uuid")).thenReturn(Optional.of(100));
+            when(tenantCommonRepository.upsertConfig(eq(TENANT_ID), eq("TENANT_LOGO"), anyString(), eq(100)))
+                    .thenReturn(Optional.of(saved));
+
+            tenantManagementService.setTenantLogo(TENANT_ID, new LogoSource.UrlSource(externalUrl));
+            fireAfterCommit();
+
+            verify(objectStorageService).delete(oldKey);
+        }
+
+        @Test
+        @DisplayName("Should skip delete when previous logo is also external (url source)")
+        void setTenantLogo_urlSource_externalOldLogo_skipsDelete() {
+            String oldExternalUrl = "https://old.cdn.example.com/logo.png";
+            String newExternalUrl = "https://new.cdn.example.com/logo.png";
+            ConfigDTO oldConfig = ConfigDTO.builder()
+                    .configKey(TenantConfigKeyEnum.TENANT_LOGO.name())
+                    .configValue("{\"value\":\"" + oldExternalUrl + "\"}")
+                    .build();
+            ConfigDTO saved = ConfigDTO.builder()
+                    .configKey(TenantConfigKeyEnum.TENANT_LOGO.name())
+                    .configValue("{\"value\":\"" + newExternalUrl + "\"}")
+                    .build();
+
+            when(tenantCommonRepository.findById(TENANT_ID)).thenReturn(Optional.of(TENANT));
+            when(tenantCommonRepository.findConfigByTenantAndKey(TENANT_ID, "TENANT_LOGO")).thenReturn(Optional.of(oldConfig));
+            when(SecurityUtils.getCurrentUserUuid()).thenReturn("user-uuid");
+            when(tenantCommonRepository.findUserIdByUuid("user-uuid")).thenReturn(Optional.of(100));
+            when(tenantCommonRepository.upsertConfig(eq(TENANT_ID), eq("TENANT_LOGO"), anyString(), eq(100)))
+                    .thenReturn(Optional.of(saved));
+
+            tenantManagementService.setTenantLogo(TENANT_ID, new LogoSource.UrlSource(newExternalUrl));
+            fireAfterCommit();
+
+            verify(objectStorageService, never()).delete(any());
+        }
+
+        @Test
+        @DisplayName("Should throw IllegalArgumentException for invalid URL scheme")
+        void setTenantLogo_urlSource_invalidScheme_throwsIllegalArgumentException() {
+            // Validation now happens in UrlSource canonical constructor — service is never reached.
+            assertThrows(IllegalArgumentException.class,
+                    () -> tenantManagementService.setTenantLogo(TENANT_ID, new LogoSource.UrlSource("ftp://example.com/logo.png")));
+            verify(tenantCommonRepository, never()).upsertConfig(any(), any(), any(), any());
+        }
+
+        @Test
+        @DisplayName("Should throw IllegalArgumentException for malformed URL")
+        void setTenantLogo_urlSource_malformedUrl_throwsIllegalArgumentException() {
+            // Validation now happens in UrlSource canonical constructor — service is never reached.
+            assertThrows(IllegalArgumentException.class,
+                    () -> tenantManagementService.setTenantLogo(TENANT_ID, new LogoSource.UrlSource("not a url")));
+            verify(tenantCommonRepository, never()).upsertConfig(any(), any(), any(), any());
+        }
+
+        @Test
+        @DisplayName("Should throw ResourceNotFoundException when tenant not found (url source)")
+        void setTenantLogo_urlSource_tenantNotFound_throwsResourceNotFoundException() {
+            when(tenantCommonRepository.findById(TENANT_ID)).thenReturn(Optional.empty());
+
+            assertThrows(ResourceNotFoundException.class,
+                    () -> tenantManagementService.setTenantLogo(TENANT_ID,
+                            new LogoSource.UrlSource("https://cdn.example.com/logo.png")));
+            verify(objectStorageService, never()).upload(any(), any(), anyLong(), any());
+        }
+    }
+
+    @Nested
+    @DisplayName("Resolve Tenant Logo Tests")
+    class ResolveTenantLogoTests {
+
+        private static final Integer TENANT_ID = 1;
+        private static final TenantResponseDTO TENANT =
+                TenantResponseDTO.builder().id(TENANT_ID).stateCode("TN").build();
+
+        @Test
+        @DisplayName("Should return Managed result with stream and correct content type for a PNG object key")
+        void resolveTenantLogo_managedPng_returnsManagedResult() {
+            String objectKey = "logos/1/uuid.png";
+            ConfigDTO logoConfig = ConfigDTO.builder()
+                    .configKey(TenantConfigKeyEnum.TENANT_LOGO.name())
+                    .configValue("{\"value\":\"" + objectKey + "\"}")
+                    .build();
+            ByteArrayInputStream fakeStream = new ByteArrayInputStream("fake-image".getBytes());
+
+            when(tenantCommonRepository.findById(TENANT_ID)).thenReturn(Optional.of(TENANT));
+            when(tenantCommonRepository.findConfigByTenantAndKey(TENANT_ID, "TENANT_LOGO"))
+                    .thenReturn(Optional.of(logoConfig));
+            when(objectStorageService.download(objectKey)).thenReturn(fakeStream);
+
+            TenantLogoResult result = tenantManagementService.resolveTenantLogo(TENANT_ID);
+
+            assertNotNull(result);
+            assertInstanceOf(TenantLogoResult.Managed.class, result);
+            assertEquals("image/png", ((TenantLogoResult.Managed) result).contentType());
+            verify(objectStorageService).download(objectKey);
+        }
+
+        @Test
+        @DisplayName("Should return External result when logo value is an external URL")
+        void resolveTenantLogo_externalUrl_returnsExternalResult() {
+            String externalUrl = "https://cdn.example.com/logo.png";
+            ConfigDTO logoConfig = ConfigDTO.builder()
+                    .configKey(TenantConfigKeyEnum.TENANT_LOGO.name())
+                    .configValue("{\"value\":\"" + externalUrl + "\"}")
+                    .build();
+
+            when(tenantCommonRepository.findById(TENANT_ID)).thenReturn(Optional.of(TENANT));
+            when(tenantCommonRepository.findConfigByTenantAndKey(TENANT_ID, "TENANT_LOGO"))
+                    .thenReturn(Optional.of(logoConfig));
+
+            TenantLogoResult result = tenantManagementService.resolveTenantLogo(TENANT_ID);
+
+            assertNotNull(result);
+            assertInstanceOf(TenantLogoResult.External.class, result);
+            assertEquals(externalUrl, ((TenantLogoResult.External) result).redirectUrl());
+            verify(objectStorageService, never()).download(any());
+        }
+
+        @Test
+        @DisplayName("Should throw ResourceNotFoundException when tenant not found")
+        void resolveTenantLogo_tenantNotFound_throwsResourceNotFoundException() {
+            when(tenantCommonRepository.findById(TENANT_ID)).thenReturn(Optional.empty());
+
+            assertThrows(ResourceNotFoundException.class,
+                    () -> tenantManagementService.resolveTenantLogo(TENANT_ID));
+        }
+
+        @Test
+        @DisplayName("Should throw StorageException when download stream throws IOException")
+        void resolveTenantLogo_downloadIOException_throwsStorageException() throws Exception {
+            String objectKey = "logos/1/uuid.png";
+            ConfigDTO logoConfig = ConfigDTO.builder()
+                    .configKey(TenantConfigKeyEnum.TENANT_LOGO.name())
+                    .configValue("{\"value\":\"" + objectKey + "\"}")
+                    .build();
+            InputStream brokenStream = mock(InputStream.class);
+            when(brokenStream.readAllBytes()).thenThrow(new IOException("S3 connection reset"));
+
+            when(tenantCommonRepository.findById(TENANT_ID)).thenReturn(Optional.of(TENANT));
+            when(tenantCommonRepository.findConfigByTenantAndKey(TENANT_ID, "TENANT_LOGO"))
+                    .thenReturn(Optional.of(logoConfig));
+            when(objectStorageService.download(objectKey)).thenReturn(brokenStream);
+
+            assertThrows(StorageException.class,
+                    () -> tenantManagementService.resolveTenantLogo(TENANT_ID));
+        }
+
+        @Test
+        @DisplayName("Should throw ResourceNotFoundException when logo not configured")
+        void resolveTenantLogo_logoNotConfigured_throwsResourceNotFoundException() {
+            when(tenantCommonRepository.findById(TENANT_ID)).thenReturn(Optional.of(TENANT));
+            when(tenantCommonRepository.findConfigByTenantAndKey(TENANT_ID, "TENANT_LOGO"))
+                    .thenReturn(Optional.empty());
+
+            assertThrows(ResourceNotFoundException.class,
+                    () -> tenantManagementService.resolveTenantLogo(TENANT_ID));
         }
     }
 }

@@ -47,7 +47,13 @@ public class TenantSchedulerManager {
     public void loadAndScheduleAll() {
         List<TenantResponseDTO> tenants = tenantCommonRepository.findAll();
         tenants.stream()
-            .filter(t -> TenantStatusEnum.ACTIVE.name().equals(t.getStatus()))
+            .filter(t -> {
+                String s = t.getStatus();
+                if (s == null) return false;
+                return !TenantStatusEnum.INACTIVE.name().equals(s)
+                    && !TenantStatusEnum.SUSPENDED.name().equals(s)
+                    && !TenantStatusEnum.ARCHIVED.name().equals(s);
+            })
             .forEach(t -> {
                 Integer tenantId = t.getId();
                 String stateCode = t.getStateCode();

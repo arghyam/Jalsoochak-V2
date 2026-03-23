@@ -22,6 +22,9 @@ import org.arghyam.jalsoochak.user.enums.AdminUserStatus;
 import org.arghyam.jalsoochak.user.repository.UserCommonRepository;
 import org.arghyam.jalsoochak.user.repository.UserTenantRepository;
 import org.arghyam.jalsoochak.user.repository.records.AdminUserRow;
+import org.arghyam.jalsoochak.user.repository.records.AdminUserTokenRow;
+import org.arghyam.jalsoochak.user.event.InviteEmailEvent;
+import org.arghyam.jalsoochak.user.event.UserEmailEventPublisher;
 import org.arghyam.jalsoochak.user.service.serviceImpl.UserManagementServiceImpl;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -38,6 +41,8 @@ import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Optional;
 
@@ -48,6 +53,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -68,7 +74,7 @@ class UserManagementServiceImplTest {
     private UserTenantRepository userTenantRepository;
 
     @Mock
-    private MailService mailService;
+    private UserEmailEventPublisher userEmailEventPublisher;
 
     @Mock
     private KeycloakAdminHelper keycloakAdminHelper;
@@ -88,7 +94,7 @@ class UserManagementServiceImplTest {
     void setUp() {
         userManagementService = new UserManagementServiceImpl(
                 keycloakProvider, keycloakClient, userCommonRepository, userTenantRepository,
-                mailService, keycloakAdminHelper, inviteProperties, frontendProperties,
+                userEmailEventPublisher, keycloakAdminHelper, inviteProperties, frontendProperties,
                 tokenService, new ObjectMapper()
         );
     }
@@ -293,12 +299,15 @@ class UserManagementServiceImplTest {
             InviteRequestDTO req = new InviteRequestDTO();
             req.setEmail("new@example.com");
             req.setRole("SUPER_USER");
+            req.setFirstName("New");
+            req.setLastName("User");
+            req.setPhoneNumber("9112345678");
 
             userManagementService.inviteUser(req, auth);
 
             verify(userCommonRepository).upsertToken(
                     eq("new@example.com"), eq("invite-hash"), eq("INVITE"), anyString(), any(), eq(1));
-            verify(mailService).sendMailAfterCommit(any());
+            verify(userEmailEventPublisher).publishInviteEmailAfterCommit(any(InviteEmailEvent.class));
         }
 
         @Test
@@ -381,6 +390,31 @@ class UserManagementServiceImplTest {
             req.setEmail("new@example.com");
             req.setRole("STATE_ADMIN");
             req.setTenantCode("XX");
+
+            assertThrows(ResourceNotFoundException.class, () -> userManagementService.inviteUser(req, auth));
+        }
+
+        @Test
+        @DisplayName("Should propagate ResourceNotFoundException when pending user was activated between lookup and phone update")
+        void inviteUser_pendingUserActivatedBetweenLookupAndUpdate_throwsResourceNotFound() {
+            Authentication auth = superUserAuth("kc-super");
+            AdminUserRow callerRow = userRow(1L, "kc-super", "super@example.com", 0, 1, AdminUserStatus.ACTIVE);
+            AdminUserRow pendingUser = userRow(5L, "placeholder-uuid", "pending@example.com", 0, 1, AdminUserStatus.PENDING);
+
+            when(userCommonRepository.findAdminUserByUuid("kc-super")).thenReturn(Optional.of(callerRow));
+            when(userCommonRepository.findUserTypeNameById(1)).thenReturn(Optional.of("SUPER_USER"));
+            when(userCommonRepository.findAdminUserByEmail("pending@example.com")).thenReturn(Optional.of(pendingUser));
+            when(userCommonRepository.findUserTypeIdByName("SUPER_USER")).thenReturn(Optional.of(1));
+            // Simulate the row vanishing (activated or deleted) between SELECT and UPDATE
+            doThrow(new ResourceNotFoundException("Pending admin user not found or already activated [id=5]"))
+                    .when(userCommonRepository).updatePendingAdminUserPhone(eq(5L), anyString());
+
+            InviteRequestDTO req = new InviteRequestDTO();
+            req.setEmail("pending@example.com");
+            req.setRole("SUPER_USER");
+            req.setFirstName("New");
+            req.setLastName("User");
+            req.setPhoneNumber("91XXXXXXXXXX");
 
             assertThrows(ResourceNotFoundException.class, () -> userManagementService.inviteUser(req, auth));
         }
@@ -623,9 +657,14 @@ class UserManagementServiceImplTest {
             AdminUserRow target = userRow(7L, "pending-uuid", "pending@example.com", 0, 1, AdminUserStatus.PENDING);
             AdminUserRow callerRow = userRow(1L, "kc-super", "super@example.com", 0, 1, AdminUserStatus.ACTIVE);
 
+            AdminUserTokenRow existingToken = new AdminUserTokenRow(1L, "pending@example.com", "old-hash",
+                    "INVITE", "{\"role\":\"SUPER_USER\",\"firstName\":\"New\",\"lastName\":\"User\"}",
+                    Instant.now().plus(24, ChronoUnit.HOURS), null, null, Instant.now());
+
             when(userCommonRepository.findAdminUserById(7L)).thenReturn(Optional.of(target));
             when(userCommonRepository.findAdminUserByUuid("kc-super")).thenReturn(Optional.of(callerRow));
             when(userCommonRepository.findUserTypeNameById(1)).thenReturn(Optional.of("SUPER_USER"));
+            when(userCommonRepository.findActiveInviteTokenByEmail("pending@example.com")).thenReturn(Optional.of(existingToken));
             when(tokenService.generateRawToken()).thenReturn("new-raw-token");
             when(tokenService.hash("new-raw-token")).thenReturn("new-hash");
             when(inviteProperties.expiryHours()).thenReturn(24);
@@ -638,7 +677,7 @@ class UserManagementServiceImplTest {
 
             verify(userCommonRepository).upsertToken(
                     eq("pending@example.com"), eq("new-hash"), eq("INVITE"), anyString(), any(), eq(1));
-            verify(mailService).sendMailAfterCommit(any());
+            verify(userEmailEventPublisher).publishInviteEmailAfterCommit(any(InviteEmailEvent.class));
         }
 
         @Test
