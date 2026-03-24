@@ -188,11 +188,11 @@ Same `TenantSchedulerManager` as nudges, but a separate cron schedule (`escalati
 
 1. Parses the `EscalationEvent` and the nested operator list.
 2. **PDF generation** (`EscalationPdfService`): generates an A4 PDF using Apache PDFBox, listing each operator's name, phone, scheme name, scheme ID, SO name, days missed, and last BFM date. Multi-page pagination is automatic. File is saved to `escalation.report.dir` (default: `/tmp/escalation-reports/`) as `escalation_L<level>_<officerName>_<date>-<uuid>.pdf`.
-3. **MinIO upload** (`MinioStorageService`): uploads the PDF and returns a public URL (`<minio.base-url>/<bucket>/<filename>`). The local file is deleted after upload regardless of success.
+3. **MinIO upload** (`MinioStorageService`): uploads the PDF and returns a public URL (`<minio.base-url>/<bucket>/<filename>`). The local file is deleted only after the upload returns successfully; if the upload throws, an error is logged, the local file is retained for manual recovery, and the exception is rethrown.
 4. **Contact ID resolution** (same logic as nudge): uses `officerWhatsappConnectionId` if set, otherwise calls `optIn` and publishes `WHATSAPP_CONTACT_REGISTERED`.
-5. **Glific document HSM** (two-step via `GlificWhatsAppService.sendEscalationHsm`):
-   - Step 1: `createMessageMedia(url, source_url, caption, thumbnail, isTemplateMedia=true)` → receives `mediaId`.
-   - Step 2: `createAndSendMessage(templateId, receiverId, isHsm=true, mediaId)` — the document PDF is the template header; params list is empty (the body text is baked into the template).
+5. **Glific document HSM** — Java entry point: `GlificWhatsAppService.sendEscalationHsm(contactId, minioUrl)`. Internally two GraphQL mutations are executed in sequence:
+   - Step 1 (`uploadMedia` helper → `createMessageMedia` GraphQL mutation): registers the MinIO PDF URL with Glific (`url`, `source_url`, `caption`, `thumbnail`, `isTemplateMedia=true`) and receives a `mediaId`.
+   - Step 2 (`createAndSendMessage` GraphQL mutation): sends the HSM with `templateId`, `receiverId`, `isHsm=true`, and the `mediaId` from Step 1 as the document header attachment. The params list is empty because the body text is baked into the template.
 
 **Config required**:
 - `glific.template.escalation-id`: Glific template ID for the document HSM.
@@ -340,7 +340,6 @@ All Glific and storage properties can be overridden via environment variables.
 | Topic | Published by | Consumed by |
 |---|---|---|
 | `welcome-message-dlt` | message-service | External ops/monitoring consumer |
-| `account-email-dlt` | message-service | External ops/monitoring consumer |
 
 Neither DLT is consumed by message-service itself — doing so would create an unbounded retry loop. Each record carries a deterministic `retryId` (UUID v3) for idempotent replay. Configure alerting (e.g., Kafka consumer-lag alerts) on these topics to detect delivery failures.
 

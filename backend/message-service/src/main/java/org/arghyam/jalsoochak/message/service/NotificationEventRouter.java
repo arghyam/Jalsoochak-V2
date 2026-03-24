@@ -549,13 +549,16 @@ public class NotificationEventRouter {
         String minioUrl;
         try {
             minioUrl = minioStorageService.upload(localPath);
-        } finally {
-            try {
-                Files.deleteIfExists(localPath);
-            } catch (Exception cleanupEx) {
-                log.warn("[Router/ESCALATION] Could not delete local PDF {}: {}",
-                                localPath, cleanupEx.getMessage());
-            }
+        } catch (Exception uploadEx) {
+            log.error("[Router/ESCALATION] MinIO upload failed, retaining local PDF for recovery: {} — {}",
+                    localPath, uploadEx.getMessage());
+            throw uploadEx;
+        }
+        try {
+            Files.deleteIfExists(localPath);
+        } catch (Exception cleanupEx) {
+            log.warn("[Router/ESCALATION] Could not delete local PDF {}: {}",
+                    localPath, cleanupEx.getMessage());
         }
 
         long contactId;
