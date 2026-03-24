@@ -83,10 +83,10 @@ public class DimScheme {
     private Integer status;
 
     @Column(name = "fhtc_count")
-    private Integer fhtcCount;
+    private Integer achievedFhtcCount;
 
     @Column(name = "planned_fhtc")
-    private Integer plannedFhtc;
+    private Integer plannedFhtcCount;
 
     @Column(name = "house_hold_count")
     private Integer houseHoldCount;

@@ -38,8 +38,8 @@ public class AverageWaterSupplyResponse {
         private Integer schemeId;
         private String schemeName;
         private Long householdCount;
-        private Long fhtcCount;
-        private Long plannedFhtc;
+        private Long achievedFhtcCount;
+        private Long plannedFhtcCount;
         private Long totalWaterSuppliedLiters;
         private Integer supplyDays;
         private BigDecimal avgLitersPerHousehold;
@@ -54,8 +54,8 @@ public class AverageWaterSupplyResponse {
         private Integer departmentId;
         private String title;
         private Long totalHouseholdCount;
-        private Long totalFhtcCount;
-        private Long totalPlannedFhtc;
+        private Long totalAchievedFhtcCount;
+        private Long totalPlannedFhtcCount;
         private Long totalWaterSuppliedLiters;
         private Integer schemeCount;
         private BigDecimal avgWaterSupplyPerScheme;

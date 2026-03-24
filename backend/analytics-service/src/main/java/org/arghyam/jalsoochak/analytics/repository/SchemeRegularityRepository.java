@@ -2710,8 +2710,8 @@ public class SchemeRegularityRepository {
             Integer schemeId,
             String schemeName,
             Long householdCount,
-            Long fhtcCount,
-            Long plannedFhtc,
+            Long achievedFhtcCount,
+            Long plannedFhtcCount,
             Long totalWaterSuppliedLiters,
             Integer supplyDays,
             BigDecimal averageLitersPerHousehold) {
@@ -2724,8 +2724,8 @@ public class SchemeRegularityRepository {
             Integer departmentId,
             String title,
             Long totalHouseholdCount,
-            Long totalFhtcCount,
-            Long totalPlannedFhtc,
+            Long totalAchievedFhtcCount,
+            Long totalPlannedFhtcCount,
             Long totalWaterSuppliedLiters,
             Integer schemeCount,
             BigDecimal avgWaterSupplyPerScheme) {
@@ -2737,8 +2737,8 @@ public class SchemeRegularityRepository {
             String title,
             Long waterQuantity,
             Long householdCount,
-            Long fhtcCount,
-            Long plannedFhtc) {
+            Long achievedFhtcCount,
+            Long plannedFhtcCount) {
     }
 
     public record PeriodicSchemeRegularityMetrics(
@@ -2875,7 +2875,7 @@ public class SchemeRegularityRepository {
             String scope,
             BigDecimal averageWaterQuantity,
             Long householdCount,
-            Long fhtcCount,
-            Long plannedFhtc) {
+            Long achievedFhtcCount,
+            Long plannedFhtcCount) {
     }
 }
