@@ -12,6 +12,7 @@ import org.arghyam.jalsoochak.analytics.dto.response.SchemeStatusAndTopReporting
 import org.arghyam.jalsoochak.analytics.dto.response.TenantDetailsResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.UserNonSubmissionReasonSchemeCountResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.UserOutageReasonSchemeCountResponse;
+import org.arghyam.jalsoochak.analytics.dto.response.SubmissionStatusSummaryResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.UserSubmissionStatusResponse;
 import org.arghyam.jalsoochak.analytics.enums.PeriodScale;
 import org.arghyam.jalsoochak.analytics.exception.GlobalExceptionHandler;
@@ -439,6 +440,63 @@ class AnalyticsControllerInputCombinationTest {
                 .andExpect(status().isOk());
 
         verify(schemeRegularityService, times(1)).getSubmissionStatusByUserUuid(USER_UUID, START, END);
+    }
+
+    @Test
+    void getSubmissionStatusSummary_withLgdId_routesToLgdService() throws Exception {
+        when(schemeRegularityService.getSubmissionStatusSummaryByLgd(100, START, END))
+                .thenReturn(SubmissionStatusSummaryResponse.builder()
+                        .schemeCount(2)
+                        .compliantSubmissionCount(5)
+                        .anomalousSubmissionCount(0)
+                        .build());
+
+        mockMvc.perform(get(BASE + "/submission-status")
+                        .param("start_date", START.toString())
+                        .param("end_date", END.toString())
+                        .param("lgd_id", "100"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.schemeCount").value(2))
+                .andExpect(jsonPath("$.compliantSubmissionCount").value(5))
+                .andExpect(jsonPath("$.anomalousSubmissionCount").value(0));
+
+        verify(schemeRegularityService, times(1)).getSubmissionStatusSummaryByLgd(100, START, END);
+    }
+
+    @Test
+    void getSubmissionStatusSummary_withDepartmentId_routesToDepartmentService() throws Exception {
+        when(schemeRegularityService.getSubmissionStatusSummaryByDepartment(200, START, END))
+                .thenReturn(SubmissionStatusSummaryResponse.builder()
+                        .schemeCount(2)
+                        .compliantSubmissionCount(5)
+                        .anomalousSubmissionCount(0)
+                        .build());
+
+        mockMvc.perform(get(BASE + "/submission-status")
+                        .param("start_date", START.toString())
+                        .param("end_date", END.toString())
+                        .param("department_id", "200"))
+                .andExpect(status().isOk());
+
+        verify(schemeRegularityService, times(1)).getSubmissionStatusSummaryByDepartment(200, START, END);
+    }
+
+    @Test
+    void getSubmissionStatusSummary_withBothIds_returnsBadRequest() throws Exception {
+        mockMvc.perform(get(BASE + "/submission-status")
+                        .param("start_date", START.toString())
+                        .param("end_date", END.toString())
+                        .param("lgd_id", "100")
+                        .param("department_id", "200"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void getSubmissionStatusSummary_withNoScopeId_returnsBadRequest() throws Exception {
+        mockMvc.perform(get(BASE + "/submission-status")
+                        .param("start_date", START.toString())
+                        .param("end_date", END.toString()))
+                .andExpect(status().isBadRequest());
     }
 
     @ParameterizedTest

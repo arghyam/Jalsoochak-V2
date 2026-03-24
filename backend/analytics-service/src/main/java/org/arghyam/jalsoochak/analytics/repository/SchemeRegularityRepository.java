@@ -969,6 +969,124 @@ public class SchemeRegularityRepository {
         return new SubmissionStatusCount(compliantSubmissionCount, anomalousSubmissionCount);
     }
 
+    public Integer getSchemeCountByLgd(Integer lgdId) {
+        Integer lgdLevel = getLgdLevel(lgdId);
+        if (lgdLevel == null) {
+            throw new IllegalArgumentException("lgd_id not found in dim_lgd_location_table: " + lgdId);
+        }
+        String schemeLgdColumn = resolveSchemeLgdColumn(lgdLevel);
+
+        String sql = String.format("""
+                SELECT COALESCE(COUNT(DISTINCT s.scheme_id), 0)::int AS scheme_count
+                FROM analytics_schema.dim_scheme_table s
+                WHERE s.%1$s = ?
+                """, schemeLgdColumn);
+
+        return jdbcTemplate.queryForObject(sql, Integer.class, lgdId);
+    }
+
+    public Integer getSchemeCountByDepartment(Integer departmentId) {
+        Integer departmentLevel = getDepartmentLevel(departmentId);
+        if (departmentLevel == null) {
+            throw new IllegalArgumentException("department_id not found in dim_department_location_table: " + departmentId);
+        }
+        String schemeDepartmentColumn = resolveSchemeDepartmentColumn(departmentLevel);
+
+        String sql = String.format("""
+                SELECT COALESCE(COUNT(DISTINCT s.scheme_id), 0)::int AS scheme_count
+                FROM analytics_schema.dim_scheme_table s
+                WHERE s.%1$s = ?
+                """, schemeDepartmentColumn);
+
+        return jdbcTemplate.queryForObject(sql, Integer.class, departmentId);
+    }
+
+    public SubmissionStatusCount getSubmissionStatusCountByLgd(
+            Integer lgdId, LocalDate startDate, LocalDate endDate) {
+        Integer lgdLevel = getLgdLevel(lgdId);
+        if (lgdLevel == null) {
+            throw new IllegalArgumentException("lgd_id not found in dim_lgd_location_table: " + lgdId);
+        }
+        String schemeLgdColumn = resolveSchemeLgdColumn(lgdLevel);
+
+        String sql = String.format("""
+                WITH schemes_in_scope AS (
+                    SELECT DISTINCT s.scheme_id
+                    FROM analytics_schema.dim_scheme_table s
+                    WHERE s.%1$s = ?
+                )
+                SELECT
+                    COALESCE(
+                        COUNT(*) FILTER (
+                            WHERE m.extracted_reading IS NOT NULL
+                              AND m.extracted_reading = m.confirmed_reading
+                        ),
+                        0
+                    )::int AS compliant_submission_count,
+                    COALESCE(
+                        COUNT(*) FILTER (
+                            WHERE m.extracted_reading IS NOT NULL
+                              AND m.extracted_reading IS DISTINCT FROM m.confirmed_reading
+                        ),
+                        0
+                    )::int AS anomalous_submission_count
+                FROM analytics_schema.fact_meter_reading_table m
+                JOIN schemes_in_scope ss
+                    ON ss.scheme_id = m.scheme_id
+                WHERE m.reading_date BETWEEN ? AND ?
+                """, schemeLgdColumn);
+
+        Map<String, Object> result = jdbcTemplate.queryForMap(sql, lgdId, startDate, endDate);
+        int compliantSubmissionCount =
+                result.get("compliant_submission_count") instanceof Number value ? value.intValue() : 0;
+        int anomalousSubmissionCount =
+                result.get("anomalous_submission_count") instanceof Number value ? value.intValue() : 0;
+        return new SubmissionStatusCount(compliantSubmissionCount, anomalousSubmissionCount);
+    }
+
+    public SubmissionStatusCount getSubmissionStatusCountByDepartment(
+            Integer departmentId, LocalDate startDate, LocalDate endDate) {
+        Integer departmentLevel = getDepartmentLevel(departmentId);
+        if (departmentLevel == null) {
+            throw new IllegalArgumentException("department_id not found in dim_department_location_table: " + departmentId);
+        }
+        String schemeDepartmentColumn = resolveSchemeDepartmentColumn(departmentLevel);
+
+        String sql = String.format("""
+                WITH schemes_in_scope AS (
+                    SELECT DISTINCT s.scheme_id
+                    FROM analytics_schema.dim_scheme_table s
+                    WHERE s.%1$s = ?
+                )
+                SELECT
+                    COALESCE(
+                        COUNT(*) FILTER (
+                            WHERE m.extracted_reading IS NOT NULL
+                              AND m.extracted_reading = m.confirmed_reading
+                        ),
+                        0
+                    )::int AS compliant_submission_count,
+                    COALESCE(
+                        COUNT(*) FILTER (
+                            WHERE m.extracted_reading IS NOT NULL
+                              AND m.extracted_reading IS DISTINCT FROM m.confirmed_reading
+                        ),
+                        0
+                    )::int AS anomalous_submission_count
+                FROM analytics_schema.fact_meter_reading_table m
+                JOIN schemes_in_scope ss
+                    ON ss.scheme_id = m.scheme_id
+                WHERE m.reading_date BETWEEN ? AND ?
+                """, schemeDepartmentColumn);
+
+        Map<String, Object> result = jdbcTemplate.queryForMap(sql, departmentId, startDate, endDate);
+        int compliantSubmissionCount =
+                result.get("compliant_submission_count") instanceof Number value ? value.intValue() : 0;
+        int anomalousSubmissionCount =
+                result.get("anomalous_submission_count") instanceof Number value ? value.intValue() : 0;
+        return new SubmissionStatusCount(compliantSubmissionCount, anomalousSubmissionCount);
+    }
+
     public List<DailySubmissionSchemeCount> getDailySubmissionSchemeCountByUser(
             Integer userId, LocalDate startDate, LocalDate endDate) {
         String sql = """

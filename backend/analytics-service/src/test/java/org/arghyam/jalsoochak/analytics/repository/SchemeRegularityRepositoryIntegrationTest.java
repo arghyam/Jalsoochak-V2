@@ -621,6 +621,28 @@ class SchemeRegularityRepositoryIntegrationTest {
     }
 
     @Test
+    void submissionStatusSummaryByLgdAndDepartment_matchesScopeAggregates() {
+        assertThat(repository.getSchemeCountByLgd(100)).isEqualTo(2);
+        assertThat(repository.getSchemeCountByDepartment(200)).isEqualTo(2);
+
+        SchemeRegularityRepository.SubmissionStatusCount byLgd =
+                repository.getSubmissionStatusCountByLgd(100, D1, D3);
+        SchemeRegularityRepository.SubmissionStatusCount byDept =
+                repository.getSubmissionStatusCountByDepartment(200, D1, D3);
+
+        assertThat(byLgd.compliantSubmissionCount()).isEqualTo(5);
+        assertThat(byLgd.anomalousSubmissionCount()).isEqualTo(0);
+        assertThat(byDept.compliantSubmissionCount()).isEqualTo(5);
+        assertThat(byDept.anomalousSubmissionCount()).isEqualTo(0);
+
+        assertThat(repository.getSchemeCountByLgd(101)).isEqualTo(1);
+        SchemeRegularityRepository.SubmissionStatusCount childLgd =
+                repository.getSubmissionStatusCountByLgd(101, D1, D3);
+        assertThat(childLgd.compliantSubmissionCount()).isEqualTo(3);
+        assertThat(childLgd.anomalousSubmissionCount()).isEqualTo(0);
+    }
+
+    @Test
     void waterSupplyQueries_returnExpectedAggregatesAcrossScopes() {
         List<SchemeRegularityRepository.SchemeWaterSupplyMetrics> current =
                 repository.getAverageWaterSupplyPerCurrentRegion(1, D1, D3);

@@ -1,5 +1,6 @@
 package org.arghyam.jalsoochak.analytics.dto.response;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -17,20 +18,21 @@ public class PeriodicSchemeRegularityResponse {
 
     private Integer lgdId;
     private Integer departmentId;
+    private Integer schemeCount;
     private String scale;
     private LocalDate startDate;
     private LocalDate endDate;
     private Integer periodCount;
-    private List<PeriodicMetric> metrics;
+    private List<PeriodicSchemeRegularityPeriodMetric> metrics;
 
     @Data
     @Builder
     @NoArgsConstructor
     @AllArgsConstructor
-    public static class PeriodicMetric {
+    @Schema(name = "PeriodicSchemeRegularityPeriodMetric")
+    public static class PeriodicSchemeRegularityPeriodMetric {
         private LocalDate periodStartDate;
         private LocalDate periodEndDate;
-        private Integer schemeCount;
         private Integer totalSupplyDays;
         private BigDecimal averageRegularity;
     }

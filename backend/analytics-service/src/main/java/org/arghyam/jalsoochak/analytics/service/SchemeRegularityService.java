@@ -14,6 +14,7 @@ import org.arghyam.jalsoochak.analytics.dto.response.SchemeRegularityListRespons
 import org.arghyam.jalsoochak.analytics.dto.response.SchemeStatusAndTopReportingResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.UserNonSubmissionReasonSchemeCountResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.UserOutageReasonSchemeCountResponse;
+import org.arghyam.jalsoochak.analytics.dto.response.SubmissionStatusSummaryResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.UserSubmissionStatusResponse;
 import org.arghyam.jalsoochak.analytics.enums.PeriodScale;
 import org.arghyam.jalsoochak.analytics.repository.SchemeRegularityRepository;
@@ -130,6 +131,12 @@ public interface SchemeRegularityService {
 
     UserSubmissionStatusResponse getSubmissionStatusByUserUuid(
             UUID userUuid, LocalDate startDate, LocalDate endDate);
+
+    SubmissionStatusSummaryResponse getSubmissionStatusSummaryByLgd(
+            Integer lgdId, LocalDate startDate, LocalDate endDate);
+
+    SubmissionStatusSummaryResponse getSubmissionStatusSummaryByDepartment(
+            Integer departmentId, LocalDate startDate, LocalDate endDate);
 
     Map<String, Integer> getSchemeStatusCountByLgd(Integer lgdId);
 

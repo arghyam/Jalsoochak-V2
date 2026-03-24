@@ -14,6 +14,7 @@ import org.arghyam.jalsoochak.analytics.dto.response.SchemeRegularityListRespons
 import org.arghyam.jalsoochak.analytics.dto.response.SchemeStatusAndTopReportingResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.UserNonSubmissionReasonSchemeCountResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.UserOutageReasonSchemeCountResponse;
+import org.arghyam.jalsoochak.analytics.dto.response.SubmissionStatusSummaryResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.UserSubmissionStatusResponse;
 import org.arghyam.jalsoochak.analytics.entity.DimUser;
 import org.arghyam.jalsoochak.analytics.enums.PeriodScale;
@@ -1448,6 +1449,52 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
     }
 
     @Override
+    public SubmissionStatusSummaryResponse getSubmissionStatusSummaryByLgd(
+            Integer lgdId, LocalDate startDate, LocalDate endDate) {
+        validateLgdInput(lgdId);
+        validateDateRange(startDate, endDate);
+
+        Integer schemeCount = schemeRegularityRepository.getSchemeCountByLgd(lgdId);
+        SchemeRegularityRepository.SubmissionStatusCount submissionStatusCount =
+                schemeRegularityRepository.getSubmissionStatusCountByLgd(lgdId, startDate, endDate);
+
+        return SubmissionStatusSummaryResponse.builder()
+                .schemeCount(schemeCount == null ? 0 : schemeCount)
+                .compliantSubmissionCount(
+                        submissionStatusCount.compliantSubmissionCount() == null
+                                ? 0
+                                : submissionStatusCount.compliantSubmissionCount())
+                .anomalousSubmissionCount(
+                        submissionStatusCount.anomalousSubmissionCount() == null
+                                ? 0
+                                : submissionStatusCount.anomalousSubmissionCount())
+                .build();
+    }
+
+    @Override
+    public SubmissionStatusSummaryResponse getSubmissionStatusSummaryByDepartment(
+            Integer departmentId, LocalDate startDate, LocalDate endDate) {
+        validateDepartmentInput(departmentId);
+        validateDateRange(startDate, endDate);
+
+        Integer schemeCount = schemeRegularityRepository.getSchemeCountByDepartment(departmentId);
+        SchemeRegularityRepository.SubmissionStatusCount submissionStatusCount =
+                schemeRegularityRepository.getSubmissionStatusCountByDepartment(departmentId, startDate, endDate);
+
+        return SubmissionStatusSummaryResponse.builder()
+                .schemeCount(schemeCount == null ? 0 : schemeCount)
+                .compliantSubmissionCount(
+                        submissionStatusCount.compliantSubmissionCount() == null
+                                ? 0
+                                : submissionStatusCount.compliantSubmissionCount())
+                .anomalousSubmissionCount(
+                        submissionStatusCount.anomalousSubmissionCount() == null
+                                ? 0
+                                : submissionStatusCount.anomalousSubmissionCount())
+                .build();
+    }
+
+    @Override
     public Map<String, Integer> getSchemeStatusCountByLgd(Integer lgdId) {
         validateLgdInput(lgdId);
         SchemeRegularityRepository.SchemeStatusCount count =
@@ -1786,8 +1833,8 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
             LocalDate endDate,
             PeriodScale scale,
             List<SchemeRegularityRepository.PeriodicWaterQuantityMetrics> metrics) {
-        List<PeriodicWaterQuantityResponse.PeriodicMetric> periodicMetrics = metrics.stream()
-                .map(metric -> PeriodicWaterQuantityResponse.PeriodicMetric.builder()
+        List<PeriodicWaterQuantityResponse.PeriodicWaterQuantityPeriodMetric> periodicMetrics = metrics.stream()
+                .map(metric -> PeriodicWaterQuantityResponse.PeriodicWaterQuantityPeriodMetric.builder()
                         .periodStartDate(metric.periodStartDate())
                         .periodEndDate(metric.periodEndDate().isAfter(endDate) ? endDate : metric.periodEndDate())
                         .averageWaterQuantity(metric.averageWaterQuantity())
@@ -1815,7 +1862,8 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
             LocalDate endDate,
             PeriodScale scale,
             List<SchemeRegularityRepository.PeriodicSchemeRegularityMetrics> metrics) {
-        List<PeriodicSchemeRegularityResponse.PeriodicMetric> periodicMetrics =
+        int schemeCount = metrics.isEmpty() ? 0 : metrics.getFirst().schemeCount();
+        List<PeriodicSchemeRegularityResponse.PeriodicSchemeRegularityPeriodMetric> periodicMetrics =
                 metrics.stream()
                         .map(metric -> {
                             LocalDate cappedPeriodStart =
@@ -1834,10 +1882,9 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
                                         .divide(denominator, 4, RoundingMode.HALF_UP);
                             }
 
-                            return PeriodicSchemeRegularityResponse.PeriodicMetric.builder()
+                            return PeriodicSchemeRegularityResponse.PeriodicSchemeRegularityPeriodMetric.builder()
                                     .periodStartDate(cappedPeriodStart)
                                     .periodEndDate(cappedPeriodEnd)
-                                    .schemeCount(metric.schemeCount())
                                     .totalSupplyDays(metric.totalSupplyDays())
                                     .averageRegularity(averageRegularity)
                                     .build();
@@ -1847,6 +1894,7 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
         return PeriodicSchemeRegularityResponse.builder()
                 .lgdId(lgdId)
                 .departmentId(departmentId)
+                .schemeCount(schemeCount)
                 .scale(scale.name().toLowerCase())
                 .startDate(startDate)
                 .endDate(endDate)
@@ -1883,13 +1931,13 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
             orderedPeriodStarts.add(row.periodStartDate());
         }
 
-        List<PeriodicOutageReasonSchemeCountResponse.PeriodicMetric> periodicMetrics = new ArrayList<>();
+        List<PeriodicOutageReasonSchemeCountResponse.PeriodicOutageMetric> periodicMetrics = new ArrayList<>();
         for (LocalDate ps : orderedPeriodStarts) {
             LocalDate pe = periodEndByStart.get(ps);
             LocalDate cappedPeriodStart = ps.isBefore(startDate) ? startDate : ps;
             LocalDate cappedPeriodEnd = pe.isAfter(endDate) ? endDate : pe;
             periodicMetrics.add(
-                    PeriodicOutageReasonSchemeCountResponse.PeriodicMetric.builder()
+                    PeriodicOutageReasonSchemeCountResponse.PeriodicOutageMetric.builder()
                             .periodStartDate(cappedPeriodStart)
                             .periodEndDate(cappedPeriodEnd)
                             .outageReasonSchemeCount(

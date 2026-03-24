@@ -1,5 +1,6 @@
 package org.arghyam.jalsoochak.analytics.dto.response;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -21,13 +22,14 @@ public class PeriodicWaterQuantityResponse {
     private LocalDate startDate;
     private LocalDate endDate;
     private Integer periodCount;
-    private List<PeriodicMetric> metrics;
+    private List<PeriodicWaterQuantityPeriodMetric> metrics;
 
     @Data
     @Builder
     @NoArgsConstructor
     @AllArgsConstructor
-    public static class PeriodicMetric {
+    @Schema(name = "PeriodicWaterQuantityPeriodMetric")
+    public static class PeriodicWaterQuantityPeriodMetric {
         private LocalDate periodStartDate;
         private LocalDate periodEndDate;
         private BigDecimal averageWaterQuantity;

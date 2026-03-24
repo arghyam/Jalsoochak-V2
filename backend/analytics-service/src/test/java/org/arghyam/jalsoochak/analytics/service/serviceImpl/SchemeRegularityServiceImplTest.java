@@ -13,6 +13,7 @@ import org.arghyam.jalsoochak.analytics.dto.response.ReadingSubmissionRateRespon
 import org.arghyam.jalsoochak.analytics.dto.response.SchemeRegularityListResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.UserNonSubmissionReasonSchemeCountResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.UserOutageReasonSchemeCountResponse;
+import org.arghyam.jalsoochak.analytics.dto.response.SubmissionStatusSummaryResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.UserSubmissionStatusResponse;
 import org.arghyam.jalsoochak.analytics.entity.DimUser;
 import org.arghyam.jalsoochak.analytics.entity.DimTenant;
@@ -215,9 +216,9 @@ class SchemeRegularityServiceImplTest {
 
         assertThat(response.getScale()).isEqualTo("week");
         assertThat(response.getPeriodCount()).isEqualTo(1);
+        assertThat(response.getSchemeCount()).isEqualTo(2);
         assertThat(response.getMetrics().getFirst().getPeriodStartDate()).isEqualTo(START);
         assertThat(response.getMetrics().getFirst().getPeriodEndDate()).isEqualTo(requestedEnd);
-        assertThat(response.getMetrics().getFirst().getSchemeCount()).isEqualTo(2);
         assertThat(response.getMetrics().getFirst().getTotalSupplyDays()).isEqualTo(2);
         // periodDays = 2026-01-01..2026-01-10 inclusive = 10; regularity = 2 / (2 * 10) = 0.1000
         assertThat(response.getMetrics().getFirst().getAverageRegularity()).isEqualByComparingTo("0.1000");
@@ -758,6 +759,34 @@ class SchemeRegularityServiceImplTest {
 
         assertThat(response.getUserId()).isEqualTo(11);
         verify(dimUserRepository, times(1)).findByUuid(USER_UUID);
+    }
+
+    @Test
+    void getSubmissionStatusSummaryByLgd_returnsCountsFromRepository() {
+        when(schemeRegularityRepository.getSchemeCountByLgd(100)).thenReturn(2);
+        when(schemeRegularityRepository.getSubmissionStatusCountByLgd(100, START, END))
+                .thenReturn(new SchemeRegularityRepository.SubmissionStatusCount(5, 1));
+
+        SubmissionStatusSummaryResponse response =
+                service.getSubmissionStatusSummaryByLgd(100, START, END);
+
+        assertThat(response.getSchemeCount()).isEqualTo(2);
+        assertThat(response.getCompliantSubmissionCount()).isEqualTo(5);
+        assertThat(response.getAnomalousSubmissionCount()).isEqualTo(1);
+    }
+
+    @Test
+    void getSubmissionStatusSummaryByDepartment_returnsCountsFromRepository() {
+        when(schemeRegularityRepository.getSchemeCountByDepartment(200)).thenReturn(2);
+        when(schemeRegularityRepository.getSubmissionStatusCountByDepartment(200, START, END))
+                .thenReturn(new SchemeRegularityRepository.SubmissionStatusCount(4, 0));
+
+        SubmissionStatusSummaryResponse response =
+                service.getSubmissionStatusSummaryByDepartment(200, START, END);
+
+        assertThat(response.getSchemeCount()).isEqualTo(2);
+        assertThat(response.getCompliantSubmissionCount()).isEqualTo(4);
+        assertThat(response.getAnomalousSubmissionCount()).isEqualTo(0);
     }
 
     @Test

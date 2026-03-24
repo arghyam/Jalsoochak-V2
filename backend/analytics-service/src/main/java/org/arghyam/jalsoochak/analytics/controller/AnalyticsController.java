@@ -20,6 +20,7 @@ import org.arghyam.jalsoochak.analytics.dto.response.SchemeStatusAndTopReporting
 import org.arghyam.jalsoochak.analytics.dto.response.TenantDetailsResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.UserNonSubmissionReasonSchemeCountResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.UserOutageReasonSchemeCountResponse;
+import org.arghyam.jalsoochak.analytics.dto.response.SubmissionStatusSummaryResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.UserSubmissionStatusResponse;
 import org.arghyam.jalsoochak.analytics.enums.PeriodScale;
 import org.arghyam.jalsoochak.analytics.enums.RegularityScope;
@@ -347,6 +348,27 @@ public class AnalyticsController {
         return ResponseEntity.ok(
                 schemeRegularityService.getSubmissionStatusByUserUuid(
                         AnalyticsControllerHelper.extractAuthenticatedUserUuid(authentication), startDate, endDate));
+    }
+
+    @GetMapping("/submission-status")
+    @Operation(summary = "Get scheme count and compliant/anomalous submission counts for an LGD or department")
+    public ResponseEntity<SubmissionStatusSummaryResponse> getSubmissionStatusSummary(
+            @RequestParam(name = "start_date") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam(name = "end_date") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
+            @RequestParam(name = "lgd_id", required = false) Integer lgdId,
+            @RequestParam(name = "department_id", required = false) Integer departmentId) {
+        if (lgdId != null && departmentId != null) {
+            throw new IllegalArgumentException("Provide either lgd_id or department_id, not both");
+        }
+        if (lgdId == null && departmentId == null) {
+            throw new IllegalArgumentException("Provide either lgd_id or department_id");
+        }
+        if (lgdId != null) {
+            return ResponseEntity.ok(
+                    schemeRegularityService.getSubmissionStatusSummaryByLgd(lgdId, startDate, endDate));
+        }
+        return ResponseEntity.ok(
+                schemeRegularityService.getSubmissionStatusSummaryByDepartment(departmentId, startDate, endDate));
     }
 
     @GetMapping("/schemes/status-count")
