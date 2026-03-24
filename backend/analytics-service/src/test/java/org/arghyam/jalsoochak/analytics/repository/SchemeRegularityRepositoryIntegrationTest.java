@@ -283,6 +283,47 @@ class SchemeRegularityRepositoryIntegrationTest {
     }
 
     @Test
+    void getPeriodicOutageReasonSchemeCountByLgdId_monthScale_matchesDistinctSchemeCountsPerReason() {
+        List<SchemeRegularityRepository.PeriodicOutageReasonSchemeCountRow> rows =
+                repository.getPeriodicOutageReasonSchemeCountByLgdId(100, D1, D10, PeriodScale.MONTH);
+
+        assertThat(rows).hasSize(2);
+        assertThat(rows.get(0).periodStartDate()).isEqualTo(LocalDate.of(2026, 1, 1));
+        assertThat(rows.get(0).outageReason()).isEqualTo("draught");
+        assertThat(rows.get(0).schemeCount()).isEqualTo(1);
+        assertThat(rows.get(1).outageReason()).isEqualTo("no_electricity");
+        assertThat(rows.get(1).schemeCount()).isEqualTo(2);
+    }
+
+    @Test
+    void getPeriodicOutageReasonSchemeCountByLgdId_weekScale_splitsAcrossIsoWeeks() {
+        List<SchemeRegularityRepository.PeriodicOutageReasonSchemeCountRow> rows =
+                repository.getPeriodicOutageReasonSchemeCountByLgdId(100, D1, D10, PeriodScale.WEEK);
+
+        assertThat(rows.stream().map(SchemeRegularityRepository.PeriodicOutageReasonSchemeCountRow::periodStartDate)
+                        .distinct()
+                        .count())
+                .isEqualTo(2);
+
+        assertThat(rows)
+                .anySatisfy(r -> {
+                    assertThat(r.periodStartDate()).isEqualTo(LocalDate.of(2025, 12, 29));
+                    assertThat(r.outageReason()).isEqualTo("draught");
+                    assertThat(r.schemeCount()).isEqualTo(1);
+                })
+                .anySatisfy(r -> {
+                    assertThat(r.periodStartDate()).isEqualTo(LocalDate.of(2025, 12, 29));
+                    assertThat(r.outageReason()).isEqualTo("no_electricity");
+                    assertThat(r.schemeCount()).isEqualTo(1);
+                })
+                .anySatisfy(r -> {
+                    assertThat(r.periodStartDate()).isEqualTo(LocalDate.of(2026, 1, 5));
+                    assertThat(r.outageReason()).isEqualTo("no_electricity");
+                    assertThat(r.schemeCount()).isEqualTo(2);
+                });
+    }
+
+    @Test
     void outageQueriesByLgd_returnParentAndChildAggregations() {
         List<SchemeRegularityRepository.OutageReasonSchemeCount> parent =
                 repository.getOutageReasonSchemeCountByLgd(100, D1, D10);

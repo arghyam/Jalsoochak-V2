@@ -2302,6 +2302,96 @@ public class SchemeRegularityRepository {
         return getPeriodicWaterQuantityMetrics(schemeDepartmentColumn, departmentId, startDate, endDate, scale);
     }
 
+    public List<PeriodicOutageReasonSchemeCountRow> getPeriodicOutageReasonSchemeCountByLgdId(
+            Integer lgdId, LocalDate startDate, LocalDate endDate, PeriodScale scale) {
+        Integer lgdLevel = getLgdLevel(lgdId);
+        if (lgdLevel == null) {
+            throw new IllegalArgumentException("lgd_id not found in dim_lgd_location_table: " + lgdId);
+        }
+        String schemeLgdColumn = resolveSchemeLgdColumn(lgdLevel);
+        return getPeriodicOutageReasonSchemeCountRows(schemeLgdColumn, lgdId, startDate, endDate, scale);
+    }
+
+    public List<PeriodicOutageReasonSchemeCountRow> getPeriodicOutageReasonSchemeCountByDepartment(
+            Integer departmentId, LocalDate startDate, LocalDate endDate, PeriodScale scale) {
+        Integer departmentLevel = getDepartmentLevel(departmentId);
+        if (departmentLevel == null) {
+            throw new IllegalArgumentException("department_id not found in dim_department_location_table: " + departmentId);
+        }
+        String schemeDepartmentColumn = resolveSchemeDepartmentColumn(departmentLevel);
+        return getPeriodicOutageReasonSchemeCountRows(
+                schemeDepartmentColumn, departmentId, startDate, endDate, scale);
+    }
+
+    private List<PeriodicOutageReasonSchemeCountRow> getPeriodicOutageReasonSchemeCountRows(
+            String schemeLocationColumn,
+            Object locationId,
+            LocalDate startDate,
+            LocalDate endDate,
+            PeriodScale scale) {
+        PeriodSqlParts sqlParts = buildPeriodSqlParts(scale);
+        String sql = String.format("""
+                WITH schemes_in_scope AS (
+                    SELECT DISTINCT s.scheme_id
+                    FROM analytics_schema.dim_scheme_table s
+                    WHERE s.%1$s = ?
+                ),
+                periods AS (
+                    SELECT DISTINCT
+                        %2$s AS period_start_date,
+                        %3$s AS period_end_date,
+                        %4$s AS scope
+                    FROM generate_series(?::date, ?::date, INTERVAL '1 day') AS g(day_date)
+                ),
+                outage_by_period AS (
+                    SELECT
+                        %5$s AS period_start_date,
+                        f.outage_reason,
+                        COUNT(DISTINCT f.scheme_id)::int AS scheme_count
+                    FROM analytics_schema.fact_water_quantity_table f
+                    JOIN schemes_in_scope s
+                        ON s.scheme_id = f.scheme_id
+                    WHERE f.outage_reason IS NOT NULL
+                      AND f.date BETWEEN ? AND ?
+                    GROUP BY %5$s, f.outage_reason
+                )
+                SELECT
+                    p.period_start_date,
+                    p.period_end_date,
+                    o.outage_reason,
+                    o.scheme_count
+                FROM periods p
+                LEFT JOIN outage_by_period o
+                    ON o.period_start_date = p.period_start_date
+                ORDER BY p.period_start_date, o.outage_reason
+                """,
+                schemeLocationColumn,
+                sqlParts.periodStartFromSeries(),
+                sqlParts.periodEndFromSeries(),
+                sqlParts.periodLabelFromSeries(),
+                sqlParts.periodStartFromFact());
+
+        return jdbcTemplate.query(
+                sql,
+                (rs, rowNum) -> {
+                    String reason = rs.getString("outage_reason");
+                    Integer count = null;
+                    if (reason != null) {
+                        count = rs.getInt("scheme_count");
+                    }
+                    return new PeriodicOutageReasonSchemeCountRow(
+                            rs.getObject("period_start_date", LocalDate.class),
+                            rs.getObject("period_end_date", LocalDate.class),
+                            reason,
+                            count);
+                },
+                locationId,
+                startDate,
+                endDate,
+                startDate,
+                endDate);
+    }
+
     private List<PeriodicWaterQuantityMetrics> getPeriodicWaterQuantityMetrics(
             String schemeLocationColumn,
             Object locationId,
@@ -2584,6 +2674,13 @@ public class SchemeRegularityRepository {
             String periodEndFromSeries,
             String periodLabelFromSeries,
             String periodStartFromFact) {
+    }
+
+    public record PeriodicOutageReasonSchemeCountRow(
+            LocalDate periodStartDate,
+            LocalDate periodEndDate,
+            String outageReason,
+            Integer schemeCount) {
     }
 
     public record OutageReasonSchemeCount(String outageReason, Integer schemeCount) {

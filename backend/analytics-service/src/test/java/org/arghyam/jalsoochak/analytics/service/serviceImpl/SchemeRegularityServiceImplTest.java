@@ -6,6 +6,7 @@ import org.arghyam.jalsoochak.analytics.dto.response.AverageWaterSupplyResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.NationalDashboardResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.NonSubmissionReasonSchemeCountResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.OutageReasonSchemeCountResponse;
+import org.arghyam.jalsoochak.analytics.dto.response.PeriodicOutageReasonSchemeCountResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.PeriodicSchemeRegularityResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.PeriodicWaterQuantityResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.ReadingSubmissionRateResponse;
@@ -220,6 +221,35 @@ class SchemeRegularityServiceImplTest {
         assertThat(response.getMetrics().getFirst().getTotalSupplyDays()).isEqualTo(2);
         // periodDays = 2026-01-01..2026-01-10 inclusive = 10; regularity = 2 / (2 * 10) = 0.1000
         assertThat(response.getMetrics().getFirst().getAverageRegularity()).isEqualByComparingTo("0.1000");
+    }
+
+    @Test
+    void getPeriodicOutageReasonSchemeCountByLgdId_capsPeriodBoundsAndAggregatesReasons() {
+        LocalDate requestedEnd = LocalDate.of(2026, 1, 10);
+        when(schemeRegularityRepository.getPeriodicOutageReasonSchemeCountByLgdId(
+                        101, START, requestedEnd, PeriodScale.WEEK))
+                .thenReturn(
+                        List.of(
+                                new SchemeRegularityRepository.PeriodicOutageReasonSchemeCountRow(
+                                        LocalDate.of(2025, 12, 29),
+                                        LocalDate.of(2026, 1, 4),
+                                        "draught",
+                                        1),
+                                new SchemeRegularityRepository.PeriodicOutageReasonSchemeCountRow(
+                                        LocalDate.of(2025, 12, 29),
+                                        LocalDate.of(2026, 1, 4),
+                                        "no_electricity",
+                                        2)));
+
+        PeriodicOutageReasonSchemeCountResponse response =
+                service.getPeriodicOutageReasonSchemeCountByLgdId(101, START, requestedEnd, PeriodScale.WEEK);
+
+        assertThat(response.getScale()).isEqualTo("week");
+        assertThat(response.getPeriodCount()).isEqualTo(1);
+        assertThat(response.getMetrics().getFirst().getPeriodStartDate()).isEqualTo(START);
+        assertThat(response.getMetrics().getFirst().getPeriodEndDate()).isEqualTo(LocalDate.of(2026, 1, 4));
+        assertThat(response.getMetrics().getFirst().getOutageReasonSchemeCount())
+                .containsExactlyInAnyOrderEntriesOf(Map.of("draught", 1, "no_electricity", 2));
     }
 
     @Test
