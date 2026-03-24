@@ -4,6 +4,7 @@ import org.arghyam.jalsoochak.telemetry.config.TenantContext;
 import org.arghyam.jalsoochak.telemetry.dto.response.CreateReadingResponse;
 import org.arghyam.jalsoochak.telemetry.dto.response.FlowVisionResult;
 import org.arghyam.jalsoochak.telemetry.dto.requests.CreateReadingRequest;
+import org.arghyam.jalsoochak.telemetry.event.TelemetryEventPublisher;
 import org.arghyam.jalsoochak.telemetry.repository.TelemetryConfirmedReadingSnapshot;
 import org.arghyam.jalsoochak.telemetry.repository.TelemetryOperator;
 import org.arghyam.jalsoochak.telemetry.repository.TelemetryReadingRecord;
@@ -28,6 +29,7 @@ public class BfmReadingService {
 
     private final TelemetryTenantRepository telemetryTenantRepository;
     private final FlowVisionService flowVisionService;
+    private final TelemetryEventPublisher telemetryEventPublisher;
 
     public CreateReadingResponse createReading(CreateReadingRequest request,
                                                String schemaName,
@@ -64,12 +66,20 @@ public class BfmReadingService {
                 ocrResult = flowVisionService.extractReading(request.getReadingUrl());
                 if (ocrResult == null || ocrResult.getAdjustedReading() == null) {
                     int retries = telemetryTenantRepository.countAnomaliesByTypeForToday(
-                            tenantId,
+                            schemaName,
                             operatorInRequest.id(),
                             request.getSchemeId(),
                             AnomalyConstants.TYPE_UNREADABLE_IMAGE
                     ) + 1;
-                    telemetryTenantRepository.createAnomalyRecord(
+                    telemetryTenantRepository.createTenantAnomalyRecord(
+                            schemaName,
+                            operatorInRequest.id(),
+                            request.getSchemeId(),
+                            AnomalyConstants.TYPE_UNREADABLE_IMAGE,
+                            "Unreadable image. OCR could not extract a valid meter reading.",
+                            AnomalyConstants.STATUS_OPEN
+                    );
+                    telemetryEventPublisher.publishAnomalyRecorded(
                             tenantId,
                             AnomalyConstants.TYPE_UNREADABLE_IMAGE,
                             operatorInRequest.id(),
@@ -82,7 +92,8 @@ public class BfmReadingService {
                             null,
                             0,
                             "Unreadable image. OCR could not extract a valid meter reading.",
-                            AnomalyConstants.STATUS_OPEN
+                            AnomalyConstants.STATUS_OPEN,
+                            null
                     );
                     return CreateReadingResponse.builder()
                             .success(false)
@@ -96,12 +107,20 @@ public class BfmReadingService {
             } catch (Exception ex) {
                 log.error("FlowVision OCR failed for URL: {}", request.getReadingUrl(), ex);
                 int retries = telemetryTenantRepository.countAnomaliesByTypeForToday(
-                        tenantId,
+                        schemaName,
                         operatorInRequest.id(),
                         request.getSchemeId(),
                         AnomalyConstants.TYPE_UNREADABLE_IMAGE
                 ) + 1;
-                telemetryTenantRepository.createAnomalyRecord(
+                telemetryTenantRepository.createTenantAnomalyRecord(
+                        schemaName,
+                        operatorInRequest.id(),
+                        request.getSchemeId(),
+                        AnomalyConstants.TYPE_UNREADABLE_IMAGE,
+                        "Unreadable image. OCR failed during extraction.",
+                        AnomalyConstants.STATUS_OPEN
+                );
+                telemetryEventPublisher.publishAnomalyRecorded(
                         tenantId,
                         AnomalyConstants.TYPE_UNREADABLE_IMAGE,
                         operatorInRequest.id(),
@@ -114,7 +133,8 @@ public class BfmReadingService {
                         null,
                         0,
                         "Unreadable image. OCR failed during extraction.",
-                        AnomalyConstants.STATUS_OPEN
+                        AnomalyConstants.STATUS_OPEN,
+                        null
                 );
                 return CreateReadingResponse.builder()
                         .success(false)
@@ -163,7 +183,15 @@ public class BfmReadingService {
             TelemetryConfirmedReadingSnapshot previousSnapshot = validationBaselineOpt.get();
             String submittedReadingText = confirmedReading.stripTrailingZeros().toPlainString();
             String previousReadingText = previousSnapshot.confirmedReading().stripTrailingZeros().toPlainString();
-            telemetryTenantRepository.createAnomalyRecord(
+            telemetryTenantRepository.createTenantAnomalyRecord(
+                    schemaName,
+                    operatorInRequest.id(),
+                    request.getSchemeId(),
+                    AnomalyConstants.TYPE_READING_LESS_THAN_PREVIOUS,
+                    "Submitted reading is less than previous confirmed reading.",
+                    AnomalyConstants.STATUS_OPEN
+            );
+            telemetryEventPublisher.publishAnomalyRecorded(
                     tenantId,
                     AnomalyConstants.TYPE_READING_LESS_THAN_PREVIOUS,
                     operatorInRequest.id(),
@@ -176,7 +204,8 @@ public class BfmReadingService {
                     previousSnapshot.createdAt(),
                     0,
                     "Submitted reading is less than previous confirmed reading.",
-                    AnomalyConstants.STATUS_OPEN
+                    AnomalyConstants.STATUS_OPEN,
+                    null
             );
             return CreateReadingResponse.builder()
                     .success(false)
@@ -193,7 +222,15 @@ public class BfmReadingService {
                 && extractedReading.compareTo(latestSnapshotOpt.get().confirmedReading()) == 0
                 && request.getReadingUrl() != null && !request.getReadingUrl().isBlank()) {
             TelemetryConfirmedReadingSnapshot previousSnapshot = latestSnapshotOpt.get();
-            telemetryTenantRepository.createAnomalyRecord(
+            telemetryTenantRepository.createTenantAnomalyRecord(
+                    schemaName,
+                    operatorInRequest.id(),
+                    request.getSchemeId(),
+                    AnomalyConstants.TYPE_DUPLICATE_IMAGE_SUBMISSION,
+                    "Duplicate image submission detected. Extracted reading matches previous confirmed reading.",
+                    AnomalyConstants.STATUS_OPEN
+            );
+            telemetryEventPublisher.publishAnomalyRecorded(
                     tenantId,
                     AnomalyConstants.TYPE_DUPLICATE_IMAGE_SUBMISSION,
                     operatorInRequest.id(),
@@ -206,7 +243,8 @@ public class BfmReadingService {
                     previousSnapshot.createdAt(),
                     0,
                     "Duplicate image submission detected. Extracted reading matches previous confirmed reading.",
-                    AnomalyConstants.STATUS_OPEN
+                    AnomalyConstants.STATUS_OPEN,
+                    null
             );
             return CreateReadingResponse.builder()
                     .success(false)

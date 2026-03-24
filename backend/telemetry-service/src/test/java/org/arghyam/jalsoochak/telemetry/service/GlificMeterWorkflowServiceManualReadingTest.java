@@ -87,19 +87,12 @@ class GlificMeterWorkflowServiceManualReadingTest {
                         BigDecimal.ZERO
                 )));
 
-        when(telemetryTenantRepository.countAnomaliesByTypeForToday(anyInt(), anyLong(), anyLong(), anyInt())).thenReturn(0);
-        when(telemetryTenantRepository.findAnomalyDatesByType(anyInt(), anyLong(), anyLong(), anyInt(), anyInt())).thenReturn(List.of());
-        doNothing().when(telemetryTenantRepository).createAnomalyRecord(
-                anyInt(),
-                anyInt(),
+        when(telemetryTenantRepository.countAnomaliesByTypeForToday(anyString(), anyLong(), anyLong(), anyInt())).thenReturn(0);
+        when(telemetryTenantRepository.findAnomalyDatesByType(anyString(), anyLong(), anyLong(), anyInt(), anyInt())).thenReturn(List.of());
+        doNothing().when(telemetryTenantRepository).createTenantAnomalyRecord(
+                anyString(),
                 anyLong(),
                 anyLong(),
-                ArgumentMatchers.<BigDecimal>any(),
-                ArgumentMatchers.<BigDecimal>any(),
-                ArgumentMatchers.<BigDecimal>any(),
-                anyInt(),
-                ArgumentMatchers.<BigDecimal>any(),
-                ArgumentMatchers.<LocalDateTime>any(),
                 anyInt(),
                 anyString(),
                 anyInt()
@@ -149,19 +142,12 @@ class GlificMeterWorkflowServiceManualReadingTest {
                         BigDecimal.ZERO
                 )));
 
-        when(telemetryTenantRepository.countAnomaliesByTypeForToday(anyInt(), anyLong(), anyLong(), anyInt())).thenReturn(0);
-        when(telemetryTenantRepository.findAnomalyDatesByType(anyInt(), anyLong(), anyLong(), anyInt(), anyInt())).thenReturn(List.of());
-        doNothing().when(telemetryTenantRepository).createAnomalyRecord(
-                anyInt(),
-                anyInt(),
+        when(telemetryTenantRepository.countAnomaliesByTypeForToday(anyString(), anyLong(), anyLong(), anyInt())).thenReturn(0);
+        when(telemetryTenantRepository.findAnomalyDatesByType(anyString(), anyLong(), anyLong(), anyInt(), anyInt())).thenReturn(List.of());
+        doNothing().when(telemetryTenantRepository).createTenantAnomalyRecord(
+                anyString(),
                 anyLong(),
                 anyLong(),
-                ArgumentMatchers.<BigDecimal>any(),
-                ArgumentMatchers.<BigDecimal>any(),
-                ArgumentMatchers.<BigDecimal>any(),
-                anyInt(),
-                ArgumentMatchers.<BigDecimal>any(),
-                ArgumentMatchers.<LocalDateTime>any(),
                 anyInt(),
                 anyString(),
                 anyInt()
@@ -256,18 +242,11 @@ class GlificMeterWorkflowServiceManualReadingTest {
         assertEquals(false, resp.isSuccess());
         assertEquals("REJECTED", resp.getQualityStatus());
 
-        verify(telemetryTenantRepository).createAnomalyRecord(
-                anyInt(),
+        verify(telemetryTenantRepository).createTenantAnomalyRecord(
+                anyString(),
+                anyLong(),
+                anyLong(),
                 ArgumentMatchers.eq(AnomalyConstants.TYPE_LOW_WATER_SUPPLY),
-                anyLong(),
-                anyLong(),
-                ArgumentMatchers.<BigDecimal>any(),
-                ArgumentMatchers.<BigDecimal>any(),
-                ArgumentMatchers.eq(new BigDecimal("40")),
-                anyInt(),
-                ArgumentMatchers.<BigDecimal>any(),
-                ArgumentMatchers.<LocalDateTime>any(),
-                anyInt(),
                 anyString(),
                 ArgumentMatchers.eq(AnomalyConstants.STATUS_OPEN)
         );
@@ -316,18 +295,11 @@ class GlificMeterWorkflowServiceManualReadingTest {
         assertEquals(false, resp.isSuccess());
         assertEquals("REJECTED", resp.getQualityStatus());
 
-        verify(telemetryTenantRepository).createAnomalyRecord(
-                anyInt(),
+        verify(telemetryTenantRepository).createTenantAnomalyRecord(
+                anyString(),
+                anyLong(),
+                anyLong(),
                 ArgumentMatchers.eq(AnomalyConstants.TYPE_OVER_WATER_SUPPLY),
-                anyLong(),
-                anyLong(),
-                ArgumentMatchers.<BigDecimal>any(),
-                ArgumentMatchers.<BigDecimal>any(),
-                ArgumentMatchers.eq(new BigDecimal("120")),
-                anyInt(),
-                ArgumentMatchers.<BigDecimal>any(),
-                ArgumentMatchers.<LocalDateTime>any(),
-                anyInt(),
                 anyString(),
                 ArgumentMatchers.eq(AnomalyConstants.STATUS_OPEN)
         );
@@ -364,19 +336,12 @@ class GlificMeterWorkflowServiceManualReadingTest {
                         BigDecimal.ZERO
                 )));
 
-        when(telemetryTenantRepository.countAnomaliesByTypeForToday(anyInt(), anyLong(), anyLong(), anyInt())).thenReturn(0);
-        when(telemetryTenantRepository.findAnomalyDatesByType(anyInt(), anyLong(), anyLong(), anyInt(), anyInt())).thenReturn(List.of());
-        doNothing().when(telemetryTenantRepository).createAnomalyRecord(
-                anyInt(),
-                anyInt(),
+        when(telemetryTenantRepository.countAnomaliesByTypeForToday(anyString(), anyLong(), anyLong(), anyInt())).thenReturn(0);
+        when(telemetryTenantRepository.findAnomalyDatesByType(anyString(), anyLong(), anyLong(), anyInt(), anyInt())).thenReturn(List.of());
+        doNothing().when(telemetryTenantRepository).createTenantAnomalyRecord(
+                anyString(),
                 anyLong(),
                 anyLong(),
-                ArgumentMatchers.<BigDecimal>any(),
-                ArgumentMatchers.<BigDecimal>any(),
-                ArgumentMatchers.<BigDecimal>any(),
-                anyInt(),
-                ArgumentMatchers.<BigDecimal>any(),
-                ArgumentMatchers.<LocalDateTime>any(),
                 anyInt(),
                 anyString(),
                 anyInt()
@@ -429,19 +394,12 @@ class GlificMeterWorkflowServiceManualReadingTest {
                         BigDecimal.ZERO
                 )));
 
-        when(telemetryTenantRepository.countAnomaliesByTypeForToday(anyInt(), anyLong(), anyLong(), anyInt())).thenReturn(0);
-        when(telemetryTenantRepository.findAnomalyDatesByType(anyInt(), anyLong(), anyLong(), anyInt(), anyInt())).thenReturn(List.of());
-        doNothing().when(telemetryTenantRepository).createAnomalyRecord(
-                anyInt(),
-                anyInt(),
+        when(telemetryTenantRepository.countAnomaliesByTypeForToday(anyString(), anyLong(), anyLong(), anyInt())).thenReturn(0);
+        when(telemetryTenantRepository.findAnomalyDatesByType(anyString(), anyLong(), anyLong(), anyInt(), anyInt())).thenReturn(List.of());
+        doNothing().when(telemetryTenantRepository).createTenantAnomalyRecord(
+                anyString(),
                 anyLong(),
                 anyLong(),
-                ArgumentMatchers.<BigDecimal>any(),
-                ArgumentMatchers.<BigDecimal>any(),
-                ArgumentMatchers.<BigDecimal>any(),
-                anyInt(),
-                ArgumentMatchers.<BigDecimal>any(),
-                ArgumentMatchers.<LocalDateTime>any(),
                 anyInt(),
                 anyString(),
                 anyInt()

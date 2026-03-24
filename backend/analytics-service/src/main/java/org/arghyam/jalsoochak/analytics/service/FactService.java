@@ -5,6 +5,7 @@ import org.arghyam.jalsoochak.analytics.dto.event.MeterReadingEvent;
 import org.arghyam.jalsoochak.analytics.dto.event.SchemePerformanceEvent;
 import org.arghyam.jalsoochak.analytics.dto.event.TenantEscalationEvent;
 import org.arghyam.jalsoochak.analytics.dto.event.WaterQuantityEvent;
+import org.arghyam.jalsoochak.analytics.dto.event.AnomalyEvent;
 
 public interface FactService {
 
@@ -17,4 +18,6 @@ public interface FactService {
     void ingestSchemePerformance(SchemePerformanceEvent event);
 
     void ingestTenantEscalation(TenantEscalationEvent event);
+
+    void ingestAnomalyRecorded(AnomalyEvent event);
 }

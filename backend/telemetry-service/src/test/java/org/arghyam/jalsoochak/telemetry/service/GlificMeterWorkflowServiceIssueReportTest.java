@@ -79,18 +79,11 @@ class GlificMeterWorkflowServiceIssueReportTest {
         assertEquals(true, resp.isSuccess());
         assertEquals("meterNotWorking", resp.getSelected());
 
-        verify(telemetryTenantRepository).createAnomalyRecord(
-                eq(1),
-                eq(AnomalyConstants.TYPE_NO_SUBMISSION),
+        verify(telemetryTenantRepository).createTenantAnomalyRecord(
+                eq("tenant_test"),
                 eq(1L),
                 eq(10L),
-                isNull(),
-                isNull(),
-                isNull(),
-                eq(0),
-                isNull(),
-                isNull(),
-                eq(0),
+                eq(AnomalyConstants.TYPE_NO_SUBMISSION),
                 eq("Meter not working"),
                 eq(AnomalyConstants.STATUS_OPEN)
         );
@@ -146,17 +139,10 @@ class GlificMeterWorkflowServiceIssueReportTest {
                 org.mockito.ArgumentMatchers.anyString(),
                 eq("Meter Replaced")
         );
-        verify(telemetryTenantRepository, never()).createAnomalyRecord(
-                org.mockito.ArgumentMatchers.anyInt(),
-                org.mockito.ArgumentMatchers.anyInt(),
+        verify(telemetryTenantRepository, never()).createTenantAnomalyRecord(
+                org.mockito.ArgumentMatchers.anyString(),
                 org.mockito.ArgumentMatchers.anyLong(),
                 org.mockito.ArgumentMatchers.anyLong(),
-                org.mockito.ArgumentMatchers.any(),
-                org.mockito.ArgumentMatchers.any(),
-                org.mockito.ArgumentMatchers.any(),
-                org.mockito.ArgumentMatchers.anyInt(),
-                org.mockito.ArgumentMatchers.any(),
-                org.mockito.ArgumentMatchers.any(),
                 org.mockito.ArgumentMatchers.anyInt(),
                 org.mockito.ArgumentMatchers.anyString(),
                 org.mockito.ArgumentMatchers.anyInt()
@@ -191,18 +177,11 @@ class GlificMeterWorkflowServiceIssueReportTest {
         assertEquals("noWaterSupplied", resp.getSelected());
 
         // Current behavior: reason "5" is treated as an anomaly selection (legacy numeric rule).
-        verify(telemetryTenantRepository).createAnomalyRecord(
-                eq(1),
-                eq(AnomalyConstants.TYPE_NO_WATER_SUPPLY),
+        verify(telemetryTenantRepository).createTenantAnomalyRecord(
+                eq("tenant_test"),
                 eq(1L),
                 eq(10L),
-                isNull(),
-                isNull(),
-                isNull(),
-                eq(0),
-                isNull(),
-                isNull(),
-                eq(0),
+                eq(AnomalyConstants.TYPE_NO_WATER_SUPPLY),
                 eq("No Water Supply"),
                 eq(AnomalyConstants.STATUS_OPEN)
         );
@@ -248,18 +227,11 @@ class GlificMeterWorkflowServiceIssueReportTest {
         assertEquals(true, resp.isSuccess());
         assertEquals("others", resp.getSelected());
 
-        verify(telemetryTenantRepository).createAnomalyRecord(
-                eq(1),
-                eq(AnomalyConstants.TYPE_NO_SUBMISSION),
+        verify(telemetryTenantRepository).createTenantAnomalyRecord(
+                eq("tenant_test"),
                 eq(1L),
                 eq(10L),
-                isNull(),
-                isNull(),
-                isNull(),
-                eq(0),
-                isNull(),
-                isNull(),
-                eq(0),
+                eq(AnomalyConstants.TYPE_NO_SUBMISSION),
                 eq("pipe leakage"),
                 eq(AnomalyConstants.STATUS_OPEN)
         );
@@ -304,18 +276,11 @@ class GlificMeterWorkflowServiceIssueReportTest {
         assertEquals("noWaterSupplied", resp.getSelected());
 
         // Telemetry submit: "No Water Supply" should be tracked as an issue anomaly.
-        verify(telemetryTenantRepository).createAnomalyRecord(
-                eq(1),
-                eq(AnomalyConstants.TYPE_NO_WATER_SUPPLY),
+        verify(telemetryTenantRepository).createTenantAnomalyRecord(
+                eq("tenant_test"),
                 eq(1L),
                 eq(10L),
-                isNull(),
-                isNull(),
-                isNull(),
-                eq(0),
-                isNull(),
-                isNull(),
-                eq(0),
+                eq(AnomalyConstants.TYPE_NO_WATER_SUPPLY),
                 eq("No Water Supply"),
                 eq(AnomalyConstants.STATUS_OPEN)
         );

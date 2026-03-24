@@ -10,6 +10,7 @@ import org.arghyam.jalsoochak.analytics.dto.event.TenantEscalationEvent;
 import org.arghyam.jalsoochak.analytics.dto.event.TenantEvent;
 import org.arghyam.jalsoochak.analytics.dto.event.UserEvent;
 import org.arghyam.jalsoochak.analytics.dto.event.WaterQuantityEvent;
+import org.arghyam.jalsoochak.analytics.dto.event.AnomalyEvent;
 import org.arghyam.jalsoochak.analytics.service.DimensionService;
 import org.arghyam.jalsoochak.analytics.service.FactService;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -107,6 +108,10 @@ public class AnalyticsKafkaConsumer {
                 case "SCHEME_PERFORMANCE_RECORDED" -> {
                     SchemePerformanceEvent event = objectMapper.readValue(message, SchemePerformanceEvent.class);
                     factService.ingestSchemePerformance(event);
+                }
+                case "ANOMALY_RECORDED" -> {
+                    AnomalyEvent event = objectMapper.readValue(message, AnomalyEvent.class);
+                    factService.ingestAnomalyRecorded(event);
                 }
                 default -> log.debug("Ignoring telemetry event type: {}", eventType);
             }
