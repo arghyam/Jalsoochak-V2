@@ -100,6 +100,10 @@ public class AnalyticsKafkaConsumer {
                     MeterReadingEvent event = objectMapper.readValue(message, MeterReadingEvent.class);
                     factService.ingestMeterReading(event);
                 }
+                case "WATER_QUANTITY_RECORDED" -> {
+                    WaterQuantityEvent event = objectMapper.readValue(message, WaterQuantityEvent.class);
+                    factService.ingestWaterQuantity(event);
+                }
                 case "SCHEME_PERFORMANCE_RECORDED" -> {
                     SchemePerformanceEvent event = objectMapper.readValue(message, SchemePerformanceEvent.class);
                     factService.ingestSchemePerformance(event);
@@ -108,23 +112,6 @@ public class AnalyticsKafkaConsumer {
             }
         } catch (Exception e) {
             log.error("Failed to process telemetry event: {}", e.getMessage(), e);
-            throw new RuntimeException(e.getMessage(), e);
-        }
-    }
-
-    @KafkaListener(topics = "telemetry-service-topic", groupId = "${spring.kafka.consumer.group-id}-water-quantity")
-    public void consumeTelemetryWaterQuantityEvents(String message) {
-        log.info("[analytics] Received from telemetry-service-topic (water-quantity)");
-        try {
-            String eventType = extractEventType(message);
-            if ("WATER_QUANTITY_RECORDED".equals(eventType)) {
-                WaterQuantityEvent event = objectMapper.readValue(message, WaterQuantityEvent.class);
-                factService.ingestWaterQuantity(event);
-            } else {
-                log.debug("Ignoring telemetry event type in water-quantity listener: {}", eventType);
-            }
-        } catch (Exception e) {
-            log.error("Failed to process water quantity event: {}", e.getMessage(), e);
             throw new RuntimeException(e.getMessage(), e);
         }
     }
