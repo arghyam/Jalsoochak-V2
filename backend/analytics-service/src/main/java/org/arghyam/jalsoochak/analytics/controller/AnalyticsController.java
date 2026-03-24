@@ -10,6 +10,7 @@ import org.arghyam.jalsoochak.analytics.dto.response.AverageWaterSupplyResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.NonSubmissionReasonSchemeCountResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.NationalDashboardResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.OutageReasonSchemeCountResponse;
+import org.arghyam.jalsoochak.analytics.dto.response.PeriodicOutageReasonSchemeCountResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.PeriodicWaterQuantityResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.PeriodicSchemeRegularityResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.RegionWiseWaterQuantityResponse;
@@ -259,6 +260,35 @@ public class AnalyticsController {
         }
         return ResponseEntity.ok(
                 schemeRegularityService.getOutageReasonSchemeCountByDepartment(parentDepartmentId, startDate, endDate));
+    }
+
+    @GetMapping("/outage-reasons/periodic")
+    @Operation(summary = "Get periodic outage reason wise distinct scheme counts for an LGD ID or department (no child regions)")
+    public ResponseEntity<PeriodicOutageReasonSchemeCountResponse> getPeriodicOutageReasonWiseSchemeCount(
+            @RequestParam(name = "start_date") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam(name = "end_date") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
+            @Parameter(
+                    description = "Time aggregation scale",
+                    required = true,
+                    schema = @Schema(type = "string", allowableValues = {"day", "week", "month"}))
+            @RequestParam(name = "scale") String scale,
+            @RequestParam(name = "lgd_id", required = false) Integer lgdId,
+            @RequestParam(name = "department_id", required = false) Integer departmentId) {
+        if (lgdId != null && departmentId != null) {
+            throw new IllegalArgumentException("Provide either lgd_id or department_id, not both");
+        }
+        if (lgdId == null && departmentId == null) {
+            throw new IllegalArgumentException("Provide either lgd_id or department_id");
+        }
+        PeriodScale periodScale = PeriodScale.fromValue(scale);
+        if (lgdId != null) {
+            return ResponseEntity.ok(
+                    schemeRegularityService.getPeriodicOutageReasonSchemeCountByLgdId(
+                            lgdId, startDate, endDate, periodScale));
+        }
+        return ResponseEntity.ok(
+                schemeRegularityService.getPeriodicOutageReasonSchemeCountByDepartment(
+                        departmentId, startDate, endDate, periodScale));
     }
 
     @GetMapping("/outage-reasons/user")

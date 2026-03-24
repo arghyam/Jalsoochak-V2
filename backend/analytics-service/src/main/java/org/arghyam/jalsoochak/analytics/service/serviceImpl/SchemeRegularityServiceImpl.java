@@ -5,6 +5,7 @@ import org.arghyam.jalsoochak.analytics.dto.response.AverageWaterSupplyResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.NonSubmissionReasonSchemeCountResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.NationalDashboardResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.OutageReasonSchemeCountResponse;
+import org.arghyam.jalsoochak.analytics.dto.response.PeriodicOutageReasonSchemeCountResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.PeriodicSchemeRegularityResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.PeriodicWaterQuantityResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.RegionWiseWaterQuantityResponse;
@@ -37,7 +38,9 @@ import java.math.RoundingMode;
 import java.time.Duration;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -1125,6 +1128,34 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
     }
 
     @Override
+    public PeriodicOutageReasonSchemeCountResponse getPeriodicOutageReasonSchemeCountByLgdId(
+            Integer lgdId, LocalDate startDate, LocalDate endDate, PeriodScale scale) {
+        validateLgdInput(lgdId);
+        validateDateRange(startDate, endDate);
+        validateScaleInput(scale);
+
+        List<SchemeRegularityRepository.PeriodicOutageReasonSchemeCountRow> rows =
+                schemeRegularityRepository.getPeriodicOutageReasonSchemeCountByLgdId(
+                        lgdId, startDate, endDate, scale);
+
+        return buildPeriodicOutageReasonSchemeCountResponse(lgdId, null, startDate, endDate, scale, rows);
+    }
+
+    @Override
+    public PeriodicOutageReasonSchemeCountResponse getPeriodicOutageReasonSchemeCountByDepartment(
+            Integer departmentId, LocalDate startDate, LocalDate endDate, PeriodScale scale) {
+        validateDepartmentInput(departmentId);
+        validateDateRange(startDate, endDate);
+        validateScaleInput(scale);
+
+        List<SchemeRegularityRepository.PeriodicOutageReasonSchemeCountRow> rows =
+                schemeRegularityRepository.getPeriodicOutageReasonSchemeCountByDepartment(
+                        departmentId, startDate, endDate, scale);
+
+        return buildPeriodicOutageReasonSchemeCountResponse(null, departmentId, startDate, endDate, scale, rows);
+    }
+
+    @Override
     public OutageReasonSchemeCountResponse getOutageReasonSchemeCountByLgd(
             Integer parentLgdId, LocalDate startDate, LocalDate endDate) {
         validateLgdInput(parentLgdId);
@@ -1814,6 +1845,59 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
                         .toList();
 
         return PeriodicSchemeRegularityResponse.builder()
+                .lgdId(lgdId)
+                .departmentId(departmentId)
+                .scale(scale.name().toLowerCase())
+                .startDate(startDate)
+                .endDate(endDate)
+                .periodCount(periodicMetrics.size())
+                .metrics(periodicMetrics)
+                .build();
+    }
+
+    private PeriodicOutageReasonSchemeCountResponse buildPeriodicOutageReasonSchemeCountResponse(
+            Integer lgdId,
+            Integer departmentId,
+            LocalDate startDate,
+            LocalDate endDate,
+            PeriodScale scale,
+            List<SchemeRegularityRepository.PeriodicOutageReasonSchemeCountRow> rows) {
+        Map<LocalDate, LocalDate> periodEndByStart = new LinkedHashMap<>();
+        Map<LocalDate, Map<String, Integer>> reasonByPeriod = new LinkedHashMap<>();
+
+        for (SchemeRegularityRepository.PeriodicOutageReasonSchemeCountRow row : rows) {
+            LocalDate ps = row.periodStartDate();
+            periodEndByStart.putIfAbsent(ps, row.periodEndDate());
+            if (row.outageReason() != null && row.schemeCount() != null) {
+                reasonByPeriod
+                        .computeIfAbsent(ps, k -> new LinkedHashMap<>())
+                        .merge(row.outageReason(), row.schemeCount(), Integer::sum);
+            }
+            if (row.outageReason() == null) {
+                reasonByPeriod.putIfAbsent(ps, new LinkedHashMap<>());
+            }
+        }
+
+        LinkedHashSet<LocalDate> orderedPeriodStarts = new LinkedHashSet<>();
+        for (SchemeRegularityRepository.PeriodicOutageReasonSchemeCountRow row : rows) {
+            orderedPeriodStarts.add(row.periodStartDate());
+        }
+
+        List<PeriodicOutageReasonSchemeCountResponse.PeriodicMetric> periodicMetrics = new ArrayList<>();
+        for (LocalDate ps : orderedPeriodStarts) {
+            LocalDate pe = periodEndByStart.get(ps);
+            LocalDate cappedPeriodStart = ps.isBefore(startDate) ? startDate : ps;
+            LocalDate cappedPeriodEnd = pe.isAfter(endDate) ? endDate : pe;
+            periodicMetrics.add(
+                    PeriodicOutageReasonSchemeCountResponse.PeriodicMetric.builder()
+                            .periodStartDate(cappedPeriodStart)
+                            .periodEndDate(cappedPeriodEnd)
+                            .outageReasonSchemeCount(
+                                    reasonByPeriod.getOrDefault(ps, new LinkedHashMap<>()))
+                            .build());
+        }
+
+        return PeriodicOutageReasonSchemeCountResponse.builder()
                 .lgdId(lgdId)
                 .departmentId(departmentId)
                 .scale(scale.name().toLowerCase())
