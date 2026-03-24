@@ -11,14 +11,13 @@ import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Repository;
 
 import java.util.ArrayList;
-import java.util.Comparator;
+import java.util.Base64;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.stream.Collectors;
 
 @Repository
 @RequiredArgsConstructor
@@ -52,14 +51,25 @@ public class TenantStaffRepository {
                 .build();
     }
 
-    /** Decrypts a PII value, falling back to the raw value for legacy plaintext rows. */
+    /**
+     * Decrypts a PII value, falling back to the raw value for legacy plaintext rows.
+     * Legacy detection: if the value is not valid base64 or decodes to ≤ 12 bytes (shorter
+     * than the AES-GCM IV), it cannot be a valid ciphertext and is treated as stored plaintext.
+     * Real decryption failures (wrong key, auth-tag mismatch) are not swallowed — they surface
+     * as {@link IllegalStateException}.
+     */
     private String safeDecrypt(String value) {
         if (value == null) return null;
         try {
-            return pii.decrypt(value);
-        } catch (Exception e) {
-            return value;
+            byte[] decoded = Base64.getDecoder().decode(value);
+            if (decoded.length <= 12) {
+                return value; // too short to be AES-GCM ciphertext — legacy plaintext
+            }
+        } catch (IllegalArgumentException e) {
+            return value; // not valid base64 — legacy plaintext
         }
+        // Looks like a real ciphertext; let decryption errors surface
+        return pii.decrypt(value);
     }
 
     private void validateSchemaName(String schemaName) {
@@ -92,10 +102,14 @@ public class TenantStaffRepository {
             int limit
     ) {
         validateSchemaName(schemaName);
+        // Name filtering is not supported: title is encrypted and in-memory decrypt-and-scan
+        // is unbounded. Reject until a searchable name sidecar/index is available.
+        if (name != null && !name.isBlank()) {
+            throw new IllegalArgumentException(
+                    "Name filtering is not supported because the title field is encrypted. " +
+                    "Remove the name parameter or leave it blank.");
+        }
 
-        // name filter cannot be applied in SQL because title is encrypted;
-        // fetch all rows matching the other filters, decrypt, then filter+paginate in Java.
-        boolean hasNameFilter = name != null && !name.isBlank();
         SqlAndArgs where = buildWhere(roles, status);
         String orderBy = orderBy(sortBy, sortDir);
 
@@ -113,27 +127,14 @@ public class TenantStaffRepository {
                 WHERE u.deleted_at IS NULL
                   %s
                 %s
-                %s
-                """, schemaName, where.sql(), orderBy,
-                hasNameFilter ? "" : "LIMIT ? OFFSET ?");
+                LIMIT ? OFFSET ?
+                """, schemaName, where.sql(), orderBy);
 
         List<Object> args = new ArrayList<>(where.args());
-        if (!hasNameFilter) {
-            args.add(limit);
-            args.add(offset);
-        }
+        args.add(limit);
+        args.add(offset);
 
         List<TenantStaffResponseDTO> rows = jdbcTemplate.query(sql, staffRowMapper(), args.toArray());
-
-        if (hasNameFilter) {
-            String needle = name.trim().toLowerCase(Locale.ROOT);
-            rows = rows.stream()
-                    .filter(r -> r.title() != null && r.title().toLowerCase(Locale.ROOT).contains(needle))
-                    .toList();
-            int toIdx = Math.min(offset + limit, rows.size());
-            rows = offset >= rows.size() ? List.of() : new ArrayList<>(rows.subList(offset, toIdx));
-        }
-
         attachSchemes(schemaName, rows);
         return rows;
     }
@@ -167,27 +168,10 @@ public class TenantStaffRepository {
 
     public long countStaff(String schemaName, List<String> roles, Integer status, String name) {
         validateSchemaName(schemaName);
-
-        boolean hasNameFilter = name != null && !name.isBlank();
-
-        if (hasNameFilter) {
-            // Must decrypt and filter in Java — reuse the full fetch without pagination
-            SqlAndArgs where = buildWhere(roles, status);
-            String sql = String.format("""
-                    SELECT u.title
-                    FROM %s.user_table u
-                    LEFT JOIN common_schema.user_type_master_table ut
-                      ON ut.id = u.user_type
-                    WHERE u.deleted_at IS NULL
-                      %s
-                    """, schemaName, where.sql());
-            String needle = name.trim().toLowerCase(Locale.ROOT);
-            List<String> encryptedTitles = jdbcTemplate.query(
-                    sql, (rs, n) -> rs.getString("title"), where.args().toArray());
-            return encryptedTitles.stream()
-                    .map(this::safeDecrypt)
-                    .filter(t -> t != null && t.toLowerCase(Locale.ROOT).contains(needle))
-                    .count();
+        if (name != null && !name.isBlank()) {
+            throw new IllegalArgumentException(
+                    "Name filtering is not supported because the title field is encrypted. " +
+                    "Remove the name parameter or leave it blank.");
         }
 
         SqlAndArgs where = buildWhere(roles, status);
@@ -206,38 +190,12 @@ public class TenantStaffRepository {
 
     public List<RoleCountDTO> countByRole(String schemaName, Integer status, String name) {
         validateSchemaName(schemaName);
-        boolean hasNameFilter = name != null && !name.isBlank();
-        SqlAndArgs where = buildWhere(List.of(), status);
-
-        if (hasNameFilter) {
-            // title is encrypted — fetch all rows, decrypt, filter by name, then count by role
-            String sql = String.format("""
-                    SELECT u.title,
-                           COALESCE(ut.c_name, 'UNKNOWN') AS role
-                    FROM %s.user_table u
-                    LEFT JOIN common_schema.user_type_master_table ut
-                      ON ut.id = u.user_type
-                    WHERE u.deleted_at IS NULL
-                      %s
-                    """, schemaName, where.sql());
-            String needle = name.trim().toLowerCase(Locale.ROOT);
-            record TitleRole(String title, String role) {}
-            List<TitleRole> all = jdbcTemplate.query(sql,
-                    (rs, n) -> new TitleRole(rs.getString("title"), rs.getString("role")),
-                    where.args().toArray());
-            Map<String, Long> roleCounts = new HashMap<>();
-            for (TitleRole tr : all) {
-                String decTitle = safeDecrypt(tr.title());
-                if (decTitle != null && decTitle.toLowerCase(Locale.ROOT).contains(needle)) {
-                    roleCounts.merge(tr.role(), 1L, Long::sum);
-                }
-            }
-            return roleCounts.entrySet().stream()
-                    .map(e -> RoleCountDTO.builder().role(e.getKey()).count(e.getValue()).build())
-                    .sorted(Comparator.comparingLong(RoleCountDTO::count).reversed()
-                            .thenComparing(RoleCountDTO::role))
-                    .collect(Collectors.toList());
+        if (name != null && !name.isBlank()) {
+            throw new IllegalArgumentException(
+                    "Name filtering is not supported because the title field is encrypted. " +
+                    "Remove the name parameter or leave it blank.");
         }
+        SqlAndArgs where = buildWhere(List.of(), status);
 
         String sql = String.format("""
                 SELECT COALESCE(ut.c_name, 'UNKNOWN') AS role,
@@ -277,7 +235,11 @@ public class TenantStaffRepository {
             int limit
     ) {
         validateSchemaName(schemaName);
-        boolean hasNameFilter = name != null && !name.isBlank();
+        if (name != null && !name.isBlank()) {
+            throw new IllegalArgumentException(
+                    "Name filtering is not supported because the title field is encrypted. " +
+                    "Remove the name parameter or leave it blank.");
+        }
         SqlAndArgs where = buildWhere(roles, status);
         String orderBy = orderBy(sortBy, sortDir);
 
@@ -297,24 +259,6 @@ public class TenantStaffRepository {
                 %s
                 """, schemaName, where.sql(), orderBy);
 
-        if (hasNameFilter) {
-            // Single DB scan; pagination and count both derived from the filtered list
-            List<Object> args = new ArrayList<>(where.args());
-            List<TenantStaffResponseDTO> allRows = jdbcTemplate.query(baseSql, staffRowMapper(), args.toArray());
-            String needle = name.trim().toLowerCase(Locale.ROOT);
-            List<TenantStaffResponseDTO> filteredRows = allRows.stream()
-                    .filter(r -> r.title() != null && r.title().toLowerCase(Locale.ROOT).contains(needle))
-                    .toList();
-            long total = filteredRows.size();
-            int toIdx = Math.min(offset + limit, filteredRows.size());
-            List<TenantStaffResponseDTO> page = offset >= filteredRows.size()
-                    ? List.of()
-                    : new ArrayList<>(filteredRows.subList(offset, toIdx));
-            attachSchemes(schemaName, page);
-            return new StaffPage(page, total);
-        }
-
-        // No name filter: DB-level pagination + a lightweight count query
         String pagedSql = baseSql + "LIMIT ? OFFSET ?";
         List<Object> pagedArgs = new ArrayList<>(where.args());
         pagedArgs.add(limit);
@@ -369,8 +313,16 @@ public class TenantStaffRepository {
     private String orderBy(String sortBy, String sortDir) {
         String dir = "asc".equalsIgnoreCase(sortDir) ? "ASC" : "DESC";
         String key = sortBy == null ? "" : sortBy.trim().toLowerCase(Locale.ROOT);
-        // title and phone_number are encrypted — sorting by ciphertext is meaningless,
-        // fall back to u.id for consistent ordering.
+        // title/name are encrypted with a random IV — sorting by ciphertext is meaningless.
+        // Reject explicit requests for those fields rather than silently using u.id.
+        if (!key.isEmpty()) {
+            switch (key) {
+                case "name", "title" ->
+                        throw new IllegalArgumentException(
+                                "Sorting by '" + sortBy + "' is not supported because this field is encrypted. " +
+                                "Allowed sort columns: id, email, status, role, created_at.");
+            }
+        }
         String col = switch (key) {
             case "id" -> "u.id";
             case "email" -> "u.email";

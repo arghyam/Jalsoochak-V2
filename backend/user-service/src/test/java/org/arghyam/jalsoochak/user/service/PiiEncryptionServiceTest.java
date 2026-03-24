@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Test;
 import java.util.Base64;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -47,7 +48,7 @@ class PiiEncryptionServiceTest {
         String c1 = pii.encrypt("test");
         String c2 = pii.encrypt("test");
         // Different IVs → different ciphertexts
-        assertTrue(!c1.equals(c2), "Two encryptions of the same plaintext should differ");
+        assertNotEquals(c1, c2, "Two encryptions of the same plaintext should differ");
     }
 
     // ── decrypt ───────────────────────────────────────────────────────────────────

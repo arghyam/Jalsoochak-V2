@@ -1,6 +1,5 @@
 package org.arghyam.jalsoochak.user.service;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.arghyam.jalsoochak.user.config.KeycloakProvider;
@@ -21,8 +20,7 @@ public class KeycloakAdminHelper {
 
     private final KeycloakProvider keycloakProvider;
     private final UserCommonRepository userCommonRepository;
-    private final ObjectMapper objectMapper;
-    private final PiiEncryptionService pii;
+    private final MetadataDecryptionHelper metadataDecryptionHelper;
 
     /**
      * Builds a full AdminUserResponseDTO by enriching an AdminUserRow with
@@ -40,8 +38,8 @@ public class KeycloakAdminHelper {
             // No Keycloak account exists yet — read names from the invite token metadata
             var tokenOpt = userCommonRepository.findInviteTokenByEmail(user.email());
             if (tokenOpt.isPresent()) {
-                firstName = parseAndDecryptMetadata(tokenOpt.get().metadata(), "firstName");
-                lastName = parseAndDecryptMetadata(tokenOpt.get().metadata(), "lastName");
+                firstName = metadataDecryptionHelper.parseAndDecrypt(tokenOpt.get().metadata(), "firstName");
+                lastName = metadataDecryptionHelper.parseAndDecrypt(tokenOpt.get().metadata(), "lastName");
             }
         } else if (user.uuid() != null) {
             try {
@@ -101,31 +99,6 @@ public class KeycloakAdminHelper {
         } catch (Exception e) {
             log.error("Failed to remove role '{}' from Keycloak user {}: {}", roleName, keycloakId, e.getMessage(), e);
             throw new RuntimeException("Failed to remove role '" + roleName + "' from user in Keycloak", e);
-        }
-    }
-
-    private String parseMetadata(String json, String key) {
-        if (json == null) return null;
-        try {
-            return objectMapper.readTree(json).path(key).asText(null);
-        } catch (Exception e) {
-            log.warn("Failed to parse metadata key '{}': {}", key, e.getMessage());
-            return null;
-        }
-    }
-
-    /**
-     * Reads a metadata field and decrypts it if encrypted.
-     * Falls back to the raw value for legacy tokens that stored names as plaintext.
-     */
-    private String parseAndDecryptMetadata(String json, String key) {
-        String raw = parseMetadata(json, key);
-        if (raw == null) return null;
-        try {
-            String decrypted = pii.decrypt(raw);
-            return decrypted != null ? decrypted : raw;
-        } catch (Exception e) {
-            return raw; // legacy plaintext token
         }
     }
 

@@ -40,6 +40,7 @@ import org.arghyam.jalsoochak.user.repository.UserCommonRepository;
 import org.arghyam.jalsoochak.user.repository.UserTenantRepository;
 import org.arghyam.jalsoochak.user.repository.records.AdminUserRow;
 import org.arghyam.jalsoochak.user.repository.records.AdminUserTokenRow;
+import org.arghyam.jalsoochak.user.service.MetadataDecryptionHelper;
 import org.arghyam.jalsoochak.user.service.serviceImpl.UserManagementServiceImpl;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -98,10 +99,11 @@ class UserManagementServiceImplTest {
 
     @BeforeEach
     void setUp() {
+        MetadataDecryptionHelper metadataDecryptionHelper = new MetadataDecryptionHelper(new ObjectMapper(), pii);
         userManagementService = new UserManagementServiceImpl(
                 keycloakProvider, keycloakClient, userCommonRepository, userTenantRepository,
                 userEmailEventPublisher, keycloakAdminHelper, inviteProperties, frontendProperties,
-                tokenService, new ObjectMapper(), pii
+                tokenService, new ObjectMapper(), pii, metadataDecryptionHelper
         );
     }
 
@@ -693,10 +695,14 @@ class UserManagementServiceImplTest {
             AdminUserRow target = userRow(7L, "pending-uuid", "pending@example.com", 0, 1, AdminUserStatus.PENDING);
             AdminUserRow callerRow = userRow(1L, "kc-super", "super@example.com", 0, 1, AdminUserStatus.ACTIVE);
 
-            // Token is expired (in the past) but unconsumed — previously this would return empty via findActiveInviteTokenByEmail
+            // Token is expired (in the past) but unconsumed — names stored as encrypted values
+            String encFirstName = "Rklyc3ROYW1lQ2lwaGVyVGV4dA=="; // placeholder for encrypted "Jane"
+            String encLastName  = "TGFzdE5hbWVDaXBoZXJUZXh0";     // placeholder for encrypted "Doe"
             AdminUserTokenRow expiredToken = new AdminUserTokenRow(1L, "pending@example.com", "old-hash",
-                    "INVITE", "{\"role\":\"SUPER_USER\",\"firstName\":\"Jane\",\"lastName\":\"Doe\"}",
+                    "INVITE", "{\"role\":\"SUPER_USER\",\"firstName\":\"" + encFirstName + "\",\"lastName\":\"" + encLastName + "\"}",
                     Instant.now().minus(2, ChronoUnit.HOURS), null, null, Instant.now().minus(26, ChronoUnit.HOURS));
+            when(pii.decrypt(encFirstName)).thenReturn("Jane");
+            when(pii.decrypt(encLastName)).thenReturn("Doe");
 
             when(userCommonRepository.findAdminUserById(7L)).thenReturn(Optional.of(target));
             when(userCommonRepository.findAdminUserByUuid("kc-super")).thenReturn(Optional.of(callerRow));

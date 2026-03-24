@@ -454,11 +454,20 @@ public class UserCommonRepository {
 
     private AdminUserRow mapAdminUserRow(java.sql.ResultSet rs) throws java.sql.SQLException {
         Timestamp createdAtTs = rs.getTimestamp("created_at");
+        String rawPhone = rs.getString("phone_number");
+        String phoneNumber = null;
+        if (rawPhone != null) {
+            try {
+                phoneNumber = pii.decrypt(rawPhone);
+            } catch (Exception e) {
+                phoneNumber = rawPhone; // legacy plaintext fallback
+            }
+        }
         return new AdminUserRow(
                 rs.getLong("id"),
                 rs.getString("uuid"),
                 rs.getString("email"),
-                pii.decrypt(rs.getString("phone_number")),
+                phoneNumber,
                 rs.getInt("tenant_id"),
                 rs.getInt("admin_level"),
                 AdminUserStatus.fromCode(rs.getInt("status")),

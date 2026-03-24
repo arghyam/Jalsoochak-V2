@@ -21,10 +21,8 @@ import java.sql.Timestamp;
 import java.time.LocalDateTime;
 import java.time.LocalDate;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 
 @Repository
@@ -347,15 +345,7 @@ public class PublicPumpOperatorRepository {
                     getNullableInt(rs, "status")
             ), baseParams.toArray());
 
-            // Sort by scheme_id, then by decrypted name (case-insensitive), then user_id.
-            // Sorting on the decrypted value here because t.name in SQL is ciphertext.
-            rows = rows.stream()
-                    .sorted(Comparator.comparingLong(Row::schemeId)
-                            .thenComparing(r -> r.name() == null ? "" : r.name().toLowerCase(Locale.ROOT))
-                            .thenComparingLong(Row::userId))
-                    .toList();
-
-            // Group while preserving query order.
+            // Group while preserving query order (SQL already orders by scheme_id, user_id).
             Map<Long, SchemePumpOperatorsDTO> grouped = new LinkedHashMap<>();
             for (Row r : rows) {
                 SchemePumpOperatorsDTO existing = grouped.get(r.schemeId());

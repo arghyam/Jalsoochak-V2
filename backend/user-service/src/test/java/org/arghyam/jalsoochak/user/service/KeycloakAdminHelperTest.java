@@ -44,7 +44,8 @@ class KeycloakAdminHelperTest {
 
     @BeforeEach
     void setUp() {
-        helper = new KeycloakAdminHelper(keycloakProvider, userCommonRepository, new ObjectMapper(), pii);
+        MetadataDecryptionHelper metadataDecryptionHelper = new MetadataDecryptionHelper(new ObjectMapper(), pii);
+        helper = new KeycloakAdminHelper(keycloakProvider, userCommonRepository, metadataDecryptionHelper);
     }
 
     private AdminUserRow row(Long id, String uuid, String email, AdminUserStatus status) {
@@ -89,6 +90,27 @@ class KeycloakAdminHelperTest {
 
             assertNull(result.getFirstName());
             assertNull(result.getLastName());
+            verifyNoInteractions(keycloakProvider);
+        }
+
+        @Test
+        void returnsDecryptedNamesFromEncryptedTokenMetadata() {
+            AdminUserRow user = row(6L, "placeholder-uuid", "enc@example.com", AdminUserStatus.PENDING);
+            // Simulate metadata where names were stored encrypted
+            String encFirstName = "RU5DX0FsaWNl"; // placeholder ciphertext-like token for "Alice"
+            String encLastName  = "RU5DX1NtaXRo"; // placeholder ciphertext-like token for "Smith"
+            String metadata = "{\"firstName\":\"" + encFirstName + "\",\"lastName\":\"" + encLastName + "\",\"role\":\"STATE_ADMIN\"}";
+            when(userCommonRepository.findInviteTokenByEmail("enc@example.com"))
+                    .thenReturn(Optional.of(tokenRow("enc@example.com", metadata)));
+            when(userCommonRepository.findUserTypeNameById(2)).thenReturn(Optional.of("STATE_ADMIN"));
+            when(userCommonRepository.findTenantStateCodeById(1)).thenReturn(Optional.of("MP"));
+            when(pii.decrypt(encFirstName)).thenReturn("Alice");
+            when(pii.decrypt(encLastName)).thenReturn("Smith");
+
+            AdminUserResponseDTO result = helper.buildAdminUserResponse(user);
+
+            assertEquals("Alice", result.getFirstName());
+            assertEquals("Smith", result.getLastName());
             verifyNoInteractions(keycloakProvider);
         }
 
