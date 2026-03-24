@@ -240,8 +240,8 @@ class GlificWhatsAppServiceTest {
 
         String defaultResults = (String) varsCaptor.getValue().get("defaultResults");
         JsonNode parsed = mapper.readTree(defaultResults);
-        assertThat(parsed.get("1").asText()).isEqualTo("Ramesh");
-        assertThat(parsed.get("2").asText()).isEqualTo("06 March 2026");
+        assertThat(parsed.get("name").asText()).isEqualTo("Ramesh");
+        assertThat(parsed.get("date").asText()).isEqualTo("06 March 2026");
     }
 
     @Test
