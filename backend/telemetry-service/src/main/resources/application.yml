@@ -1,5 +1,5 @@
 server:
-  port: 9089
+  port: 8089
 
 spring:
   config:
