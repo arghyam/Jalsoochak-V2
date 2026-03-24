@@ -1,10 +1,12 @@
 package org.arghyam.jalsoochak.telemetry.repository;
 
 import lombok.RequiredArgsConstructor;
+import org.arghyam.jalsoochak.telemetry.service.PiiEncryptionService;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
 import java.math.BigDecimal;
+import java.sql.ResultSet;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -20,6 +22,7 @@ import java.util.UUID;
 public class TelemetryTenantRepository {
 
     private final JdbcTemplate jdbcTemplate;
+    private final PiiEncryptionService piiEncryptionService;
     private static final int OPERATOR_LOOKUP_CACHE_SIZE = 10_000;
     private final Map<String, String> phoneToSchemaCache = Collections.synchronizedMap(
             new LinkedHashMap<>(256, 0.75f, true) {
@@ -47,15 +50,7 @@ public class TelemetryTenantRepository {
                 LIMIT 1
                 """, schemaName);
         sql = sql.replace("language_id", languageColumn);
-        List<TelemetryOperator> rows = jdbcTemplate.query(sql, (rs, n) ->
-                new TelemetryOperator(
-                        toLong(rs.getObject("id")),
-                        toInteger(rs.getObject("tenant_id")),
-                        rs.getString("title"),
-                        rs.getString("email"),
-                        rs.getString("phone_number"),
-                        toInteger(rs.getObject("language_id"))
-                ), operatorId);
+        List<TelemetryOperator> rows = jdbcTemplate.query(sql, (rs, n) -> mapOperator(rs), operatorId);
         return rows.stream().findFirst();
     }
 
@@ -1042,16 +1037,55 @@ public class TelemetryTenantRepository {
                 LIMIT 1
                 """, schemaName);
         sql = sql.replace("language_id", languageColumn);
-        List<TelemetryOperator> rows = jdbcTemplate.query(sql, (rs, n) ->
-                new TelemetryOperator(
-                        toLong(rs.getObject("id")),
-                        toInteger(rs.getObject("tenant_id")),
-                        rs.getString("title"),
-                        rs.getString("email"),
-                        rs.getString("phone_number"),
-                        toInteger(rs.getObject("language_id"))
-                ), rawPhoneNumber, normalizedPhone);
-        return rows.stream().findFirst();
+        List<TelemetryOperator> rows = jdbcTemplate.query(sql, (rs, n) -> mapOperator(rs), rawPhoneNumber, normalizedPhone);
+        Optional<TelemetryOperator> directMatch = rows.stream().findFirst();
+        if (directMatch.isPresent()) {
+            return directMatch;
+        }
+
+        String scanSql = String.format("""
+                SELECT id, tenant_id, title, email, phone_number, language_id
+                FROM %s.user_table
+                """, schemaName);
+        scanSql = scanSql.replace("language_id", languageColumn);
+        List<TelemetryOperator> allRows = jdbcTemplate.query(scanSql, (rs, n) -> mapOperator(rs));
+        for (TelemetryOperator operator : allRows) {
+            String candidate = normalizePhone(operator.phoneNumber());
+            if (candidate != null && candidate.equals(normalizedPhone)) {
+                return Optional.of(operator);
+            }
+        }
+        return Optional.empty();
+    }
+
+    private TelemetryOperator mapOperator(ResultSet rs) {
+        try {
+            return new TelemetryOperator(
+                    toLong(rs.getObject("id")),
+                    toInteger(rs.getObject("tenant_id")),
+                    rs.getString("title"),
+                    rs.getString("email"),
+                    decryptPhoneIfNeeded(rs.getString("phone_number")),
+                    toInteger(rs.getObject("language_id"))
+            );
+        } catch (Exception ex) {
+            throw new IllegalStateException("Failed to map operator record", ex);
+        }
+    }
+
+    private String decryptPhoneIfNeeded(String value) {
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        if (trimmed.isEmpty()) {
+            return trimmed;
+        }
+        String digits = trimmed.replaceAll("\\\\D", "");
+        if (!digits.isEmpty() && digits.length() >= 8 && digits.length() <= 15) {
+            return trimmed;
+        }
+        return piiEncryptionService.decrypt(trimmed);
     }
 
     private String normalizePhone(String value) {
