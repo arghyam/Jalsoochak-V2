@@ -1,5 +1,5 @@
 server:
-  port: 8089
+  port: 9089
 
 spring:
   config:
@@ -26,6 +26,10 @@ spring:
     consumer:
       group-id: ${SPRING_KAFKA_CONSUMER_GROUP_ID:telemetry-service-group}
       auto-offset-reset: earliest
+    producer:
+      properties:
+        max.block.ms: 1000
+        request.timeout.ms: 1000
 
 minio:
   endpoint: ${MINIO_ENDPOINT}

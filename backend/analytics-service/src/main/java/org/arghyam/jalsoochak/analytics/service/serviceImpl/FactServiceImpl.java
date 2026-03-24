@@ -1,6 +1,7 @@
 package org.arghyam.jalsoochak.analytics.service.serviceImpl;
 
 import org.arghyam.jalsoochak.analytics.constant.EscalationType;
+import org.arghyam.jalsoochak.analytics.dto.event.AnomalyEvent;
 import org.arghyam.jalsoochak.analytics.dto.event.EscalationEvent;
 import org.arghyam.jalsoochak.analytics.dto.event.MeterReadingEvent;
 import org.arghyam.jalsoochak.analytics.dto.event.SchemePerformanceEvent;
@@ -241,6 +242,49 @@ public class FactServiceImpl implements FactService {
         }
         log.info("Processed {} operators for tenant={}: {} escalation rows, {} anomaly rows created (of {} total)",
                 operatorCount, event.getTenantId(), escalationRowsCreated, anomalyRowsCreated, operatorCount);
+    }
+
+    @Override
+    @Transactional
+    public void ingestAnomalyRecorded(AnomalyEvent event) {
+        OffsetDateTime now = OffsetDateTime.now();
+        String uuid = event.getUuid();
+        if (uuid == null || uuid.isBlank()) {
+            uuid = UUID.randomUUID().toString();
+            log.warn("Anomaly event missing uuid; generated new uuid={}", uuid);
+        }
+        Integer status = event.getStatus() != null ? event.getStatus() : 1;
+        if (event.getStatus() == null) {
+            log.warn("Anomaly event missing status; defaulting to status=1 (OPEN) for uuid={}", uuid);
+        }
+
+        Anomaly anomaly = Anomaly.builder()
+                .uuid(uuid)
+                .type(event.getType())
+                .userId(event.getUserId())
+                .schemeId(event.getSchemeId())
+                .tenantId(event.getTenantId())
+                .aiReading(event.getAiReading())
+                .aiConfidencePercentage(event.getAiConfidencePercentage())
+                .overriddenReading(event.getOverriddenReading())
+                .retries(event.getRetries())
+                .previousReading(event.getPreviousReading())
+                .previousReadingDate(event.getPreviousReadingDate())
+                .consecutiveDaysMissed(event.getConsecutiveDaysMissed())
+                .reason(event.getReason())
+                .status(status)
+                .correlationId(event.getCorrelationId())
+                .createdAt(now)
+                .updatedAt(now)
+                .build();
+
+        try {
+            anomalyRepository.save(anomaly);
+            log.info("Ingested anomaly_table row for scheme={} tenant={} uuid={}",
+                    event.getSchemeId(), event.getTenantId(), event.getUuid());
+        } catch (DataIntegrityViolationException e) {
+            log.debug("Skipping duplicate anomaly uuid={} (unique constraint)", event.getUuid());
+        }
     }
 
     private void ensureTenantExists(Integer tenantId, String tenantSchema) {

@@ -2,12 +2,17 @@ package org.arghyam.jalsoochak.telemetry.event;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.arghyam.jalsoochak.telemetry.dto.event.AnomalyEvent;
 import org.arghyam.jalsoochak.telemetry.dto.event.WaterQuantityEvent;
 import org.arghyam.jalsoochak.telemetry.kafka.KafkaProducer;
 import org.arghyam.jalsoochak.telemetry.service.AnomalyConstants;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.UUID;
 
 @Component
 @RequiredArgsConstructor
@@ -16,10 +21,12 @@ public class TelemetryEventPublisher {
 
     public static final String TOPIC = "telemetry-service-topic";
     public static final String EVENT_WATER_QUANTITY_RECORDED = "WATER_QUANTITY_RECORDED";
+    public static final String EVENT_ANOMALY_RECORDED = "ANOMALY_RECORDED";
     public static final int NOT_SUBMITTED_STATUS = 0;
 
     private final KafkaProducer kafkaProducer;
 
+    @Async("kafkaPublisherExecutor")
     public void publishOutageOrNonSubmissionReason(Integer tenantId,
                                                    Long schemeId,
                                                    Long userId,
@@ -43,9 +50,60 @@ public class TelemetryEventPublisher {
                 .build();
 
         boolean ok = kafkaProducer.publishJson(TOPIC, event);
+        System.out.println("[telemetry] published WATER_QUANTITY_RECORDED ok=" + ok
+                + " tenantId=" + tenantId
+                + " schemeId=" + schemeId
+                + " userId=" + userId);
         if (!ok) {
             log.warn("[telemetry-events] publish_failed type={} tenantId={} schemeId={} userId={}",
                     anomalyType, tenantId, schemeId, userId);
+        }
+    }
+
+    @Async("kafkaPublisherExecutor")
+    public void publishAnomalyRecorded(Integer tenantId,
+                                       Integer type,
+                                       Long userId,
+                                       Long schemeId,
+                                       BigDecimal aiReading,
+                                       BigDecimal aiConfidencePercentage,
+                                       BigDecimal overriddenReading,
+                                       Integer retries,
+                                       BigDecimal previousReading,
+                                       LocalDateTime previousReadingDate,
+                                       Integer consecutiveDaysMissed,
+                                       String reason,
+                                       Integer status,
+                                       String correlationId) {
+        AnomalyEvent event = AnomalyEvent.builder()
+                .eventType(EVENT_ANOMALY_RECORDED)
+                .uuid(UUID.randomUUID().toString())
+                .tenantId(tenantId)
+                .type(type)
+                .userId(toInt(userId))
+                .schemeId(toInt(schemeId))
+                .aiReading(aiReading)
+                .aiConfidencePercentage(aiConfidencePercentage)
+                .overriddenReading(overriddenReading)
+                .retries(retries)
+                .previousReading(previousReading)
+                .previousReadingDate(previousReadingDate != null ? previousReadingDate.toLocalDate() : null)
+                .consecutiveDaysMissed(consecutiveDaysMissed)
+                .reason(reason)
+                .status(status)
+                .correlationId(correlationId)
+                .build();
+
+        boolean ok = kafkaProducer.publishJson(TOPIC, event);
+        System.out.println("[telemetry] published ANOMALY_RECORDED ok=" + ok
+                + " type=" + type
+                + " tenantId=" + tenantId
+                + " schemeId=" + schemeId
+                + " userId=" + userId
+                + " uuid=" + event.getUuid());
+        if (!ok) {
+            log.warn("[telemetry-events] publish_failed type={} tenantId={} schemeId={} userId={}",
+                    type, tenantId, schemeId, userId);
         }
     }
 
