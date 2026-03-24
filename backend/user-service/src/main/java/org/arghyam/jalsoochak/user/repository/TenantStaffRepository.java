@@ -91,6 +91,20 @@ public class TenantStaffRepository {
         return Boolean.TRUE.equals(exists);
     }
 
+    /**
+     * Rejects a name filter by throwing {@link IllegalArgumentException}.
+     * Name filtering is not supported because the {@code title} field is encrypted;
+     * in-memory decrypt-and-scan is unbounded. This guard is applied consistently in
+     * {@link #listStaff}, {@link #countStaff}, {@link #countByRole}, and {@link #listStaffPage}.
+     */
+    private void rejectNameFilter(String name) {
+        if (name != null && !name.isBlank()) {
+            throw new IllegalArgumentException(
+                    "Name filtering is not supported because the title field is encrypted. " +
+                    "Remove the name parameter or leave it blank.");
+        }
+    }
+
     public List<TenantStaffResponseDTO> listStaff(
             String schemaName,
             List<String> roles,
@@ -104,11 +118,7 @@ public class TenantStaffRepository {
         validateSchemaName(schemaName);
         // Name filtering is not supported: title is encrypted and in-memory decrypt-and-scan
         // is unbounded. Reject until a searchable name sidecar/index is available.
-        if (name != null && !name.isBlank()) {
-            throw new IllegalArgumentException(
-                    "Name filtering is not supported because the title field is encrypted. " +
-                    "Remove the name parameter or leave it blank.");
-        }
+        rejectNameFilter(name);
 
         SqlAndArgs where = buildWhere(roles, status);
         String orderBy = orderBy(sortBy, sortDir);
@@ -168,11 +178,7 @@ public class TenantStaffRepository {
 
     public long countStaff(String schemaName, List<String> roles, Integer status, String name) {
         validateSchemaName(schemaName);
-        if (name != null && !name.isBlank()) {
-            throw new IllegalArgumentException(
-                    "Name filtering is not supported because the title field is encrypted. " +
-                    "Remove the name parameter or leave it blank.");
-        }
+        rejectNameFilter(name);
 
         SqlAndArgs where = buildWhere(roles, status);
         String sql = String.format("""
@@ -190,11 +196,7 @@ public class TenantStaffRepository {
 
     public List<RoleCountDTO> countByRole(String schemaName, Integer status, String name) {
         validateSchemaName(schemaName);
-        if (name != null && !name.isBlank()) {
-            throw new IllegalArgumentException(
-                    "Name filtering is not supported because the title field is encrypted. " +
-                    "Remove the name parameter or leave it blank.");
-        }
+        rejectNameFilter(name);
         SqlAndArgs where = buildWhere(List.of(), status);
 
         String sql = String.format("""
@@ -216,13 +218,19 @@ public class TenantStaffRepository {
     }
 
     /** Combines paginated items and total count so callers avoid a second DB scan. */
-    public record StaffPage(List<TenantStaffResponseDTO> items, long total) {}
+    public record StaffPage(List<TenantStaffResponseDTO> items, long total) {
+        public StaffPage {
+            items = List.copyOf(items);
+        }
+    }
 
     /**
      * Returns a page of staff and the total count in one call.
-     * When a name filter is present the full result set is materialised, decrypted,
-     * and filtered once in Java — avoiding the separate {@link #listStaff} +
-     * {@link #countStaff} double-scan that would otherwise occur.
+     * <p>
+     * Name filters are <em>not</em> supported: the {@code title} field is encrypted and
+     * cannot be searched at the database level. Passing a non-blank {@code name} will
+     * cause an {@link IllegalArgumentException} to be thrown — consistent with
+     * {@link #listStaff} and {@link #countStaff}.
      */
     public StaffPage listStaffPage(
             String schemaName,
@@ -235,11 +243,7 @@ public class TenantStaffRepository {
             int limit
     ) {
         validateSchemaName(schemaName);
-        if (name != null && !name.isBlank()) {
-            throw new IllegalArgumentException(
-                    "Name filtering is not supported because the title field is encrypted. " +
-                    "Remove the name parameter or leave it blank.");
-        }
+        rejectNameFilter(name);
         SqlAndArgs where = buildWhere(roles, status);
         String orderBy = orderBy(sortBy, sortDir);
 
