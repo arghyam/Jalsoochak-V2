@@ -6,7 +6,7 @@ This document covers the four WhatsApp notification pipelines in JalSoochak V2: 
 
 ## Architecture Overview
 
-```
+```text
 tenant-service          user-service           (external / telemetry)
       |                       |                         |
   [cron jobs]           [bulk upload]             [OTP trigger]
@@ -92,6 +92,7 @@ Operators who have neither a phone nor a stored `whatsapp_connection_id` are sil
    - Otherwise — call `GlificWhatsAppService.optIn(phone)` to register or look up the contact in Glific, then publish a `WHATSAPP_CONTACT_REGISTERED` event back to `common-topic` so tenant-service can persist the new contact ID.
 3. Calls `WhatsAppChannel.sendNudgeViaFlow(contactId, operatorName, todayDate)`.
 4. This triggers `GlificWhatsAppService.startNudgeFlow`, which executes the `startContactFlow` GraphQL mutation:
+
    ```graphql
    mutation startContactFlow($flowId: ID!, $contactId: ID!, $defaultResults: Json!) {
      startContactFlow(flowId: $flowId, contactId: $contactId, defaultResults: $defaultResults) {
@@ -100,6 +101,7 @@ Operators who have neither a phone nor a stored `whatsapp_connection_id` are sil
      }
    }
    ```
+
    The `defaultResults` JSON carries `{"name": "<operatorName>", "date": "<dd MMMM yyyy>"}`. These values are available as flow variables inside the Glific nudge flow.
 
 **Config required** (`glific.flow.nudge-id`): the Glific flow ID. The service fails to start if this is blank.
@@ -225,7 +227,7 @@ Published by `user-service` (`UserEventPublisher.publishPumpOperatorOnboardedAft
 
 For each phone in the batch:
 
-1. Looks up `whatsapp_connection_id` in `<tenantSchema>.user_table` via a direct JDBC query (`fetchWhatsappConnectionId`). The `tenantCode` is validated against `[a-z0-9_]+` before schema interpolation.
+1. Looks up `whatsapp_connection_id` in `<tenantSchema>.user_table` via a direct JDBC query (`fetchWhatsappConnectionId`). The `tenantCode` is validated against the regex `[a-z0-9_]+` before it is interpolated into the `tenantSchema` string used in the SQL query. This validation prevents SQL injection and unauthorized schema access by ensuring only safe, alphanumeric/underscore schema names can reach the database — without it, a crafted `tenantCode` could escape the schema prefix and query arbitrary tables.
 2. If no contact ID is found, the phone is routed to the dead-letter topic `welcome-message-dlt` with reason `no_whatsapp_connection_id` — the batch continues.
 3. Calls `GlificWhatsAppService.startWelcomeFlow(contactId)`, which triggers the `startContactFlow` mutation with `flowId = glific.flow.welcome-id` and empty `defaultResults`.
 
@@ -290,6 +292,7 @@ Either `glific_id` or `officerPhoneNumber` must be present. If both are provided
    - If neither is present or both are invalid — log and skip.
 2. Calls `WhatsAppChannel.sendLoginOtp(contactId, otp)`.
 3. This invokes `GlificWhatsAppService.sendLoginOtpHsm`, which sends a `sendHsmMessage` mutation:
+
    ```graphql
    mutation sendHsmMessage($templateId: ID!, $receiverId: ID!, $parameters: [String]) {
      sendHsmMessage(templateId: $templateId, receiverId: $receiverId, parameters: $parameters) {
@@ -298,6 +301,7 @@ Either `glific_id` or `officerPhoneNumber` must be present. If both are provided
      }
    }
    ```
+
    `parameters[0]` = OTP string (template variable `{{1}}`).
 4. On failure, throws `IllegalStateException` so the Kafka container applies its retry/back-off policy.
 
