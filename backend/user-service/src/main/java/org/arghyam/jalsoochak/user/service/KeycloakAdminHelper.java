@@ -22,6 +22,7 @@ public class KeycloakAdminHelper {
     private final KeycloakProvider keycloakProvider;
     private final UserCommonRepository userCommonRepository;
     private final ObjectMapper objectMapper;
+    private final PiiEncryptionService pii;
 
     /**
      * Builds a full AdminUserResponseDTO by enriching an AdminUserRow with
@@ -39,8 +40,8 @@ public class KeycloakAdminHelper {
             // No Keycloak account exists yet — read names from the invite token metadata
             var tokenOpt = userCommonRepository.findInviteTokenByEmail(user.email());
             if (tokenOpt.isPresent()) {
-                firstName = parseMetadata(tokenOpt.get().metadata(), "firstName");
-                lastName = parseMetadata(tokenOpt.get().metadata(), "lastName");
+                firstName = parseAndDecryptMetadata(tokenOpt.get().metadata(), "firstName");
+                lastName = parseAndDecryptMetadata(tokenOpt.get().metadata(), "lastName");
             }
         } else if (user.uuid() != null) {
             try {
@@ -110,6 +111,21 @@ public class KeycloakAdminHelper {
         } catch (Exception e) {
             log.warn("Failed to parse metadata key '{}': {}", key, e.getMessage());
             return null;
+        }
+    }
+
+    /**
+     * Reads a metadata field and decrypts it if encrypted.
+     * Falls back to the raw value for legacy tokens that stored names as plaintext.
+     */
+    private String parseAndDecryptMetadata(String json, String key) {
+        String raw = parseMetadata(json, key);
+        if (raw == null) return null;
+        try {
+            String decrypted = pii.decrypt(raw);
+            return decrypted != null ? decrypted : raw;
+        } catch (Exception e) {
+            return raw; // legacy plaintext token
         }
     }
 

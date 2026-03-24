@@ -11,12 +11,14 @@ import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Repository;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 @Repository
 @RequiredArgsConstructor
@@ -41,13 +43,23 @@ public class TenantStaffRepository {
         return (rs, rowNum) -> TenantStaffResponseDTO.builder()
                 .id(rs.getLong("id"))
                 .uuid(rs.getString("uuid"))
-                .title(pii.decrypt(rs.getString("title")))
+                .title(safeDecrypt(rs.getString("title")))
                 .email(rs.getString("email"))
-                .phoneNumber(pii.decrypt(rs.getString("phone_number")))
+                .phoneNumber(safeDecrypt(rs.getString("phone_number")))
                 .status(mapStatus(rs.getObject("status")))
                 .role(rs.getString("role"))
                 .schemes(null)
                 .build();
+    }
+
+    /** Decrypts a PII value, falling back to the raw value for legacy plaintext rows. */
+    private String safeDecrypt(String value) {
+        if (value == null) return null;
+        try {
+            return pii.decrypt(value);
+        } catch (Exception e) {
+            return value;
+        }
     }
 
     private void validateSchemaName(String schemaName) {
@@ -173,7 +185,7 @@ public class TenantStaffRepository {
             List<String> encryptedTitles = jdbcTemplate.query(
                     sql, (rs, n) -> rs.getString("title"), where.args().toArray());
             return encryptedTitles.stream()
-                    .map(pii::decrypt)
+                    .map(this::safeDecrypt)
                     .filter(t -> t != null && t.toLowerCase(Locale.ROOT).contains(needle))
                     .count();
         }
@@ -194,7 +206,38 @@ public class TenantStaffRepository {
 
     public List<RoleCountDTO> countByRole(String schemaName, Integer status, String name) {
         validateSchemaName(schemaName);
+        boolean hasNameFilter = name != null && !name.isBlank();
         SqlAndArgs where = buildWhere(List.of(), status);
+
+        if (hasNameFilter) {
+            // title is encrypted — fetch all rows, decrypt, filter by name, then count by role
+            String sql = String.format("""
+                    SELECT u.title,
+                           COALESCE(ut.c_name, 'UNKNOWN') AS role
+                    FROM %s.user_table u
+                    LEFT JOIN common_schema.user_type_master_table ut
+                      ON ut.id = u.user_type
+                    WHERE u.deleted_at IS NULL
+                      %s
+                    """, schemaName, where.sql());
+            String needle = name.trim().toLowerCase(Locale.ROOT);
+            record TitleRole(String title, String role) {}
+            List<TitleRole> all = jdbcTemplate.query(sql,
+                    (rs, n) -> new TitleRole(rs.getString("title"), rs.getString("role")),
+                    where.args().toArray());
+            Map<String, Long> roleCounts = new HashMap<>();
+            for (TitleRole tr : all) {
+                String decTitle = safeDecrypt(tr.title());
+                if (decTitle != null && decTitle.toLowerCase(Locale.ROOT).contains(needle)) {
+                    roleCounts.merge(tr.role(), 1L, Long::sum);
+                }
+            }
+            return roleCounts.entrySet().stream()
+                    .map(e -> RoleCountDTO.builder().role(e.getKey()).count(e.getValue()).build())
+                    .sorted(Comparator.comparingLong(RoleCountDTO::count).reversed()
+                            .thenComparing(RoleCountDTO::role))
+                    .collect(Collectors.toList());
+        }
 
         String sql = String.format("""
                 SELECT COALESCE(ut.c_name, 'UNKNOWN') AS role,
@@ -212,6 +255,84 @@ public class TenantStaffRepository {
                 .role(rs.getString("role"))
                 .count(rs.getLong("cnt"))
                 .build(), where.args().toArray());
+    }
+
+    /** Combines paginated items and total count so callers avoid a second DB scan. */
+    public record StaffPage(List<TenantStaffResponseDTO> items, long total) {}
+
+    /**
+     * Returns a page of staff and the total count in one call.
+     * When a name filter is present the full result set is materialised, decrypted,
+     * and filtered once in Java — avoiding the separate {@link #listStaff} +
+     * {@link #countStaff} double-scan that would otherwise occur.
+     */
+    public StaffPage listStaffPage(
+            String schemaName,
+            List<String> roles,
+            Integer status,
+            String name,
+            String sortBy,
+            String sortDir,
+            int offset,
+            int limit
+    ) {
+        validateSchemaName(schemaName);
+        boolean hasNameFilter = name != null && !name.isBlank();
+        SqlAndArgs where = buildWhere(roles, status);
+        String orderBy = orderBy(sortBy, sortDir);
+
+        String baseSql = String.format("""
+                SELECT u.id,
+                       u.uuid,
+                       u.title,
+                       u.email,
+                       u.phone_number,
+                       u.status,
+                       ut.c_name AS role
+                FROM %s.user_table u
+                LEFT JOIN common_schema.user_type_master_table ut
+                  ON ut.id = u.user_type
+                WHERE u.deleted_at IS NULL
+                  %s
+                %s
+                """, schemaName, where.sql(), orderBy);
+
+        if (hasNameFilter) {
+            // Single DB scan; pagination and count both derived from the filtered list
+            List<Object> args = new ArrayList<>(where.args());
+            List<TenantStaffResponseDTO> allRows = jdbcTemplate.query(baseSql, staffRowMapper(), args.toArray());
+            String needle = name.trim().toLowerCase(Locale.ROOT);
+            List<TenantStaffResponseDTO> filteredRows = allRows.stream()
+                    .filter(r -> r.title() != null && r.title().toLowerCase(Locale.ROOT).contains(needle))
+                    .toList();
+            long total = filteredRows.size();
+            int toIdx = Math.min(offset + limit, filteredRows.size());
+            List<TenantStaffResponseDTO> page = offset >= filteredRows.size()
+                    ? List.of()
+                    : new ArrayList<>(filteredRows.subList(offset, toIdx));
+            attachSchemes(schemaName, page);
+            return new StaffPage(page, total);
+        }
+
+        // No name filter: DB-level pagination + a lightweight count query
+        String pagedSql = baseSql + "LIMIT ? OFFSET ?";
+        List<Object> pagedArgs = new ArrayList<>(where.args());
+        pagedArgs.add(limit);
+        pagedArgs.add(offset);
+        List<TenantStaffResponseDTO> items = jdbcTemplate.query(pagedSql, staffRowMapper(), pagedArgs.toArray());
+
+        String countSql = String.format("""
+                SELECT COUNT(1)
+                FROM %s.user_table u
+                LEFT JOIN common_schema.user_type_master_table ut
+                  ON ut.id = u.user_type
+                WHERE u.deleted_at IS NULL
+                  %s
+                """, schemaName, where.sql());
+        Long total = jdbcTemplate.queryForObject(countSql, Long.class, where.args().toArray());
+
+        attachSchemes(schemaName, items);
+        return new StaffPage(items, total == null ? 0 : total);
     }
 
     private record SqlAndArgs(String sql, List<Object> args) {}

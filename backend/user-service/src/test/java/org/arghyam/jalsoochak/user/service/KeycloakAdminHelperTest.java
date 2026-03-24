@@ -1,6 +1,14 @@
 package org.arghyam.jalsoochak.user.service;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
+
+import java.time.Instant;
+import java.util.Optional;
+
 import org.arghyam.jalsoochak.user.config.KeycloakProvider;
 import org.arghyam.jalsoochak.user.dto.response.AdminUserResponseDTO;
 import org.arghyam.jalsoochak.user.enums.AdminUserStatus;
@@ -17,14 +25,7 @@ import org.mockito.Answers;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import java.time.Instant;
-import java.util.Optional;
-
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.verifyNoInteractions;
-import static org.mockito.Mockito.when;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 @ExtendWith(MockitoExtension.class)
 @DisplayName("KeycloakAdminHelper - Unit Tests")
@@ -36,11 +37,14 @@ class KeycloakAdminHelperTest {
     @Mock
     private UserCommonRepository userCommonRepository;
 
+    @Mock
+    private PiiEncryptionService pii;
+
     private KeycloakAdminHelper helper;
 
     @BeforeEach
     void setUp() {
-        helper = new KeycloakAdminHelper(keycloakProvider, userCommonRepository, new ObjectMapper());
+        helper = new KeycloakAdminHelper(keycloakProvider, userCommonRepository, new ObjectMapper(), pii);
     }
 
     private AdminUserRow row(Long id, String uuid, String email, AdminUserStatus status) {
@@ -100,6 +104,7 @@ class KeycloakAdminHelperTest {
 
             assertNull(result.getFirstName());
             assertNull(result.getLastName());
+            verifyNoInteractions(keycloakProvider);
         }
     }
 

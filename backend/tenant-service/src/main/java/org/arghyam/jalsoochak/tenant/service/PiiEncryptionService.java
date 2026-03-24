@@ -37,8 +37,9 @@ public class PiiEncryptionService {
     private static final int IV_LENGTH_BYTES = 12;
     private static final int TAG_LENGTH_BITS = 128;
 
-    private final SecretKeySpec aesKey;
-    private final byte[] hmacKeyBytes;
+    private SecretKeySpec aesKey;
+    private byte[] aesKeyBytes;
+    private byte[] hmacKeyBytes;
     private final SecureRandom rng = new SecureRandom();
 
     public PiiEncryptionService(
@@ -56,7 +57,16 @@ public class PiiEncryptionService {
         }
 
         this.aesKey = new SecretKeySpec(aesBytes, "AES");
+        this.aesKeyBytes = aesBytes;
         this.hmacKeyBytes = hmacBytes;
+
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            Arrays.fill(aesKeyBytes, (byte) 0);
+            Arrays.fill(hmacKeyBytes, (byte) 0);
+            aesKeyBytes = null;
+            hmacKeyBytes = null;
+            aesKey = null;
+        }));
     }
 
     /**
@@ -66,6 +76,7 @@ public class PiiEncryptionService {
      */
     public String encrypt(String plaintext) {
         if (plaintext == null) return null;
+        plaintext = plaintext.trim();
         try {
             byte[] iv = new byte[IV_LENGTH_BYTES];
             rng.nextBytes(iv);
@@ -94,6 +105,10 @@ public class PiiEncryptionService {
         if (encoded == null) return null;
         try {
             byte[] decoded = Base64.getDecoder().decode(encoded);
+            if (decoded.length <= IV_LENGTH_BYTES) {
+                throw new IllegalStateException(
+                        "Ciphertext too short: " + decoded.length + " bytes (expected > " + IV_LENGTH_BYTES + ")");
+            }
             byte[] iv = Arrays.copyOfRange(decoded, 0, IV_LENGTH_BYTES);
             byte[] ciphertextAndTag = Arrays.copyOfRange(decoded, IV_LENGTH_BYTES, decoded.length);
 
@@ -102,7 +117,9 @@ public class PiiEncryptionService {
             byte[] plaintext = cipher.doFinal(ciphertextAndTag);
 
             return new String(plaintext, UTF_8);
-        } catch (GeneralSecurityException e) {
+        } catch (IllegalStateException e) {
+            throw e;
+        } catch (Exception e) {
             throw new IllegalStateException("AES-GCM decryption failed", e);
         }
     }

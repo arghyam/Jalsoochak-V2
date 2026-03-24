@@ -21,8 +21,10 @@ import java.sql.Timestamp;
 import java.time.LocalDateTime;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 @Repository
@@ -321,7 +323,7 @@ public class PublicPumpOperatorRepository {
                         %s
                         ORDER BY sm.id, u.id, usm.id DESC
                     ) t
-                    ORDER BY t.scheme_id ASC, t.name ASC, t.user_id ASC
+                    ORDER BY t.scheme_id ASC, t.user_id ASC
                     """, schemaName, schemaName, schemaName, where);
 
             record Row(long schemeId,
@@ -344,6 +346,14 @@ public class PublicPumpOperatorRepository {
                     pii.decrypt(rs.getString("phone_number")),
                     getNullableInt(rs, "status")
             ), baseParams.toArray());
+
+            // Sort by scheme_id, then by decrypted name (case-insensitive), then user_id.
+            // Sorting on the decrypted value here because t.name in SQL is ciphertext.
+            rows = rows.stream()
+                    .sorted(Comparator.comparingLong(Row::schemeId)
+                            .thenComparing(r -> r.name() == null ? "" : r.name().toLowerCase(Locale.ROOT))
+                            .thenComparingLong(Row::userId))
+                    .toList();
 
             // Group while preserving query order.
             Map<Long, SchemePumpOperatorsDTO> grouped = new LinkedHashMap<>();
@@ -555,7 +565,7 @@ public class PublicPumpOperatorRepository {
                 LocalDateTime lastSubmissionAt = ts == null ? null : ts.toLocalDateTime();
                 BigDecimal confirmed = (BigDecimal) rs.getObject("confirmed_reading");
                 return PumpOperatorReadingComplianceDTO.builder()
-                        .name(rs.getString("name"))
+                        .name(pii.decrypt(rs.getString("name")))
                         .lastSubmissionAt(lastSubmissionAt)
                         .confirmedReading(confirmed)
                         .build();
@@ -599,7 +609,7 @@ public class PublicPumpOperatorRepository {
             return PumpOperatorReadingComplianceRowDTO.builder()
                     .id(rs.getLong("id"))
                     .uuid(rs.getString("uuid"))
-                    .name(rs.getString("name"))
+                    .name(pii.decrypt(rs.getString("name")))
                     .lastSubmissionAt(lastSubmissionAt)
                     .confirmedReading(confirmed)
                     .build();

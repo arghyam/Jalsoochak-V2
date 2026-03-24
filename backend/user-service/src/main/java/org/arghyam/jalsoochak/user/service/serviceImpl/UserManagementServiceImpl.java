@@ -27,6 +27,7 @@ import org.arghyam.jalsoochak.user.repository.records.AdminUserTokenRow;
 import org.arghyam.jalsoochak.user.event.InviteEmailEvent;
 import org.arghyam.jalsoochak.user.event.UserEmailEventPublisher;
 import org.arghyam.jalsoochak.user.service.KeycloakAdminHelper;
+import org.arghyam.jalsoochak.user.service.PiiEncryptionService;
 import org.arghyam.jalsoochak.user.service.TokenService;
 import org.arghyam.jalsoochak.user.service.UserManagementService;
 import org.arghyam.jalsoochak.user.util.SecurityUtils;
@@ -63,6 +64,7 @@ public class UserManagementServiceImpl implements UserManagementService {
     private final FrontendProperties frontendProperties;
     private final TokenService tokenService;
     private final ObjectMapper objectMapper;
+    private final PiiEncryptionService pii;
 
     @Override
     @Transactional
@@ -128,8 +130,9 @@ public class UserManagementServiceImpl implements UserManagementService {
         metaMap.put("role", request.getRole());
         if (request.getTenantCode() != null) metaMap.put("tenantCode", request.getTenantCode());
         if (tenantName != null) metaMap.put("tenantName", tenantName);
-        metaMap.put("firstName", request.getFirstName());
-        metaMap.put("lastName", request.getLastName());
+        // Store names encrypted to avoid persisting PII in plaintext in the token table
+        metaMap.put("firstName", pii.encrypt(request.getFirstName()));
+        metaMap.put("lastName", pii.encrypt(request.getLastName()));
 
         String metadataJson;
         try {
@@ -209,10 +212,11 @@ public class UserManagementServiceImpl implements UserManagementService {
         if (tenantCode != null) metaMap.put("tenantCode", tenantCode);
         if (tenantName != null) metaMap.put("tenantName", tenantName);
         existingToken.ifPresent(t -> {
-            String firstName = parseMetadata(t.metadata(), "firstName");
-            String lastName = parseMetadata(t.metadata(), "lastName");
-            if (firstName != null) metaMap.put("firstName", firstName);
-            if (lastName != null) metaMap.put("lastName", lastName);
+            String firstName = parseAndDecryptMetadata(t.metadata(), "firstName");
+            String lastName = parseAndDecryptMetadata(t.metadata(), "lastName");
+            // Re-encrypt before storing in the new token
+            if (firstName != null) metaMap.put("firstName", pii.encrypt(firstName));
+            if (lastName != null) metaMap.put("lastName", pii.encrypt(lastName));
         });
 
         String metadataJson;
@@ -235,8 +239,8 @@ public class UserManagementServiceImpl implements UserManagementService {
                 .build()
                 .toUriString();
         String name = existingToken.map(t -> {
-            String fn = parseMetadata(t.metadata(), "firstName");
-            String ln = parseMetadata(t.metadata(), "lastName");
+            String fn = parseAndDecryptMetadata(t.metadata(), "firstName");
+            String ln = parseAndDecryptMetadata(t.metadata(), "lastName");
             return ((fn != null ? fn : "") + " " + (ln != null ? ln : "")).trim();
         }).orElse(null);
         userEmailEventPublisher.publishInviteEmailAfterCommit(InviteEmailEvent.builder()
@@ -255,6 +259,21 @@ public class UserManagementServiceImpl implements UserManagementService {
             return objectMapper.readTree(json).path(key).asText(null);
         } catch (Exception e) {
             return null;
+        }
+    }
+
+    /**
+     * Reads a metadata field and decrypts it if encrypted.
+     * Falls back to the raw value for legacy tokens that stored names as plaintext.
+     */
+    private String parseAndDecryptMetadata(String json, String key) {
+        String raw = parseMetadata(json, key);
+        if (raw == null) return null;
+        try {
+            String decrypted = pii.decrypt(raw);
+            return decrypted != null ? decrypted : raw;
+        } catch (Exception e) {
+            return raw; // legacy plaintext token
         }
     }
 
