@@ -1,6 +1,7 @@
 package org.arghyam.jalsoochak.user.repository;
 
 import lombok.RequiredArgsConstructor;
+import org.arghyam.jalsoochak.user.service.PiiEncryptionService;
 import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.jdbc.core.BatchPreparedStatementSetter;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -16,6 +17,7 @@ import java.util.regex.Pattern;
 public class UserUploadRepository {
 
     private final JdbcTemplate jdbcTemplate;
+    private final PiiEncryptionService pii;
     private static final Pattern SAFE_SCHEMA = Pattern.compile("^[a-z_][a-z0-9_]*$");
 
     public Integer findUserIdByEmailOrPhone(String schemaName, String email, String phone) {
@@ -44,15 +46,16 @@ public class UserUploadRepository {
 
         String trimmedPhone = phone != null ? phone.trim() : null;
         if (trimmedPhone != null && !trimmedPhone.isBlank()) {
+            // Lookup via HMAC hash — the encrypted column cannot be searched directly
             String byPhone = String.format("""
                     SELECT id
                     FROM %s.user_table
                     WHERE deleted_at IS NULL
-                      AND phone_number = ?
+                      AND phone_number_hash = ?
                     LIMIT 1
                     """, schemaName);
             try {
-                return jdbcTemplate.queryForObject(byPhone, Integer.class, trimmedPhone);
+                return jdbcTemplate.queryForObject(byPhone, Integer.class, pii.hmac(trimmedPhone));
             } catch (EmptyResultDataAccessException ignored) {
                 return null;
             }

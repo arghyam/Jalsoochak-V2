@@ -90,6 +90,10 @@ http-client:
   connect-timeout-ms: ${HTTP_CONNECT_TIMEOUT_MS:5000}
   read-timeout-ms: ${HTTP_READ_TIMEOUT_MS:10000}
 
+pii:
+  encryption-key: ${PII_ENCRYPTION_KEY}
+  hmac-key: ${PII_HMAC_KEY}
+
 eureka:
   client:
     enabled: ${EUREKA_ENABLED:false}

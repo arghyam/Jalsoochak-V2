@@ -130,6 +130,10 @@ logging:
   pattern:
     level: "service=${spring.application.name} %5p"
 
+pii:
+  encryption-key: ${PII_ENCRYPTION_KEY}
+  hmac-key: ${PII_HMAC_KEY}
+
 tenant:
   defaults:
     lgd-location-hierarchy:
@@ -163,7 +167,7 @@ tenant:
           - title: "Division"
       - level: 5
         level-name:
-          - title: "Sub-division"
+          - title: "Sub Division"
     meter-change-reasons:
       - id: "METER_REPLACED"
         name: "Meter Replaced"

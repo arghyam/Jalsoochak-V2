@@ -6,6 +6,7 @@ import org.arghyam.jalsoochak.user.exceptions.BadRequestException;
 import org.arghyam.jalsoochak.user.exceptions.ResourceNotFoundException;
 import org.arghyam.jalsoochak.user.repository.records.AdminUserRow;
 import org.arghyam.jalsoochak.user.repository.records.AdminUserTokenRow;
+import org.arghyam.jalsoochak.user.service.PiiEncryptionService;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
@@ -20,6 +21,7 @@ import java.util.Optional;
 public class UserCommonRepository {
 
     private final JdbcTemplate jdbcTemplate;
+    private final PiiEncryptionService pii;
 
     // --- Tenant lookups ---
 
@@ -109,12 +111,13 @@ public class UserCommonRepository {
                                 Integer tenantId, Integer adminLevelId, Integer createdById) {
         String sql = """
                 INSERT INTO common_schema.tenant_admin_user_master_table
-                    (uuid, email, phone_number, tenant_id, admin_level, password, status, created_by, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, 'KEYCLOAK_MANAGED', 1, ?, NOW(), NOW())
+                    (uuid, email, phone_number, phone_number_hash, tenant_id, admin_level, password, status, created_by, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, 'KEYCLOAK_MANAGED', 1, ?, NOW(), NOW())
                 RETURNING id
                 """;
         Number id = jdbcTemplate.queryForObject(sql, Number.class,
-                uuid, email, phoneNumber, tenantId, adminLevelId, createdById);
+                uuid, email, pii.encrypt(phoneNumber), pii.hmac(phoneNumber),
+                tenantId, adminLevelId, createdById);
         return id != null ? id.longValue() : null;
     }
 
@@ -125,21 +128,22 @@ public class UserCommonRepository {
     public Long createAdminUserPending(String email, String phoneNumber, Integer tenantId, Integer adminLevelId, Integer createdById) {
         String sql = """
                 INSERT INTO common_schema.tenant_admin_user_master_table
-                    (uuid, email, phone_number, tenant_id, admin_level, password, status, created_by, created_at, updated_at)
-                VALUES (gen_random_uuid()::TEXT, ?, ?, ?, ?, 'KEYCLOAK_MANAGED', 2, ?, NOW(), NOW())
+                    (uuid, email, phone_number, phone_number_hash, tenant_id, admin_level, password, status, created_by, created_at, updated_at)
+                VALUES (gen_random_uuid()::TEXT, ?, ?, ?, ?, ?, 'KEYCLOAK_MANAGED', 2, ?, NOW(), NOW())
                 RETURNING id
                 """;
         Number id = jdbcTemplate.queryForObject(sql, Number.class,
-                email, phoneNumber, tenantId, adminLevelId, createdById);
+                email, pii.encrypt(phoneNumber), pii.hmac(phoneNumber),
+                tenantId, adminLevelId, createdById);
         return id != null ? id.longValue() : null;
     }
 
     public void updatePendingAdminUserPhone(Long id, String phoneNumber) {
         int updated = jdbcTemplate.update("""
                 UPDATE common_schema.tenant_admin_user_master_table
-                SET phone_number = ?, updated_at = NOW()
+                SET phone_number = ?, phone_number_hash = ?, updated_at = NOW()
                 WHERE id = ? AND status = 2 AND deleted_at IS NULL
-                """, phoneNumber, id);
+                """, pii.encrypt(phoneNumber), pii.hmac(phoneNumber), id);
         if (updated == 0) {
             throw new ResourceNotFoundException(
                     "Pending admin user not found or already activated [id=" + id + "]");
@@ -153,9 +157,9 @@ public class UserCommonRepository {
     public void activatePendingAdminUser(Long id, String keycloakUuid, String phoneNumber) {
         int updated = jdbcTemplate.update("""
                 UPDATE common_schema.tenant_admin_user_master_table
-                SET uuid = ?, phone_number = ?, status = 1, updated_at = NOW()
+                SET uuid = ?, phone_number = ?, phone_number_hash = ?, status = 1, updated_at = NOW()
                 WHERE id = ? AND status = 2 AND deleted_at IS NULL
-                """, keycloakUuid, phoneNumber, id);
+                """, keycloakUuid, pii.encrypt(phoneNumber), pii.hmac(phoneNumber), id);
         if (updated != 1) {
             throw new IllegalStateException("Expected to activate exactly one pending user with id=" + id + " but updated " + updated + " rows");
         }
@@ -222,10 +226,10 @@ public class UserCommonRepository {
     public void updateAdminUserProfile(Long id, String phoneNumber, Long updatedById) {
         String sql = """
                 UPDATE common_schema.tenant_admin_user_master_table
-                SET phone_number = ?, updated_by = ?, updated_at = NOW()
+                SET phone_number = ?, phone_number_hash = ?, updated_by = ?, updated_at = NOW()
                 WHERE id = ?
                 """;
-        jdbcTemplate.update(sql, phoneNumber, updatedById, id);
+        jdbcTemplate.update(sql, pii.encrypt(phoneNumber), pii.hmac(phoneNumber), updatedById, id);
     }
 
     public void deactivateAdminUser(Long id, Long actorId) {
@@ -368,6 +372,19 @@ public class UserCommonRepository {
                 Timestamp.from(expiresAt), createdBy);
     }
 
+    /** Find the most recent unconsumed INVITE token by email (regardless of expiry — used to read name metadata for PENDING users). */
+    public Optional<AdminUserTokenRow> findInviteTokenByEmail(String email) {
+        String sql = """
+                SELECT id, email, token_hash, token_type, metadata::TEXT, expires_at, used_at, deleted_at, created_at
+                FROM common_schema.admin_user_token_table
+                WHERE LOWER(email) = LOWER(?) AND token_type = 'INVITE' AND used_at IS NULL AND deleted_at IS NULL
+                ORDER BY created_at DESC
+                LIMIT 1
+                """;
+        List<AdminUserTokenRow> rows = jdbcTemplate.query(sql, (rs, n) -> mapTokenRow(rs), email);
+        return rows.stream().findFirst();
+    }
+
     /** Find an active (not used, not deleted, not expired) INVITE token by email. */
     public Optional<AdminUserTokenRow> findActiveInviteTokenByEmail(String email) {
         String sql = """
@@ -437,11 +454,20 @@ public class UserCommonRepository {
 
     private AdminUserRow mapAdminUserRow(java.sql.ResultSet rs) throws java.sql.SQLException {
         Timestamp createdAtTs = rs.getTimestamp("created_at");
+        String rawPhone = rs.getString("phone_number");
+        String phoneNumber = null;
+        if (rawPhone != null) {
+            try {
+                phoneNumber = pii.decrypt(rawPhone);
+            } catch (Exception e) {
+                phoneNumber = rawPhone; // legacy plaintext fallback
+            }
+        }
         return new AdminUserRow(
                 rs.getLong("id"),
                 rs.getString("uuid"),
                 rs.getString("email"),
-                rs.getString("phone_number"),
+                phoneNumber,
                 rs.getInt("tenant_id"),
                 rs.getInt("admin_level"),
                 AdminUserStatus.fromCode(rs.getInt("status")),

@@ -5,11 +5,13 @@ import org.arghyam.jalsoochak.user.dto.response.RoleCountDTO;
 import org.arghyam.jalsoochak.user.dto.response.SchemeSummaryDTO;
 import org.arghyam.jalsoochak.user.dto.response.TenantStaffResponseDTO;
 import org.arghyam.jalsoochak.user.enums.TenantUserStatus;
+import org.arghyam.jalsoochak.user.service.PiiEncryptionService;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Repository;
 
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
@@ -22,6 +24,8 @@ import java.util.Optional;
 public class TenantStaffRepository {
 
     private final JdbcTemplate jdbcTemplate;
+    private final PiiEncryptionService pii;
+
     private static final Map<Integer, String> WORK_STATUS_LABELS = Map.of(
             1, "Ongoing",
             2, "Completed",
@@ -34,16 +38,39 @@ public class TenantStaffRepository {
             3, "Partially Operative"
     );
 
-    private final RowMapper<TenantStaffResponseDTO> staffRowMapper = (rs, rowNum) -> TenantStaffResponseDTO.builder()
-            .id(rs.getLong("id"))
-            .uuid(rs.getString("uuid"))
-            .title(rs.getString("title"))
-            .email(rs.getString("email"))
-            .phoneNumber(rs.getString("phone_number"))
-            .status(mapStatus(rs.getObject("status")))
-            .role(rs.getString("role"))
-            .schemes(null)
-            .build();
+    private RowMapper<TenantStaffResponseDTO> staffRowMapper() {
+        return (rs, rowNum) -> TenantStaffResponseDTO.builder()
+                .id(rs.getLong("id"))
+                .uuid(rs.getString("uuid"))
+                .title(safeDecrypt(rs.getString("title")))
+                .email(rs.getString("email"))
+                .phoneNumber(safeDecrypt(rs.getString("phone_number")))
+                .status(mapStatus(rs.getObject("status")))
+                .role(rs.getString("role"))
+                .schemes(null)
+                .build();
+    }
+
+    /**
+     * Decrypts a PII value, falling back to the raw value for legacy plaintext rows.
+     * Legacy detection: if the value is not valid base64 or decodes to ≤ 12 bytes (shorter
+     * than the AES-GCM IV), it cannot be a valid ciphertext and is treated as stored plaintext.
+     * Real decryption failures (wrong key, auth-tag mismatch) are not swallowed — they surface
+     * as {@link IllegalStateException}.
+     */
+    private String safeDecrypt(String value) {
+        if (value == null) return null;
+        try {
+            byte[] decoded = Base64.getDecoder().decode(value);
+            if (decoded.length <= 12) {
+                return value; // too short to be AES-GCM ciphertext — legacy plaintext
+            }
+        } catch (IllegalArgumentException e) {
+            return value; // not valid base64 — legacy plaintext
+        }
+        // Looks like a real ciphertext; let decryption errors surface
+        return pii.decrypt(value);
+    }
 
     private void validateSchemaName(String schemaName) {
         if (schemaName == null || !schemaName.matches("^[a-z_][a-z0-9_]*$")) {
@@ -64,6 +91,20 @@ public class TenantStaffRepository {
         return Boolean.TRUE.equals(exists);
     }
 
+    /**
+     * Rejects a name filter by throwing {@link IllegalArgumentException}.
+     * Name filtering is not supported because the {@code title} field is encrypted;
+     * in-memory decrypt-and-scan is unbounded. This guard is applied consistently in
+     * {@link #listStaff}, {@link #countStaff}, {@link #countByRole}, and {@link #listStaffPage}.
+     */
+    private void rejectNameFilter(String name) {
+        if (name != null && !name.isBlank()) {
+            throw new IllegalArgumentException(
+                    "Name filtering is not supported because the title field is encrypted. " +
+                    "Remove the name parameter or leave it blank.");
+        }
+    }
+
     public List<TenantStaffResponseDTO> listStaff(
             String schemaName,
             List<String> roles,
@@ -75,8 +116,11 @@ public class TenantStaffRepository {
             int limit
     ) {
         validateSchemaName(schemaName);
+        // Name filtering is not supported: title is encrypted and in-memory decrypt-and-scan
+        // is unbounded. Reject until a searchable name sidecar/index is available.
+        rejectNameFilter(name);
 
-        SqlAndArgs where = buildWhere(roles, status, name);
+        SqlAndArgs where = buildWhere(roles, status);
         String orderBy = orderBy(sortBy, sortDir);
 
         String sql = String.format("""
@@ -100,7 +144,7 @@ public class TenantStaffRepository {
         args.add(limit);
         args.add(offset);
 
-        List<TenantStaffResponseDTO> rows = jdbcTemplate.query(sql, staffRowMapper, args.toArray());
+        List<TenantStaffResponseDTO> rows = jdbcTemplate.query(sql, staffRowMapper(), args.toArray());
         attachSchemes(schemaName, rows);
         return rows;
     }
@@ -125,7 +169,7 @@ public class TenantStaffRepository {
                 """, schemaName);
 
         Optional<TenantStaffResponseDTO> result = jdbcTemplate.query(sql, rs -> {
-            if (rs.next()) return Optional.of(staffRowMapper.mapRow(rs, 0));
+            if (rs.next()) return Optional.of(staffRowMapper().mapRow(rs, 0));
             return Optional.empty();
         }, id);
         result.ifPresent(r -> attachSchemes(schemaName, List.of(r)));
@@ -134,8 +178,9 @@ public class TenantStaffRepository {
 
     public long countStaff(String schemaName, List<String> roles, Integer status, String name) {
         validateSchemaName(schemaName);
-        SqlAndArgs where = buildWhere(roles, status, name);
+        rejectNameFilter(name);
 
+        SqlAndArgs where = buildWhere(roles, status);
         String sql = String.format("""
                 SELECT COUNT(1)
                 FROM %s.user_table u
@@ -151,7 +196,8 @@ public class TenantStaffRepository {
 
     public List<RoleCountDTO> countByRole(String schemaName, Integer status, String name) {
         validateSchemaName(schemaName);
-        SqlAndArgs where = buildWhere(List.of(), status, name);
+        rejectNameFilter(name);
+        SqlAndArgs where = buildWhere(List.of(), status);
 
         String sql = String.format("""
                 SELECT COALESCE(ut.c_name, 'UNKNOWN') AS role,
@@ -171,9 +217,76 @@ public class TenantStaffRepository {
                 .build(), where.args().toArray());
     }
 
+    /** Combines paginated items and total count so callers avoid a second DB scan. */
+    public record StaffPage(List<TenantStaffResponseDTO> items, long total) {
+        public StaffPage {
+            items = List.copyOf(items);
+        }
+    }
+
+    /**
+     * Returns a page of staff and the total count in one call.
+     * <p>
+     * Name filters are <em>not</em> supported: the {@code title} field is encrypted and
+     * cannot be searched at the database level. Passing a non-blank {@code name} will
+     * cause an {@link IllegalArgumentException} to be thrown — consistent with
+     * {@link #listStaff} and {@link #countStaff}.
+     */
+    public StaffPage listStaffPage(
+            String schemaName,
+            List<String> roles,
+            Integer status,
+            String name,
+            String sortBy,
+            String sortDir,
+            int offset,
+            int limit
+    ) {
+        validateSchemaName(schemaName);
+        rejectNameFilter(name);
+        SqlAndArgs where = buildWhere(roles, status);
+        String orderBy = orderBy(sortBy, sortDir);
+
+        String baseSql = String.format("""
+                SELECT u.id,
+                       u.uuid,
+                       u.title,
+                       u.email,
+                       u.phone_number,
+                       u.status,
+                       ut.c_name AS role
+                FROM %s.user_table u
+                LEFT JOIN common_schema.user_type_master_table ut
+                  ON ut.id = u.user_type
+                WHERE u.deleted_at IS NULL
+                  %s
+                %s
+                """, schemaName, where.sql(), orderBy);
+
+        String pagedSql = baseSql + "LIMIT ? OFFSET ?";
+        List<Object> pagedArgs = new ArrayList<>(where.args());
+        pagedArgs.add(limit);
+        pagedArgs.add(offset);
+        List<TenantStaffResponseDTO> items = jdbcTemplate.query(pagedSql, staffRowMapper(), pagedArgs.toArray());
+
+        String countSql = String.format("""
+                SELECT COUNT(1)
+                FROM %s.user_table u
+                LEFT JOIN common_schema.user_type_master_table ut
+                  ON ut.id = u.user_type
+                WHERE u.deleted_at IS NULL
+                  %s
+                """, schemaName, where.sql());
+        Long total = jdbcTemplate.queryForObject(countSql, Long.class, where.args().toArray());
+
+        attachSchemes(schemaName, items);
+        return new StaffPage(items, total == null ? 0 : total);
+    }
+
     private record SqlAndArgs(String sql, List<Object> args) {}
 
-    private SqlAndArgs buildWhere(List<String> roles, Integer status, String name) {
+    // name is excluded from SQL filtering because title is encrypted
+    private SqlAndArgs buildWhere(List<String> roles, Integer status) {
         List<String> clauses = new ArrayList<>();
         List<Object> args = new ArrayList<>();
 
@@ -194,10 +307,6 @@ public class TenantStaffRepository {
             clauses.add("u.status = ?");
             args.add(status);
         }
-        if (name != null && !name.isBlank()) {
-            clauses.add("u.title ILIKE ?");
-            args.add("%" + name.trim() + "%");
-        }
 
         if (clauses.isEmpty()) {
             return new SqlAndArgs("", List.of());
@@ -208,11 +317,19 @@ public class TenantStaffRepository {
     private String orderBy(String sortBy, String sortDir) {
         String dir = "asc".equalsIgnoreCase(sortDir) ? "ASC" : "DESC";
         String key = sortBy == null ? "" : sortBy.trim().toLowerCase(Locale.ROOT);
+        // title/name are encrypted with a random IV — sorting by ciphertext is meaningless.
+        // Reject explicit requests for those fields rather than silently using u.id.
+        if (!key.isEmpty()) {
+            switch (key) {
+                case "name", "title" ->
+                        throw new IllegalArgumentException(
+                                "Sorting by '" + sortBy + "' is not supported because this field is encrypted. " +
+                                "Allowed sort columns: id, email, status, role, created_at.");
+            }
+        }
         String col = switch (key) {
             case "id" -> "u.id";
-            case "title", "name" -> "u.title";
             case "email" -> "u.email";
-            case "phone_number", "phone" -> "u.phone_number";
             case "status" -> "u.status";
             case "role" -> "ut.c_name";
             case "created_at" -> "u.created_at";

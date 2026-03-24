@@ -1,6 +1,7 @@
 package org.arghyam.jalsoochak.user.repository;
 
 import lombok.RequiredArgsConstructor;
+import org.arghyam.jalsoochak.user.service.PiiEncryptionService;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
@@ -14,6 +15,7 @@ import java.util.Optional;
 public class UserTenantRepository {
 
     private final JdbcTemplate jdbcTemplate;
+    private final PiiEncryptionService pii;
 
     private void validateSchemaName(String schemaName) {
         if (schemaName == null || !schemaName.matches("^[a-z_][a-z0-9_]*$")) {
@@ -43,11 +45,11 @@ public class UserTenantRepository {
                 new TenantUserRecord(
                         toLong(rs.getObject("id")),
                         toInteger(rs.getObject("tenant_id")),
-                        rs.getString("phone_number"),
+                        pii.decrypt(rs.getString("phone_number")),
                         rs.getString("email"),
                         toLong(rs.getObject("user_type")),
                         rs.getString("c_name"),
-                        rs.getString("title"),
+                        pii.decrypt(rs.getString("title")),
                         rs.getString("uuid")
                 ), userId);
 
@@ -76,11 +78,11 @@ public class UserTenantRepository {
                 new TenantUserRecord(
                         toLong(rs.getObject("id")),
                         toInteger(rs.getObject("tenant_id")),
-                        rs.getString("phone_number"),
+                        pii.decrypt(rs.getString("phone_number")),
                         rs.getString("email"),
                         toLong(rs.getObject("user_type")),
                         rs.getString("c_name"),
-                        rs.getString("title"),
+                        pii.decrypt(rs.getString("title")),
                         rs.getString("uuid")
                 ), email);
 
@@ -93,6 +95,7 @@ public class UserTenantRepository {
             return Optional.empty();
         }
 
+        // Lookup via HMAC hash — the encrypted column cannot be searched directly
         String sql = String.format("""
         SELECT u.id,
                u.tenant_id,
@@ -105,20 +108,20 @@ public class UserTenantRepository {
         FROM %s.user_table u
         LEFT JOIN common_schema.user_type_master_table ut
                ON ut.id = u.user_type
-        WHERE u.phone_number = ?
+        WHERE u.phone_number_hash = ?
         """, schemaName);
 
         List<TenantUserRecord> rows = jdbcTemplate.query(sql, (rs, n) ->
                 new TenantUserRecord(
                         toLong(rs.getObject("id")),
                         toInteger(rs.getObject("tenant_id")),
-                        rs.getString("phone_number"),
+                        pii.decrypt(rs.getString("phone_number")),
                         rs.getString("email"),
                         toLong(rs.getObject("user_type")),
                         rs.getString("c_name"),
-                        rs.getString("title"),
+                        pii.decrypt(rs.getString("title")),
                         rs.getString("uuid")
-                ), phoneNumber.trim());
+                ), pii.hmac(phoneNumber.trim()));
 
         return rows.stream().findFirst();
     }
@@ -142,6 +145,7 @@ public class UserTenantRepository {
                     email,
                     user_type,
                     phone_number,
+                    phone_number_hash,
                     password,
                     status,
                     email_verification_status,
@@ -151,7 +155,7 @@ public class UserTenantRepository {
                     updated_by,
                     updated_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, %d, true, true, ?, NOW(), ?, NOW())
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, %d, true, true, ?, NOW(), ?, NOW())
                 RETURNING id
                 """, schemaName, TenantUserStatus.ACTIVE.code);
 
@@ -160,10 +164,11 @@ public class UserTenantRepository {
                 Number.class,
                 uuid,
                 tenantId,
-                title,
+                pii.encrypt(title),
                 email,
                 userTypeId,
-                phoneNumber,
+                pii.encrypt(phoneNumber),
+                pii.hmac(phoneNumber),
                 password,
                 createdBy,
                 createdBy
@@ -175,10 +180,10 @@ public class UserTenantRepository {
         validateSchemaName(schemaName);
         String sql = String.format("""
                 UPDATE %s.user_table
-                SET title = ?, phone_number = ?, updated_at = NOW()
+                SET title = ?, phone_number = ?, phone_number_hash = ?, updated_at = NOW()
                 WHERE id = ?
                 """, schemaName);
-        jdbcTemplate.update(sql, title, phoneNumber, id);
+        jdbcTemplate.update(sql, pii.encrypt(title), pii.encrypt(phoneNumber), pii.hmac(phoneNumber), id);
     }
 
     public int updateUserRole(String schemaName, Long userId, Long newUserTypeId) {

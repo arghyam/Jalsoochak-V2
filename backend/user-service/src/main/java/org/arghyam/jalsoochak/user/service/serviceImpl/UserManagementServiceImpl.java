@@ -23,9 +23,12 @@ import org.arghyam.jalsoochak.user.exceptions.UserAlreadyExistsException;
 import org.arghyam.jalsoochak.user.repository.UserCommonRepository;
 import org.arghyam.jalsoochak.user.repository.UserTenantRepository;
 import org.arghyam.jalsoochak.user.repository.records.AdminUserRow;
+import org.arghyam.jalsoochak.user.repository.records.AdminUserTokenRow;
 import org.arghyam.jalsoochak.user.event.InviteEmailEvent;
 import org.arghyam.jalsoochak.user.event.UserEmailEventPublisher;
 import org.arghyam.jalsoochak.user.service.KeycloakAdminHelper;
+import org.arghyam.jalsoochak.user.service.MetadataDecryptionHelper;
+import org.arghyam.jalsoochak.user.service.PiiEncryptionService;
 import org.arghyam.jalsoochak.user.service.TokenService;
 import org.arghyam.jalsoochak.user.service.UserManagementService;
 import org.arghyam.jalsoochak.user.util.SecurityUtils;
@@ -62,6 +65,8 @@ public class UserManagementServiceImpl implements UserManagementService {
     private final FrontendProperties frontendProperties;
     private final TokenService tokenService;
     private final ObjectMapper objectMapper;
+    private final PiiEncryptionService pii;
+    private final MetadataDecryptionHelper metadataDecryptionHelper;
 
     @Override
     @Transactional
@@ -127,8 +132,9 @@ public class UserManagementServiceImpl implements UserManagementService {
         metaMap.put("role", request.getRole());
         if (request.getTenantCode() != null) metaMap.put("tenantCode", request.getTenantCode());
         if (tenantName != null) metaMap.put("tenantName", tenantName);
-        metaMap.put("firstName", request.getFirstName());
-        metaMap.put("lastName", request.getLastName());
+        // Store names encrypted to avoid persisting PII in plaintext in the token table
+        metaMap.put("firstName", pii.encrypt(request.getFirstName()));
+        metaMap.put("lastName", pii.encrypt(request.getLastName()));
 
         String metadataJson;
         try {
@@ -199,19 +205,20 @@ public class UserManagementServiceImpl implements UserManagementService {
         String tenantName = tenantCode != null
                 ? userCommonRepository.findTenantTitleByStateCode(tenantCode).orElse(null) : null;
 
-        // Carry over firstName/lastName from the existing active token
-        Optional<org.arghyam.jalsoochak.user.repository.records.AdminUserTokenRow> existingToken =
-                userCommonRepository.findActiveInviteTokenByEmail(target.email());
+        // Carry over firstName/lastName from the most recent unconsumed invite token (even if expired)
+        Optional<AdminUserTokenRow> existingToken =
+                userCommonRepository.findInviteTokenByEmail(target.email());
 
         Map<String, Object> metaMap = new HashMap<>();
         metaMap.put("role", targetRole);
         if (tenantCode != null) metaMap.put("tenantCode", tenantCode);
         if (tenantName != null) metaMap.put("tenantName", tenantName);
         existingToken.ifPresent(t -> {
-            String firstName = parseMetadata(t.metadata(), "firstName");
-            String lastName = parseMetadata(t.metadata(), "lastName");
-            if (firstName != null) metaMap.put("firstName", firstName);
-            if (lastName != null) metaMap.put("lastName", lastName);
+            String firstName = metadataDecryptionHelper.parseAndDecrypt(t.metadata(), "firstName");
+            String lastName = metadataDecryptionHelper.parseAndDecrypt(t.metadata(), "lastName");
+            // Re-encrypt before storing in the new token
+            if (firstName != null) metaMap.put("firstName", pii.encrypt(firstName));
+            if (lastName != null) metaMap.put("lastName", pii.encrypt(lastName));
         });
 
         String metadataJson;
@@ -234,8 +241,8 @@ public class UserManagementServiceImpl implements UserManagementService {
                 .build()
                 .toUriString();
         String name = existingToken.map(t -> {
-            String fn = parseMetadata(t.metadata(), "firstName");
-            String ln = parseMetadata(t.metadata(), "lastName");
+            String fn = metadataDecryptionHelper.parseAndDecrypt(t.metadata(), "firstName");
+            String ln = metadataDecryptionHelper.parseAndDecrypt(t.metadata(), "lastName");
             return ((fn != null ? fn : "") + " " + (ln != null ? ln : "")).trim();
         }).orElse(null);
         userEmailEventPublisher.publishInviteEmailAfterCommit(InviteEmailEvent.builder()
@@ -246,15 +253,6 @@ public class UserManagementServiceImpl implements UserManagementService {
                 .inviteLink(inviteUrl)
                 .expiryHours(inviteProperties.expiryHours())
                 .build());
-    }
-
-    private String parseMetadata(String json, String key) {
-        if (json == null) return null;
-        try {
-            return objectMapper.readTree(json).path(key).asText(null);
-        } catch (Exception e) {
-            return null;
-        }
     }
 
     @Override

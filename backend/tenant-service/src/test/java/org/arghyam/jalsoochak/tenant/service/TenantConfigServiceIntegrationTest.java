@@ -2,6 +2,7 @@ package org.arghyam.jalsoochak.tenant.service;
 
 import org.arghyam.jalsoochak.tenant.config.EscalationScheduleConfig;
 import org.arghyam.jalsoochak.tenant.config.NudgeScheduleConfig;
+import org.arghyam.jalsoochak.tenant.service.PiiEncryptionService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -45,6 +46,10 @@ class TenantConfigServiceIntegrationTest {
     /** Suppress @PostConstruct scheduling — not under test here. */
     @MockBean
     private TenantSchedulerManager tenantSchedulerManager;
+
+    /** Suppress PII encryption startup — not under test here. */
+    @MockBean
+    private PiiEncryptionService piiEncryptionService;
 
     @Autowired
     private TenantConfigService tenantConfigService;

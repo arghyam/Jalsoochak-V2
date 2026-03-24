@@ -1,6 +1,22 @@
 package org.arghyam.jalsoochak.user.service;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
+import java.util.List;
+import java.util.Optional;
+
 import org.arghyam.jalsoochak.user.clients.KeycloakClient;
 import org.arghyam.jalsoochak.user.config.KeycloakProvider;
 import org.arghyam.jalsoochak.user.config.properties.FrontendProperties;
@@ -9,8 +25,10 @@ import org.arghyam.jalsoochak.user.dto.common.PageResponseDTO;
 import org.arghyam.jalsoochak.user.dto.request.ChangePasswordRequestDTO;
 import org.arghyam.jalsoochak.user.dto.request.InviteRequestDTO;
 import org.arghyam.jalsoochak.user.dto.request.UpdateProfileRequestDTO;
-import org.keycloak.representations.idm.UserRepresentation;
 import org.arghyam.jalsoochak.user.dto.response.AdminUserResponseDTO;
+import org.arghyam.jalsoochak.user.enums.AdminUserStatus;
+import org.arghyam.jalsoochak.user.event.InviteEmailEvent;
+import org.arghyam.jalsoochak.user.event.UserEmailEventPublisher;
 import org.arghyam.jalsoochak.user.exceptions.BadRequestException;
 import org.arghyam.jalsoochak.user.exceptions.ForbiddenAccessException;
 import org.arghyam.jalsoochak.user.exceptions.InsufficientActiveUsersException;
@@ -18,20 +36,20 @@ import org.arghyam.jalsoochak.user.exceptions.InvalidCredentialsException;
 import org.arghyam.jalsoochak.user.exceptions.ResourceNotFoundException;
 import org.arghyam.jalsoochak.user.exceptions.UnauthorizedAccessException;
 import org.arghyam.jalsoochak.user.exceptions.UserAlreadyExistsException;
-import org.arghyam.jalsoochak.user.enums.AdminUserStatus;
 import org.arghyam.jalsoochak.user.repository.UserCommonRepository;
 import org.arghyam.jalsoochak.user.repository.UserTenantRepository;
 import org.arghyam.jalsoochak.user.repository.records.AdminUserRow;
 import org.arghyam.jalsoochak.user.repository.records.AdminUserTokenRow;
-import org.arghyam.jalsoochak.user.event.InviteEmailEvent;
-import org.arghyam.jalsoochak.user.event.UserEmailEventPublisher;
+import org.arghyam.jalsoochak.user.service.MetadataDecryptionHelper;
 import org.arghyam.jalsoochak.user.service.serviceImpl.UserManagementServiceImpl;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.keycloak.representations.idm.UserRepresentation;
 import org.mockito.Answers;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
@@ -41,21 +59,7 @@ import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.web.server.ResponseStatusException;
 
-import java.time.Instant;
-import java.time.temporal.ChronoUnit;
-import java.util.List;
-import java.util.Optional;
-
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.doNothing;
-import static org.mockito.Mockito.doThrow;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 @ExtendWith(MockitoExtension.class)
 @DisplayName("UserManagementServiceImpl - Unit Tests")
@@ -88,14 +92,18 @@ class UserManagementServiceImplTest {
     @Mock
     private TokenService tokenService;
 
+    @Mock
+    private PiiEncryptionService pii;
+
     private UserManagementServiceImpl userManagementService;
 
     @BeforeEach
     void setUp() {
+        MetadataDecryptionHelper metadataDecryptionHelper = new MetadataDecryptionHelper(new ObjectMapper(), pii);
         userManagementService = new UserManagementServiceImpl(
                 keycloakProvider, keycloakClient, userCommonRepository, userTenantRepository,
                 userEmailEventPublisher, keycloakAdminHelper, inviteProperties, frontendProperties,
-                tokenService, new ObjectMapper()
+                tokenService, new ObjectMapper(), pii, metadataDecryptionHelper
         );
     }
 
@@ -664,7 +672,7 @@ class UserManagementServiceImplTest {
             when(userCommonRepository.findAdminUserById(7L)).thenReturn(Optional.of(target));
             when(userCommonRepository.findAdminUserByUuid("kc-super")).thenReturn(Optional.of(callerRow));
             when(userCommonRepository.findUserTypeNameById(1)).thenReturn(Optional.of("SUPER_USER"));
-            when(userCommonRepository.findActiveInviteTokenByEmail("pending@example.com")).thenReturn(Optional.of(existingToken));
+            when(userCommonRepository.findInviteTokenByEmail("pending@example.com")).thenReturn(Optional.of(existingToken));
             when(tokenService.generateRawToken()).thenReturn("new-raw-token");
             when(tokenService.hash("new-raw-token")).thenReturn("new-hash");
             when(inviteProperties.expiryHours()).thenReturn(24);
@@ -678,6 +686,51 @@ class UserManagementServiceImplTest {
             verify(userCommonRepository).upsertToken(
                     eq("pending@example.com"), eq("new-hash"), eq("INVITE"), anyString(), any(), eq(1));
             verify(userEmailEventPublisher).publishInviteEmailAfterCommit(any(InviteEmailEvent.class));
+        }
+
+        @Test
+        @DisplayName("Should carry over names from an expired invite token when reinviting")
+        void reinviteUser_expiredToken_namesCarriedOver() {
+            Authentication auth = superUserAuth("kc-super");
+            AdminUserRow target = userRow(7L, "pending-uuid", "pending@example.com", 0, 1, AdminUserStatus.PENDING);
+            AdminUserRow callerRow = userRow(1L, "kc-super", "super@example.com", 0, 1, AdminUserStatus.ACTIVE);
+
+            // Token is expired (in the past) but unconsumed — names stored as encrypted values
+            String encFirstName = "Rklyc3ROYW1lQ2lwaGVyVGV4dA=="; // placeholder for encrypted "Jane"
+            String encLastName  = "TGFzdE5hbWVDaXBoZXJUZXh0";     // placeholder for encrypted "Doe"
+            AdminUserTokenRow expiredToken = new AdminUserTokenRow(1L, "pending@example.com", "old-hash",
+                    "INVITE", "{\"role\":\"SUPER_USER\",\"firstName\":\"" + encFirstName + "\",\"lastName\":\"" + encLastName + "\"}",
+                    Instant.now().minus(2, ChronoUnit.HOURS), null, null, Instant.now().minus(26, ChronoUnit.HOURS));
+            when(pii.decrypt(encFirstName)).thenReturn("Jane");
+            when(pii.decrypt(encLastName)).thenReturn("Doe");
+
+            when(userCommonRepository.findAdminUserById(7L)).thenReturn(Optional.of(target));
+            when(userCommonRepository.findAdminUserByUuid("kc-super")).thenReturn(Optional.of(callerRow));
+            when(userCommonRepository.findUserTypeNameById(1)).thenReturn(Optional.of("SUPER_USER"));
+            when(userCommonRepository.findInviteTokenByEmail("pending@example.com")).thenReturn(Optional.of(expiredToken));
+            when(tokenService.generateRawToken()).thenReturn("new-raw-token");
+            when(tokenService.hash("new-raw-token")).thenReturn("new-hash");
+            when(inviteProperties.expiryHours()).thenReturn(24);
+            doNothing().when(userCommonRepository).upsertToken(
+                    eq("pending@example.com"), eq("new-hash"), eq("INVITE"), anyString(), any(), eq(1));
+            when(frontendProperties.baseUrl()).thenReturn("http://localhost:3000");
+            when(frontendProperties.invitePath()).thenReturn("/invite");
+
+            userManagementService.reinviteUser(7L, auth);
+
+            // Verify that carried-over names reach the email event
+            ArgumentCaptor<InviteEmailEvent> eventCaptor = ArgumentCaptor.forClass(InviteEmailEvent.class);
+            verify(userEmailEventPublisher).publishInviteEmailAfterCommit(eventCaptor.capture());
+            assertEquals("Jane Doe", eventCaptor.getValue().getName());
+
+            // Verify that upsertToken was called with metadata containing firstName and lastName
+            ArgumentCaptor<String> metadataCaptor = ArgumentCaptor.forClass(String.class);
+            verify(userCommonRepository).upsertToken(
+                    eq("pending@example.com"), eq("new-hash"), eq("INVITE"),
+                    metadataCaptor.capture(), any(), eq(1));
+            String storedMetadata = metadataCaptor.getValue();
+            assertTrue(storedMetadata.contains("\"firstName\""), "metadata should contain firstName key");
+            assertTrue(storedMetadata.contains("\"lastName\""), "metadata should contain lastName key");
         }
 
         @Test

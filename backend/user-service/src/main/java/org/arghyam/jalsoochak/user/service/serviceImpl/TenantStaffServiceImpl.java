@@ -64,9 +64,9 @@ public class TenantStaffServiceImpl implements TenantStaffService {
 
         List<String> normalizedRoles = normalizeRoles(role);
         Integer statusCode = parseStatus(status);
-        List<TenantStaffResponseDTO> rows = tenantStaffRepository.listStaff(schemaName, normalizedRoles, statusCode, name, sortBy, sortDir, offset, size);
-        long total = tenantStaffRepository.countStaff(schemaName, normalizedRoles, statusCode, name);
-        return PageResponseDTO.of(rows, total, p, size);
+        TenantStaffRepository.StaffPage result = tenantStaffRepository.listStaffPage(
+                schemaName, normalizedRoles, statusCode, name, sortBy, sortDir, offset, size);
+        return PageResponseDTO.of(result.items(), result.total(), p, size);
     }
 
     @Override

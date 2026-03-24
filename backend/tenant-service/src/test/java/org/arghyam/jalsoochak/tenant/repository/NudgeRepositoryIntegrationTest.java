@@ -1,5 +1,6 @@
 package org.arghyam.jalsoochak.tenant.repository;
 
+import org.arghyam.jalsoochak.tenant.service.PiiEncryptionService;
 import org.arghyam.jalsoochak.tenant.service.TenantSchedulerManager;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -14,6 +15,9 @@ import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
+
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.when;
 
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -59,6 +63,10 @@ class NudgeRepositoryIntegrationTest {
     @MockBean
     private TenantSchedulerManager tenantSchedulerManager;
 
+    /** Suppress PII encryption startup – not under test here; decrypt returns input as-is. */
+    @MockBean
+    private PiiEncryptionService piiEncryptionService;
+
     @Autowired
     private NudgeRepository nudgeRepository;
 
@@ -72,6 +80,8 @@ class NudgeRepositoryIntegrationTest {
 
     @BeforeEach
     void setUp() {
+        when(piiEncryptionService.decrypt(anyString())).thenAnswer(inv -> inv.getArgument(0));
+
         operatorTypeId = jdbcTemplate.queryForObject(
                 "SELECT id FROM common_schema.user_type_master_table WHERE UPPER(c_name) = 'PUMP_OPERATOR'",
                 Integer.class);

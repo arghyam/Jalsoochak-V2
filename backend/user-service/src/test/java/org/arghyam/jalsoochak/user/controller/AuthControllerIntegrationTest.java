@@ -5,6 +5,7 @@ import jakarta.servlet.http.Cookie;
 import jakarta.ws.rs.core.Response;
 import org.arghyam.jalsoochak.user.config.KeycloakProvider;
 import org.arghyam.jalsoochak.user.event.UserEmailEventPublisher;
+import org.arghyam.jalsoochak.user.service.PiiEncryptionService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -109,6 +110,9 @@ class AuthControllerIntegrationTest {
     @Autowired
     JdbcTemplate jdbcTemplate;
 
+    @Autowired
+    PiiEncryptionService piiEncryptionService;
+
     // ── Setup ──────────────────────────────────────────────────────────────────
 
     @BeforeEach
@@ -132,9 +136,12 @@ class AuthControllerIntegrationTest {
     private void seedUser(String uuid, String email, int tenantId, int adminLevel, int status) {
         jdbcTemplate.update("""
                 INSERT INTO common_schema.tenant_admin_user_master_table
-                    (uuid, email, phone_number, tenant_id, admin_level, password, status)
-                VALUES (?, ?, '91XXXXXXXXXX', ?, ?, 'KEYCLOAK_MANAGED', ?)
-                """, uuid, email, tenantId, adminLevel, status);
+                    (uuid, email, phone_number, phone_number_hash, tenant_id, admin_level, password, status)
+                VALUES (?, ?, ?, ?, ?, ?, 'KEYCLOAK_MANAGED', ?)
+                """, uuid, email,
+                piiEncryptionService.encrypt("91XXXXXXXXXX"),
+                piiEncryptionService.hmac("91XXXXXXXXXX"),
+                tenantId, adminLevel, status);
     }
 
     private void seedToken(String email, String rawToken, String tokenType,
@@ -215,16 +222,21 @@ class AuthControllerIntegrationTest {
         void login_stateAdmin_populatesNameInResponse() throws Exception {
             jdbcTemplate.update("""
                     INSERT INTO common_schema.tenant_admin_user_master_table
-                        (uuid, email, phone_number, tenant_id, admin_level, password, status)
-                    VALUES ('kc-sa-1', 'sa@example.com', '91XXXXXXXXXX', 1, 2, 'KEYCLOAK_MANAGED', 1)
-                    """);
+                        (uuid, email, phone_number, phone_number_hash, tenant_id, admin_level, password, status)
+                    VALUES ('kc-sa-1', 'sa@example.com', ?, ?, 1, 2, 'KEYCLOAK_MANAGED', 1)
+                    """,
+                    piiEncryptionService.encrypt("91XXXXXXXXXX"),
+                    piiEncryptionService.hmac("91XXXXXXXXXX"));
             jdbcTemplate.update("""
                     INSERT INTO tenant_mp.user_table
-                        (tenant_id, title, email, user_type, phone_number, password, status,
+                        (tenant_id, title, email, user_type, phone_number, phone_number_hash, password, status,
                          email_verification_status, phone_verification_status, created_by, updated_by)
-                    VALUES (1, 'State Admin', 'sa@example.com', 2, '91XXXXXXXXXX',
+                    VALUES (1, ?, 'sa@example.com', 2, ?, ?,
                             'KEYCLOAK_MANAGED', 1, true, true, 0, 0)
-                    """);
+                    """,
+                    piiEncryptionService.encrypt("State Admin"),
+                    piiEncryptionService.encrypt("91XXXXXXXXXX"),
+                    piiEncryptionService.hmac("91XXXXXXXXXX"));
             stubKeycloakToken(200, KEYCLOAK_TOKEN_RESPONSE);
 
             mockMvc.perform(post("/api/v1/auth/login")
@@ -255,16 +267,21 @@ class AuthControllerIntegrationTest {
             jdbcTemplate.update("UPDATE common_schema.tenant_master_table SET status = ? WHERE id = 1", TENANT_STATUS_CONFIGURED);
             jdbcTemplate.update("""
                     INSERT INTO common_schema.tenant_admin_user_master_table
-                        (uuid, email, phone_number, tenant_id, admin_level, password, status)
-                    VALUES ('kc-cfg-sa', 'configured-sa@example.com', '91XXXXXXXXXX', 1, 2, 'KEYCLOAK_MANAGED', 1)
-                    """);
+                        (uuid, email, phone_number, phone_number_hash, tenant_id, admin_level, password, status)
+                    VALUES ('kc-cfg-sa', 'configured-sa@example.com', ?, ?, 1, 2, 'KEYCLOAK_MANAGED', 1)
+                    """,
+                    piiEncryptionService.encrypt("91XXXXXXXXXX"),
+                    piiEncryptionService.hmac("91XXXXXXXXXX"));
             jdbcTemplate.update("""
                     INSERT INTO tenant_mp.user_table
-                        (tenant_id, title, email, user_type, phone_number, password, status,
+                        (tenant_id, title, email, user_type, phone_number, phone_number_hash, password, status,
                          email_verification_status, phone_verification_status, created_by, updated_by)
-                    VALUES (1, 'Config Admin', 'configured-sa@example.com', 2, '91XXXXXXXXXX',
+                    VALUES (1, ?, 'configured-sa@example.com', 2, ?, ?,
                             'KEYCLOAK_MANAGED', 1, true, true, 0, 0)
-                    """);
+                    """,
+                    piiEncryptionService.encrypt("Config Admin"),
+                    piiEncryptionService.encrypt("91XXXXXXXXXX"),
+                    piiEncryptionService.hmac("91XXXXXXXXXX"));
             stubKeycloakToken(200, KEYCLOAK_TOKEN_RESPONSE);
 
             mockMvc.perform(post("/api/v1/auth/login")
@@ -279,9 +296,11 @@ class AuthControllerIntegrationTest {
             jdbcTemplate.update("UPDATE common_schema.tenant_master_table SET status = ? WHERE id = 1", TENANT_STATUS_ONBOARDED);
             jdbcTemplate.update("""
                     INSERT INTO common_schema.tenant_admin_user_master_table
-                        (uuid, email, phone_number, tenant_id, admin_level, password, status)
-                    VALUES ('kc-onb', 'onboarded@example.com', '91XXXXXXXXXX', 1, 2, 'KEYCLOAK_MANAGED', 1)
-                    """);
+                        (uuid, email, phone_number, phone_number_hash, tenant_id, admin_level, password, status)
+                    VALUES ('kc-onb', 'onboarded@example.com', ?, ?, 1, 2, 'KEYCLOAK_MANAGED', 1)
+                    """,
+                    piiEncryptionService.encrypt("91XXXXXXXXXX"),
+                    piiEncryptionService.hmac("91XXXXXXXXXX"));
 
             mockMvc.perform(post("/api/v1/auth/login")
                             .contentType(MediaType.APPLICATION_JSON)
@@ -295,16 +314,21 @@ class AuthControllerIntegrationTest {
             jdbcTemplate.update("UPDATE common_schema.tenant_master_table SET status = ? WHERE id = 1", TENANT_STATUS_DEGRADED);
             jdbcTemplate.update("""
                     INSERT INTO common_schema.tenant_admin_user_master_table
-                        (uuid, email, phone_number, tenant_id, admin_level, password, status)
-                    VALUES ('kc-deg', 'degraded@example.com', '91XXXXXXXXXX', 1, 2, 'KEYCLOAK_MANAGED', 1)
-                    """);
+                        (uuid, email, phone_number, phone_number_hash, tenant_id, admin_level, password, status)
+                    VALUES ('kc-deg', 'degraded@example.com', ?, ?, 1, 2, 'KEYCLOAK_MANAGED', 1)
+                    """,
+                    piiEncryptionService.encrypt("91XXXXXXXXXX"),
+                    piiEncryptionService.hmac("91XXXXXXXXXX"));
             jdbcTemplate.update("""
                     INSERT INTO tenant_mp.user_table
-                        (tenant_id, title, email, user_type, phone_number, password, status,
+                        (tenant_id, title, email, user_type, phone_number, phone_number_hash, password, status,
                          email_verification_status, phone_verification_status, created_by, updated_by)
-                    VALUES (1, 'Degraded Admin', 'degraded@example.com', 2, '91XXXXXXXXXX',
+                    VALUES (1, ?, 'degraded@example.com', 2, ?, ?,
                             'KEYCLOAK_MANAGED', 1, true, true, 0, 0)
-                    """);
+                    """,
+                    piiEncryptionService.encrypt("Degraded Admin"),
+                    piiEncryptionService.encrypt("91XXXXXXXXXX"),
+                    piiEncryptionService.hmac("91XXXXXXXXXX"));
             stubKeycloakToken(200, KEYCLOAK_TOKEN_RESPONSE);
 
             mockMvc.perform(post("/api/v1/auth/login")
@@ -394,9 +418,11 @@ class AuthControllerIntegrationTest {
             // Seed the PENDING user so phone number can be fetched from DB
             jdbcTemplate.update("""
                     INSERT INTO common_schema.tenant_admin_user_master_table
-                        (uuid, email, phone_number, tenant_id, admin_level, password, status)
-                    VALUES (gen_random_uuid()::TEXT, 'new@example.com', '9112345678', 1, 2, 'KEYCLOAK_MANAGED', 2)
-                    """);
+                        (uuid, email, phone_number, phone_number_hash, tenant_id, admin_level, password, status)
+                    VALUES (gen_random_uuid()::TEXT, 'new@example.com', ?, ?, 1, 2, 'KEYCLOAK_MANAGED', 2)
+                    """,
+                    piiEncryptionService.encrypt("9112345678"),
+                    piiEncryptionService.hmac("9112345678"));
             String rawToken = "raw-invite-token-info";
             seedToken("new@example.com", rawToken, "INVITE",
                     "{\"role\":\"STATE_ADMIN\",\"tenantName\":\"Madhya Pradesh\",\"firstName\":\"John\",\"lastName\":\"Doe\"}",
