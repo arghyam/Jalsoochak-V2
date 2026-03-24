@@ -274,7 +274,7 @@ public class GlificWhatsAppService {
         String defaultResults;
         try {
             defaultResults = objectMapper.writeValueAsString(
-                    Map.of("1", operatorName, "2", date));
+                    Map.of("name", operatorName, "date", date));
         } catch (JsonProcessingException e) {
             throw new RuntimeException("Failed to serialize flow defaultResults", e);
         }
