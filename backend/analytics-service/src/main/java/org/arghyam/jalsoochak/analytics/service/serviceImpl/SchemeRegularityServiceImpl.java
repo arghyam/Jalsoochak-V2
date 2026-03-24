@@ -5,6 +5,7 @@ import org.arghyam.jalsoochak.analytics.dto.response.AverageWaterSupplyResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.NonSubmissionReasonSchemeCountResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.NationalDashboardResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.OutageReasonSchemeCountResponse;
+import org.arghyam.jalsoochak.analytics.dto.response.PeriodicSchemeRegularityResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.PeriodicWaterQuantityResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.RegionWiseWaterQuantityResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.ReadingSubmissionRateResponse;
@@ -1098,6 +1099,32 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
     }
 
     @Override
+    public PeriodicSchemeRegularityResponse getPeriodicSchemeRegularityByLgdId(
+            Integer lgdId, LocalDate startDate, LocalDate endDate, PeriodScale scale) {
+        validateLgdInput(lgdId);
+        validateDateRange(startDate, endDate);
+        validateScaleInput(scale);
+
+        List<SchemeRegularityRepository.PeriodicSchemeRegularityMetrics> metrics =
+                schemeRegularityRepository.getPeriodicSchemeRegularityByLgdId(lgdId, startDate, endDate, scale);
+
+        return buildPeriodicSchemeRegularityResponse(lgdId, null, startDate, endDate, scale, metrics);
+    }
+
+    @Override
+    public PeriodicSchemeRegularityResponse getPeriodicSchemeRegularityByDepartment(
+            Integer departmentId, LocalDate startDate, LocalDate endDate, PeriodScale scale) {
+        validateDepartmentInput(departmentId);
+        validateDateRange(startDate, endDate);
+        validateScaleInput(scale);
+
+        List<SchemeRegularityRepository.PeriodicSchemeRegularityMetrics> metrics =
+                schemeRegularityRepository.getPeriodicSchemeRegularityByDepartment(departmentId, startDate, endDate, scale);
+
+        return buildPeriodicSchemeRegularityResponse(null, departmentId, startDate, endDate, scale, metrics);
+    }
+
+    @Override
     public OutageReasonSchemeCountResponse getOutageReasonSchemeCountByLgd(
             Integer parentLgdId, LocalDate startDate, LocalDate endDate) {
         validateLgdInput(parentLgdId);
@@ -1740,6 +1767,53 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
                 .toList();
 
         return PeriodicWaterQuantityResponse.builder()
+                .lgdId(lgdId)
+                .departmentId(departmentId)
+                .scale(scale.name().toLowerCase())
+                .startDate(startDate)
+                .endDate(endDate)
+                .periodCount(periodicMetrics.size())
+                .metrics(periodicMetrics)
+                .build();
+    }
+
+    private PeriodicSchemeRegularityResponse buildPeriodicSchemeRegularityResponse(
+            Integer lgdId,
+            Integer departmentId,
+            LocalDate startDate,
+            LocalDate endDate,
+            PeriodScale scale,
+            List<SchemeRegularityRepository.PeriodicSchemeRegularityMetrics> metrics) {
+        List<PeriodicSchemeRegularityResponse.PeriodicMetric> periodicMetrics =
+                metrics.stream()
+                        .map(metric -> {
+                            LocalDate cappedPeriodStart =
+                                    metric.periodStartDate().isBefore(startDate) ? startDate : metric.periodStartDate();
+                            LocalDate cappedPeriodEnd =
+                                    metric.periodEndDate().isAfter(endDate) ? endDate : metric.periodEndDate();
+
+                            long periodDays =
+                                    ChronoUnit.DAYS.between(cappedPeriodStart, cappedPeriodEnd) + 1;
+
+                            BigDecimal averageRegularity = BigDecimal.ZERO;
+                            if (metric.schemeCount() > 0 && periodDays > 0) {
+                                BigDecimal denominator =
+                                        BigDecimal.valueOf((long) metric.schemeCount() * periodDays);
+                                averageRegularity = BigDecimal.valueOf(metric.totalSupplyDays())
+                                        .divide(denominator, 4, RoundingMode.HALF_UP);
+                            }
+
+                            return PeriodicSchemeRegularityResponse.PeriodicMetric.builder()
+                                    .periodStartDate(cappedPeriodStart)
+                                    .periodEndDate(cappedPeriodEnd)
+                                    .schemeCount(metric.schemeCount())
+                                    .totalSupplyDays(metric.totalSupplyDays())
+                                    .averageRegularity(averageRegularity)
+                                    .build();
+                        })
+                        .toList();
+
+        return PeriodicSchemeRegularityResponse.builder()
                 .lgdId(lgdId)
                 .departmentId(departmentId)
                 .scale(scale.name().toLowerCase())

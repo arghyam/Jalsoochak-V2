@@ -5,6 +5,7 @@ import org.arghyam.jalsoochak.analytics.dto.response.AverageWaterSupplyResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.NonSubmissionReasonSchemeCountResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.NationalDashboardResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.OutageReasonSchemeCountResponse;
+import org.arghyam.jalsoochak.analytics.dto.response.PeriodicSchemeRegularityResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.PeriodicWaterQuantityResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.RegionWiseWaterQuantityResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.ReadingSubmissionRateResponse;
@@ -85,6 +86,12 @@ public interface SchemeRegularityService {
             Integer lgdId, LocalDate startDate, LocalDate endDate, PeriodScale scale);
 
     PeriodicWaterQuantityResponse getPeriodicWaterQuantityByDepartment(
+            Integer departmentId, LocalDate startDate, LocalDate endDate, PeriodScale scale);
+
+    PeriodicSchemeRegularityResponse getPeriodicSchemeRegularityByLgdId(
+            Integer lgdId, LocalDate startDate, LocalDate endDate, PeriodScale scale);
+
+    PeriodicSchemeRegularityResponse getPeriodicSchemeRegularityByDepartment(
             Integer departmentId, LocalDate startDate, LocalDate endDate, PeriodScale scale);
 
     OutageReasonSchemeCountResponse getOutageReasonSchemeCountByLgd(

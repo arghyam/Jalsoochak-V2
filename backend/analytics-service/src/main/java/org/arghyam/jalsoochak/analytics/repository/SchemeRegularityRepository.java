@@ -2191,6 +2191,97 @@ public class SchemeRegularityRepository {
                 endDate);
     }
 
+    public List<PeriodicSchemeRegularityMetrics> getPeriodicSchemeRegularityByLgdId(
+            Integer lgdId, LocalDate startDate, LocalDate endDate, PeriodScale scale) {
+        Integer lgdLevel = getLgdLevel(lgdId);
+        if (lgdLevel == null) {
+            throw new IllegalArgumentException("lgd_id not found in dim_lgd_location_table: " + lgdId);
+        }
+        String schemeLgdColumn = resolveSchemeLgdColumn(lgdLevel);
+        return getPeriodicSchemeRegularityMetrics(schemeLgdColumn, lgdId, startDate, endDate, scale);
+    }
+
+    public List<PeriodicSchemeRegularityMetrics> getPeriodicSchemeRegularityByDepartment(
+            Integer departmentId, LocalDate startDate, LocalDate endDate, PeriodScale scale) {
+        Integer departmentLevel = getDepartmentLevel(departmentId);
+        if (departmentLevel == null) {
+            throw new IllegalArgumentException("department_id not found in dim_department_location_table: " + departmentId);
+        }
+        String schemeDepartmentColumn = resolveSchemeDepartmentColumn(departmentLevel);
+        return getPeriodicSchemeRegularityMetrics(
+                schemeDepartmentColumn, departmentId, startDate, endDate, scale);
+    }
+
+    private List<PeriodicSchemeRegularityMetrics> getPeriodicSchemeRegularityMetrics(
+            String schemeLocationColumn,
+            Object locationId,
+            LocalDate startDate,
+            LocalDate endDate,
+            PeriodScale scale) {
+        PeriodSqlParts sqlParts = buildPeriodSqlPartsForMeterReadings(scale);
+        String sql = String.format("""
+                WITH schemes_in_scope AS (
+                    SELECT
+                        s.scheme_id
+                    FROM analytics_schema.dim_scheme_table s
+                    WHERE s.%1$s = ?
+                ),
+                periods AS (
+                    SELECT DISTINCT
+                        %2$s AS period_start_date,
+                        %3$s AS period_end_date,
+                        %4$s AS scope
+                    FROM generate_series(?::date, ?::date, INTERVAL '1 day') AS g(day_date)
+                ),
+                scheme_supply_days AS (
+                    SELECT
+                        m.scheme_id,
+                        %5$s AS period_start_date,
+                        COUNT(DISTINCT m.reading_date)::int AS supply_days
+                    FROM analytics_schema.fact_meter_reading_table m
+                    JOIN schemes_in_scope s
+                        ON s.scheme_id = m.scheme_id
+                    WHERE m.reading_date BETWEEN ? AND ?
+                      AND m.confirmed_reading > 0
+                    GROUP BY m.scheme_id, %5$s
+                ),
+                period_supply AS (
+                    SELECT
+                        period_start_date,
+                        COALESCE(SUM(supply_days)::int, 0) AS total_supply_days
+                    FROM scheme_supply_days
+                    GROUP BY period_start_date
+                )
+                SELECT
+                    p.period_start_date,
+                    p.period_end_date,
+                    COALESCE((SELECT COUNT(*)::int FROM schemes_in_scope), 0) AS scheme_count,
+                    COALESCE(ps.total_supply_days, 0) AS total_supply_days
+                FROM periods p
+                LEFT JOIN period_supply ps
+                    ON ps.period_start_date = p.period_start_date
+                ORDER BY p.period_start_date
+                """,
+                schemeLocationColumn,
+                sqlParts.periodStartFromSeries(),
+                sqlParts.periodEndFromSeries(),
+                sqlParts.periodLabelFromSeries(),
+                sqlParts.periodStartFromFact());
+
+        return jdbcTemplate.query(
+                sql,
+                (rs, rowNum) -> new PeriodicSchemeRegularityMetrics(
+                        rs.getObject("period_start_date", LocalDate.class),
+                        rs.getObject("period_end_date", LocalDate.class),
+                        rs.getInt("scheme_count"),
+                        rs.getInt("total_supply_days")),
+                locationId,
+                startDate,
+                endDate,
+                startDate,
+                endDate);
+    }
+
     public List<PeriodicWaterQuantityMetrics> getPeriodicWaterQuantityByLgdId(
             Integer lgdId, LocalDate startDate, LocalDate endDate, PeriodScale scale) {
         Integer lgdLevel = getLgdLevel(lgdId);
@@ -2322,6 +2413,26 @@ public class SchemeRegularityRepository {
         };
     }
 
+    private PeriodSqlParts buildPeriodSqlPartsForMeterReadings(PeriodScale scale) {
+        return switch (scale) {
+            case DAY -> new PeriodSqlParts(
+                    "g.day_date::date",
+                    "g.day_date::date",
+                    "TO_CHAR(g.day_date::date, 'YYYY-MM-DD')",
+                    "m.reading_date::date");
+            case WEEK -> new PeriodSqlParts(
+                    "DATE_TRUNC('week', g.day_date)::date",
+                    "(DATE_TRUNC('week', g.day_date)::date + 6)",
+                    "TO_CHAR(DATE_TRUNC('week', g.day_date)::date, 'IYYY-\"W\"IW')",
+                    "DATE_TRUNC('week', m.reading_date)::date");
+            case MONTH -> new PeriodSqlParts(
+                    "DATE_TRUNC('month', g.day_date)::date",
+                    "(DATE_TRUNC('month', g.day_date)::date + INTERVAL '1 month - 1 day')::date",
+                    "TO_CHAR(DATE_TRUNC('month', g.day_date)::date, 'YYYY-MM')",
+                    "DATE_TRUNC('month', m.reading_date)::date");
+        };
+    }
+
     public Integer getDepartmentLevel(Integer parentDepartmentId) {
         String sql = """
                 SELECT d.department_level
@@ -2421,6 +2532,12 @@ public class SchemeRegularityRepository {
             Long fhtcCount,
             Long plannedFhtc) {
     }
+
+    public record PeriodicSchemeRegularityMetrics(
+            LocalDate periodStartDate,
+            LocalDate periodEndDate,
+            Integer schemeCount,
+            Integer totalSupplyDays) {}
 
     public record ChildRegionSchemeRegularityMetrics(
             Integer lgdId,

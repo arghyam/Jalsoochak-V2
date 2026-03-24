@@ -251,6 +251,38 @@ class SchemeRegularityRepositoryIntegrationTest {
     }
 
     @Test
+    void getPeriodicSchemeRegularityByLgdId_weekScale_returnsExpectedRowsAndSupplyDays() {
+        List<SchemeRegularityRepository.PeriodicSchemeRegularityMetrics> rows =
+                repository.getPeriodicSchemeRegularityByLgdId(100, D1, D10, PeriodScale.WEEK);
+
+        assertThat(rows).hasSize(2);
+
+        SchemeRegularityRepository.PeriodicSchemeRegularityMetrics weekOne = rows.get(0);
+        assertThat(weekOne.periodStartDate()).isEqualTo(LocalDate.of(2025, 12, 29));
+        assertThat(weekOne.periodEndDate()).isEqualTo(LocalDate.of(2026, 1, 4));
+        assertThat(weekOne.schemeCount()).isEqualTo(2);
+        assertThat(weekOne.totalSupplyDays()).isEqualTo(2);
+
+        SchemeRegularityRepository.PeriodicSchemeRegularityMetrics weekTwo = rows.get(1);
+        assertThat(weekTwo.periodStartDate()).isEqualTo(LocalDate.of(2026, 1, 5));
+        assertThat(weekTwo.periodEndDate()).isEqualTo(LocalDate.of(2026, 1, 11));
+        assertThat(weekTwo.schemeCount()).isEqualTo(2);
+        assertThat(weekTwo.totalSupplyDays()).isEqualTo(0);
+    }
+
+    @Test
+    void getPeriodicSchemeRegularityByLgdId_monthScale_returnsSingleMonthMetric() {
+        List<SchemeRegularityRepository.PeriodicSchemeRegularityMetrics> rows =
+                repository.getPeriodicSchemeRegularityByLgdId(100, D1, D10, PeriodScale.MONTH);
+
+        assertThat(rows).hasSize(1);
+        assertThat(rows.get(0).periodStartDate()).isEqualTo(LocalDate.of(2026, 1, 1));
+        assertThat(rows.get(0).periodEndDate()).isEqualTo(LocalDate.of(2026, 1, 31));
+        assertThat(rows.get(0).schemeCount()).isEqualTo(2);
+        assertThat(rows.get(0).totalSupplyDays()).isEqualTo(2);
+    }
+
+    @Test
     void outageQueriesByLgd_returnParentAndChildAggregations() {
         List<SchemeRegularityRepository.OutageReasonSchemeCount> parent =
                 repository.getOutageReasonSchemeCountByLgd(100, D1, D10);

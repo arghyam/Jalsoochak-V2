@@ -11,6 +11,7 @@ import org.arghyam.jalsoochak.analytics.dto.response.NonSubmissionReasonSchemeCo
 import org.arghyam.jalsoochak.analytics.dto.response.NationalDashboardResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.OutageReasonSchemeCountResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.PeriodicWaterQuantityResponse;
+import org.arghyam.jalsoochak.analytics.dto.response.PeriodicSchemeRegularityResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.RegionWiseWaterQuantityResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.ReadingSubmissionRateResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.SchemeRegularityListResponse;
@@ -466,6 +467,33 @@ public class AnalyticsController {
                     schemeRegularityService.getAverageSchemeRegularityByDepartment(parentDepartmentId, startDate, endDate));
         }
         return ResponseEntity.ok(schemeRegularityService.getAverageSchemeRegularity(parentLgdId, startDate, endDate));
+    }
+
+    @GetMapping("/scheme-regularity/periodic")
+    @Operation(summary = "Get periodic average scheme regularity for an LGD ID or department")
+    public ResponseEntity<PeriodicSchemeRegularityResponse> getPeriodicSchemeRegularity(
+            @RequestParam(name = "start_date") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam(name = "end_date") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
+            @Parameter(
+                    description = "Time aggregation scale",
+                    required = true,
+                    schema = @Schema(type = "string", allowableValues = {"day", "week", "month"}))
+            @RequestParam(name = "scale") String scale,
+            @RequestParam(name = "lgd_id", required = false) Integer lgdId,
+            @RequestParam(name = "department_id", required = false) Integer departmentId) {
+        if (lgdId != null && departmentId != null) {
+            throw new IllegalArgumentException("Provide either lgd_id or department_id, not both");
+        }
+        if (lgdId == null && departmentId == null) {
+            throw new IllegalArgumentException("Provide either lgd_id or department_id");
+        }
+        PeriodScale periodScale = PeriodScale.fromValue(scale);
+        if (lgdId != null) {
+            return ResponseEntity.ok(
+                    schemeRegularityService.getPeriodicSchemeRegularityByLgdId(lgdId, startDate, endDate, periodScale));
+        }
+        return ResponseEntity.ok(
+                schemeRegularityService.getPeriodicSchemeRegularityByDepartment(departmentId, startDate, endDate, periodScale));
     }
 
     @GetMapping("/reading-submission-rate")

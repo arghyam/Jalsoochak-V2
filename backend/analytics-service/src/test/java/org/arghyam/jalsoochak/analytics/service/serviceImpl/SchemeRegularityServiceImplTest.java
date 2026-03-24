@@ -6,6 +6,7 @@ import org.arghyam.jalsoochak.analytics.dto.response.AverageWaterSupplyResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.NationalDashboardResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.NonSubmissionReasonSchemeCountResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.OutageReasonSchemeCountResponse;
+import org.arghyam.jalsoochak.analytics.dto.response.PeriodicSchemeRegularityResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.PeriodicWaterQuantityResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.ReadingSubmissionRateResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.SchemeRegularityListResponse;
@@ -190,6 +191,35 @@ class SchemeRegularityServiceImplTest {
         assertThat(response.getPeriodCount()).isEqualTo(1);
         assertThat(response.getMetrics().getFirst().getPeriodEndDate()).isEqualTo(requestedEnd);
         assertThat(response.getMetrics().getFirst().getAverageWaterQuantity()).isEqualByComparingTo("50.1250");
+    }
+
+    @Test
+    void getPeriodicSchemeRegularityByLgdId_capsAndComputesAverageRegularity() {
+        LocalDate requestedEnd = LocalDate.of(2026, 1, 10);
+        when(schemeRegularityRepository.getPeriodicSchemeRegularityByLgdId(
+                        101,
+                        START,
+                        requestedEnd,
+                        PeriodScale.WEEK))
+                .thenReturn(
+                        List.of(
+                                new SchemeRegularityRepository.PeriodicSchemeRegularityMetrics(
+                                        LocalDate.of(2025, 12, 29),
+                                        LocalDate.of(2026, 1, 12),
+                                        2,
+                                        2)));
+
+        PeriodicSchemeRegularityResponse response =
+                service.getPeriodicSchemeRegularityByLgdId(101, START, requestedEnd, PeriodScale.WEEK);
+
+        assertThat(response.getScale()).isEqualTo("week");
+        assertThat(response.getPeriodCount()).isEqualTo(1);
+        assertThat(response.getMetrics().getFirst().getPeriodStartDate()).isEqualTo(START);
+        assertThat(response.getMetrics().getFirst().getPeriodEndDate()).isEqualTo(requestedEnd);
+        assertThat(response.getMetrics().getFirst().getSchemeCount()).isEqualTo(2);
+        assertThat(response.getMetrics().getFirst().getTotalSupplyDays()).isEqualTo(2);
+        // periodDays = 2026-01-01..2026-01-10 inclusive = 10; regularity = 2 / (2 * 10) = 0.1000
+        assertThat(response.getMetrics().getFirst().getAverageRegularity()).isEqualByComparingTo("0.1000");
     }
 
     @Test
