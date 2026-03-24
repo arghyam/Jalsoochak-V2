@@ -253,15 +253,15 @@ public class GlificWhatsAppService {
      * an HSM template with clickable buttons and continues the conversation based on
      * the operator's button response.</p>
      *
-     * <p>Operator name and date are passed as {@code defaultResults} using template variable
-     * keys {@code "1"} and {@code "2"} respectively, matching the HSM template parameter order.</p>
+     * <p>Operator name and date are passed as {@code defaultResults} using the keys
+     * {@code "name"} and {@code "date"} respectively, matching the HSM template parameter names.</p>
      *
      * <p>{@code glific.flow.nudge-id} is a required configuration — startup fails fast
      * if it is absent (see {@code @PostConstruct} validation).</p>
      *
      * @param contactId    Glific contact ID obtained from {@link #optIn}
-     * @param operatorName operator name; mapped to HSM template variable {@code {{1}}}
-     * @param date         today's date string; mapped to HSM template variable {@code {{2}}}
+     * @param operatorName operator name; passed as {@code defaultResults} key {@code "name"}
+     * @param date         today's date string; passed as {@code defaultResults} key {@code "date"}
      * @throws IllegalStateException if {@code glific.flow.nudge-id} is blank
      * @throws RuntimeException      if Glific returns GraphQL errors or {@code success=false}
      */
