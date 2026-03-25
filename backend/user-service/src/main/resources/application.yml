@@ -66,6 +66,7 @@ keycloak:
 
 staff:
   allowed-update-roles: SECTION_OFFICER,DISTRICT_OFFICER
+  managed-password-key: ${STAFF_MANAGED_PASSWORD_KEY}
 
 invite:
   expiry-hours: 24
@@ -92,6 +93,13 @@ http-client:
 pii:
   encryption-key: ${PII_ENCRYPTION_KEY}
   hmac-key: ${PII_HMAC_KEY}
+
+otp:
+  expiry-minutes: ${OTP_EXPIRY_MINUTES:10}
+  max-attempts: ${OTP_MAX_ATTEMPTS:3}
+  cooldown-seconds: ${OTP_COOLDOWN_SECONDS:60}
+  otp-length: ${OTP_LENGTH:6}
+  delivery-channel: ${OTP_DELIVERY_CHANNEL:WHATSAPP}
 
 eureka:
   client:

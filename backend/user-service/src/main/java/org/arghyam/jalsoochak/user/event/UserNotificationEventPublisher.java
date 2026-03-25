@@ -17,7 +17,7 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 @Component
 @RequiredArgsConstructor
 @Slf4j
-public class UserEmailEventPublisher {
+public class UserNotificationEventPublisher {
 
     private static final String COMMON_TOPIC = "common-topic";
 
@@ -31,6 +31,10 @@ public class UserEmailEventPublisher {
         publishAfterCommit("SEND_PASSWORD_RESET_EMAIL", event);
     }
 
+    public void publishLoginOtpAfterCommit(SendLoginOtpEvent event) {
+        publishAfterCommit("SEND_LOGIN_OTP", event);
+    }
+
     private void publishAfterCommit(String label, Object event) {
         if (TransactionSynchronizationManager.isSynchronizationActive()) {
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
@@ -38,15 +42,15 @@ public class UserEmailEventPublisher {
                 public void afterCommit() {
                     boolean ok = kafkaProducer.publishJson(COMMON_TOPIC, event);
                     if (!ok) {
-                        log.warn("[email-events] Failed to publish {} event to topic={}", label, COMMON_TOPIC);
+                        log.warn("[notification-event] Failed to publish {} event to topic={}", label, COMMON_TOPIC);
                     }
                 }
             });
         } else {
-            log.warn("[email-events] No active transaction; publishing {} event immediately", label);
+            log.warn("[notification-event] No active transaction; publishing {} event immediately", label);
             boolean ok = kafkaProducer.publishJson(COMMON_TOPIC, event);
             if (!ok) {
-                log.warn("[email-events] Failed to publish {} event to topic={}", label, COMMON_TOPIC);
+                log.warn("[notification-event] Failed to publish {} event to topic={}", label, COMMON_TOPIC);
             }
         }
     }
