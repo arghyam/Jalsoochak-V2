@@ -90,6 +90,23 @@ public class OtpRepository {
         return rows > 0;
     }
 
+    /**
+     * Reverts a consumed OTP back to active ({@code used_at = NULL}), only if it has not
+     * yet expired. Used as a compensating action when downstream operations fail after
+     * OTP consumption.
+     *
+     * @return {@code true} if the OTP was successfully reverted, {@code false} if it had
+     *         already expired or the row was not found
+     */
+    public boolean revertConsumption(Long otpId) {
+        int rows = jdbcTemplate.update("""
+                UPDATE common_schema.otp_table
+                SET used_at = NULL
+                WHERE id = ? AND expires_at > NOW()
+                """, otpId);
+        return rows > 0;
+    }
+
     private OtpRow mapRow(ResultSet rs) throws SQLException {
         Timestamp createdAt = rs.getTimestamp("created_at");
         Timestamp expiresAt = rs.getTimestamp("expires_at");

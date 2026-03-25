@@ -95,7 +95,7 @@ class OtpServiceTest {
     class VerifyOtp {
 
         @Test
-        @DisplayName("marks OTP used on correct input")
+        @DisplayName("marks OTP used on correct input and returns OTP ID")
         void marksUsedOnCorrectOtp() {
             OtpRow row = new OtpRow(10L, "encrypted-123456", 1, 1L, OtpType.LOGIN, 0,
                     Instant.now().minus(1, ChronoUnit.MINUTES),
@@ -104,8 +104,9 @@ class OtpServiceTest {
             when(piiEncryptionService.decrypt("encrypted-123456")).thenReturn("123456");
             when(otpRepository.markUsed(10L)).thenReturn(true);
 
-            otpService.verifyOtp(1L, 1, OtpType.LOGIN, "123456");
+            Long consumedId = otpService.verifyOtp(1L, 1, OtpType.LOGIN, "123456");
 
+            assertThat(consumedId).isEqualTo(10L);
             verify(otpRepository).markUsed(10L);
             verify(otpRepository, never()).incrementAttemptCount(any());
         }
@@ -152,6 +153,26 @@ class OtpServiceTest {
 
             verify(otpRepository).markUsed(10L);
             verify(otpRepository, never()).incrementAttemptCount(any());
+        }
+
+        @Test
+        @DisplayName("reverts OTP consumption when revertOtpConsumption is called and OTP not expired")
+        void revertsOtpConsumption() {
+            when(otpRepository.revertConsumption(10L)).thenReturn(true);
+
+            otpService.revertOtpConsumption(10L);
+
+            verify(otpRepository).revertConsumption(10L);
+        }
+
+        @Test
+        @DisplayName("logs warning when revertOtpConsumption finds OTP expired")
+        void logsWarningWhenRevertFindsExpiredOtp() {
+            when(otpRepository.revertConsumption(10L)).thenReturn(false);
+
+            otpService.revertOtpConsumption(10L); // must not throw
+
+            verify(otpRepository).revertConsumption(10L);
         }
 
         @Test

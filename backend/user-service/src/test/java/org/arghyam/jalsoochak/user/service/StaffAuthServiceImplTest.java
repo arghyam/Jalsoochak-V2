@@ -179,6 +179,7 @@ class StaffAuthServiceImplTest {
             when(userCommonRepository.findTenantIdByStateCode("MP")).thenReturn(Optional.of(1));
             when(userTenantRepository.findUserByPhone("tenant_mp", "919876543210"))
                     .thenReturn(Optional.of(ACTIVE_USER));
+            when(otpService.verifyOtp(10L, 1, OtpType.LOGIN, "123456")).thenReturn(99L);
             when(staffKeycloakService.ensureKeycloakAccount(ACTIVE_USER, "MP", "tenant_mp"))
                     .thenReturn("managed-pw");
             when(keycloakClient.obtainToken("919876543210", "managed-pw"))
@@ -220,9 +221,27 @@ class StaffAuthServiceImplTest {
             when(userCommonRepository.findTenantIdByStateCode("MP")).thenReturn(Optional.of(1));
             when(userTenantRepository.findUserByPhone("tenant_mp", "919876543210"))
                     .thenReturn(Optional.of(INACTIVE_USER));
+            when(otpService.verifyOtp(10L, 1, OtpType.LOGIN, "123456")).thenReturn(99L);
 
             assertThatThrownBy(() -> service.verifyOtp(request))
                     .isInstanceOf(AccountDeactivatedException.class);
+        }
+
+        @Test
+        @DisplayName("reverts OTP consumption when Keycloak provisioning fails")
+        void revertsOtpOnKeycloakFailure() {
+            when(userCommonRepository.findTenantIdByStateCode("MP")).thenReturn(Optional.of(1));
+            when(userTenantRepository.findUserByPhone("tenant_mp", "919876543210"))
+                    .thenReturn(Optional.of(ACTIVE_USER));
+            when(otpService.verifyOtp(10L, 1, OtpType.LOGIN, "123456")).thenReturn(99L);
+            doThrow(new RuntimeException("Keycloak unreachable"))
+                    .when(staffKeycloakService).ensureKeycloakAccount(ACTIVE_USER, "MP", "tenant_mp");
+
+            assertThatThrownBy(() -> service.verifyOtp(request))
+                    .isInstanceOf(RuntimeException.class)
+                    .hasMessageContaining("Keycloak unreachable");
+
+            verify(otpService).revertOtpConsumption(99L);
         }
 
         @Test

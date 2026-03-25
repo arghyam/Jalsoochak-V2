@@ -144,3 +144,6 @@ CREATE UNIQUE INDEX uq_active_otp
 
 CREATE INDEX idx_otp_expires ON common_schema.otp_table(expires_at);
 CREATE INDEX idx_otp_tenant  ON common_schema.otp_table(tenant_id);
+CREATE INDEX idx_otp_user_tenant_type_active
+    ON common_schema.otp_table(user_id, tenant_id, otp_type, expires_at)
+    WHERE used_at IS NULL;

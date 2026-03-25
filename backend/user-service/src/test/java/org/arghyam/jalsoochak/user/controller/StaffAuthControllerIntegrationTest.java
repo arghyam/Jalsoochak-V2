@@ -46,7 +46,7 @@ import com.github.tomakehurst.wiremock.client.WireMock;
 import jakarta.ws.rs.core.Response;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK)
-@AutoConfigureMockMvc(addFilters = false)
+@AutoConfigureMockMvc
 @AutoConfigureWireMock(port = 0)
 @Testcontainers
 @ActiveProfiles("test")

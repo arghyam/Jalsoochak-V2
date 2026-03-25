@@ -26,6 +26,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.Instant;
+import java.util.Objects;
 import java.util.Optional;
 
 
@@ -98,27 +99,40 @@ public class StaffAuthServiceImpl implements StaffAuthService {
         String tenantCode = request.getTenantCode().trim().toUpperCase();
         String schema = "tenant_" + tenantCode.toLowerCase();
 
-        // Resolve user and verify OTP in a short-lived transaction so the DB connection
-        // is released before the external Keycloak calls below.
-        TenantUserRecord user = transactionTemplate.execute(status -> {
-            Integer tenantId = userCommonRepository.findTenantIdByStateCode(tenantCode)
-                    .orElseThrow(() -> new BadRequestException("Invalid or expired OTP"));
+        // Resolve tenant and user in a short-lived transaction. OTP verification runs
+        // outside the transaction so a Keycloak failure cannot leave the OTP permanently consumed.
+        record UserResolution(TenantUserRecord user, int tenantId) {}
 
+        UserResolution resolution = Objects.requireNonNull(transactionTemplate.execute(status -> {
+            int tenantId = userCommonRepository.findTenantIdByStateCode(tenantCode)
+                    .orElseThrow(() -> new BadRequestException("Invalid or expired OTP"));
             TenantUserRecord u = userTenantRepository.findUserByPhone(schema, request.getPhoneNumber().trim())
                     .orElseThrow(() -> new BadRequestException("Invalid or expired OTP"));
+            return new UserResolution(u, tenantId);
+        }));
 
-            // Verify OTP before checking account status to avoid leaking whether an account is deactivated
-            otpService.verifyOtp(u.id(), tenantId, OtpType.LOGIN, request.getOtp());
+        TenantUserRecord user = resolution.user();
+        int tenantId = resolution.tenantId();
 
-            if (u.status() == null || u.status() != TenantUserStatus.ACTIVE.code) {
-                throw new AccountDeactivatedException("Account is deactivated");
-            }
-            return u;
-        });
+        // Verify OTP before checking account status to avoid leaking whether an account is deactivated.
+        // Returns the consumed OTP ID for potential reversion if Keycloak fails.
+        Long consumedOtpId = otpService.verifyOtp(user.id(), tenantId, OtpType.LOGIN, request.getOtp());
 
-        // Keycloak provisioning and token exchange run outside the DB transaction
-        String managedPassword = staffKeycloakService.ensureKeycloakAccount(user, tenantCode, schema);
-        KeycloakTokenResponse token = keycloakClient.obtainToken(user.phoneNumber(), managedPassword);
+        if (user.status() == null || user.status() != TenantUserStatus.ACTIVE.code) {
+            throw new AccountDeactivatedException("Account is deactivated");
+        }
+
+        // Keycloak provisioning and token exchange run outside the DB transaction.
+        // If they fail, revert OTP consumption so the user can retry without requesting a new OTP.
+        String managedPassword;
+        KeycloakTokenResponse token;
+        try {
+            managedPassword = staffKeycloakService.ensureKeycloakAccount(user, tenantCode, schema);
+            token = keycloakClient.obtainToken(user.phoneNumber(), managedPassword);
+        } catch (RuntimeException e) {
+            otpService.revertOtpConsumption(consumedOtpId);
+            throw e;
+        }
 
         TokenResponseDTO resp = new TokenResponseDTO();
         resp.setAccessToken(token.accessToken());

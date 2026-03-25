@@ -9,6 +9,8 @@ import org.arghyam.jalsoochak.user.repository.OtpRepository;
 import org.arghyam.jalsoochak.user.repository.records.OtpRow;
 import org.springframework.stereotype.Service;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -76,9 +78,11 @@ public class OtpService {
      *
      * <p>On match: marks the OTP as used. It cannot be replayed.
      *
+     * @return the ID of the consumed OTP row, which can be passed to
+     *         {@link #revertOtpConsumption(Long)} if a downstream operation fails
      * @throws BadRequestException if there is no active OTP, max attempts exceeded, or mismatch
      */
-    public void verifyOtp(Long userId, Integer tenantId, OtpType otpType, String rawOtp) {
+    public Long verifyOtp(Long userId, Integer tenantId, OtpType otpType, String rawOtp) {
         OtpRow otpRow = otpRepository.findActiveOtp(userId, tenantId, otpType)
                 .orElseThrow(() -> new BadRequestException("Invalid or expired OTP"));
 
@@ -87,7 +91,9 @@ public class OtpService {
         }
 
         String storedOtp = piiEncryptionService.decrypt(otpRow.encryptedOtp());
-        if (!storedOtp.equals(rawOtp)) {
+        if (!MessageDigest.isEqual(
+                storedOtp.getBytes(StandardCharsets.UTF_8),
+                rawOtp.getBytes(StandardCharsets.UTF_8))) {
             otpRepository.incrementAttemptCount(otpRow.id());
             log.debug("OTP mismatch for userId={} tenantId={} type={} attempts={}",
                     userId, tenantId, otpType, otpRow.attemptCount() + 1);
@@ -99,6 +105,21 @@ public class OtpService {
             throw new BadRequestException("Invalid or expired OTP");
         }
         log.debug("OTP verified for userId={} tenantId={} type={}", userId, tenantId, otpType);
+        return otpRow.id();
+    }
+
+    /**
+     * Reverts OTP consumption for a given OTP ID. Used as a compensating action when a
+     * downstream operation (e.g., Keycloak provisioning) fails after the OTP was consumed,
+     * so the user can retry without requesting a new OTP.
+     *
+     * <p>No-op if the OTP has already expired.
+     */
+    public void revertOtpConsumption(Long otpId) {
+        boolean reverted = otpRepository.revertConsumption(otpId);
+        if (!reverted) {
+            log.warn("Could not revert OTP consumption for otpId={} (may have expired)", otpId);
+        }
     }
 
     private String generateOtp() {

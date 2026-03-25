@@ -141,14 +141,14 @@ public class StaffKeycloakService {
         }
     }
 
-    /** Returns [firstName, lastName]. If title has no space, lastName is set to a single space. */
+    /** Returns [firstName, lastName]. If title has no space, lastName is empty string. */
     private String[] splitName(String title) {
         if (title == null || title.isBlank()) {
-            return new String[]{"Staff", " "};
+            return new String[]{"Staff", ""};
         }
         int idx = title.indexOf(' ');
         if (idx < 0) {
-            return new String[]{title, " "};
+            return new String[]{title, ""};
         }
         return new String[]{title.substring(0, idx), title.substring(idx + 1)};
     }

@@ -151,4 +151,39 @@ class OtpRepositoryIntegrationTest {
             assertThat(otpRepository.findActiveOtp(USER_ID, TENANT_ID, OtpType.LOGIN)).isEmpty();
         }
     }
+
+    @Nested
+    @DisplayName("revertConsumption")
+    class RevertConsumption {
+
+        @Test
+        @DisplayName("restores OTP to active after markUsed")
+        void restoresActiveOtpAfterMarkUsed() {
+            otpRepository.insertOtp(USER_ID, TENANT_ID, OtpType.LOGIN, "enc-otp", futureExpiry());
+            OtpRow row = otpRepository.findActiveOtp(USER_ID, TENANT_ID, OtpType.LOGIN).orElseThrow();
+            otpRepository.markUsed(row.id());
+
+            boolean reverted = otpRepository.revertConsumption(row.id());
+
+            assertThat(reverted).isTrue();
+            assertThat(otpRepository.findActiveOtp(USER_ID, TENANT_ID, OtpType.LOGIN)).isPresent();
+        }
+
+        @Test
+        @DisplayName("returns false for an expired OTP (no revert)")
+        void returnsFalseForExpiredOtp() {
+            Instant past = Instant.now().minus(1, ChronoUnit.MINUTES);
+            jdbcTemplate.update("""
+                    INSERT INTO common_schema.otp_table (otp, tenant_id, user_id, otp_type, expires_at, used_at)
+                    VALUES (?, ?, ?, ?, ?, NOW())
+                    """, "enc-otp", TENANT_ID, USER_ID, "LOGIN",
+                    java.sql.Timestamp.from(past));
+            Long id = jdbcTemplate.queryForObject(
+                    "SELECT id FROM common_schema.otp_table WHERE user_id = ?", Long.class, USER_ID);
+
+            boolean reverted = otpRepository.revertConsumption(id);
+
+            assertThat(reverted).isFalse();
+        }
+    }
 }
