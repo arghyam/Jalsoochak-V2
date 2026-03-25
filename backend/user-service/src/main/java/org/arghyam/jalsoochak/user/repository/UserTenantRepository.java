@@ -34,6 +34,8 @@ public class UserTenantRepository {
                u.user_type,
                u.title,
                u.uuid,
+               u.status,
+               u.whatsapp_connection_id,
                ut.c_name
         FROM %s.user_table u
         LEFT JOIN common_schema.user_type_master_table ut
@@ -50,7 +52,9 @@ public class UserTenantRepository {
                         toLong(rs.getObject("user_type")),
                         rs.getString("c_name"),
                         pii.decrypt(rs.getString("title")),
-                        rs.getString("uuid")
+                        rs.getString("uuid"),
+                        toInteger(rs.getObject("status")),
+                        toLong(rs.getObject("whatsapp_connection_id"))
                 ), userId);
 
         return rows.stream().findFirst();
@@ -67,6 +71,8 @@ public class UserTenantRepository {
                u.user_type,
                u.title,
                u.uuid,
+               u.status,
+               u.whatsapp_connection_id,
                ut.c_name
         FROM %s.user_table u
         LEFT JOIN common_schema.user_type_master_table ut
@@ -83,7 +89,9 @@ public class UserTenantRepository {
                         toLong(rs.getObject("user_type")),
                         rs.getString("c_name"),
                         pii.decrypt(rs.getString("title")),
-                        rs.getString("uuid")
+                        rs.getString("uuid"),
+                        toInteger(rs.getObject("status")),
+                        toLong(rs.getObject("whatsapp_connection_id"))
                 ), email);
 
         return rows.stream().findFirst();
@@ -104,6 +112,8 @@ public class UserTenantRepository {
                u.user_type,
                u.title,
                u.uuid,
+               u.status,
+               u.whatsapp_connection_id,
                ut.c_name
         FROM %s.user_table u
         LEFT JOIN common_schema.user_type_master_table ut
@@ -120,7 +130,9 @@ public class UserTenantRepository {
                         toLong(rs.getObject("user_type")),
                         rs.getString("c_name"),
                         pii.decrypt(rs.getString("title")),
-                        rs.getString("uuid")
+                        rs.getString("uuid"),
+                        toInteger(rs.getObject("status")),
+                        toLong(rs.getObject("whatsapp_connection_id"))
                 ), pii.hmac(phoneNumber.trim()));
 
         return rows.stream().findFirst();
@@ -207,6 +219,38 @@ public class UserTenantRepository {
                 WHERE id = ?
                 """, schemaName);
         jdbcTemplate.update(sql, languageId, userId);
+    }
+
+    /**
+     * Sets the Keycloak UUID and stores an AES-encrypted managed password for a staff user.
+     * Called by {@code StaffKeycloakService} on first successful OTP login (lazy provisioning).
+     */
+    public void updateKeycloakUuidAndPassword(String schemaName, Long userId,
+                                              String keycloakUuid, String encryptedPassword) {
+        validateSchemaName(schemaName);
+        String sql = String.format("""
+                UPDATE %s.user_table
+                SET uuid = ?, password = ?, updated_at = NOW()
+                WHERE id = ?
+                """, schemaName);
+        jdbcTemplate.update(sql, keycloakUuid, encryptedPassword, userId);
+    }
+
+    /**
+     * Returns the raw {@code password} column value for a given user.
+     * Used by {@code StaffKeycloakService} to determine whether a managed password
+     * has already been set (non-placeholder value → decrypt with {@code PasswordCipher}).
+     */
+    public Optional<String> findPasswordByUserId(String schemaName, Long userId) {
+        validateSchemaName(schemaName);
+        String sql = String.format("""
+                SELECT password
+                FROM %s.user_table
+                WHERE id = ?
+                LIMIT 1
+                """, schemaName);
+        List<String> rows = jdbcTemplate.query(sql, (rs, n) -> rs.getString("password"), userId);
+        return rows.stream().findFirst();
     }
 
     private Long toLong(Object value) {

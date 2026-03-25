@@ -32,7 +32,7 @@ import org.arghyam.jalsoochak.user.repository.UserTenantRepository;
 import org.arghyam.jalsoochak.user.repository.records.AdminUserRow;
 import org.arghyam.jalsoochak.user.repository.records.AdminUserTokenRow;
 import org.arghyam.jalsoochak.user.event.ResetPasswordEmailEvent;
-import org.arghyam.jalsoochak.user.event.UserEmailEventPublisher;
+import org.arghyam.jalsoochak.user.event.UserNotificationEventPublisher;
 import org.arghyam.jalsoochak.user.service.AuthService;
 import org.arghyam.jalsoochak.user.service.KeycloakAdminHelper;
 import org.arghyam.jalsoochak.user.service.TokenService;
@@ -60,7 +60,7 @@ public class AuthServiceImpl implements AuthService {
     private final KeycloakClient keycloakClient;
     private final UserCommonRepository userCommonRepository;
     private final UserTenantRepository userTenantRepository;
-    private final UserEmailEventPublisher userEmailEventPublisher;
+    private final UserNotificationEventPublisher userNotificationEventPublisher;
     private final KeycloakAdminHelper keycloakAdminHelper;
     private final PasswordResetProperties passwordResetProperties;
     private final FrontendProperties frontendProperties;
@@ -251,7 +251,7 @@ public class AuthServiceImpl implements AuthService {
                 .queryParam("token", raw)
                 .build()
                 .toUriString();
-        userEmailEventPublisher.publishResetPasswordEmailAfterCommit(ResetPasswordEmailEvent.builder()
+        userNotificationEventPublisher.publishResetPasswordEmailAfterCommit(ResetPasswordEmailEvent.builder()
                 .eventType("SEND_PASSWORD_RESET_EMAIL")
                 .to(request.getEmail())
                 .resetLink(resetUrl)

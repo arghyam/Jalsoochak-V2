@@ -73,6 +73,8 @@ public class SecurityConfig {
                                     "/api/v1/tenant/user/staff/counts/by-role",
                                     "/api/v1/auth/forgot-password",
                                     "/api/v1/auth/reset-password",
+                                    "/api/v1/auth/staff/request-otp",
+                                    "/api/v1/auth/staff/verify-otp",
                                     // Public (no-auth) endpoints
                                     "/api/v1/public/**",
                                     // Tenant staff endpoints (no-auth; tenantCode param required)
