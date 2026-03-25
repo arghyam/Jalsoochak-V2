@@ -62,7 +62,8 @@ public class TenantStaffRepository {
         if (value == null) return null;
         try {
             byte[] decoded = Base64.getDecoder().decode(value);
-            if (decoded.length <= 12) {
+            // AES-GCM: 12-byte IV + 16-byte auth tag = 28 bytes minimum (for empty plaintext)
+            if (decoded.length < 28) {
                 return value; // too short to be AES-GCM ciphertext — legacy plaintext
             }
         } catch (IllegalArgumentException e) {
