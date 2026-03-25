@@ -64,7 +64,13 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@WebMvcTest(controllers = AnalyticsController.class)
+@WebMvcTest(controllers = {
+        AnalyticsTenantSchemeController.class,
+        AnalyticsWaterQuantityOutageSubmissionController.class,
+        AnalyticsSchemeReportingController.class,
+        AnalyticsRegularityAndReadingController.class,
+        AnalyticsWaterSupplyNationalController.class
+})
 @Import(GlobalExceptionHandler.class)
 @AutoConfigureMockMvc(addFilters = false)
 class AnalyticsControllerInputCombinationTest {
