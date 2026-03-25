@@ -90,6 +90,9 @@ class AuthServiceImplTest {
     @Mock
     private TokenService tokenService;
 
+    @Mock
+    private MetadataDecryptionHelper metadataDecryptionHelper;
+
     private AuthServiceImpl authService;
 
     @BeforeEach
@@ -97,7 +100,7 @@ class AuthServiceImplTest {
         authService = new AuthServiceImpl(
                 keycloakProvider, keycloakClient, userCommonRepository, userTenantRepository,
                 userNotificationEventPublisher, keycloakAdminHelper, passwordResetProperties,
-                frontendProperties, tokenService, new ObjectMapper()
+                frontendProperties, tokenService, new ObjectMapper(), metadataDecryptionHelper
         );
     }
 
@@ -284,10 +287,12 @@ class AuthServiceImplTest {
         void getInviteInfo_validToken_returnsInfo() {
             String rawToken = "raw-invite-token";
             String hash = "invite-hash";
+            String metadata = "{\"role\":\"STATE_ADMIN\",\"tenantName\":\"Madhya Pradesh\",\"firstName\":\"<enc-john>\",\"lastName\":\"<enc-doe>\"}";
             when(tokenService.hash(rawToken)).thenReturn(hash);
             when(userCommonRepository.findActiveTokenByHash(hash)).thenReturn(Optional.of(
-                    activeTokenRow("invited@example.com", hash, "INVITE",
-                            "{\"role\":\"STATE_ADMIN\",\"tenantName\":\"Madhya Pradesh\",\"firstName\":\"John\",\"lastName\":\"Doe\"}")));
+                    activeTokenRow("invited@example.com", hash, "INVITE", metadata)));
+            when(metadataDecryptionHelper.parseAndDecrypt(metadata, "firstName")).thenReturn("John");
+            when(metadataDecryptionHelper.parseAndDecrypt(metadata, "lastName")).thenReturn("Doe");
             // getInviteInfo checks existsActiveAdminUserByEmail (not existsAdminUserByEmail)
             when(userCommonRepository.existsActiveAdminUserByEmail("invited@example.com")).thenReturn(false);
             // phoneNumber is fetched from the PENDING user record

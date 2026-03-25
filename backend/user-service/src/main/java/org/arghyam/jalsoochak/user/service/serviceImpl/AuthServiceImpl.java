@@ -35,6 +35,7 @@ import org.arghyam.jalsoochak.user.event.ResetPasswordEmailEvent;
 import org.arghyam.jalsoochak.user.event.UserNotificationEventPublisher;
 import org.arghyam.jalsoochak.user.service.AuthService;
 import org.arghyam.jalsoochak.user.service.KeycloakAdminHelper;
+import org.arghyam.jalsoochak.user.service.MetadataDecryptionHelper;
 import org.arghyam.jalsoochak.user.service.TokenService;
 import org.arghyam.jalsoochak.user.util.SecurityUtils;
 import org.keycloak.admin.client.resource.UserResource;
@@ -66,6 +67,7 @@ public class AuthServiceImpl implements AuthService {
     private final FrontendProperties frontendProperties;
     private final TokenService tokenService;
     private final ObjectMapper objectMapper;
+    private final MetadataDecryptionHelper metadataDecryptionHelper;
 
     @Override
     public AuthResult login(LoginRequestDTO request) {
@@ -128,8 +130,8 @@ public class AuthServiceImpl implements AuthService {
         String email = tokenRow.email();
         String role = parseMetadata(tokenRow.metadata(), "role");
         String tenantName = parseMetadata(tokenRow.metadata(), "tenantName");
-        String firstName = parseMetadata(tokenRow.metadata(), "firstName");
-        String lastName = parseMetadata(tokenRow.metadata(), "lastName");
+        String firstName = metadataDecryptionHelper.parseAndDecrypt(tokenRow.metadata(), "firstName");
+        String lastName = metadataDecryptionHelper.parseAndDecrypt(tokenRow.metadata(), "lastName");
 
         if (userCommonRepository.existsActiveAdminUserByEmail(email)) {
             throw new UserAlreadyExistsException("Account already exists");
