@@ -6,15 +6,19 @@ import lombok.RequiredArgsConstructor;
 import org.arghyam.jalsoochak.user.dto.common.ApiResponseDTO;
 import org.arghyam.jalsoochak.user.dto.common.PageResponseDTO;
 import org.arghyam.jalsoochak.user.dto.request.UpdateStaffRoleRequestDTO;
+import org.arghyam.jalsoochak.user.dto.request.WelcomeMessageRequestDTO;
 import org.arghyam.jalsoochak.user.dto.response.RoleCountDTO;
 import org.arghyam.jalsoochak.user.dto.response.TenantStaffResponseDTO;
+import org.arghyam.jalsoochak.user.dto.response.WelcomeMessageResponseDTO;
 import org.arghyam.jalsoochak.user.service.TenantStaffService;
+import org.arghyam.jalsoochak.user.service.WelcomeMessageService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -30,6 +34,7 @@ import java.util.List;
 public class TenantStaffController {
 
     private final TenantStaffService tenantStaffService;
+    private final WelcomeMessageService welcomeMessageService;
 
     @GetMapping("/staff")
     public ResponseEntity<ApiResponseDTO<PageResponseDTO<TenantStaffResponseDTO>>> listStaff(
@@ -64,5 +69,16 @@ public class TenantStaffController {
     ) {
         return ResponseEntity.ok(ApiResponseDTO.of(200, "Staff counts retrieved",
                 tenantStaffService.countStaffByRole(tenantCode, status, name)));
+    }
+
+    @PreAuthorize("hasAnyRole('SUPER_USER', 'STATE_ADMIN')")
+    @PostMapping("/welcome")
+    public ResponseEntity<ApiResponseDTO<WelcomeMessageResponseDTO>> sendWelcomeMessages(
+            @RequestParam String tenantCode,
+            @Valid @RequestBody WelcomeMessageRequestDTO request,
+            Authentication authentication
+    ) {
+        return ResponseEntity.ok(ApiResponseDTO.of(200, "Welcome messages queued",
+                welcomeMessageService.sendWelcomeMessages(tenantCode, request, authentication)));
     }
 }
