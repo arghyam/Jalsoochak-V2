@@ -2,7 +2,9 @@ package org.arghyam.jalsoochak.analytics.controller;
 
 import org.arghyam.jalsoochak.analytics.dto.response.AverageWaterSupplyResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.NationalDashboardResponse;
+import org.arghyam.jalsoochak.analytics.dto.response.PeriodicNationalSchemeRegularityResponse;
 import org.arghyam.jalsoochak.analytics.enums.WaterSupplyScope;
+import org.arghyam.jalsoochak.analytics.enums.PeriodScale;
 import org.arghyam.jalsoochak.analytics.service.DateDimensionService;
 import org.arghyam.jalsoochak.analytics.service.SchemeRegularityService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -85,6 +87,24 @@ public class AnalyticsWaterSupplyNationalController {
             @RequestParam(name = "start_date") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
             @RequestParam(name = "end_date") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
         return ResponseEntity.ok(schemeRegularityService.getNationalDashboardForApi(startDate, endDate));
+    }
+
+    @GetMapping("/scheme-regularity/periodic/national")
+    @Operation(summary = "Get periodic average scheme regularity for national level (all tenants)")
+    public ResponseEntity<PeriodicNationalSchemeRegularityResponse> getPeriodicNationalSchemeRegularity(
+            @RequestParam(name = "start_date")
+                    @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam(name = "end_date")
+                    @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
+            @Parameter(
+                    description = "Time aggregation scale",
+                    required = true,
+                    schema = @Schema(type = "string", allowableValues = {"day", "week", "month"}))
+                    @RequestParam(name = "scale") String scale) {
+        PeriodScale periodScale = PeriodScale.fromValue(scale);
+        return ResponseEntity.ok(
+                schemeRegularityService.getPeriodicSchemeRegularityForNationForApi(
+                        startDate, endDate, periodScale));
     }
 
     @PostMapping("/date-dimension/populate")

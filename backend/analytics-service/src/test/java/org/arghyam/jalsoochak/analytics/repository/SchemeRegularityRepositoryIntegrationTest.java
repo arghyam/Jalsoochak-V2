@@ -262,12 +262,14 @@ class SchemeRegularityRepositoryIntegrationTest {
         assertThat(weekOne.periodEndDate()).isEqualTo(LocalDate.of(2026, 1, 4));
         assertThat(weekOne.schemeCount()).isEqualTo(2);
         assertThat(weekOne.totalSupplyDays()).isEqualTo(2);
+        assertThat(weekOne.totalWaterQuantity()).isEqualTo(15L);
 
         SchemeRegularityRepository.PeriodicSchemeRegularityMetrics weekTwo = rows.get(1);
         assertThat(weekTwo.periodStartDate()).isEqualTo(LocalDate.of(2026, 1, 5));
         assertThat(weekTwo.periodEndDate()).isEqualTo(LocalDate.of(2026, 1, 11));
         assertThat(weekTwo.schemeCount()).isEqualTo(2);
         assertThat(weekTwo.totalSupplyDays()).isEqualTo(0);
+        assertThat(weekTwo.totalWaterQuantity()).isEqualTo(0L);
     }
 
     @Test
@@ -280,6 +282,7 @@ class SchemeRegularityRepositoryIntegrationTest {
         assertThat(rows.get(0).periodEndDate()).isEqualTo(LocalDate.of(2026, 1, 31));
         assertThat(rows.get(0).schemeCount()).isEqualTo(2);
         assertThat(rows.get(0).totalSupplyDays()).isEqualTo(2);
+        assertThat(rows.get(0).totalWaterQuantity()).isEqualTo(15L);
     }
 
     @Test

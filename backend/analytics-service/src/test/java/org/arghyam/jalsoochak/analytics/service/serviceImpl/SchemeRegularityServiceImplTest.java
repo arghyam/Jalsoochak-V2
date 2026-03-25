@@ -209,7 +209,8 @@ class SchemeRegularityServiceImplTest {
                                         LocalDate.of(2025, 12, 29),
                                         LocalDate.of(2026, 1, 12),
                                         2,
-                                        2)));
+                                        2,
+                                        15L)));
 
         PeriodicSchemeRegularityResponse response =
                 service.getPeriodicSchemeRegularityByLgdId(101, START, requestedEnd, PeriodScale.WEEK);
@@ -220,8 +221,77 @@ class SchemeRegularityServiceImplTest {
         assertThat(response.getMetrics().getFirst().getPeriodStartDate()).isEqualTo(START);
         assertThat(response.getMetrics().getFirst().getPeriodEndDate()).isEqualTo(requestedEnd);
         assertThat(response.getMetrics().getFirst().getTotalSupplyDays()).isEqualTo(2);
+        assertThat(response.getMetrics().getFirst().getTotalWaterQuantity()).isEqualTo(15L);
         // periodDays = 2026-01-01..2026-01-10 inclusive = 10; regularity = 2 / (2 * 10) = 0.1000
         assertThat(response.getMetrics().getFirst().getAverageRegularity()).isEqualByComparingTo("0.1000");
+    }
+
+    @Test
+    void getPeriodicSchemeRegularityForNation_capsAndComputesAverageRegularity() throws Exception {
+        LocalDate requestedEnd = LocalDate.of(2026, 1, 10);
+
+        mockRedisValueOps();
+        String cacheKey = ":scheme_regularity:nation:periodic-scheme-regularity"
+                + ":scale:week:start:2026-01-01:end:2026-01-10:v2";
+        when(objectMapper.writeValueAsString(any())).thenReturn("{json}");
+
+        when(schemeRegularityRepository.getPeriodicSchemeRegularityForNation(
+                        START, requestedEnd, PeriodScale.WEEK))
+                .thenReturn(
+                        List.of(
+                                new SchemeRegularityRepository.PeriodicSchemeRegularityMetrics(
+                                        LocalDate.of(2025, 12, 29),
+                                        LocalDate.of(2026, 1, 12),
+                                        2,
+                                        2,
+                                        115L)));
+
+        PeriodicSchemeRegularityResponse response =
+                service.getPeriodicSchemeRegularityForNation(START, requestedEnd, PeriodScale.WEEK);
+
+        assertThat(response.getScale()).isEqualTo("week");
+        assertThat(response.getPeriodCount()).isEqualTo(1);
+        assertThat(response.getSchemeCount()).isEqualTo(2);
+        assertThat(response.getMetrics().getFirst().getPeriodStartDate()).isEqualTo(START);
+        assertThat(response.getMetrics().getFirst().getPeriodEndDate()).isEqualTo(requestedEnd);
+        assertThat(response.getMetrics().getFirst().getTotalSupplyDays()).isEqualTo(2);
+        assertThat(response.getMetrics().getFirst().getTotalWaterQuantity()).isEqualTo(115L);
+        // periodDays = 2026-01-01..2026-01-10 inclusive = 10; regularity = 2 / (2 * 10) = 0.1000
+        assertThat(response.getMetrics().getFirst().getAverageRegularity()).isEqualByComparingTo("0.1000");
+
+        verify(schemeRegularityRepository, times(1))
+                .getPeriodicSchemeRegularityForNation(START, requestedEnd, PeriodScale.WEEK);
+
+        verify(valueOperations, times(1)).set(eq(cacheKey), eq("{json}"), eq(Duration.ofHours(24)));
+    }
+
+    @Test
+    void getPeriodicSchemeRegularityForNationForApi_doesNotReturnLgdOrDepartmentFields() throws Exception {
+        LocalDate requestedEnd = LocalDate.of(2026, 1, 10);
+
+        mockRedisValueOps();
+        String cacheKey = ":scheme_regularity:nation:periodic-scheme-regularity:api"
+                + ":scale:week:start:2026-01-01:end:2026-01-10:v1";
+        when(objectMapper.writeValueAsString(any())).thenReturn("{json}");
+
+        when(schemeRegularityRepository.getPeriodicSchemeRegularityForNation(
+                        START, requestedEnd, PeriodScale.WEEK))
+                .thenReturn(
+                        List.of(
+                                new SchemeRegularityRepository.PeriodicSchemeRegularityMetrics(
+                                        LocalDate.of(2025, 12, 29),
+                                        LocalDate.of(2026, 1, 12),
+                                        2,
+                                        2,
+                                        115L)));
+
+        var response =
+                service.getPeriodicSchemeRegularityForNationForApi(START, requestedEnd, PeriodScale.WEEK);
+
+        assertThat(response.getScale()).isEqualTo("week");
+        assertThat(response.getSchemeCount()).isEqualTo(2);
+        assertThat(response.getMetrics().getFirst().getTotalWaterQuantity()).isEqualTo(115L);
+        verify(valueOperations, times(1)).set(eq(cacheKey), eq("{json}"), eq(Duration.ofHours(24)));
     }
 
     @Test

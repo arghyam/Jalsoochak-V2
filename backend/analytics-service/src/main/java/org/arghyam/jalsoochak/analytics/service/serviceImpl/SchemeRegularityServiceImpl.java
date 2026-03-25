@@ -6,6 +6,7 @@ import org.arghyam.jalsoochak.analytics.dto.response.NonSubmissionReasonSchemeCo
 import org.arghyam.jalsoochak.analytics.dto.response.NationalDashboardResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.OutageReasonSchemeCountResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.PeriodicOutageReasonSchemeCountResponse;
+import org.arghyam.jalsoochak.analytics.dto.response.PeriodicNationalSchemeRegularityResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.PeriodicSchemeRegularityResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.PeriodicWaterQuantityResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.RegionWiseWaterQuantityResponse;
@@ -1181,6 +1182,71 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
     }
 
     @Override
+    public PeriodicSchemeRegularityResponse getPeriodicSchemeRegularityForNation(
+            LocalDate startDate, LocalDate endDate, PeriodScale scale) {
+        validateDateRange(startDate, endDate);
+        validateScaleInput(scale);
+
+        String cacheKey = buildPeriodicSchemeRegularityForNationCacheKey(startDate, endDate, scale);
+        PeriodicSchemeRegularityResponse cached =
+                readFromCache(cacheKey, PeriodicSchemeRegularityResponse.class);
+        if (cached != null) {
+            return cached;
+        }
+
+        List<SchemeRegularityRepository.PeriodicSchemeRegularityMetrics> metrics =
+                schemeRegularityRepository.getPeriodicSchemeRegularityForNation(startDate, endDate, scale);
+
+        // Contract: national response should not be tied to a specific LGD or department.
+        PeriodicSchemeRegularityResponse response =
+                buildPeriodicSchemeRegularityResponse(null, null, startDate, endDate, scale, metrics);
+        writeToCache(cacheKey, response);
+        return response;
+    }
+
+    @Override
+    public PeriodicNationalSchemeRegularityResponse getPeriodicSchemeRegularityForNationForApi(
+            LocalDate startDate, LocalDate endDate, PeriodScale scale) {
+        validateDateRange(startDate, endDate);
+        validateScaleInput(scale);
+
+        String cacheKey = buildPeriodicSchemeRegularityForNationForApiCacheKey(startDate, endDate, scale);
+        PeriodicNationalSchemeRegularityResponse cached =
+                readFromCache(cacheKey, PeriodicNationalSchemeRegularityResponse.class);
+        if (cached != null) {
+            return cached;
+        }
+
+        List<SchemeRegularityRepository.PeriodicSchemeRegularityMetrics> metrics =
+                schemeRegularityRepository.getPeriodicSchemeRegularityForNation(startDate, endDate, scale);
+
+        PeriodicNationalSchemeRegularityResponse response =
+                buildPeriodicNationalSchemeRegularityResponse(startDate, endDate, scale, metrics);
+        writeToCache(cacheKey, response);
+        return response;
+    }
+
+    private String buildPeriodicSchemeRegularityForNationCacheKey(
+            LocalDate startDate, LocalDate endDate, PeriodScale scale) {
+        return SCHEME_REGULARITY_CACHE_PREFIX
+                + ":nation:periodic-scheme-regularity"
+                + ":scale:" + scale.name().toLowerCase()
+                + ":start:" + startDate
+                + ":end:" + endDate
+                + ":v2";
+    }
+
+    private String buildPeriodicSchemeRegularityForNationForApiCacheKey(
+            LocalDate startDate, LocalDate endDate, PeriodScale scale) {
+        return SCHEME_REGULARITY_CACHE_PREFIX
+                + ":nation:periodic-scheme-regularity:api"
+                + ":scale:" + scale.name().toLowerCase()
+                + ":start:" + startDate
+                + ":end:" + endDate
+                + ":v1";
+    }
+
+    @Override
     public PeriodicOutageReasonSchemeCountResponse getPeriodicOutageReasonSchemeCountByLgdId(
             Integer lgdId, LocalDate startDate, LocalDate endDate, PeriodScale scale) {
         validateLgdInput(lgdId);
@@ -1938,6 +2004,7 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
                                     .periodStartDate(cappedPeriodStart)
                                     .periodEndDate(cappedPeriodEnd)
                                     .totalSupplyDays(metric.totalSupplyDays())
+                                    .totalWaterQuantity(metric.totalWaterQuantity())
                                     .averageRegularity(averageRegularity)
                                     .build();
                         })
@@ -1946,6 +2013,52 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
         return PeriodicSchemeRegularityResponse.builder()
                 .lgdId(lgdId)
                 .departmentId(departmentId)
+                .schemeCount(schemeCount)
+                .scale(scale.name().toLowerCase())
+                .startDate(startDate)
+                .endDate(endDate)
+                .periodCount(periodicMetrics.size())
+                .metrics(periodicMetrics)
+                .build();
+    }
+
+    private PeriodicNationalSchemeRegularityResponse buildPeriodicNationalSchemeRegularityResponse(
+            LocalDate startDate,
+            LocalDate endDate,
+            PeriodScale scale,
+            List<SchemeRegularityRepository.PeriodicSchemeRegularityMetrics> metrics) {
+        int schemeCount = metrics.isEmpty() ? 0 : metrics.getFirst().schemeCount();
+        List<PeriodicNationalSchemeRegularityResponse.PeriodicNationalSchemeRegularityPeriodMetric> periodicMetrics =
+                metrics.stream()
+                        .map(metric -> {
+                            LocalDate cappedPeriodStart =
+                                    metric.periodStartDate().isBefore(startDate) ? startDate : metric.periodStartDate();
+                            LocalDate cappedPeriodEnd =
+                                    metric.periodEndDate().isAfter(endDate) ? endDate : metric.periodEndDate();
+
+                            long periodDays =
+                                    ChronoUnit.DAYS.between(cappedPeriodStart, cappedPeriodEnd) + 1;
+
+                            BigDecimal averageRegularity = BigDecimal.ZERO;
+                            if (metric.schemeCount() > 0 && periodDays > 0) {
+                                BigDecimal denominator =
+                                        BigDecimal.valueOf((long) metric.schemeCount() * periodDays);
+                                averageRegularity = BigDecimal.valueOf(metric.totalSupplyDays())
+                                        .divide(denominator, 4, RoundingMode.HALF_UP);
+                            }
+
+                            return PeriodicNationalSchemeRegularityResponse.PeriodicNationalSchemeRegularityPeriodMetric
+                                    .builder()
+                                    .periodStartDate(cappedPeriodStart)
+                                    .periodEndDate(cappedPeriodEnd)
+                                    .totalSupplyDays(metric.totalSupplyDays())
+                                    .totalWaterQuantity(metric.totalWaterQuantity())
+                                    .averageRegularity(averageRegularity)
+                                    .build();
+                        })
+                        .toList();
+
+        return PeriodicNationalSchemeRegularityResponse.builder()
                 .schemeCount(schemeCount)
                 .scale(scale.name().toLowerCase())
                 .startDate(startDate)

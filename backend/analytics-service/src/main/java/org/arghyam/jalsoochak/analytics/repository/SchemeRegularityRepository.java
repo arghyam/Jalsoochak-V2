@@ -2330,6 +2330,77 @@ public class SchemeRegularityRepository {
                 schemeDepartmentColumn, departmentId, startDate, endDate, scale);
     }
 
+    public List<PeriodicSchemeRegularityMetrics> getPeriodicSchemeRegularityForNation(
+            LocalDate startDate, LocalDate endDate, PeriodScale scale) {
+        PeriodSqlParts sqlParts = buildPeriodSqlPartsForMeterReadings(scale);
+
+        String sql = String.format("""
+                WITH schemes_in_scope AS (
+                    SELECT
+                        s.tenant_id,
+                        s.scheme_id
+                    FROM analytics_schema.dim_scheme_table s
+                ),
+                periods AS (
+                    SELECT DISTINCT
+                        %1$s AS period_start_date,
+                        %2$s AS period_end_date,
+                        %3$s AS scope
+                    FROM generate_series(?::date, ?::date, INTERVAL '1 day') AS g(day_date)
+                ),
+                scheme_supply_days AS (
+                    SELECT
+                        m.tenant_id,
+                        m.scheme_id,
+                        %4$s AS period_start_date,
+                        COUNT(DISTINCT m.reading_date)::int AS supply_days,
+                        COALESCE(SUM(m.confirmed_reading), 0)::bigint AS total_water_quantity
+                    FROM analytics_schema.fact_meter_reading_table m
+                    JOIN schemes_in_scope s
+                        ON s.scheme_id = m.scheme_id
+                        AND s.tenant_id = m.tenant_id
+                    WHERE m.reading_date BETWEEN ? AND ?
+                      AND m.confirmed_reading > 0
+                    GROUP BY m.tenant_id, m.scheme_id, %4$s
+                ),
+                period_supply AS (
+                    SELECT
+                        period_start_date,
+                        COALESCE(SUM(supply_days)::int, 0) AS total_supply_days,
+                        COALESCE(SUM(total_water_quantity)::bigint, 0) AS total_water_quantity
+                    FROM scheme_supply_days
+                    GROUP BY period_start_date
+                )
+                SELECT
+                    p.period_start_date,
+                    p.period_end_date,
+                    COALESCE((SELECT COUNT(*)::int FROM schemes_in_scope), 0) AS scheme_count,
+                    COALESCE(ps.total_supply_days, 0) AS total_supply_days,
+                    COALESCE(ps.total_water_quantity, 0)::bigint AS total_water_quantity
+                FROM periods p
+                LEFT JOIN period_supply ps
+                    ON ps.period_start_date = p.period_start_date
+                ORDER BY p.period_start_date
+                """,
+                sqlParts.periodStartFromSeries(),
+                sqlParts.periodEndFromSeries(),
+                sqlParts.periodLabelFromSeries(),
+                sqlParts.periodStartFromFact());
+
+        return jdbcTemplate.query(
+                sql,
+                (rs, rowNum) -> new PeriodicSchemeRegularityMetrics(
+                        rs.getObject("period_start_date", LocalDate.class),
+                        rs.getObject("period_end_date", LocalDate.class),
+                        rs.getInt("scheme_count"),
+                        rs.getInt("total_supply_days"),
+                        rs.getLong("total_water_quantity")),
+                startDate,
+                endDate,
+                startDate,
+                endDate);
+    }
+
     private List<PeriodicSchemeRegularityMetrics> getPeriodicSchemeRegularityMetrics(
             String schemeLocationColumn,
             Object locationId,
@@ -2355,7 +2426,8 @@ public class SchemeRegularityRepository {
                     SELECT
                         m.scheme_id,
                         %5$s AS period_start_date,
-                        COUNT(DISTINCT m.reading_date)::int AS supply_days
+                        COUNT(DISTINCT m.reading_date)::int AS supply_days,
+                        COALESCE(SUM(m.confirmed_reading), 0)::bigint AS total_water_quantity
                     FROM analytics_schema.fact_meter_reading_table m
                     JOIN schemes_in_scope s
                         ON s.scheme_id = m.scheme_id
@@ -2366,7 +2438,8 @@ public class SchemeRegularityRepository {
                 period_supply AS (
                     SELECT
                         period_start_date,
-                        COALESCE(SUM(supply_days)::int, 0) AS total_supply_days
+                        COALESCE(SUM(supply_days)::int, 0) AS total_supply_days,
+                        COALESCE(SUM(total_water_quantity)::bigint, 0) AS total_water_quantity
                     FROM scheme_supply_days
                     GROUP BY period_start_date
                 )
@@ -2374,7 +2447,8 @@ public class SchemeRegularityRepository {
                     p.period_start_date,
                     p.period_end_date,
                     COALESCE((SELECT COUNT(*)::int FROM schemes_in_scope), 0) AS scheme_count,
-                    COALESCE(ps.total_supply_days, 0) AS total_supply_days
+                    COALESCE(ps.total_supply_days, 0) AS total_supply_days,
+                    COALESCE(ps.total_water_quantity, 0)::bigint AS total_water_quantity
                 FROM periods p
                 LEFT JOIN period_supply ps
                     ON ps.period_start_date = p.period_start_date
@@ -2392,7 +2466,8 @@ public class SchemeRegularityRepository {
                         rs.getObject("period_start_date", LocalDate.class),
                         rs.getObject("period_end_date", LocalDate.class),
                         rs.getInt("scheme_count"),
-                        rs.getInt("total_supply_days")),
+                        rs.getInt("total_supply_days"),
+                        rs.getLong("total_water_quantity")),
                 locationId,
                 startDate,
                 endDate,
@@ -2745,7 +2820,8 @@ public class SchemeRegularityRepository {
             LocalDate periodStartDate,
             LocalDate periodEndDate,
             Integer schemeCount,
-            Integer totalSupplyDays) {}
+            Integer totalSupplyDays,
+            Long totalWaterQuantity) {}
 
     public record ChildRegionSchemeRegularityMetrics(
             Integer lgdId,

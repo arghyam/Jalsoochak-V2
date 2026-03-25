@@ -2,6 +2,7 @@ package org.arghyam.jalsoochak.analytics.repository;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.arghyam.jalsoochak.analytics.enums.PeriodScale;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
 import org.springframework.boot.test.autoconfigure.jdbc.JdbcTest;
 import org.springframework.context.annotation.Import;
@@ -97,6 +98,32 @@ class SchemeRegularityRepositoryTenantIsolationWaterSupplyIntegrationTest {
         assertThat(s1.supplyDays()).isEqualTo(1);
         // house_hold_count=10, daysInRange=3 => 100 / 30 = 3.3333...
         assertThat(s1.averageLitersPerHousehold()).isEqualByComparingTo("3.3333");
+    }
+
+    @Test
+    void getPeriodicSchemeRegularityForNation_includesMeterReadingsAcrossTenants() {
+        List<SchemeRegularityRepository.PeriodicSchemeRegularityMetrics> rows =
+                repository.getPeriodicSchemeRegularityForNation(D1, D3, PeriodScale.DAY);
+
+        assertThat(rows).hasSize(3);
+
+        assertThat(rows.get(0).periodStartDate()).isEqualTo(D1);
+        assertThat(rows.get(0).periodEndDate()).isEqualTo(D1);
+        assertThat(rows.get(0).schemeCount()).isEqualTo(4);
+        assertThat(rows.get(0).totalSupplyDays()).isEqualTo(2);
+        assertThat(rows.get(0).totalWaterQuantity()).isEqualTo(110L);
+
+        assertThat(rows.get(1).periodStartDate()).isEqualTo(D2);
+        assertThat(rows.get(1).periodEndDate()).isEqualTo(D2);
+        assertThat(rows.get(1).schemeCount()).isEqualTo(4);
+        assertThat(rows.get(1).totalSupplyDays()).isEqualTo(0);
+        assertThat(rows.get(1).totalWaterQuantity()).isEqualTo(0L);
+
+        assertThat(rows.get(2).periodStartDate()).isEqualTo(D3);
+        assertThat(rows.get(2).periodEndDate()).isEqualTo(D3);
+        assertThat(rows.get(2).schemeCount()).isEqualTo(4);
+        assertThat(rows.get(2).totalSupplyDays()).isEqualTo(1);
+        assertThat(rows.get(2).totalWaterQuantity()).isEqualTo(5L);
     }
 
     private void truncateAnalytics() {

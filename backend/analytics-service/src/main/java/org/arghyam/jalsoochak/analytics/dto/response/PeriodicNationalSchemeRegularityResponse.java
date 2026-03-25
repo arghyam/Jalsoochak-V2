@@ -14,23 +14,21 @@ import java.util.List;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class PeriodicSchemeRegularityResponse {
+public class PeriodicNationalSchemeRegularityResponse {
 
-    private Integer lgdId;
-    private Integer departmentId;
     private Integer schemeCount;
     private String scale;
     private LocalDate startDate;
     private LocalDate endDate;
     private Integer periodCount;
-    private List<PeriodicSchemeRegularityPeriodMetric> metrics;
+    private List<PeriodicNationalSchemeRegularityPeriodMetric> metrics;
 
     @Data
     @Builder
     @NoArgsConstructor
     @AllArgsConstructor
-    @Schema(name = "PeriodicSchemeRegularityPeriodMetric")
-    public static class PeriodicSchemeRegularityPeriodMetric {
+    @Schema(name = "PeriodicNationalSchemeRegularityPeriodMetric")
+    public static class PeriodicNationalSchemeRegularityPeriodMetric {
         private LocalDate periodStartDate;
         private LocalDate periodEndDate;
         private Integer totalSupplyDays;

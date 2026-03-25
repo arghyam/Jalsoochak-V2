@@ -7,6 +7,7 @@ import org.arghyam.jalsoochak.analytics.dto.response.NationalDashboardResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.OutageReasonSchemeCountResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.PeriodicOutageReasonSchemeCountResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.PeriodicSchemeRegularityResponse;
+import org.arghyam.jalsoochak.analytics.dto.response.PeriodicNationalSchemeRegularityResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.PeriodicWaterQuantityResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.RegionWiseWaterQuantityResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.ReadingSubmissionRateResponse;
@@ -112,6 +113,12 @@ public interface SchemeRegularityService {
 
     PeriodicSchemeRegularityResponse getPeriodicSchemeRegularityByDepartment(
             Integer departmentId, LocalDate startDate, LocalDate endDate, PeriodScale scale);
+
+    PeriodicSchemeRegularityResponse getPeriodicSchemeRegularityForNation(
+            LocalDate startDate, LocalDate endDate, PeriodScale scale);
+
+    PeriodicNationalSchemeRegularityResponse getPeriodicSchemeRegularityForNationForApi(
+            LocalDate startDate, LocalDate endDate, PeriodScale scale);
 
     PeriodicOutageReasonSchemeCountResponse getPeriodicOutageReasonSchemeCountByLgdId(
             Integer lgdId, LocalDate startDate, LocalDate endDate, PeriodScale scale);

@@ -4,6 +4,7 @@ import org.arghyam.jalsoochak.analytics.dto.response.AverageSchemeRegularityResp
 import org.arghyam.jalsoochak.analytics.dto.response.AverageWaterSupplyResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.NonSubmissionReasonSchemeCountResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.OutageReasonSchemeCountResponse;
+import org.arghyam.jalsoochak.analytics.dto.response.PeriodicNationalSchemeRegularityResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.PeriodicWaterQuantityResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.ReadingSubmissionRateResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.RegionWiseWaterQuantityResponse;
@@ -1057,6 +1058,37 @@ class AnalyticsControllerInputCombinationTest {
         verify(dateDimensionService, times(1)).populateDateRange(START, END);
     }
 
+    @ParameterizedTest
+    @MethodSource("periodicNationalSchemeRegularityValidRoutes")
+    void getPeriodicNationalSchemeRegularity_validRoutes(String scale) throws Exception {
+        when(schemeRegularityService.getPeriodicSchemeRegularityForNationForApi(
+                        START, END, PeriodScale.fromValue(scale)))
+                .thenReturn(periodicNationalSchemeRegularityResponse());
+
+        mockMvc.perform(get(BASE + "/scheme-regularity/periodic/national")
+                        .param("start_date", START.toString())
+                        .param("end_date", END.toString())
+                        .param("scale", scale))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void getPeriodicNationalSchemeRegularity_withUnsupportedScale_returnsBadRequest() throws Exception {
+        mockMvc.perform(get(BASE + "/scheme-regularity/periodic/national")
+                        .param("start_date", START.toString())
+                        .param("end_date", END.toString())
+                        .param("scale", "year"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message", containsString("Unsupported scale")));
+    }
+
+    private static Stream<Arguments> periodicNationalSchemeRegularityValidRoutes() {
+        return Stream.of(
+                Arguments.of("day"),
+                Arguments.of("week"),
+                Arguments.of("month"));
+    }
+
     private static Stream<Arguments> regionWiseValidRoutes() {
         return Stream.of(
                 Arguments.of("parent_lgd_id", "101", true),
@@ -1157,6 +1189,14 @@ class AnalyticsControllerInputCombinationTest {
 
     private static PeriodicWaterQuantityResponse periodicWaterQuantityResponse() {
         return PeriodicWaterQuantityResponse.builder()
+                .periodCount(0)
+                .metrics(List.of())
+                .build();
+    }
+
+    private static PeriodicNationalSchemeRegularityResponse periodicNationalSchemeRegularityResponse() {
+        return PeriodicNationalSchemeRegularityResponse.builder()
+                .schemeCount(0)
                 .periodCount(0)
                 .metrics(List.of())
                 .build();
