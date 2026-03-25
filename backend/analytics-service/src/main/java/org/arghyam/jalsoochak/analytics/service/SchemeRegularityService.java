@@ -66,10 +66,27 @@ public interface SchemeRegularityService {
     AverageWaterSupplyResponse getAverageWaterSupplyPerNation(
             LocalDate startDate, LocalDate endDate);
 
+    // Endpoint-oriented wrappers that shape the response based on `scope` contract.
+    AverageWaterSupplyResponse getAverageWaterSupplyPerCurrentRegionForCurrentScope(
+            Integer tenantId, LocalDate startDate, LocalDate endDate);
+
+    AverageWaterSupplyResponse getAverageWaterSupplyPerNationForChildScope(
+            LocalDate startDate, LocalDate endDate);
+
+    AverageWaterSupplyResponse getAverageWaterSupplyPerCurrentRegionByLgdForChildScope(
+            Integer tenantId, Integer lgdId, LocalDate startDate, LocalDate endDate);
+
+    AverageWaterSupplyResponse getAverageWaterSupplyPerCurrentRegionByDepartmentForChildScope(
+            Integer tenantId, Integer parentDepartmentId, LocalDate startDate, LocalDate endDate);
+
     NationalDashboardResponse getNationalDashboard(
             LocalDate startDate, LocalDate endDate);
 
     NationalDashboardResponse refreshNationalDashboard(
+            LocalDate startDate, LocalDate endDate);
+
+    // Endpoint-oriented wrapper (keeps controller thin; allows future shaping/versioning).
+    NationalDashboardResponse getNationalDashboardForApi(
             LocalDate startDate, LocalDate endDate);
 
     AverageWaterSupplyResponse getAverageWaterSupplyPerCurrentRegionByLgd(

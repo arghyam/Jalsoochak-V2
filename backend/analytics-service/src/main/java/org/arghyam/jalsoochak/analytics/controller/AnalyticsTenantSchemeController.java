@@ -3,8 +3,6 @@ package org.arghyam.jalsoochak.analytics.controller;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
-import org.arghyam.jalsoochak.analytics.dto.response.AverageSchemeRegularityResponse;
-import org.arghyam.jalsoochak.analytics.dto.response.ReadingSubmissionRateResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.TenantDetailsResponse;
 import org.arghyam.jalsoochak.analytics.entity.DimScheme;
 import org.arghyam.jalsoochak.analytics.entity.DimTenant;
@@ -12,8 +10,6 @@ import org.arghyam.jalsoochak.analytics.entity.FactMeterReading;
 import org.arghyam.jalsoochak.analytics.repository.DimSchemeRepository;
 import org.arghyam.jalsoochak.analytics.repository.DimTenantRepository;
 import org.arghyam.jalsoochak.analytics.repository.FactMeterReadingRepository;
-import org.arghyam.jalsoochak.analytics.repository.SchemeRegularityRepository;
-import org.arghyam.jalsoochak.analytics.service.SchemeRegularityService;
 import org.arghyam.jalsoochak.analytics.service.TenantDetailsService;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
@@ -22,11 +18,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
-import java.util.Map;
-import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/v1/analytics")
@@ -38,7 +31,6 @@ public class AnalyticsTenantSchemeController {
     private final DimSchemeRepository dimSchemeRepository;
     private final FactMeterReadingRepository meterReadingRepository;
     private final TenantDetailsService tenantDetailsService;
-    private final SchemeRegularityService schemeRegularityService;
 
     @GetMapping("/tenants")
     @Operation(summary = "List all tenants in the DW")
@@ -72,51 +64,13 @@ public class AnalyticsTenantSchemeController {
             throw new IllegalArgumentException("Provide either parent_lgd_id or parent_department_id");
         }
         if (parentDepartmentId != null) {
-            TenantDetailsResponse response = tenantDetailsService.getTenantDetailsByParentDepartment(tenantId, parentDepartmentId);
-            AverageSchemeRegularityResponse averageResponse = schemeRegularityService
-                    .getAverageSchemeRegularityByDepartment(parentDepartmentId, startDate, endDate);
-            ReadingSubmissionRateResponse submissionRateResponse = schemeRegularityService
-                    .getReadingSubmissionRateByDepartment(parentDepartmentId, startDate, endDate);
-            Map<Integer, BigDecimal> childPerformanceByDepartmentId = schemeRegularityService
-                    .getChildAveragePerformanceScoreByDepartment(parentDepartmentId, startDate, endDate)
-                    .stream()
-                    .collect(Collectors.toMap(
-                            SchemeRegularityRepository.ChildRegionPerformanceScore::departmentId,
-                            SchemeRegularityRepository.ChildRegionPerformanceScore::averagePerformanceScore));
-            if (response.getChildRegions() != null) {
-                response.getChildRegions().forEach(childRegion -> childRegion.setAveragePerformanceScore(
-                        childPerformanceByDepartmentId.getOrDefault(
-                                childRegion.getDepartmentId(), BigDecimal.ZERO)));
-            }
-            response.setAveragePerformanceScore(
-                    schemeRegularityService.getAveragePerformanceScoreByDepartment(
-                            parentDepartmentId, startDate, endDate));
-            response.setAverageSchemeRegularity(averageResponse.getAverageRegularity());
-            response.setReadingSubmissionRate(submissionRateResponse.getReadingSubmissionRate());
-            return ResponseEntity.ok(response);
+            return ResponseEntity.ok(
+                    tenantDetailsService.getTenantDetailsByParentDepartmentWithAggregatedMetrics(
+                            tenantId, parentDepartmentId, startDate, endDate));
         }
-        TenantDetailsResponse response = tenantDetailsService.getTenantDetails(tenantId, parentLgdId);
-        AverageSchemeRegularityResponse averageResponse = schemeRegularityService
-                .getAverageSchemeRegularity(parentLgdId, startDate, endDate);
-        ReadingSubmissionRateResponse submissionRateResponse = schemeRegularityService
-                .getReadingSubmissionRateByLgd(parentLgdId, startDate, endDate);
-        Map<Integer, BigDecimal> childPerformanceByLgdId = schemeRegularityService
-                .getChildAveragePerformanceScoreByLgd(parentLgdId, startDate, endDate)
-                .stream()
-                .collect(Collectors.toMap(
-                        SchemeRegularityRepository.ChildRegionPerformanceScore::lgdId,
-                        SchemeRegularityRepository.ChildRegionPerformanceScore::averagePerformanceScore));
-        if (response.getChildRegions() != null) {
-            response.getChildRegions().forEach(childRegion -> childRegion.setAveragePerformanceScore(
-                    childPerformanceByLgdId.getOrDefault(
-                            childRegion.getLgdId(), BigDecimal.ZERO)));
-        }
-        response.setAveragePerformanceScore(
-                schemeRegularityService.getAveragePerformanceScoreByLgd(
-                        parentLgdId, startDate, endDate));
-        response.setAverageSchemeRegularity(averageResponse.getAverageRegularity());
-        response.setReadingSubmissionRate(submissionRateResponse.getReadingSubmissionRate());
-        return ResponseEntity.ok(response);
+        return ResponseEntity.ok(
+                tenantDetailsService.getTenantDetailsWithAggregatedMetrics(
+                        tenantId, parentLgdId, startDate, endDate));
     }
 
     @GetMapping("/schemes")

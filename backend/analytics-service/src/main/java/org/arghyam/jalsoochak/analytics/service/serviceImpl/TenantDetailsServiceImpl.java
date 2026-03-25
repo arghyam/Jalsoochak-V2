@@ -2,24 +2,31 @@ package org.arghyam.jalsoochak.analytics.service.serviceImpl;
 
 import org.arghyam.jalsoochak.analytics.dto.response.ChildRegionDetails;
 import org.arghyam.jalsoochak.analytics.dto.response.TenantDetailsResponse;
+import org.arghyam.jalsoochak.analytics.dto.response.AverageSchemeRegularityResponse;
+import org.arghyam.jalsoochak.analytics.dto.response.ReadingSubmissionRateResponse;
 import org.arghyam.jalsoochak.analytics.entity.DimTenant;
 import org.arghyam.jalsoochak.analytics.repository.DimTenantRepository;
 import org.arghyam.jalsoochak.analytics.repository.TenantBoundaryRepository;
 import org.arghyam.jalsoochak.analytics.repository.TenantDepartmentBoundaryRepository;
+import org.arghyam.jalsoochak.analytics.repository.SchemeRegularityRepository;
 import org.arghyam.jalsoochak.analytics.service.TenantDetailsService;
+import org.arghyam.jalsoochak.analytics.service.SchemeRegularityService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.data.redis.core.StringRedisTemplate;
 
+import java.math.BigDecimal;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.time.Duration;
+import java.time.LocalDate;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -35,6 +42,7 @@ public class TenantDetailsServiceImpl implements TenantDetailsService {
     private final TenantDepartmentBoundaryRepository tenantDepartmentBoundaryRepository;
     private final StringRedisTemplate redisTemplate;
     private final ObjectMapper objectMapper;
+    private final SchemeRegularityService schemeRegularityService;
 
     @Override
     public TenantDetailsResponse getTenantDetails(Integer tenantId, Integer parentLgdId) {
@@ -149,6 +157,74 @@ public class TenantDetailsServiceImpl implements TenantDetailsService {
                 .build();
 
         writeToCache(cacheKey, response);
+        return response;
+    }
+
+    @Override
+    public TenantDetailsResponse getTenantDetailsWithAggregatedMetrics(
+            Integer tenantId, Integer parentLgdId, LocalDate startDate, LocalDate endDate) {
+        // Base boundary + child list
+        TenantDetailsResponse response = getTenantDetails(tenantId, parentLgdId);
+
+        // Scheme regularity and reading submission are scope/period based
+        AverageSchemeRegularityResponse averageRegularity =
+                schemeRegularityService.getAverageSchemeRegularity(parentLgdId, startDate, endDate);
+        ReadingSubmissionRateResponse submissionRate =
+                schemeRegularityService.getReadingSubmissionRateByLgd(parentLgdId, startDate, endDate);
+
+        // Performance is per child region; merge into response child rows.
+        List<SchemeRegularityRepository.ChildRegionPerformanceScore> childPerformance =
+                schemeRegularityService.getChildAveragePerformanceScoreByLgd(parentLgdId, startDate, endDate);
+        Map<Integer, BigDecimal> childPerformanceByLgdId = childPerformance.stream()
+                .collect(Collectors.toMap(
+                        SchemeRegularityRepository.ChildRegionPerformanceScore::lgdId,
+                        SchemeRegularityRepository.ChildRegionPerformanceScore::averagePerformanceScore,
+                        (a, b) -> b));
+
+        if (response.getChildRegions() != null) {
+            response.getChildRegions().forEach(childRegion -> childRegion.setAveragePerformanceScore(
+                    childPerformanceByLgdId.getOrDefault(childRegion.getLgdId(), BigDecimal.ZERO)));
+        }
+
+        response.setAveragePerformanceScore(
+                schemeRegularityService.getAveragePerformanceScoreByLgd(parentLgdId, startDate, endDate));
+        response.setAverageSchemeRegularity(averageRegularity.getAverageRegularity());
+        response.setReadingSubmissionRate(submissionRate.getReadingSubmissionRate());
+        return response;
+    }
+
+    @Override
+    public TenantDetailsResponse getTenantDetailsByParentDepartmentWithAggregatedMetrics(
+            Integer tenantId, Integer parentDepartmentId, LocalDate startDate, LocalDate endDate) {
+        TenantDetailsResponse response = getTenantDetailsByParentDepartment(tenantId, parentDepartmentId);
+
+        AverageSchemeRegularityResponse averageRegularity =
+                schemeRegularityService.getAverageSchemeRegularityByDepartment(
+                        parentDepartmentId, startDate, endDate);
+        ReadingSubmissionRateResponse submissionRate =
+                schemeRegularityService.getReadingSubmissionRateByDepartment(
+                        parentDepartmentId, startDate, endDate);
+
+        List<SchemeRegularityRepository.ChildRegionPerformanceScore> childPerformance =
+                schemeRegularityService.getChildAveragePerformanceScoreByDepartment(
+                        parentDepartmentId, startDate, endDate);
+        Map<Integer, BigDecimal> childPerformanceByDepartmentId = childPerformance.stream()
+                .collect(Collectors.toMap(
+                        SchemeRegularityRepository.ChildRegionPerformanceScore::departmentId,
+                        SchemeRegularityRepository.ChildRegionPerformanceScore::averagePerformanceScore,
+                        (a, b) -> b));
+
+        if (response.getChildRegions() != null) {
+            response.getChildRegions().forEach(childRegion -> childRegion.setAveragePerformanceScore(
+                    childPerformanceByDepartmentId.getOrDefault(
+                            childRegion.getDepartmentId(), BigDecimal.ZERO)));
+        }
+
+        response.setAveragePerformanceScore(
+                schemeRegularityService.getAveragePerformanceScoreByDepartment(
+                        parentDepartmentId, startDate, endDate));
+        response.setAverageSchemeRegularity(averageRegularity.getAverageRegularity());
+        response.setReadingSubmissionRate(submissionRate.getReadingSubmissionRate());
         return response;
     }
 

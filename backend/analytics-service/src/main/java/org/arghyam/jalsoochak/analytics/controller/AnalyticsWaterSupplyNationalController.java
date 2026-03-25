@@ -23,7 +23,7 @@ import java.time.LocalDate;
 @RestController
 @RequestMapping("/api/v1/analytics")
 @RequiredArgsConstructor
-@Tag(name = "Analytics - Water Supply & National", description = "Water supply metrics, national dashboard aggregates, and date dimension utilities")
+@Tag(name = "Analytics - Water Supply & National Dashboard", description = "Water supply metrics, national dashboard aggregates, and date dimension utilities")
 public class AnalyticsWaterSupplyNationalController {
 
     private final SchemeRegularityService schemeRegularityService;
@@ -55,11 +55,9 @@ public class AnalyticsWaterSupplyNationalController {
             if (parentLgdId != null || parentDepartmentId != null) {
                 throw new IllegalArgumentException("parent_lgd_id or parent_department_id is not supported when scope=current");
             }
-            AverageWaterSupplyResponse response =
-                    schemeRegularityService.getAverageWaterSupplyPerCurrentRegion(tenantId, startDate, endDate);
-            response.setChildRegionCount(null);
-            response.setChildRegions(null);
-            return ResponseEntity.ok(response);
+            return ResponseEntity.ok(
+                    schemeRegularityService.getAverageWaterSupplyPerCurrentRegionForCurrentScope(
+                            tenantId, startDate, endDate));
         }
 
         AverageWaterSupplyResponse response;
@@ -67,18 +65,17 @@ public class AnalyticsWaterSupplyNationalController {
             if (parentLgdId != null || parentDepartmentId != null) {
                 throw new IllegalArgumentException("tenant_id is required when parent_lgd_id or parent_department_id is provided");
             }
-            response = schemeRegularityService.getAverageWaterSupplyPerNation(startDate, endDate);
+            response = schemeRegularityService.getAverageWaterSupplyPerNationForChildScope(startDate, endDate);
         } else if (parentLgdId != null) {
-            response = schemeRegularityService.getAverageWaterSupplyPerCurrentRegionByLgd(tenantId, parentLgdId, startDate, endDate);
+            response = schemeRegularityService.getAverageWaterSupplyPerCurrentRegionByLgdForChildScope(
+                    tenantId, parentLgdId, startDate, endDate);
         } else if (parentDepartmentId != null) {
-            response = schemeRegularityService.getAverageWaterSupplyPerCurrentRegionByDepartment(
+            response = schemeRegularityService.getAverageWaterSupplyPerCurrentRegionByDepartmentForChildScope(
                     tenantId, parentDepartmentId, startDate, endDate);
         } else {
             throw new IllegalArgumentException(
                     "Provide parent_lgd_id or parent_department_id when scope=child and tenant_id is provided");
         }
-        response.setSchemeCount(null);
-        response.setSchemes(null);
         return ResponseEntity.ok(response);
     }
 
@@ -87,7 +84,7 @@ public class AnalyticsWaterSupplyNationalController {
     public ResponseEntity<NationalDashboardResponse> getNationalDashboard(
             @RequestParam(name = "start_date") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
             @RequestParam(name = "end_date") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
-        return ResponseEntity.ok(schemeRegularityService.getNationalDashboard(startDate, endDate));
+        return ResponseEntity.ok(schemeRegularityService.getNationalDashboardForApi(startDate, endDate));
     }
 
     @PostMapping("/date-dimension/populate")

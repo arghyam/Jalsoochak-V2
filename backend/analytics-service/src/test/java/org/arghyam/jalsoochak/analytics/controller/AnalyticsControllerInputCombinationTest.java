@@ -102,40 +102,42 @@ class AnalyticsControllerInputCombinationTest {
 
     @Test
     void getTenantDetails_withParentLgdId_routesToLgdServices() throws Exception {
-        when(tenantDetailsService.getTenantDetails(10, 101)).thenReturn(TenantDetailsResponse.builder().tenantId(10).build());
-        when(schemeRegularityService.getAverageSchemeRegularity(eq(101), any(LocalDate.class), any(LocalDate.class)))
-                .thenReturn(averageRegularityResponse());
-        when(schemeRegularityService.getReadingSubmissionRateByLgd(eq(101), any(LocalDate.class), any(LocalDate.class)))
-                .thenReturn(readingSubmissionResponse());
+        when(tenantDetailsService.getTenantDetailsWithAggregatedMetrics(
+                        eq(10),
+                        eq(101),
+                        any(LocalDate.class),
+                        any(LocalDate.class)))
+                .thenReturn(TenantDetailsResponse.builder().tenantId(10).build());
 
         mockMvc.perform(get(BASE + "/tenant_data")
                         .param("tenant_id", "10")
                         .param("parent_lgd_id", "101"))
                 .andExpect(status().isOk());
 
-        verify(tenantDetailsService, times(1)).getTenantDetails(10, 101);
-        verify(schemeRegularityService, times(1)).getAverageSchemeRegularity(eq(101), any(LocalDate.class), any(LocalDate.class));
-        verify(schemeRegularityService, times(1)).getReadingSubmissionRateByLgd(eq(101), any(LocalDate.class), any(LocalDate.class));
+        verify(tenantDetailsService, times(1))
+                .getTenantDetailsWithAggregatedMetrics(eq(10), eq(101), any(LocalDate.class), any(LocalDate.class));
+        verifyNoInteractions(schemeRegularityService);
         verify(tenantDetailsService, never()).getTenantDetailsByParentDepartment(any(), any());
     }
 
     @Test
     void getTenantDetails_withParentDepartmentId_routesToDepartmentServices() throws Exception {
-        when(tenantDetailsService.getTenantDetailsByParentDepartment(10, 201))
+        when(tenantDetailsService.getTenantDetailsByParentDepartmentWithAggregatedMetrics(
+                        eq(10),
+                        eq(201),
+                        any(LocalDate.class),
+                        any(LocalDate.class)))
                 .thenReturn(TenantDetailsResponse.builder().tenantId(10).build());
-        when(schemeRegularityService.getAverageSchemeRegularityByDepartment(eq(201), any(LocalDate.class), any(LocalDate.class)))
-                .thenReturn(averageRegularityResponse());
-        when(schemeRegularityService.getReadingSubmissionRateByDepartment(eq(201), any(LocalDate.class), any(LocalDate.class)))
-                .thenReturn(readingSubmissionResponse());
 
         mockMvc.perform(get(BASE + "/tenant_data")
                         .param("tenant_id", "10")
                         .param("parent_department_id", "201"))
                 .andExpect(status().isOk());
 
-        verify(tenantDetailsService, times(1)).getTenantDetailsByParentDepartment(10, 201);
-        verify(schemeRegularityService, times(1)).getAverageSchemeRegularityByDepartment(eq(201), any(LocalDate.class), any(LocalDate.class));
-        verify(schemeRegularityService, times(1)).getReadingSubmissionRateByDepartment(eq(201), any(LocalDate.class), any(LocalDate.class));
+        verify(tenantDetailsService, times(1))
+                .getTenantDetailsByParentDepartmentWithAggregatedMetrics(
+                        eq(10), eq(201), any(LocalDate.class), any(LocalDate.class));
+        verifyNoInteractions(schemeRegularityService);
     }
 
     @Test
@@ -1008,13 +1010,13 @@ class AnalyticsControllerInputCombinationTest {
             String parentLgdId,
             String parentDepartmentId,
             int expectedStatus) throws Exception {
-        when(schemeRegularityService.getAverageWaterSupplyPerCurrentRegion(any(), any(), any()))
+        when(schemeRegularityService.getAverageWaterSupplyPerCurrentRegionForCurrentScope(any(), any(), any()))
                 .thenReturn(averageWaterSupplyResponse());
-        when(schemeRegularityService.getAverageWaterSupplyPerNation(any(), any()))
+        when(schemeRegularityService.getAverageWaterSupplyPerNationForChildScope(any(), any()))
                 .thenReturn(averageWaterSupplyResponse());
-        when(schemeRegularityService.getAverageWaterSupplyPerCurrentRegionByLgd(any(), any(), any(), any()))
+        when(schemeRegularityService.getAverageWaterSupplyPerCurrentRegionByLgdForChildScope(any(), any(), any(), any()))
                 .thenReturn(averageWaterSupplyResponse());
-        when(schemeRegularityService.getAverageWaterSupplyPerCurrentRegionByDepartment(any(), any(), any(), any()))
+        when(schemeRegularityService.getAverageWaterSupplyPerCurrentRegionByDepartmentForChildScope(any(), any(), any(), any()))
                 .thenReturn(averageWaterSupplyResponse());
 
         MockHttpServletRequestBuilder request = get(BASE + "/water-supply/average-per-region")

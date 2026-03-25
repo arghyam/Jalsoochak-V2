@@ -1,11 +1,15 @@
 package org.arghyam.jalsoochak.analytics.service.serviceImpl;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.arghyam.jalsoochak.analytics.dto.response.AverageSchemeRegularityResponse;
 import org.arghyam.jalsoochak.analytics.dto.response.TenantDetailsResponse;
+import org.arghyam.jalsoochak.analytics.dto.response.ReadingSubmissionRateResponse;
 import org.arghyam.jalsoochak.analytics.entity.DimTenant;
 import org.arghyam.jalsoochak.analytics.repository.DimTenantRepository;
+import org.arghyam.jalsoochak.analytics.repository.SchemeRegularityRepository;
 import org.arghyam.jalsoochak.analytics.repository.TenantBoundaryRepository;
 import org.arghyam.jalsoochak.analytics.repository.TenantDepartmentBoundaryRepository;
+import org.arghyam.jalsoochak.analytics.service.SchemeRegularityService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -14,6 +18,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
 
+import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -40,6 +46,8 @@ class TenantDetailsServiceImplTest {
     private ObjectMapper objectMapper;
     @Mock
     private ValueOperations<String, String> valueOperations;
+    @Mock
+    private SchemeRegularityService schemeRegularityService;
 
     @InjectMocks
     private TenantDetailsServiceImpl service;
@@ -117,6 +125,61 @@ class TenantDetailsServiceImplTest {
         assertThatThrownBy(() -> service.getTenantDetailsByParentDepartment(1, 0))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("parent_department_id must be a positive integer");
+    }
+
+    @Test
+    void getTenantDetailsWithAggregatedMetrics_parentLgd_mergesPerformanceIntoChildRows() {
+        mockRedisValueOps();
+        when(valueOperations.get(any())).thenReturn(null);
+
+        Integer tenantId = 1;
+        Integer parentLgdId = 100;
+        LocalDate start = LocalDate.of(2026, 1, 1);
+        LocalDate end = LocalDate.of(2026, 1, 3);
+
+        when(dimTenantRepository.findById(tenantId)).thenReturn(Optional.of(tenant(tenantId, "mp")));
+        when(tenantBoundaryRepository.tableExists("tenant_mp", "lgd_location_master_table")).thenReturn(true);
+        when(tenantBoundaryRepository.tableExists("tenant_mp", "location_config_master_table")).thenReturn(true);
+        when(tenantBoundaryRepository.columnExists("tenant_mp", "lgd_location_master_table", "geom")).thenReturn(true);
+
+        when(tenantBoundaryRepository.getLocationLevel("tenant_mp", parentLgdId)).thenReturn(1);
+        when(tenantBoundaryRepository.getChildLevelByParent("tenant_mp", parentLgdId, tenantId))
+                .thenReturn(List.of(Map.of(
+                        "lgd_id", 101,
+                        "parent_lgd_id", 100,
+                        "child_level", 2,
+                        "scheme_count", 2,
+                        "title", "Child A",
+                        "lgd_code", "C101",
+                        "boundary_geojson", "{\"type\":\"Polygon\"}"
+                )));
+        when(tenantBoundaryRepository.getMergedBoundaryByParent("tenant_mp", parentLgdId))
+                .thenReturn(Map.of("child_count", 1, "boundary_geojson", "{\"type\":\"MultiPolygon\"}"));
+
+        when(schemeRegularityService.getAverageSchemeRegularity(parentLgdId, start, end))
+                .thenReturn(AverageSchemeRegularityResponse.builder()
+                        .averageRegularity(new BigDecimal("0.75"))
+                        .build());
+        when(schemeRegularityService.getReadingSubmissionRateByLgd(parentLgdId, start, end))
+                .thenReturn(ReadingSubmissionRateResponse.builder()
+                        .readingSubmissionRate(new BigDecimal("0.84"))
+                        .build());
+        when(schemeRegularityService.getChildAveragePerformanceScoreByLgd(parentLgdId, start, end))
+                .thenReturn(List.of(
+                        new SchemeRegularityRepository.ChildRegionPerformanceScore(
+                                101, null, new BigDecimal("0.9"))));
+        when(schemeRegularityService.getAveragePerformanceScoreByLgd(parentLgdId, start, end))
+                .thenReturn(new BigDecimal("0.5"));
+
+        TenantDetailsResponse response =
+                service.getTenantDetailsWithAggregatedMetrics(tenantId, parentLgdId, start, end);
+
+        assertThat(response.getAverageSchemeRegularity()).isEqualByComparingTo("0.75");
+        assertThat(response.getReadingSubmissionRate()).isEqualByComparingTo("0.84");
+        assertThat(response.getAveragePerformanceScore()).isEqualByComparingTo("0.5");
+        assertThat(response.getChildRegions()).hasSize(1);
+        assertThat(response.getChildRegions().getFirst().getAveragePerformanceScore())
+                .isEqualByComparingTo("0.9");
     }
 
     @Test

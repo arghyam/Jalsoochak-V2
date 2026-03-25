@@ -675,6 +675,17 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
     }
 
     @Override
+    public AverageWaterSupplyResponse getAverageWaterSupplyPerCurrentRegionForCurrentScope(
+            Integer tenantId, LocalDate startDate, LocalDate endDate) {
+        AverageWaterSupplyResponse response =
+                getAverageWaterSupplyPerCurrentRegion(tenantId, startDate, endDate);
+        // Contract: `scope=current` should not expose LGD/department child rows.
+        response.setChildRegionCount(null);
+        response.setChildRegions(null);
+        return response;
+    }
+
+    @Override
     public AverageWaterSupplyResponse getAverageWaterSupplyPerNation(
             LocalDate startDate, LocalDate endDate) {
         validateDateRange(startDate, endDate);
@@ -724,6 +735,16 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
     }
 
     @Override
+    public AverageWaterSupplyResponse getAverageWaterSupplyPerNationForChildScope(
+            LocalDate startDate, LocalDate endDate) {
+        AverageWaterSupplyResponse response = getAverageWaterSupplyPerNation(startDate, endDate);
+        // Contract: `scope=child` at nation level should not expose scheme-level rows.
+        response.setSchemeCount(null);
+        response.setSchemes(null);
+        return response;
+    }
+
+    @Override
     public NationalDashboardResponse getNationalDashboard(LocalDate startDate, LocalDate endDate) {
         validateDateRange(startDate, endDate);
 
@@ -741,6 +762,11 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
 
         String cacheKey = buildNationalDashboardCacheKey(startDate, endDate);
         return buildAndCacheNationalDashboard(startDate, endDate, cacheKey);
+    }
+
+    @Override
+    public NationalDashboardResponse getNationalDashboardForApi(LocalDate startDate, LocalDate endDate) {
+        return getNationalDashboard(startDate, endDate);
     }
 
     private String buildNationalDashboardCacheKey(LocalDate startDate, LocalDate endDate) {
@@ -913,6 +939,17 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
     }
 
     @Override
+    public AverageWaterSupplyResponse getAverageWaterSupplyPerCurrentRegionByLgdForChildScope(
+            Integer tenantId, Integer lgdId, LocalDate startDate, LocalDate endDate) {
+        AverageWaterSupplyResponse response =
+                getAverageWaterSupplyPerCurrentRegionByLgd(tenantId, lgdId, startDate, endDate);
+        // Contract: `scope=child` should not expose scheme-level rows.
+        response.setSchemeCount(null);
+        response.setSchemes(null);
+        return response;
+    }
+
+    @Override
     public AverageWaterSupplyResponse getAverageWaterSupplyPerCurrentRegionByDepartment(
             Integer tenantId, Integer parentDepartmentId, LocalDate startDate, LocalDate endDate) {
         validateTenantInput(tenantId);
@@ -996,6 +1033,21 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
                 .childRegions(childRegions)
                 .build();
         writeToCache(cacheKey, response);
+        return response;
+    }
+
+    @Override
+    public AverageWaterSupplyResponse getAverageWaterSupplyPerCurrentRegionByDepartmentForChildScope(
+            Integer tenantId,
+            Integer parentDepartmentId,
+            LocalDate startDate,
+            LocalDate endDate) {
+        AverageWaterSupplyResponse response =
+                getAverageWaterSupplyPerCurrentRegionByDepartment(
+                        tenantId, parentDepartmentId, startDate, endDate);
+        // Contract: `scope=child` should not expose scheme-level rows.
+        response.setSchemeCount(null);
+        response.setSchemes(null);
         return response;
     }
 
