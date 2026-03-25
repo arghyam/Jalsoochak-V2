@@ -79,7 +79,7 @@ class PumpOperatorUploadServiceImplTest {
         TenantContext.setSchema("tenant_ka");
         when(uploadAuthService.requireStateAdminUserId(eq("tenant_ka"), anyString())).thenReturn(10);
         when(userTenantRepository.findUserById(eq("tenant_ka"), eq(10L)))
-                .thenReturn(Optional.of(new TenantUserRecord(10L, 1, "9111111111", "admin@example.com", 1L, "STATE_ADMIN", "Admin", null)));
+                .thenReturn(Optional.of(new TenantUserRecord(10L, 1, "9111111111", "admin@example.com", 1L, "STATE_ADMIN", "Admin", null, null, null)));
         when(preferredLanguageService.resolvePreferredLanguageId(eq(1))).thenReturn(1);
         when(userCommonRepository.findUserTypeIdByName(eq("PUMP_OPERATOR"))).thenReturn(Optional.of(2));
 
@@ -107,7 +107,7 @@ class PumpOperatorUploadServiceImplTest {
         TenantContext.setSchema("tenant_ka");
         when(uploadAuthService.requireStateAdminUserId(eq("tenant_ka"), anyString())).thenReturn(10);
         when(userTenantRepository.findUserById(eq("tenant_ka"), eq(10L)))
-                .thenReturn(Optional.of(new TenantUserRecord(10L, 1, "9111111111", "admin@example.com", 1L, "STATE_ADMIN", "Admin", null)));
+                .thenReturn(Optional.of(new TenantUserRecord(10L, 1, "9111111111", "admin@example.com", 1L, "STATE_ADMIN", "Admin", null, null, null)));
         when(preferredLanguageService.resolvePreferredLanguageId(eq(1))).thenReturn(1);
         when(userCommonRepository.findUserTypeIdByName(eq("PUMP_OPERATOR"))).thenReturn(Optional.of(2));
 
@@ -144,7 +144,7 @@ class PumpOperatorUploadServiceImplTest {
         TenantContext.setSchema("tenant_ka");
         when(uploadAuthService.requireStateAdminUserId(eq("tenant_ka"), anyString())).thenReturn(10);
         when(userTenantRepository.findUserById(eq("tenant_ka"), eq(10L)))
-                .thenReturn(Optional.of(new TenantUserRecord(10L, 1, "9111111111", "admin@example.com", 1L, "STATE_ADMIN", "Admin", null)));
+                .thenReturn(Optional.of(new TenantUserRecord(10L, 1, "9111111111", "admin@example.com", 1L, "STATE_ADMIN", "Admin", null, null, null)));
         when(preferredLanguageService.resolvePreferredLanguageId(eq(1))).thenReturn(1);
         when(userCommonRepository.findUserTypeIdByName(eq("PUMP_OPERATOR"))).thenReturn(Optional.of(2));
 
@@ -171,7 +171,7 @@ class PumpOperatorUploadServiceImplTest {
         TenantContext.setSchema("tenant_ka");
         when(uploadAuthService.requireStateAdminUserId(eq("tenant_ka"), anyString())).thenReturn(10);
         when(userTenantRepository.findUserById(eq("tenant_ka"), eq(10L)))
-                .thenReturn(Optional.of(new TenantUserRecord(10L, 1, "9111111111", "admin@example.com", 1L, "STATE_ADMIN", "Admin", null)));
+                .thenReturn(Optional.of(new TenantUserRecord(10L, 1, "9111111111", "admin@example.com", 1L, "STATE_ADMIN", "Admin", null, null, null)));
         when(preferredLanguageService.resolvePreferredLanguageId(eq(1))).thenReturn(1);
         when(userCommonRepository.findUserTypeIdByName(eq("PUMP_OPERATOR"))).thenReturn(Optional.of(2));
 

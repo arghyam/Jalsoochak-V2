@@ -39,7 +39,7 @@ import org.arghyam.jalsoochak.user.repository.UserTenantRepository;
 import org.arghyam.jalsoochak.user.repository.records.AdminUserRow;
 import org.arghyam.jalsoochak.user.repository.records.AdminUserTokenRow;
 import org.arghyam.jalsoochak.user.event.ResetPasswordEmailEvent;
-import org.arghyam.jalsoochak.user.event.UserEmailEventPublisher;
+import org.arghyam.jalsoochak.user.event.UserNotificationEventPublisher;
 import org.arghyam.jalsoochak.user.service.serviceImpl.AuthServiceImpl;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -76,7 +76,7 @@ class AuthServiceImplTest {
     private UserTenantRepository userTenantRepository;
 
     @Mock
-    private UserEmailEventPublisher userEmailEventPublisher;
+    private UserNotificationEventPublisher userNotificationEventPublisher;
 
     @Mock
     private KeycloakAdminHelper keycloakAdminHelper;
@@ -96,7 +96,7 @@ class AuthServiceImplTest {
     void setUp() {
         authService = new AuthServiceImpl(
                 keycloakProvider, keycloakClient, userCommonRepository, userTenantRepository,
-                userEmailEventPublisher, keycloakAdminHelper, passwordResetProperties,
+                userNotificationEventPublisher, keycloakAdminHelper, passwordResetProperties,
                 frontendProperties, tokenService, new ObjectMapper()
         );
     }
@@ -176,7 +176,7 @@ class AuthServiceImplTest {
             when(userCommonRepository.findUserTypeNameById(2)).thenReturn(Optional.of("STATE_ADMIN"));
             when(userCommonRepository.findTenantStateCodeById(1)).thenReturn(Optional.of("MP"));
 
-            TenantUserRecord tenantUser = new TenantUserRecord(10L, 1, "91XXXXXXXXXX", "sa@example.com", 2L, "STATE_ADMIN", "State Admin", null);
+            TenantUserRecord tenantUser = new TenantUserRecord(10L, 1, "91XXXXXXXXXX", "sa@example.com", 2L, "STATE_ADMIN", "State Admin", null, null, null);
             when(userTenantRepository.findUserByEmail("tenant_mp", "sa@example.com")).thenReturn(Optional.of(tenantUser));
 
             AuthResult result = authService.login(loginRequest("sa@example.com", "pass"));
@@ -343,7 +343,7 @@ class AuthServiceImplTest {
 
             authService.forgotPassword(req); // no exception
 
-            verify(userEmailEventPublisher, never()).publishResetPasswordEmailAfterCommit(any(ResetPasswordEmailEvent.class));
+            verify(userNotificationEventPublisher, never()).publishResetPasswordEmailAfterCommit(any(ResetPasswordEmailEvent.class));
         }
 
         @Test
@@ -365,7 +365,7 @@ class AuthServiceImplTest {
 
             verify(userCommonRepository).upsertToken(
                     eq("user@example.com"), eq("reset-hash"), eq("RESET"), eq(null), any(), eq(null));
-            verify(userEmailEventPublisher).publishResetPasswordEmailAfterCommit(any(ResetPasswordEmailEvent.class));
+            verify(userNotificationEventPublisher).publishResetPasswordEmailAfterCommit(any(ResetPasswordEmailEvent.class));
         }
     }
 

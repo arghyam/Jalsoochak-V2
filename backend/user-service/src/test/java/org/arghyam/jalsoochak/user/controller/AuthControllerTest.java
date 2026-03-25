@@ -11,6 +11,7 @@ import org.arghyam.jalsoochak.user.exceptions.InvalidCredentialsException;
 import org.arghyam.jalsoochak.user.exceptions.TokenAlreadyUsedException;
 import org.arghyam.jalsoochak.user.exceptions.UserAlreadyExistsException;
 import org.arghyam.jalsoochak.user.service.AuthService;
+import org.arghyam.jalsoochak.user.service.StaffAuthService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -67,6 +68,9 @@ class AuthControllerTest {
 
     @MockBean
     private AuthService authService;
+
+    @MockBean
+    private StaffAuthService staffAuthService;
 
     @BeforeEach
     void resetMocks() {

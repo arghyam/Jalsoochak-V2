@@ -4,7 +4,7 @@ import com.github.tomakehurst.wiremock.client.WireMock;
 import jakarta.servlet.http.Cookie;
 import jakarta.ws.rs.core.Response;
 import org.arghyam.jalsoochak.user.config.KeycloakProvider;
-import org.arghyam.jalsoochak.user.event.UserEmailEventPublisher;
+import org.arghyam.jalsoochak.user.event.UserNotificationEventPublisher;
 import org.arghyam.jalsoochak.user.service.PiiEncryptionService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -100,7 +100,7 @@ class AuthControllerIntegrationTest {
     KeycloakProvider keycloakProvider;
 
     @MockBean
-    UserEmailEventPublisher userEmailEventPublisher;
+    UserNotificationEventPublisher userNotificationEventPublisher;
 
     // ── Wiring ─────────────────────────────────────────────────────────────────
 

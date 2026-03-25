@@ -28,7 +28,7 @@ import org.arghyam.jalsoochak.user.dto.request.UpdateProfileRequestDTO;
 import org.arghyam.jalsoochak.user.dto.response.AdminUserResponseDTO;
 import org.arghyam.jalsoochak.user.enums.AdminUserStatus;
 import org.arghyam.jalsoochak.user.event.InviteEmailEvent;
-import org.arghyam.jalsoochak.user.event.UserEmailEventPublisher;
+import org.arghyam.jalsoochak.user.event.UserNotificationEventPublisher;
 import org.arghyam.jalsoochak.user.exceptions.BadRequestException;
 import org.arghyam.jalsoochak.user.exceptions.ForbiddenAccessException;
 import org.arghyam.jalsoochak.user.exceptions.InsufficientActiveUsersException;
@@ -78,7 +78,7 @@ class UserManagementServiceImplTest {
     private UserTenantRepository userTenantRepository;
 
     @Mock
-    private UserEmailEventPublisher userEmailEventPublisher;
+    private UserNotificationEventPublisher userNotificationEventPublisher;
 
     @Mock
     private KeycloakAdminHelper keycloakAdminHelper;
@@ -102,7 +102,7 @@ class UserManagementServiceImplTest {
         MetadataDecryptionHelper metadataDecryptionHelper = new MetadataDecryptionHelper(new ObjectMapper(), pii);
         userManagementService = new UserManagementServiceImpl(
                 keycloakProvider, keycloakClient, userCommonRepository, userTenantRepository,
-                userEmailEventPublisher, keycloakAdminHelper, inviteProperties, frontendProperties,
+                userNotificationEventPublisher, keycloakAdminHelper, inviteProperties, frontendProperties,
                 tokenService, new ObjectMapper(), pii, metadataDecryptionHelper
         );
     }
@@ -315,7 +315,7 @@ class UserManagementServiceImplTest {
 
             verify(userCommonRepository).upsertToken(
                     eq("new@example.com"), eq("invite-hash"), eq("INVITE"), anyString(), any(), eq(1));
-            verify(userEmailEventPublisher).publishInviteEmailAfterCommit(any(InviteEmailEvent.class));
+            verify(userNotificationEventPublisher).publishInviteEmailAfterCommit(any(InviteEmailEvent.class));
         }
 
         @Test
@@ -685,7 +685,7 @@ class UserManagementServiceImplTest {
 
             verify(userCommonRepository).upsertToken(
                     eq("pending@example.com"), eq("new-hash"), eq("INVITE"), anyString(), any(), eq(1));
-            verify(userEmailEventPublisher).publishInviteEmailAfterCommit(any(InviteEmailEvent.class));
+            verify(userNotificationEventPublisher).publishInviteEmailAfterCommit(any(InviteEmailEvent.class));
         }
 
         @Test
@@ -720,7 +720,7 @@ class UserManagementServiceImplTest {
 
             // Verify that carried-over names reach the email event
             ArgumentCaptor<InviteEmailEvent> eventCaptor = ArgumentCaptor.forClass(InviteEmailEvent.class);
-            verify(userEmailEventPublisher).publishInviteEmailAfterCommit(eventCaptor.capture());
+            verify(userNotificationEventPublisher).publishInviteEmailAfterCommit(eventCaptor.capture());
             assertEquals("Jane Doe", eventCaptor.getValue().getName());
 
             // Verify that upsertToken was called with metadata containing firstName and lastName
