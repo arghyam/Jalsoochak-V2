@@ -1,0 +1,216 @@
+package org.arghyam.jalsoochak.user.controller;
+
+import com.github.tomakehurst.wiremock.client.WireMock;
+import jakarta.ws.rs.core.Response;
+import org.arghyam.jalsoochak.user.config.KeycloakProvider;
+import org.arghyam.jalsoochak.user.event.UserNotificationEventPublisher;
+import org.arghyam.jalsoochak.user.service.PiiEncryptionService;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Test;
+import org.keycloak.admin.client.Keycloak;
+import org.keycloak.admin.client.resource.UsersResource;
+import org.mockito.Answers;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.cloud.contract.wiremock.AutoConfigureWireMock;
+import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.web.servlet.MockMvc;
+import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.junit.jupiter.Container;
+import org.testcontainers.junit.jupiter.Testcontainers;
+
+import java.net.URI;
+
+import static com.github.tomakehurst.wiremock.client.WireMock.*;
+import static org.hamcrest.Matchers.is;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.*;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK)
+@AutoConfigureMockMvc(addFilters = false)
+@AutoConfigureWireMock(port = 0)
+@Testcontainers
+@ActiveProfiles("test")
+@DisplayName("Staff OTP Auth Integration Tests")
+class StaffAuthControllerIntegrationTest {
+
+    private static final String KEYCLOAK_TOKEN_RESPONSE = """
+            {"access_token":"staff-at","refresh_token":"staff-rt","expires_in":300,
+             "refresh_expires_in":1800,"token_type":"Bearer","scope":"openid"}
+            """;
+
+    @SuppressWarnings("resource")
+    @Container
+    static PostgreSQLContainer<?> postgres =
+            new PostgreSQLContainer<>("postgres:16-alpine")
+                    .withInitScript("sql/test-schema.sql");
+
+    @DynamicPropertySource
+    static void dbProperties(DynamicPropertyRegistry registry) {
+        registry.add("spring.datasource.url", postgres::getJdbcUrl);
+        registry.add("spring.datasource.username", postgres::getUsername);
+        registry.add("spring.datasource.password", postgres::getPassword);
+    }
+
+    @MockBean KeycloakProvider keycloakProvider;
+    @MockBean
+    UserNotificationEventPublisher userNotificationEventPublisher;
+
+    @Autowired MockMvc mockMvc;
+    @Autowired JdbcTemplate jdbcTemplate;
+    @Autowired PiiEncryptionService piiEncryptionService;
+
+    private long staffUserId;
+
+    @BeforeEach
+    void setUp() {
+        WireMock.reset();
+        jdbcTemplate.execute("DELETE FROM common_schema.otp_table");
+        jdbcTemplate.execute("DELETE FROM tenant_mp.user_table");
+
+        Keycloak mockAdmin = mock(Keycloak.class, Answers.RETURNS_DEEP_STUBS);
+        lenient().when(keycloakProvider.getAdminInstance()).thenReturn(mockAdmin);
+        lenient().when(keycloakProvider.getRealm()).thenReturn("jalsoochak-realm");
+
+        // Seed an active staff user
+        Number id = jdbcTemplate.queryForObject("""
+                INSERT INTO tenant_mp.user_table
+                    (tenant_id, user_type, title, phone_number, phone_number_hash,
+                     password, status, whatsapp_connection_id)
+                VALUES (1, 1, ?, ?, ?, 'CSV_ONBOARDED', 1, 99001)
+                RETURNING id
+                """, Number.class,
+                piiEncryptionService.encrypt("Test Officer"),
+                piiEncryptionService.encrypt("919876543210"),
+                piiEncryptionService.hmac("919876543210"));
+        staffUserId = id.longValue();
+    }
+
+    @Nested
+    @DisplayName("POST /api/v1/auth/staff/request-otp")
+    class RequestOtp {
+
+        @Test
+        @DisplayName("returns 200 for a valid registered phone")
+        void returns200ForRegisteredPhone() throws Exception {
+            mockMvc.perform(post("/api/v1/auth/staff/request-otp")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("""
+                                    {"phoneNumber":"919876543210","tenantCode":"MP"}
+                                    """))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.status", is(200)));
+
+            // OTP row must be created
+            Integer count = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(*) FROM common_schema.otp_table WHERE user_id = ? AND used_at IS NULL",
+                    Integer.class, staffUserId);
+            assert count != null && count == 1;
+        }
+
+        @Test
+        @DisplayName("returns 200 even for an unregistered phone (anti-enumeration)")
+        void returns200ForUnknownPhone() throws Exception {
+            mockMvc.perform(post("/api/v1/auth/staff/request-otp")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("""
+                                    {"phoneNumber":"911111111111","tenantCode":"MP"}
+                                    """))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.status", is(200)));
+        }
+
+        @Test
+        @DisplayName("returns 400 for missing phoneNumber")
+        void returns400ForMissingPhone() throws Exception {
+            mockMvc.perform(post("/api/v1/auth/staff/request-otp")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("""
+                                    {"tenantCode":"MP"}
+                                    """))
+                    .andExpect(status().isBadRequest());
+        }
+    }
+
+    @Nested
+    @DisplayName("POST /api/v1/auth/staff/verify-otp")
+    class VerifyOtp {
+
+        private String seedOtp(String rawOtp) {
+            jdbcTemplate.update("""
+                    INSERT INTO common_schema.otp_table
+                        (otp, tenant_id, user_id, otp_type, expires_at)
+                    VALUES (?, 1, ?, 'LOGIN', NOW() + INTERVAL '10 minutes')
+                    """, piiEncryptionService.encrypt(rawOtp), staffUserId);
+            return rawOtp;
+        }
+
+        @Test
+        @DisplayName("returns 200 with access token on valid OTP")
+        void returns200WithTokenOnValidOtp() throws Exception {
+            String otp = seedOtp("123456");
+
+            // Mock Keycloak admin for lazy provisioning
+            Keycloak mockAdmin = mock(Keycloak.class, Answers.RETURNS_DEEP_STUBS);
+            when(keycloakProvider.getAdminInstance()).thenReturn(mockAdmin);
+            when(keycloakProvider.getRealm()).thenReturn("jalsoochak-realm");
+
+            UsersResource usersResource = mock(UsersResource.class, Answers.RETURNS_DEEP_STUBS);
+            when(mockAdmin.realm(anyString()).users()).thenReturn(usersResource);
+
+            Response createResponse = mock(Response.class);
+            when(createResponse.getStatus()).thenReturn(201);
+            when(createResponse.getLocation()).thenReturn(URI.create("http://keycloak/users/new-kc-id"));
+            when(usersResource.create(any())).thenReturn(createResponse);
+
+            // WireMock: Keycloak token endpoint
+            stubFor(WireMock.post(urlEqualTo("/realms/jalsoochak-realm/protocol/openid-connect/token"))
+                    .willReturn(aResponse()
+                            .withHeader("Content-Type", "application/json")
+                            .withBody(KEYCLOAK_TOKEN_RESPONSE)));
+
+            mockMvc.perform(post("/api/v1/auth/staff/verify-otp")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("""
+                                    {"phoneNumber":"919876543210","tenantCode":"MP","otp":"%s"}
+                                    """.formatted(otp)))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.access_token", is("staff-at")))
+                    .andExpect(jsonPath("$.data.tenant_code", is("MP")));
+        }
+
+        @Test
+        @DisplayName("returns 400 for wrong OTP")
+        void returns400ForWrongOtp() throws Exception {
+            seedOtp("123456");
+
+            mockMvc.perform(post("/api/v1/auth/staff/verify-otp")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("""
+                                    {"phoneNumber":"919876543210","tenantCode":"MP","otp":"999999"}
+                                    """))
+                    .andExpect(status().isBadRequest());
+        }
+
+        @Test
+        @DisplayName("returns 400 when no OTP was requested")
+        void returns400WhenNoOtpExists() throws Exception {
+            mockMvc.perform(post("/api/v1/auth/staff/verify-otp")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("""
+                                    {"phoneNumber":"919876543210","tenantCode":"MP","otp":"123456"}
+                                    """))
+                    .andExpect(status().isBadRequest());
+        }
+    }
+}
