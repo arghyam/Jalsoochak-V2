@@ -2,10 +2,10 @@
 -- Lives in common_schema because login is pre-auth: tenant schema is unknown until the user is resolved.
 
 CREATE TABLE common_schema.otp_table (
-    id            SERIAL        PRIMARY KEY,
+    id            BIGSERIAL     PRIMARY KEY,
     otp           TEXT          NOT NULL,           -- AES-256-GCM encrypted via PiiEncryptionService
     tenant_id     INTEGER       NOT NULL,           -- logical FK → common_schema.tenant_master_table
-    user_id       INTEGER       NOT NULL,           -- logical FK → tenant_<code>.user_table (cross-schema; no DB constraint)
+    user_id       BIGINT        NOT NULL,           -- logical FK → tenant_<code>.user_table (cross-schema; no DB constraint)
     otp_type      VARCHAR(30)   NOT NULL,
     attempt_count INTEGER       NOT NULL DEFAULT 0,
     created_at    TIMESTAMPTZ   NOT NULL DEFAULT NOW(),

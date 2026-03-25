@@ -23,6 +23,7 @@ import org.arghyam.jalsoochak.user.service.StaffAuthService;
 import org.arghyam.jalsoochak.user.service.StaffKeycloakService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.Instant;
 import java.util.Optional;
@@ -40,6 +41,7 @@ public class StaffAuthServiceImpl implements StaffAuthService {
     private final StaffKeycloakService staffKeycloakService;
     private final KeycloakClient keycloakClient;
     private final UserNotificationEventPublisher eventPublisher;
+    private final TransactionTemplate transactionTemplate;
 
     @Override
     @Transactional
@@ -92,24 +94,29 @@ public class StaffAuthServiceImpl implements StaffAuthService {
     }
 
     @Override
-    @Transactional
     public AuthResult verifyOtp(StaffOtpVerifyDTO request) {
         String tenantCode = request.getTenantCode().trim().toUpperCase();
-
-        Integer tenantId = userCommonRepository.findTenantIdByStateCode(tenantCode)
-                .orElseThrow(() -> new BadRequestException("Invalid or expired OTP"));
         String schema = "tenant_" + tenantCode.toLowerCase();
 
-        TenantUserRecord user = userTenantRepository.findUserByPhone(schema, request.getPhoneNumber().trim())
-                .orElseThrow(() -> new BadRequestException("Invalid or expired OTP"));
+        // Resolve user and verify OTP in a short-lived transaction so the DB connection
+        // is released before the external Keycloak calls below.
+        TenantUserRecord user = transactionTemplate.execute(status -> {
+            Integer tenantId = userCommonRepository.findTenantIdByStateCode(tenantCode)
+                    .orElseThrow(() -> new BadRequestException("Invalid or expired OTP"));
 
-        // Verify OTP before checking account status to avoid leaking whether an account is deactivated
-        otpService.verifyOtp(user.id(), tenantId, OtpType.LOGIN, request.getOtp());
+            TenantUserRecord u = userTenantRepository.findUserByPhone(schema, request.getPhoneNumber().trim())
+                    .orElseThrow(() -> new BadRequestException("Invalid or expired OTP"));
 
-        if (user.status() == null || user.status() != TenantUserStatus.ACTIVE.code) {
-            throw new AccountDeactivatedException("Account is deactivated");
-        }
+            // Verify OTP before checking account status to avoid leaking whether an account is deactivated
+            otpService.verifyOtp(u.id(), tenantId, OtpType.LOGIN, request.getOtp());
 
+            if (u.status() == null || u.status() != TenantUserStatus.ACTIVE.code) {
+                throw new AccountDeactivatedException("Account is deactivated");
+            }
+            return u;
+        });
+
+        // Keycloak provisioning and token exchange run outside the DB transaction
         String managedPassword = staffKeycloakService.ensureKeycloakAccount(user, tenantCode, schema);
         KeycloakTokenResponse token = keycloakClient.obtainToken(user.phoneNumber(), managedPassword);
 

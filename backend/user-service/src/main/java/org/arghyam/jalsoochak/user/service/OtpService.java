@@ -102,11 +102,10 @@ public class OtpService {
     }
 
     private String generateOtp() {
-        int bound = 1;
+        StringBuilder sb = new StringBuilder(otpProperties.otpLength());
         for (int i = 0; i < otpProperties.otpLength(); i++) {
-            bound *= 10;
+            sb.append(secureRandom.nextInt(10));
         }
-        int value = secureRandom.nextInt(bound);
-        return String.format("%0" + otpProperties.otpLength() + "d", value);
+        return sb.toString();
     }
 }

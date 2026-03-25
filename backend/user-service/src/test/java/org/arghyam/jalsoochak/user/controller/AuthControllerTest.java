@@ -75,7 +75,7 @@ class AuthControllerTest {
 
     @BeforeEach
     void resetMocks() {
-        reset(authService);
+        reset(authService, staffAuthService);
     }
 
     // ── helpers ──────────────────────────────────────────────────────────────────

@@ -126,10 +126,10 @@ CREATE TABLE tenant_mp.user_table (
 -- ── OTP table (V24) ────────────────────────────────────────────────────────
 
 CREATE TABLE common_schema.otp_table (
-    id            SERIAL       PRIMARY KEY,
+    id            BIGSERIAL    PRIMARY KEY,
     otp           TEXT         NOT NULL,
     tenant_id     INTEGER      NOT NULL,
-    user_id       INTEGER      NOT NULL,
+    user_id       BIGINT       NOT NULL,
     otp_type      VARCHAR(30)  NOT NULL,
     attempt_count INTEGER      NOT NULL DEFAULT 0,
     created_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW(),

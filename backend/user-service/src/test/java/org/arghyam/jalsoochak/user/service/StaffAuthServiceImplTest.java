@@ -10,6 +10,8 @@ import static org.mockito.Mockito.when;
 
 import java.util.Optional;
 
+import org.springframework.transaction.support.TransactionTemplate;
+
 import org.arghyam.jalsoochak.user.clients.KeycloakClient;
 import org.arghyam.jalsoochak.user.clients.KeycloakTokenResponse;
 import org.arghyam.jalsoochak.user.config.properties.OtpProperties;
@@ -43,8 +45,8 @@ class StaffAuthServiceImplTest {
     @Mock OtpService otpService;
     @Mock StaffKeycloakService staffKeycloakService;
     @Mock KeycloakClient keycloakClient;
-    @Mock
-    UserNotificationEventPublisher eventPublisher;
+    @Mock UserNotificationEventPublisher eventPublisher;
+    @Mock TransactionTemplate transactionTemplate;
 
     StaffAuthServiceImpl service;
 
@@ -63,7 +65,7 @@ class StaffAuthServiceImplTest {
     void setUp() {
         OtpProperties otpProps = new OtpProperties(10, 5, 60, 6, "WHATSAPP");
         service = new StaffAuthServiceImpl(userCommonRepository, userTenantRepository,
-                otpProps, otpService, staffKeycloakService, keycloakClient, eventPublisher);
+                otpProps, otpService, staffKeycloakService, keycloakClient, eventPublisher, transactionTemplate);
     }
 
     @Nested
@@ -166,6 +168,9 @@ class StaffAuthServiceImplTest {
             request.setPhoneNumber("919876543210");
             request.setTenantCode("MP");
             request.setOtp("123456");
+            when(transactionTemplate.execute(any())).thenAnswer(inv ->
+                    ((org.springframework.transaction.support.TransactionCallback<?>) inv.getArgument(0))
+                            .doInTransaction(null));
         }
 
         @Test
@@ -231,6 +236,22 @@ class StaffAuthServiceImplTest {
 
             assertThatThrownBy(() -> service.verifyOtp(request))
                     .isInstanceOf(BadRequestException.class);
+        }
+
+        @Test
+        @DisplayName("OTP failure takes precedence over deactivation check (regression: verify ordering)")
+        void otpFailureTakesPrecedenceOverDeactivationCheck() {
+            when(userCommonRepository.findTenantIdByStateCode("MP")).thenReturn(Optional.of(1));
+            when(userTenantRepository.findUserByPhone("tenant_mp", "919876543210"))
+                    .thenReturn(Optional.of(INACTIVE_USER));
+            doThrow(new BadRequestException("Invalid or expired OTP"))
+                    .when(otpService).verifyOtp(10L, 1, OtpType.LOGIN, "123456");
+
+            assertThatThrownBy(() -> service.verifyOtp(request))
+                    .isInstanceOf(BadRequestException.class)
+                    .hasMessageContaining("Invalid or expired OTP");
+
+            verify(otpService).verifyOtp(10L, 1, OtpType.LOGIN, "123456");
         }
     }
 }

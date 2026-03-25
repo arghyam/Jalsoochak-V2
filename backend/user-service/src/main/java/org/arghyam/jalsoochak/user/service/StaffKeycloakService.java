@@ -129,10 +129,14 @@ public class StaffKeycloakService {
             return managedPassword;
 
         } catch (RuntimeException e) {
-            keycloakAdminHelper.deleteUser(keycloakUuid);
+            if (keycloakUuid != null) {
+                keycloakAdminHelper.deleteUser(keycloakUuid);
+            }
             throw e;
         } catch (Exception e) {
-            keycloakAdminHelper.deleteUser(keycloakUuid);
+            if (keycloakUuid != null) {
+                keycloakAdminHelper.deleteUser(keycloakUuid);
+            }
             throw new KeycloakOperationException("Failed to provision staff Keycloak account", e);
         }
     }

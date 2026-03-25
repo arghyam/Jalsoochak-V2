@@ -197,6 +197,17 @@ class StaffAuthControllerIntegrationTest {
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.data.access_token", is("staff-at")))
                     .andExpect(jsonPath("$.data.tenant_code", is("MP")));
+
+            // OTP row must be marked consumed (used_at IS NOT NULL)
+            Integer unconsumed = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(*) FROM common_schema.otp_table WHERE user_id = ? AND used_at IS NULL",
+                    Integer.class, staffUserId);
+            assertThat(unconsumed).isNotNull().isZero();
+
+            Integer consumed = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(*) FROM common_schema.otp_table WHERE user_id = ? AND used_at IS NOT NULL",
+                    Integer.class, staffUserId);
+            assertThat(consumed).isNotNull().isEqualTo(1);
         }
 
         @Test

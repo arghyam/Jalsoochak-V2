@@ -137,6 +137,24 @@ class OtpServiceTest {
         }
 
         @Test
+        @DisplayName("throws when markUsed returns false (concurrent consumption race)")
+        void throwsWhenMarkUsedReturnsFalse() {
+            OtpRow row = new OtpRow(10L, "encrypted-123456", 1, 1L, OtpType.LOGIN, 0,
+                    Instant.now().minus(1, ChronoUnit.MINUTES),
+                    Instant.now().plus(9, ChronoUnit.MINUTES), null);
+            when(otpRepository.findActiveOtp(1L, 1, OtpType.LOGIN)).thenReturn(Optional.of(row));
+            when(piiEncryptionService.decrypt("encrypted-123456")).thenReturn("123456");
+            when(otpRepository.markUsed(10L)).thenReturn(false);
+
+            assertThatThrownBy(() -> otpService.verifyOtp(1L, 1, OtpType.LOGIN, "123456"))
+                    .isInstanceOf(BadRequestException.class)
+                    .hasMessageContaining("Invalid or expired OTP");
+
+            verify(otpRepository).markUsed(10L);
+            verify(otpRepository, never()).incrementAttemptCount(any());
+        }
+
+        @Test
         @DisplayName("throws when max attempts exceeded")
         void throwsWhenMaxAttemptsExceeded() {
             OtpRow row = new OtpRow(10L, "enc", 1, 1L, OtpType.LOGIN, 5,

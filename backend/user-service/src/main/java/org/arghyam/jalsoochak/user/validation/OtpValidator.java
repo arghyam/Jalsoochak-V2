@@ -24,6 +24,6 @@ public class OtpValidator implements ConstraintValidator<ValidOtp, String> {
                     "otp must be exactly " + expectedLength + " digits").addConstraintViolation();
             return false;
         }
-        return value.chars().allMatch(Character::isDigit);
+        return value.chars().allMatch(ch -> ch >= '0' && ch <= '9');
     }
 }

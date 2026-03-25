@@ -156,6 +156,26 @@ class StaffKeycloakServiceTest {
         }
 
         @Test
+        @DisplayName("does not call deleteUser when usersResource.create throws before UUID is assigned")
+        void doesNotDeleteUserWhenCreateThrows() {
+            when(userTenantRepository.findPasswordByUserId("tenant_mp", 10L))
+                    .thenReturn(Optional.empty());
+
+            Keycloak mockAdmin = mock(Keycloak.class, Answers.RETURNS_DEEP_STUBS);
+            UsersResource usersResource = mock(UsersResource.class, Answers.RETURNS_DEEP_STUBS);
+            when(keycloakProvider.getAdminInstance()).thenReturn(mockAdmin);
+            when(keycloakProvider.getRealm()).thenReturn("realm");
+            when(mockAdmin.realm("realm").users()).thenReturn(usersResource);
+            when(usersResource.create(any())).thenThrow(new RuntimeException("Keycloak create failed"));
+
+            assertThatThrownBy(() -> service.ensureKeycloakAccount(USER, "MP", "tenant_mp"))
+                    .isInstanceOf(RuntimeException.class)
+                    .hasMessageContaining("Keycloak create failed");
+
+            verify(keycloakAdminHelper, never()).deleteUser(anyString());
+        }
+
+        @Test
         @DisplayName("throws KeycloakOperationException when Keycloak create returns non-201")
         void throwsOnNon201Response() {
             when(userTenantRepository.findPasswordByUserId("tenant_mp", 10L))
