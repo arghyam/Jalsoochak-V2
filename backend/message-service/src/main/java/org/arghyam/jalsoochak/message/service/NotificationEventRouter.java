@@ -525,6 +525,7 @@ public class NotificationEventRouter {
         String tenantSchema = root.path("tenantSchema").asText("");
         long officerId = root.path("officerId").asLong(0);
         long storedId = root.path("officerWhatsappConnectionId").asLong(0);
+        String correlationId = root.path("correlationId").asText("");
 
         if (storedId <= 0 && officerPhone.isBlank()) {
             log.warn("[Router/ESCALATION] officerPhone and officerWhatsappConnectionId are both missing, skipping");
@@ -544,7 +545,7 @@ public class NotificationEventRouter {
             return;
         }
 
-        String filename = escalationPdfService.generate(operators, level, officerName, officerUserType);
+        String filename = escalationPdfService.generate(operators, level, officerName, officerUserType, correlationId);
         java.nio.file.Path localPath = Paths.get(reportDir, filename);
         String minioUrl;
         try {

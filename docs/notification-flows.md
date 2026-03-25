@@ -341,7 +341,7 @@ All Glific and storage properties can be overridden via environment variables.
 |---|---|---|
 | `welcome-message-dlt` | message-service | External ops/monitoring consumer |
 
-Neither DLT is consumed by message-service itself — doing so would create an unbounded retry loop. Each record carries a deterministic `retryId` (UUID v3) for idempotent replay. Configure alerting (e.g., Kafka consumer-lag alerts) on these topics to detect delivery failures.
+The DLT is not consumed by message-service itself — doing so would create an unbounded retry loop. Each record carries a deterministic `retryId` (UUID v3) for idempotent replay. Configure alerting (e.g., Kafka consumer-lag alerts) on this topic to detect delivery failures.
 
 ---
 
