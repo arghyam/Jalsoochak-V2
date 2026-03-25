@@ -1,0 +1,148 @@
+package org.arghyam.jalsoochak.user.service;
+
+import jakarta.ws.rs.core.Response;
+import org.arghyam.jalsoochak.user.config.KeycloakProvider;
+import org.arghyam.jalsoochak.user.exceptions.KeycloakOperationException;
+import org.arghyam.jalsoochak.user.repository.TenantUserRecord;
+import org.arghyam.jalsoochak.user.repository.UserTenantRepository;
+import org.arghyam.jalsoochak.user.util.PasswordCipher;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.keycloak.admin.client.Keycloak;
+import org.keycloak.admin.client.resource.UserResource;
+import org.keycloak.admin.client.resource.UsersResource;
+import org.mockito.Answers;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+
+import java.net.URI;
+import java.util.Optional;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.*;
+
+@ExtendWith(MockitoExtension.class)
+@DisplayName("StaffKeycloakService")
+class StaffKeycloakServiceTest {
+
+    @Mock KeycloakProvider keycloakProvider;
+    @Mock KeycloakAdminHelper keycloakAdminHelper;
+    @Mock UserTenantRepository userTenantRepository;
+    @Mock PasswordCipher passwordCipher;
+
+    StaffKeycloakService service;
+
+    private static final TenantUserRecord USER = new TenantUserRecord(
+            10L, 1, "919876543210", null, 3L, "SECTION_OFFICER",
+            "Test Officer", null, 1, null);
+
+    @BeforeEach
+    void setUp() {
+        service = new StaffKeycloakService(keycloakProvider, keycloakAdminHelper,
+                userTenantRepository, passwordCipher);
+    }
+
+    @Nested
+    @DisplayName("ensureKeycloakAccount – fast path")
+    class FastPath {
+
+        @Test
+        @DisplayName("decrypts and returns existing managed password")
+        void returnExistingPassword() {
+            when(userTenantRepository.findPasswordByUserId("tenant_mp", 10L))
+                    .thenReturn(Optional.of("encrypted-pw"));
+            when(passwordCipher.decrypt("encrypted-pw")).thenReturn("plain-pw");
+
+            String result = service.ensureKeycloakAccount(USER, "MP", "tenant_mp");
+
+            assertThat(result).isEqualTo("plain-pw");
+            verify(keycloakProvider, never()).getAdminInstance();
+        }
+
+        @Test
+        @DisplayName("falls through to provisioning for CSV_ONBOARDED placeholder")
+        void fallsThroughForCsvOnboarded() {
+            when(userTenantRepository.findPasswordByUserId("tenant_mp", 10L))
+                    .thenReturn(Optional.of("CSV_ONBOARDED"));
+
+            Keycloak mockAdmin = mock(Keycloak.class, Answers.RETURNS_DEEP_STUBS);
+            UsersResource usersResource = mock(UsersResource.class, Answers.RETURNS_DEEP_STUBS);
+            when(keycloakProvider.getAdminInstance()).thenReturn(mockAdmin);
+            when(keycloakProvider.getRealm()).thenReturn("realm");
+            when(mockAdmin.realm("realm").users()).thenReturn(usersResource);
+
+            Response response = mock(Response.class);
+            when(response.getStatus()).thenReturn(201);
+            when(response.getLocation()).thenReturn(URI.create("http://kc/users/new-uuid"));
+            when(usersResource.create(any())).thenReturn(response);
+
+            UserResource userResource = mock(UserResource.class);
+            when(usersResource.get("new-uuid")).thenReturn(userResource);
+            doNothing().when(userResource).resetPassword(any());
+
+            when(passwordCipher.encrypt(anyString())).thenReturn("encrypted-new");
+
+            service.ensureKeycloakAccount(USER, "MP", "tenant_mp");
+
+            verify(userTenantRepository).updateKeycloakUuidAndPassword(
+                    eq("tenant_mp"), eq(10L), eq("new-uuid"), eq("encrypted-new"));
+        }
+    }
+
+    @Nested
+    @DisplayName("ensureKeycloakAccount – slow path")
+    class SlowPath {
+
+        @Test
+        @DisplayName("compensates by deleting Keycloak user on provisioning failure")
+        void compensatesOnFailure() {
+            when(userTenantRepository.findPasswordByUserId("tenant_mp", 10L))
+                    .thenReturn(Optional.empty());
+
+            Keycloak mockAdmin = mock(Keycloak.class, Answers.RETURNS_DEEP_STUBS);
+            UsersResource usersResource = mock(UsersResource.class, Answers.RETURNS_DEEP_STUBS);
+            when(keycloakProvider.getAdminInstance()).thenReturn(mockAdmin);
+            when(keycloakProvider.getRealm()).thenReturn("realm");
+            when(mockAdmin.realm("realm").users()).thenReturn(usersResource);
+
+            Response response = mock(Response.class);
+            when(response.getStatus()).thenReturn(201);
+            when(response.getLocation()).thenReturn(URI.create("http://kc/users/new-uuid"));
+            when(usersResource.create(any())).thenReturn(response);
+
+            UserResource userResource = mock(UserResource.class);
+            when(usersResource.get("new-uuid")).thenReturn(userResource);
+            doThrow(new RuntimeException("Keycloak down")).when(userResource).resetPassword(any());
+
+            assertThatThrownBy(() -> service.ensureKeycloakAccount(USER, "MP", "tenant_mp"))
+                    .isInstanceOf(RuntimeException.class);
+
+            verify(keycloakAdminHelper).deleteUser("new-uuid");
+        }
+
+        @Test
+        @DisplayName("throws KeycloakOperationException when Keycloak create returns non-201")
+        void throwsOnNon201Response() {
+            when(userTenantRepository.findPasswordByUserId("tenant_mp", 10L))
+                    .thenReturn(Optional.empty());
+
+            Keycloak mockAdmin = mock(Keycloak.class, Answers.RETURNS_DEEP_STUBS);
+            UsersResource usersResource = mock(UsersResource.class, Answers.RETURNS_DEEP_STUBS);
+            when(keycloakProvider.getAdminInstance()).thenReturn(mockAdmin);
+            when(keycloakProvider.getRealm()).thenReturn("realm");
+            when(mockAdmin.realm("realm").users()).thenReturn(usersResource);
+
+            Response response = mock(Response.class);
+            when(response.getStatus()).thenReturn(409);
+            when(usersResource.create(any())).thenReturn(response);
+
+            assertThatThrownBy(() -> service.ensureKeycloakAccount(USER, "MP", "tenant_mp"))
+                    .isInstanceOf(KeycloakOperationException.class);
+        }
+    }
+}

@@ -1,0 +1,219 @@
+package org.arghyam.jalsoochak.user.service;
+
+import org.arghyam.jalsoochak.user.clients.KeycloakClient;
+import org.arghyam.jalsoochak.user.clients.KeycloakTokenResponse;
+import org.arghyam.jalsoochak.user.config.properties.OtpProperties;
+import org.arghyam.jalsoochak.user.dto.internal.AuthResult;
+import org.arghyam.jalsoochak.user.dto.request.StaffOtpRequestDTO;
+import org.arghyam.jalsoochak.user.dto.request.StaffOtpVerifyDTO;
+import org.arghyam.jalsoochak.user.enums.OtpType;
+import org.arghyam.jalsoochak.user.enums.TenantUserStatus;
+import org.arghyam.jalsoochak.user.event.SendLoginOtpEvent;
+import org.arghyam.jalsoochak.user.event.UserNotificationEventPublisher;
+import org.arghyam.jalsoochak.user.exceptions.AccountDeactivatedException;
+import org.arghyam.jalsoochak.user.exceptions.BadRequestException;
+import org.arghyam.jalsoochak.user.repository.TenantUserRecord;
+import org.arghyam.jalsoochak.user.repository.UserCommonRepository;
+import org.arghyam.jalsoochak.user.repository.UserTenantRepository;
+import org.arghyam.jalsoochak.user.service.serviceImpl.StaffAuthServiceImpl;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+
+import java.util.Optional;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.*;
+
+@ExtendWith(MockitoExtension.class)
+@DisplayName("StaffAuthServiceImpl")
+class StaffAuthServiceImplTest {
+
+    @Mock UserCommonRepository userCommonRepository;
+    @Mock UserTenantRepository userTenantRepository;
+    @Mock OtpService otpService;
+    @Mock StaffKeycloakService staffKeycloakService;
+    @Mock KeycloakClient keycloakClient;
+    @Mock
+    UserNotificationEventPublisher eventPublisher;
+
+    StaffAuthServiceImpl service;
+
+    private static final TenantUserRecord ACTIVE_USER = new TenantUserRecord(
+            10L, 1, "919876543210", "test@test.com", 3L, "SECTION_OFFICER",
+            "Test Officer", "kc-uuid", TenantUserStatus.ACTIVE.code, 12345L);
+
+    private static final TenantUserRecord INACTIVE_USER = new TenantUserRecord(
+            10L, 1, "919876543210", "test@test.com", 3L, "SECTION_OFFICER",
+            "Test Officer", "kc-uuid", TenantUserStatus.INACTIVE.code, null);
+
+    private static final KeycloakTokenResponse TOKEN_RESPONSE =
+            new KeycloakTokenResponse("at", "rt", 300, 1800, "Bearer", null, null, "openid");
+
+    @BeforeEach
+    void setUp() {
+        OtpProperties otpProps = new OtpProperties(10, 5, 60, 6, "WHATSAPP");
+        service = new StaffAuthServiceImpl(userCommonRepository, userTenantRepository,
+                otpProps, otpService, staffKeycloakService, keycloakClient, eventPublisher);
+    }
+
+    @Nested
+    @DisplayName("requestOtp")
+    class RequestOtp {
+
+        StaffOtpRequestDTO request;
+
+        @BeforeEach
+        void setUp() {
+            request = new StaffOtpRequestDTO();
+            request.setPhoneNumber("919876543210");
+            request.setTenantCode("mp");
+        }
+
+        @Test
+        @DisplayName("generates and publishes OTP for active user")
+        void generatesOtpForActiveUser() {
+            when(userCommonRepository.findTenantIdByStateCode("MP")).thenReturn(Optional.of(1));
+            when(userTenantRepository.findUserByPhone("tenant_mp", "919876543210"))
+                    .thenReturn(Optional.of(ACTIVE_USER));
+            when(otpService.requestOtp(10L, 1, OtpType.LOGIN)).thenReturn("123456");
+
+            service.requestOtp(request);
+
+            verify(otpService).requestOtp(10L, 1, OtpType.LOGIN);
+            verify(eventPublisher).publishLoginOtpAfterCommit(any(SendLoginOtpEvent.class));
+        }
+
+        @Test
+        @DisplayName("returns silently when tenant not found (anti-enumeration)")
+        void silentWhenTenantNotFound() {
+            when(userCommonRepository.findTenantIdByStateCode("MP")).thenReturn(Optional.empty());
+
+            service.requestOtp(request); // must not throw
+
+            verify(otpService, never()).requestOtp(any(), any(), any());
+            verify(eventPublisher, never()).publishLoginOtpAfterCommit(any());
+        }
+
+        @Test
+        @DisplayName("returns silently when phone not registered (anti-enumeration)")
+        void silentWhenPhoneNotFound() {
+            when(userCommonRepository.findTenantIdByStateCode("MP")).thenReturn(Optional.of(1));
+            when(userTenantRepository.findUserByPhone("tenant_mp", "919876543210"))
+                    .thenReturn(Optional.empty());
+
+            service.requestOtp(request);
+
+            verify(otpService, never()).requestOtp(any(), any(), any());
+        }
+
+        @Test
+        @DisplayName("returns silently when user is inactive (anti-enumeration)")
+        void silentWhenUserInactive() {
+            when(userCommonRepository.findTenantIdByStateCode("MP")).thenReturn(Optional.of(1));
+            when(userTenantRepository.findUserByPhone("tenant_mp", "919876543210"))
+                    .thenReturn(Optional.of(INACTIVE_USER));
+
+            service.requestOtp(request);
+
+            verify(otpService, never()).requestOtp(any(), any(), any());
+        }
+
+        @Test
+        @DisplayName("normalises tenantCode to uppercase before lookup")
+        void normalisesToUppercase() {
+            request.setTenantCode("mp");
+            when(userCommonRepository.findTenantIdByStateCode("MP")).thenReturn(Optional.empty());
+
+            service.requestOtp(request);
+
+            verify(userCommonRepository).findTenantIdByStateCode("MP");
+        }
+    }
+
+    @Nested
+    @DisplayName("verifyOtp")
+    class VerifyOtp {
+
+        StaffOtpVerifyDTO request;
+
+        @BeforeEach
+        void setUp() {
+            request = new StaffOtpVerifyDTO();
+            request.setPhoneNumber("919876543210");
+            request.setTenantCode("MP");
+            request.setOtp("123456");
+        }
+
+        @Test
+        @DisplayName("returns AuthResult with token on valid OTP")
+        void returnsAuthResultOnSuccess() {
+            when(userCommonRepository.findTenantIdByStateCode("MP")).thenReturn(Optional.of(1));
+            when(userTenantRepository.findUserByPhone("tenant_mp", "919876543210"))
+                    .thenReturn(Optional.of(ACTIVE_USER));
+            when(staffKeycloakService.ensureKeycloakAccount(ACTIVE_USER, "MP", "tenant_mp"))
+                    .thenReturn("managed-pw");
+            when(keycloakClient.obtainToken("919876543210", "managed-pw"))
+                    .thenReturn(TOKEN_RESPONSE);
+
+            AuthResult result = service.verifyOtp(request);
+
+            assertThat(result.tokenResponse().getAccessToken()).isEqualTo("at");
+            assertThat(result.tokenResponse().getTenantCode()).isEqualTo("MP");
+            assertThat(result.tokenResponse().getRole()).isEqualTo("SECTION_OFFICER");
+            assertThat(result.refreshToken()).isEqualTo("rt");
+        }
+
+        @Test
+        @DisplayName("throws BadRequestException when tenant not found")
+        void throwsWhenTenantNotFound() {
+            when(userCommonRepository.findTenantIdByStateCode("MP")).thenReturn(Optional.empty());
+
+            assertThatThrownBy(() -> service.verifyOtp(request))
+                    .isInstanceOf(BadRequestException.class)
+                    .hasMessageContaining("Invalid or expired OTP");
+        }
+
+        @Test
+        @DisplayName("throws BadRequestException when user not found")
+        void throwsWhenUserNotFound() {
+            when(userCommonRepository.findTenantIdByStateCode("MP")).thenReturn(Optional.of(1));
+            when(userTenantRepository.findUserByPhone("tenant_mp", "919876543210"))
+                    .thenReturn(Optional.empty());
+
+            assertThatThrownBy(() -> service.verifyOtp(request))
+                    .isInstanceOf(BadRequestException.class)
+                    .hasMessageContaining("Invalid or expired OTP");
+        }
+
+        @Test
+        @DisplayName("throws AccountDeactivatedException when user is inactive")
+        void throwsWhenUserInactive() {
+            when(userCommonRepository.findTenantIdByStateCode("MP")).thenReturn(Optional.of(1));
+            when(userTenantRepository.findUserByPhone("tenant_mp", "919876543210"))
+                    .thenReturn(Optional.of(INACTIVE_USER));
+
+            assertThatThrownBy(() -> service.verifyOtp(request))
+                    .isInstanceOf(AccountDeactivatedException.class);
+        }
+
+        @Test
+        @DisplayName("propagates BadRequestException from OtpService on wrong OTP")
+        void propagatesOtpServiceException() {
+            when(userCommonRepository.findTenantIdByStateCode("MP")).thenReturn(Optional.of(1));
+            when(userTenantRepository.findUserByPhone("tenant_mp", "919876543210"))
+                    .thenReturn(Optional.of(ACTIVE_USER));
+            doThrow(new BadRequestException("Invalid or expired OTP"))
+                    .when(otpService).verifyOtp(10L, 1, OtpType.LOGIN, "123456");
+
+            assertThatThrownBy(() -> service.verifyOtp(request))
+                    .isInstanceOf(BadRequestException.class);
+        }
+    }
+}
