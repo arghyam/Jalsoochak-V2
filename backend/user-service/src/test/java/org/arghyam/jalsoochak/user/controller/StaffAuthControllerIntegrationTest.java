@@ -7,8 +7,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.is;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -37,6 +39,7 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.MvcResult;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -103,6 +106,7 @@ class StaffAuthControllerIntegrationTest {
                 piiEncryptionService.encrypt("919876543210"),
                 piiEncryptionService.hmac("919876543210"));
         staffUserId = id.longValue();
+        clearInvocations(keycloakProvider);
     }
 
     @Nested
@@ -130,13 +134,24 @@ class StaffAuthControllerIntegrationTest {
         @Test
         @DisplayName("returns 200 even for an unregistered phone (anti-enumeration)")
         void returns200ForUnknownPhone() throws Exception {
-            mockMvc.perform(post("/api/v1/auth/staff/request-otp")
+            MvcResult knownResult = mockMvc.perform(post("/api/v1/auth/staff/request-otp")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("""
+                                    {"phoneNumber":"919876543210","tenantCode":"MP"}
+                                    """))
+                    .andExpect(status().isOk())
+                    .andReturn();
+
+            MvcResult unknownResult = mockMvc.perform(post("/api/v1/auth/staff/request-otp")
                             .contentType(MediaType.APPLICATION_JSON)
                             .content("""
                                     {"phoneNumber":"911111111111","tenantCode":"MP"}
                                     """))
                     .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.status", is(200)));
+                    .andReturn();
+
+            assertThat(unknownResult.getResponse().getContentAsString())
+                    .isEqualTo(knownResult.getResponse().getContentAsString());
         }
 
         @Test
@@ -221,6 +236,8 @@ class StaffAuthControllerIntegrationTest {
                                     {"phoneNumber":"919876543210","tenantCode":"MP","otp":"999999"}
                                     """))
                     .andExpect(status().isBadRequest());
+
+            verifyNoInteractions(keycloakProvider);
         }
 
         @Test
@@ -232,6 +249,8 @@ class StaffAuthControllerIntegrationTest {
                                     {"phoneNumber":"919876543210","tenantCode":"MP","otp":"123456"}
                                     """))
                     .andExpect(status().isBadRequest());
+
+            verifyNoInteractions(keycloakProvider);
         }
     }
 }

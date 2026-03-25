@@ -66,6 +66,23 @@ public class OtpRepository {
     }
 
     /**
+     * Same as {@link #findActiveOtp} but acquires a row-level {@code FOR UPDATE} lock.
+     * Must be called within an active transaction. Used by the verify path to serialise
+     * the attempt-count check and increment so concurrent callers cannot bypass maxAttempts.
+     */
+    public Optional<OtpRow> findActiveOtpForUpdate(Long userId, Integer tenantId, OtpType otpType) {
+        List<OtpRow> rows = jdbcTemplate.query("""
+                SELECT id, otp, tenant_id, user_id, otp_type, attempt_count, created_at, expires_at, used_at
+                FROM common_schema.otp_table
+                WHERE user_id = ? AND tenant_id = ? AND otp_type = ?
+                  AND used_at IS NULL AND expires_at > NOW()
+                LIMIT 1
+                FOR UPDATE
+                """, (rs, n) -> mapRow(rs), userId, tenantId, otpType.name());
+        return rows.stream().findFirst();
+    }
+
+    /**
      * Atomically increments attempt_count by 1.
      */
     public void incrementAttemptCount(Long otpId) {
@@ -85,7 +102,7 @@ public class OtpRepository {
         int rows = jdbcTemplate.update("""
                 UPDATE common_schema.otp_table
                 SET used_at = NOW()
-                WHERE id = ? AND used_at IS NULL
+                WHERE id = ? AND used_at IS NULL AND expires_at > NOW()
                 """, otpId);
         return rows > 0;
     }

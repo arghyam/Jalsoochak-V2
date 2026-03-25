@@ -70,9 +70,12 @@ public class StaffAuthServiceImpl implements StaffAuthService {
         String rawOtp;
         try {
             rawOtp = otpService.requestOtp(user.id(), tenantId, OtpType.LOGIN);
-        } catch (Exception e) {
+        } catch (BadRequestException e) {
             // Swallow to preserve anti-enumeration: exposing cooldown/errors would confirm the phone is registered.
             log.debug("OTP request suppressed for staffUserId={} tenantCode={}: {}", user.id(), tenantCode, e.getMessage());
+            return;
+        } catch (Exception e) {
+            log.error("OTP infrastructure failure for staffUserId={} tenantCode={}", user.id(), tenantCode, e);
             return;
         }
 
@@ -118,7 +121,12 @@ public class StaffAuthServiceImpl implements StaffAuthService {
         // Returns the consumed OTP ID for potential reversion if Keycloak fails.
         Long consumedOtpId = otpService.verifyOtp(user.id(), tenantId, OtpType.LOGIN, request.getOtp());
 
-        if (user.status() == null || user.status() != TenantUserStatus.ACTIVE.code) {
+        // Re-fetch to avoid acting on a stale snapshot: a concurrent deactivation could have changed
+        // the status between the initial resolution and now.
+        TenantUserRecord freshUser = userTenantRepository.findUserByPhone(schema, request.getPhoneNumber().trim())
+                .orElseThrow(() -> new BadRequestException("Invalid or expired OTP"));
+
+        if (freshUser.status() == null || freshUser.status() != TenantUserStatus.ACTIVE.code) {
             throw new AccountDeactivatedException("Account is deactivated");
         }
 
@@ -127,8 +135,8 @@ public class StaffAuthServiceImpl implements StaffAuthService {
         String managedPassword;
         KeycloakTokenResponse token;
         try {
-            managedPassword = staffKeycloakService.ensureKeycloakAccount(user, tenantCode, schema);
-            token = keycloakClient.obtainToken(user.phoneNumber(), managedPassword);
+            managedPassword = staffKeycloakService.ensureKeycloakAccount(freshUser, tenantCode, schema);
+            token = keycloakClient.obtainToken(freshUser.phoneNumber(), managedPassword);
         } catch (RuntimeException e) {
             otpService.revertOtpConsumption(consumedOtpId);
             throw e;
@@ -138,14 +146,14 @@ public class StaffAuthServiceImpl implements StaffAuthService {
         resp.setAccessToken(token.accessToken());
         resp.setExpiresIn(token.expiresIn());
         resp.setTokenType(token.tokenType());
-        resp.setPersonId(user.id());
-        resp.setTenantId(String.valueOf(user.tenantId()));
+        resp.setPersonId(freshUser.id());
+        resp.setTenantId(String.valueOf(freshUser.tenantId()));
         resp.setTenantCode(tenantCode);
-        resp.setRole(user.cName());
-        resp.setPhoneNumber(user.phoneNumber());
-        resp.setName(user.title());
+        resp.setRole(freshUser.cName());
+        resp.setPhoneNumber(freshUser.phoneNumber());
+        resp.setName(freshUser.title());
 
-        log.info("Staff OTP login successful: staffUserId={} tenantCode={}", user.id(), tenantCode);
+        log.info("Staff OTP login successful: staffUserId={} tenantCode={}", freshUser.id(), tenantCode);
         return new AuthResult(resp, token.refreshToken(), token.refreshExpiresIn());
     }
 }

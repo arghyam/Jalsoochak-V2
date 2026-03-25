@@ -176,8 +176,55 @@ class StaffKeycloakServiceTest {
         }
 
         @Test
-        @DisplayName("throws KeycloakOperationException when Keycloak create returns non-201")
+        @DisplayName("throws KeycloakOperationException when Keycloak create returns non-201 (e.g. 500)")
         void throwsOnNon201Response() {
+            when(userTenantRepository.findPasswordByUserId("tenant_mp", 10L))
+                    .thenReturn(Optional.empty());
+
+            Keycloak mockAdmin = mock(Keycloak.class, Answers.RETURNS_DEEP_STUBS);
+            UsersResource usersResource = mock(UsersResource.class, Answers.RETURNS_DEEP_STUBS);
+            when(keycloakProvider.getAdminInstance()).thenReturn(mockAdmin);
+            when(keycloakProvider.getRealm()).thenReturn("realm");
+            when(mockAdmin.realm("realm").users()).thenReturn(usersResource);
+
+            Response response = mock(Response.class);
+            when(response.getStatus()).thenReturn(500);
+            when(response.hasEntity()).thenReturn(false);
+            when(usersResource.create(any())).thenReturn(response);
+
+            assertThatThrownBy(() -> service.ensureKeycloakAccount(USER, "MP", "tenant_mp"))
+                    .isInstanceOf(KeycloakOperationException.class);
+        }
+
+        @Test
+        @DisplayName("recovers from 409 duplicate-user by returning the concurrent writer's password")
+        void recoversFrom409WhenConcurrentWriterSetPassword() {
+            // Initial fast-path read: placeholder (no managed password yet)
+            when(userTenantRepository.findPasswordByUserId("tenant_mp", 10L))
+                    .thenReturn(Optional.of("CSV_ONBOARDED"))
+                    // Second call (inside 409 handler): concurrent writer has stored the password
+                    .thenReturn(Optional.of("encrypted-concurrent-pw"));
+            when(passwordCipher.decrypt("encrypted-concurrent-pw")).thenReturn("concurrent-plain-pw");
+
+            Keycloak mockAdmin = mock(Keycloak.class, Answers.RETURNS_DEEP_STUBS);
+            UsersResource usersResource = mock(UsersResource.class, Answers.RETURNS_DEEP_STUBS);
+            when(keycloakProvider.getAdminInstance()).thenReturn(mockAdmin);
+            when(keycloakProvider.getRealm()).thenReturn("realm");
+            when(mockAdmin.realm("realm").users()).thenReturn(usersResource);
+
+            Response response = mock(Response.class);
+            when(response.getStatus()).thenReturn(409);
+            when(usersResource.create(any())).thenReturn(response);
+
+            String result = service.ensureKeycloakAccount(USER, "MP", "tenant_mp");
+
+            assertThat(result).isEqualTo("concurrent-plain-pw");
+            verify(keycloakAdminHelper, never()).deleteUser(anyString());
+        }
+
+        @Test
+        @DisplayName("throws KeycloakOperationException on 409 when no concurrent password is found in DB")
+        void throwsOn409WhenNoPasswordInDb() {
             when(userTenantRepository.findPasswordByUserId("tenant_mp", 10L))
                     .thenReturn(Optional.empty());
 
@@ -192,7 +239,8 @@ class StaffKeycloakServiceTest {
             when(usersResource.create(any())).thenReturn(response);
 
             assertThatThrownBy(() -> service.ensureKeycloakAccount(USER, "MP", "tenant_mp"))
-                    .isInstanceOf(KeycloakOperationException.class);
+                    .isInstanceOf(KeycloakOperationException.class)
+                    .hasMessageContaining("409");
         }
     }
 }

@@ -97,6 +97,21 @@ public class StaffKeycloakService {
             userRep.setAttributes(buildAttributes(tenantCode, user.cName()));
 
             try (Response createResponse = usersResource.create(userRep)) {
+                if (createResponse.getStatus() == 409) {
+                    // A concurrent caller may have just provisioned this user — re-read and return the password
+                    // it wrote rather than failing with a duplicate-user error.
+                    String concurrentPassword = userTenantRepository.findPasswordByUserId(schema, user.id()).orElse(null);
+                    if (concurrentPassword != null && !concurrentPassword.isBlank()
+                            && !PLACEHOLDER_PASSWORDS.contains(concurrentPassword)) {
+                        try {
+                            return passwordCipher.decrypt(concurrentPassword);
+                        } catch (IllegalStateException decryptEx) {
+                            log.warn("Failed to decrypt concurrent managed password for userId={}", user.id());
+                        }
+                    }
+                    log.error("Keycloak user creation failed: HTTP 409 (duplicate) for userId={}", user.id());
+                    throw new KeycloakOperationException("Failed to create Keycloak user for staff: HTTP 409");
+                }
                 if (createResponse.getStatus() != 201) {
                     String body = createResponse.hasEntity()
                             ? createResponse.readEntity(String.class)

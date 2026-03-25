@@ -8,6 +8,7 @@ import org.arghyam.jalsoochak.user.exceptions.BadRequestException;
 import org.arghyam.jalsoochak.user.repository.OtpRepository;
 import org.arghyam.jalsoochak.user.repository.records.OtpRow;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -82,8 +83,9 @@ public class OtpService {
      *         {@link #revertOtpConsumption(Long)} if a downstream operation fails
      * @throws BadRequestException if there is no active OTP, max attempts exceeded, or mismatch
      */
+    @Transactional
     public Long verifyOtp(Long userId, Integer tenantId, OtpType otpType, String rawOtp) {
-        OtpRow otpRow = otpRepository.findActiveOtp(userId, tenantId, otpType)
+        OtpRow otpRow = otpRepository.findActiveOtpForUpdate(userId, tenantId, otpType)
                 .orElseThrow(() -> new BadRequestException("Invalid or expired OTP"));
 
         if (otpRow.attemptCount() >= otpProperties.maxAttempts()) {
@@ -116,9 +118,13 @@ public class OtpService {
      * <p>No-op if the OTP has already expired.
      */
     public void revertOtpConsumption(Long otpId) {
-        boolean reverted = otpRepository.revertConsumption(otpId);
-        if (!reverted) {
-            log.warn("Could not revert OTP consumption for otpId={} (may have expired)", otpId);
+        try {
+            boolean reverted = otpRepository.revertConsumption(otpId);
+            if (!reverted) {
+                log.warn("Could not revert OTP consumption for otpId={} (may have expired)", otpId);
+            }
+        } catch (Exception ex) {
+            log.warn("Could not revert OTP consumption for otpId={} (may have expired)", otpId, ex);
         }
     }
 

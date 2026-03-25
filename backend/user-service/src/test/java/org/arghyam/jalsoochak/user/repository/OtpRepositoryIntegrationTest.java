@@ -125,6 +125,34 @@ class OtpRepositoryIntegrationTest {
     }
 
     @Nested
+    @DisplayName("findActiveOtpForUpdate")
+    class FindForUpdate {
+
+        @Test
+        @DisplayName("returns same active OTP as findActiveOtp")
+        void returnsSameActiveOtp() {
+            otpRepository.insertOtp(USER_ID, TENANT_ID, OtpType.LOGIN, "enc-otp", futureExpiry());
+
+            Optional<OtpRow> forUpdate = otpRepository.findActiveOtpForUpdate(USER_ID, TENANT_ID, OtpType.LOGIN);
+            assertThat(forUpdate).isPresent();
+            assertThat(forUpdate.get().encryptedOtp()).isEqualTo("enc-otp");
+        }
+
+        @Test
+        @DisplayName("returns empty for expired OTP")
+        void returnsEmptyForExpiredOtp() {
+            Instant past = Instant.now().minus(1, ChronoUnit.MINUTES);
+            jdbcTemplate.update("""
+                    INSERT INTO common_schema.otp_table (otp, tenant_id, user_id, otp_type, expires_at)
+                    VALUES (?, ?, ?, ?, ?)
+                    """, "enc-otp", TENANT_ID, USER_ID, "LOGIN",
+                    java.sql.Timestamp.from(past));
+
+            assertThat(otpRepository.findActiveOtpForUpdate(USER_ID, TENANT_ID, OtpType.LOGIN)).isEmpty();
+        }
+    }
+
+    @Nested
     @DisplayName("incrementAttemptCount / markUsed")
     class AttemptAndMarkUsed {
 
@@ -149,6 +177,23 @@ class OtpRepositoryIntegrationTest {
             otpRepository.markUsed(row.id());
 
             assertThat(otpRepository.findActiveOtp(USER_ID, TENANT_ID, OtpType.LOGIN)).isEmpty();
+        }
+
+        @Test
+        @DisplayName("markUsed returns false for an already-expired OTP (expiry predicate)")
+        void markUsedReturnsFalseForExpiredOtp() {
+            Instant past = Instant.now().minus(1, ChronoUnit.MINUTES);
+            jdbcTemplate.update("""
+                    INSERT INTO common_schema.otp_table (otp, tenant_id, user_id, otp_type, expires_at)
+                    VALUES (?, ?, ?, ?, ?)
+                    """, "enc-otp", TENANT_ID, USER_ID, "LOGIN",
+                    java.sql.Timestamp.from(past));
+            Long id = jdbcTemplate.queryForObject(
+                    "SELECT id FROM common_schema.otp_table WHERE user_id = ?", Long.class, USER_ID);
+
+            boolean result = otpRepository.markUsed(id);
+
+            assertThat(result).isFalse();
         }
     }
 

@@ -258,6 +258,20 @@ class StaffAuthServiceImplTest {
         }
 
         @Test
+        @DisplayName("throws AccountDeactivatedException when user is deactivated concurrently after OTP verify")
+        void throwsWhenUserDeactivatedConcurrentlyAfterOtpVerify() {
+            // Initial lookup (inside transaction) returns active; re-fetch after OTP verify returns inactive
+            when(userCommonRepository.findTenantIdByStateCode("MP")).thenReturn(Optional.of(1));
+            when(userTenantRepository.findUserByPhone("tenant_mp", "919876543210"))
+                    .thenReturn(Optional.of(ACTIVE_USER))   // first call — inside transaction
+                    .thenReturn(Optional.of(INACTIVE_USER)); // second call — re-fetch after OTP verify
+            when(otpService.verifyOtp(10L, 1, OtpType.LOGIN, "123456")).thenReturn(99L);
+
+            assertThatThrownBy(() -> service.verifyOtp(request))
+                    .isInstanceOf(AccountDeactivatedException.class);
+        }
+
+        @Test
         @DisplayName("OTP failure takes precedence over deactivation check (regression: verify ordering)")
         void otpFailureTakesPrecedenceOverDeactivationCheck() {
             when(userCommonRepository.findTenantIdByStateCode("MP")).thenReturn(Optional.of(1));
