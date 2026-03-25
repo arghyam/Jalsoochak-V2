@@ -9,7 +9,10 @@ import org.arghyam.jalsoochak.user.dto.request.ResetPasswordRequestDTO;
 import org.arghyam.jalsoochak.user.dto.response.InviteInfoResponseDTO;
 import org.arghyam.jalsoochak.user.dto.response.TokenResponseDTO;
 import org.arghyam.jalsoochak.user.exceptions.BadRequestException;
+import org.arghyam.jalsoochak.user.dto.request.StaffOtpRequestDTO;
+import org.arghyam.jalsoochak.user.dto.request.StaffOtpVerifyDTO;
 import org.arghyam.jalsoochak.user.service.AuthService;
+import org.arghyam.jalsoochak.user.service.StaffAuthService;
 import org.arghyam.jalsoochak.user.util.CookieHelper;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -39,6 +42,7 @@ import lombok.extern.slf4j.Slf4j;
 public class AuthController {
 
     private final AuthService authService;
+    private final StaffAuthService staffAuthService;
     private final CookieHelper cookieHelper;
 
     @Operation(summary = "Login",
@@ -168,5 +172,39 @@ public class AuthController {
         log.info("POST /api/v1/auth/reset-password");
         authService.resetPassword(request);
         return ResponseEntity.ok(ApiResponseDTO.of(200, "Password reset successfully"));
+    }
+
+    @Operation(summary = "Request staff OTP",
+            description = "Send a login OTP to a staff user's phone via WhatsApp or SMS. " +
+                          "Response is identical whether or not the phone is registered (OWASP anti-enumeration).",
+            security = {})
+    @ApiResponses({
+        @ApiResponse(responseCode = "200", description = "OTP sent if the phone is registered and active"),
+        @ApiResponse(responseCode = "400", description = "Validation error or cooldown active")
+    })
+    @PostMapping("/staff/request-otp")
+    public ResponseEntity<ApiResponseDTO<Void>> staffRequestOtp(@Valid @RequestBody StaffOtpRequestDTO request) {
+        log.info("POST /api/v1/auth/staff/request-otp");
+        staffAuthService.requestOtp(request);
+        return ResponseEntity.ok(ApiResponseDTO.of(200, "OTP sent if this number is registered"));
+    }
+
+    @Operation(summary = "Verify staff OTP",
+            description = "Verify the OTP and obtain a Keycloak access token. Sets an HttpOnly refresh token cookie on success.",
+            security = {})
+    @ApiResponses({
+        @ApiResponse(responseCode = "200", description = "OTP verified – returns access token"),
+        @ApiResponse(responseCode = "400", description = "OTP is invalid or expired"),
+        @ApiResponse(responseCode = "401", description = "Account is deactivated")
+    })
+    @PostMapping("/staff/verify-otp")
+    public ResponseEntity<ApiResponseDTO<TokenResponseDTO>> staffVerifyOtp(
+            @Valid @RequestBody StaffOtpVerifyDTO request,
+            HttpServletResponse response) {
+        log.info("POST /api/v1/auth/staff/verify-otp");
+        AuthResult result = staffAuthService.verifyOtp(request);
+        response.addHeader(HttpHeaders.SET_COOKIE,
+                cookieHelper.buildRefreshCookie(result.refreshToken(), result.refreshExpiresIn()).toString());
+        return ResponseEntity.ok(ApiResponseDTO.of(200, "Login successful", result.tokenResponse()));
     }
 }

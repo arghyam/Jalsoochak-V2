@@ -28,6 +28,8 @@ import org.arghyam.jalsoochak.user.dto.request.LoginRequestDTO;
 import org.arghyam.jalsoochak.user.dto.request.ResetPasswordRequestDTO;
 import org.arghyam.jalsoochak.user.dto.response.InviteInfoResponseDTO;
 import org.arghyam.jalsoochak.user.enums.AdminUserStatus;
+import org.arghyam.jalsoochak.user.event.ResetPasswordEmailEvent;
+import org.arghyam.jalsoochak.user.event.UserNotificationEventPublisher;
 import org.arghyam.jalsoochak.user.exceptions.AccountDeactivatedException;
 import org.arghyam.jalsoochak.user.exceptions.BadRequestException;
 import org.arghyam.jalsoochak.user.exceptions.InvalidCredentialsException;
@@ -38,8 +40,6 @@ import org.arghyam.jalsoochak.user.repository.UserCommonRepository;
 import org.arghyam.jalsoochak.user.repository.UserTenantRepository;
 import org.arghyam.jalsoochak.user.repository.records.AdminUserRow;
 import org.arghyam.jalsoochak.user.repository.records.AdminUserTokenRow;
-import org.arghyam.jalsoochak.user.event.ResetPasswordEmailEvent;
-import org.arghyam.jalsoochak.user.event.UserEmailEventPublisher;
 import org.arghyam.jalsoochak.user.service.serviceImpl.AuthServiceImpl;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -76,7 +76,7 @@ class AuthServiceImplTest {
     private UserTenantRepository userTenantRepository;
 
     @Mock
-    private UserEmailEventPublisher userEmailEventPublisher;
+    private UserNotificationEventPublisher userNotificationEventPublisher;
 
     @Mock
     private KeycloakAdminHelper keycloakAdminHelper;
@@ -90,14 +90,17 @@ class AuthServiceImplTest {
     @Mock
     private TokenService tokenService;
 
+    @Mock
+    private MetadataDecryptionHelper metadataDecryptionHelper;
+
     private AuthServiceImpl authService;
 
     @BeforeEach
     void setUp() {
         authService = new AuthServiceImpl(
                 keycloakProvider, keycloakClient, userCommonRepository, userTenantRepository,
-                userEmailEventPublisher, keycloakAdminHelper, passwordResetProperties,
-                frontendProperties, tokenService, new ObjectMapper()
+                userNotificationEventPublisher, keycloakAdminHelper, passwordResetProperties,
+                frontendProperties, tokenService, new ObjectMapper(), metadataDecryptionHelper
         );
     }
 
@@ -176,7 +179,7 @@ class AuthServiceImplTest {
             when(userCommonRepository.findUserTypeNameById(2)).thenReturn(Optional.of("STATE_ADMIN"));
             when(userCommonRepository.findTenantStateCodeById(1)).thenReturn(Optional.of("MP"));
 
-            TenantUserRecord tenantUser = new TenantUserRecord(10L, 1, "91XXXXXXXXXX", "sa@example.com", 2L, "STATE_ADMIN", "State Admin", null);
+            TenantUserRecord tenantUser = new TenantUserRecord(10L, 1, "91XXXXXXXXXX", "sa@example.com", 2L, "STATE_ADMIN", "State Admin", null, null, null);
             when(userTenantRepository.findUserByEmail("tenant_mp", "sa@example.com")).thenReturn(Optional.of(tenantUser));
 
             AuthResult result = authService.login(loginRequest("sa@example.com", "pass"));
@@ -284,10 +287,12 @@ class AuthServiceImplTest {
         void getInviteInfo_validToken_returnsInfo() {
             String rawToken = "raw-invite-token";
             String hash = "invite-hash";
+            String metadata = "{\"role\":\"STATE_ADMIN\",\"tenantName\":\"Madhya Pradesh\",\"firstName\":\"<enc-john>\",\"lastName\":\"<enc-doe>\"}";
             when(tokenService.hash(rawToken)).thenReturn(hash);
             when(userCommonRepository.findActiveTokenByHash(hash)).thenReturn(Optional.of(
-                    activeTokenRow("invited@example.com", hash, "INVITE",
-                            "{\"role\":\"STATE_ADMIN\",\"tenantName\":\"Madhya Pradesh\",\"firstName\":\"John\",\"lastName\":\"Doe\"}")));
+                    activeTokenRow("invited@example.com", hash, "INVITE", metadata)));
+            when(metadataDecryptionHelper.parseAndDecrypt(metadata, "firstName")).thenReturn("John");
+            when(metadataDecryptionHelper.parseAndDecrypt(metadata, "lastName")).thenReturn("Doe");
             // getInviteInfo checks existsActiveAdminUserByEmail (not existsAdminUserByEmail)
             when(userCommonRepository.existsActiveAdminUserByEmail("invited@example.com")).thenReturn(false);
             // phoneNumber is fetched from the PENDING user record
@@ -343,7 +348,7 @@ class AuthServiceImplTest {
 
             authService.forgotPassword(req); // no exception
 
-            verify(userEmailEventPublisher, never()).publishResetPasswordEmailAfterCommit(any(ResetPasswordEmailEvent.class));
+            verify(userNotificationEventPublisher, never()).publishResetPasswordEmailAfterCommit(any(ResetPasswordEmailEvent.class));
         }
 
         @Test
@@ -365,7 +370,7 @@ class AuthServiceImplTest {
 
             verify(userCommonRepository).upsertToken(
                     eq("user@example.com"), eq("reset-hash"), eq("RESET"), eq(null), any(), eq(null));
-            verify(userEmailEventPublisher).publishResetPasswordEmailAfterCommit(any(ResetPasswordEmailEvent.class));
+            verify(userNotificationEventPublisher).publishResetPasswordEmailAfterCommit(any(ResetPasswordEmailEvent.class));
         }
     }
 

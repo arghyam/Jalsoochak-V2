@@ -114,6 +114,7 @@ CREATE TABLE tenant_mp.user_table (
     email_verification_status BOOLEAN,
     phone_verification_status BOOLEAN,
     language_id               INTEGER,
+    whatsapp_connection_id    BIGINT,
     created_by                BIGINT,
     created_at                TIMESTAMP    NOT NULL DEFAULT NOW(),
     updated_by                BIGINT,
@@ -121,3 +122,28 @@ CREATE TABLE tenant_mp.user_table (
     deleted_at                TIMESTAMP,
     deleted_by                INTEGER
 );
+
+-- ── OTP table (V24) ────────────────────────────────────────────────────────
+
+CREATE TABLE common_schema.otp_table (
+    id            BIGSERIAL    PRIMARY KEY,
+    otp           TEXT         NOT NULL,
+    tenant_id     INTEGER      NOT NULL,
+    user_id       BIGINT       NOT NULL,
+    otp_type      VARCHAR(30)  NOT NULL,
+    attempt_count INTEGER      NOT NULL DEFAULT 0,
+    created_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    expires_at    TIMESTAMPTZ  NOT NULL,
+    used_at       TIMESTAMPTZ,
+    CONSTRAINT chk_otp_type CHECK (otp_type IN ('LOGIN', 'PASSWORD_CHANGE'))
+);
+
+CREATE UNIQUE INDEX uq_active_otp
+    ON common_schema.otp_table(user_id, tenant_id, otp_type)
+    WHERE used_at IS NULL;
+
+CREATE INDEX idx_otp_expires ON common_schema.otp_table(expires_at);
+CREATE INDEX idx_otp_tenant  ON common_schema.otp_table(tenant_id);
+CREATE INDEX idx_otp_user_tenant_type_active
+    ON common_schema.otp_table(user_id, tenant_id, otp_type, expires_at)
+    WHERE used_at IS NULL;

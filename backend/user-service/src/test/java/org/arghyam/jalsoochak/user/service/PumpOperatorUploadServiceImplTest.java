@@ -1,5 +1,20 @@
 package org.arghyam.jalsoochak.user.service;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+import java.nio.charset.StandardCharsets;
+import java.util.List;
+import java.util.Optional;
+
 import org.arghyam.jalsoochak.user.auth.UploadAuthService;
 import org.arghyam.jalsoochak.user.config.TenantContext;
 import org.arghyam.jalsoochak.user.dto.response.PumpOperatorUploadResponseDTO;
@@ -9,7 +24,6 @@ import org.arghyam.jalsoochak.user.repository.TenantUserRecord;
 import org.arghyam.jalsoochak.user.repository.UserCommonRepository;
 import org.arghyam.jalsoochak.user.repository.UserTenantRepository;
 import org.arghyam.jalsoochak.user.repository.UserUploadRepository;
-import org.arghyam.jalsoochak.user.service.GlificPreferredLanguageService;
 import org.arghyam.jalsoochak.user.service.serviceImpl.PumpOperatorUploadServiceImpl;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -18,25 +32,10 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Captor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 import org.springframework.mock.web.MockMultipartFile;
-
-import java.nio.charset.StandardCharsets;
-import java.util.List;
-import java.util.Optional;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.mockito.ArgumentMatchers.anyInt;
-import static org.mockito.ArgumentMatchers.anyList;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
@@ -79,7 +78,7 @@ class PumpOperatorUploadServiceImplTest {
         TenantContext.setSchema("tenant_ka");
         when(uploadAuthService.requireStateAdminUserId(eq("tenant_ka"), anyString())).thenReturn(10);
         when(userTenantRepository.findUserById(eq("tenant_ka"), eq(10L)))
-                .thenReturn(Optional.of(new TenantUserRecord(10L, 1, "9111111111", "admin@example.com", 1L, "STATE_ADMIN", "Admin", null)));
+                .thenReturn(Optional.of(new TenantUserRecord(10L, 1, "9111111111", "admin@example.com", 1L, "STATE_ADMIN", "Admin", null, null, null)));
         when(preferredLanguageService.resolvePreferredLanguageId(eq(1))).thenReturn(1);
         when(userCommonRepository.findUserTypeIdByName(eq("PUMP_OPERATOR"))).thenReturn(Optional.of(2));
 
@@ -107,7 +106,7 @@ class PumpOperatorUploadServiceImplTest {
         TenantContext.setSchema("tenant_ka");
         when(uploadAuthService.requireStateAdminUserId(eq("tenant_ka"), anyString())).thenReturn(10);
         when(userTenantRepository.findUserById(eq("tenant_ka"), eq(10L)))
-                .thenReturn(Optional.of(new TenantUserRecord(10L, 1, "9111111111", "admin@example.com", 1L, "STATE_ADMIN", "Admin", null)));
+                .thenReturn(Optional.of(new TenantUserRecord(10L, 1, "9111111111", "admin@example.com", 1L, "STATE_ADMIN", "Admin", null, null, null)));
         when(preferredLanguageService.resolvePreferredLanguageId(eq(1))).thenReturn(1);
         when(userCommonRepository.findUserTypeIdByName(eq("PUMP_OPERATOR"))).thenReturn(Optional.of(2));
 
@@ -144,7 +143,7 @@ class PumpOperatorUploadServiceImplTest {
         TenantContext.setSchema("tenant_ka");
         when(uploadAuthService.requireStateAdminUserId(eq("tenant_ka"), anyString())).thenReturn(10);
         when(userTenantRepository.findUserById(eq("tenant_ka"), eq(10L)))
-                .thenReturn(Optional.of(new TenantUserRecord(10L, 1, "9111111111", "admin@example.com", 1L, "STATE_ADMIN", "Admin", null)));
+                .thenReturn(Optional.of(new TenantUserRecord(10L, 1, "9111111111", "admin@example.com", 1L, "STATE_ADMIN", "Admin", null, null, null)));
         when(preferredLanguageService.resolvePreferredLanguageId(eq(1))).thenReturn(1);
         when(userCommonRepository.findUserTypeIdByName(eq("PUMP_OPERATOR"))).thenReturn(Optional.of(2));
 
@@ -171,7 +170,7 @@ class PumpOperatorUploadServiceImplTest {
         TenantContext.setSchema("tenant_ka");
         when(uploadAuthService.requireStateAdminUserId(eq("tenant_ka"), anyString())).thenReturn(10);
         when(userTenantRepository.findUserById(eq("tenant_ka"), eq(10L)))
-                .thenReturn(Optional.of(new TenantUserRecord(10L, 1, "9111111111", "admin@example.com", 1L, "STATE_ADMIN", "Admin", null)));
+                .thenReturn(Optional.of(new TenantUserRecord(10L, 1, "9111111111", "admin@example.com", 1L, "STATE_ADMIN", "Admin", null, null, null)));
         when(preferredLanguageService.resolvePreferredLanguageId(eq(1))).thenReturn(1);
         when(userCommonRepository.findUserTypeIdByName(eq("PUMP_OPERATOR"))).thenReturn(Optional.of(2));
 

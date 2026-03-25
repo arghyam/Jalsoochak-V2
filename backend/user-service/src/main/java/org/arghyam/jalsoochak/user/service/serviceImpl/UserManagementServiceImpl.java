@@ -25,7 +25,7 @@ import org.arghyam.jalsoochak.user.repository.UserTenantRepository;
 import org.arghyam.jalsoochak.user.repository.records.AdminUserRow;
 import org.arghyam.jalsoochak.user.repository.records.AdminUserTokenRow;
 import org.arghyam.jalsoochak.user.event.InviteEmailEvent;
-import org.arghyam.jalsoochak.user.event.UserEmailEventPublisher;
+import org.arghyam.jalsoochak.user.event.UserNotificationEventPublisher;
 import org.arghyam.jalsoochak.user.service.KeycloakAdminHelper;
 import org.arghyam.jalsoochak.user.service.MetadataDecryptionHelper;
 import org.arghyam.jalsoochak.user.service.PiiEncryptionService;
@@ -59,7 +59,7 @@ public class UserManagementServiceImpl implements UserManagementService {
     private final KeycloakClient keycloakClient;
     private final UserCommonRepository userCommonRepository;
     private final UserTenantRepository userTenantRepository;
-    private final UserEmailEventPublisher userEmailEventPublisher;
+    private final UserNotificationEventPublisher userNotificationEventPublisher;
     private final KeycloakAdminHelper keycloakAdminHelper;
     private final InviteProperties inviteProperties;
     private final FrontendProperties frontendProperties;
@@ -159,7 +159,7 @@ public class UserManagementServiceImpl implements UserManagementService {
                 .filter(s -> s != null && !s.isBlank())
                 .collect(Collectors.joining(" "));
         if (name.isEmpty()) name = "User";
-        userEmailEventPublisher.publishInviteEmailAfterCommit(InviteEmailEvent.builder()
+        userNotificationEventPublisher.publishInviteEmailAfterCommit(InviteEmailEvent.builder()
                 .eventType("SEND_INVITE_EMAIL")
                 .to(request.getEmail())
                 .name(name)
@@ -245,7 +245,7 @@ public class UserManagementServiceImpl implements UserManagementService {
             String ln = metadataDecryptionHelper.parseAndDecrypt(t.metadata(), "lastName");
             return ((fn != null ? fn : "") + " " + (ln != null ? ln : "")).trim();
         }).orElse(null);
-        userEmailEventPublisher.publishInviteEmailAfterCommit(InviteEmailEvent.builder()
+        userNotificationEventPublisher.publishInviteEmailAfterCommit(InviteEmailEvent.builder()
                 .eventType("SEND_REINVITE_EMAIL")
                 .to(target.email())
                 .name(name)
