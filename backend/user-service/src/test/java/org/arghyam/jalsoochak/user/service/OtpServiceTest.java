@@ -1,5 +1,18 @@
 package org.arghyam.jalsoochak.user.service;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
+import java.util.Optional;
+
 import org.arghyam.jalsoochak.user.config.properties.OtpProperties;
 import org.arghyam.jalsoochak.user.enums.OtpType;
 import org.arghyam.jalsoochak.user.exceptions.BadRequestException;
@@ -12,15 +25,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-
-import java.time.Instant;
-import java.time.temporal.ChronoUnit;
-import java.util.Optional;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.*;
-import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 @DisplayName("OtpService")
@@ -59,7 +63,7 @@ class OtpServiceTest {
         @DisplayName("allows new OTP when existing OTP is past cooldown")
         void allowsNewOtpAfterCooldown() {
             Instant createdAtOld = Instant.now().minus(90, ChronoUnit.SECONDS);
-            OtpRow existing = new OtpRow(1L, "enc", 1, 1, OtpType.LOGIN, 0, createdAtOld,
+            OtpRow existing = new OtpRow(1L, "enc", 1, 1L, OtpType.LOGIN, 0, createdAtOld,
                     Instant.now().plus(8, ChronoUnit.MINUTES), null);
             when(otpRepository.findActiveOtp(1L, 1, OtpType.LOGIN)).thenReturn(Optional.of(existing));
             when(piiEncryptionService.encrypt(anyString())).thenReturn("encrypted");
@@ -74,7 +78,7 @@ class OtpServiceTest {
         @DisplayName("throws BadRequestException during cooldown period")
         void throwsDuringCooldown() {
             Instant recentCreatedAt = Instant.now().minus(10, ChronoUnit.SECONDS);
-            OtpRow recent = new OtpRow(1L, "enc", 1, 1, OtpType.LOGIN, 0, recentCreatedAt,
+            OtpRow recent = new OtpRow(1L, "enc", 1, 1L, OtpType.LOGIN, 0, recentCreatedAt,
                     Instant.now().plus(9, ChronoUnit.MINUTES), null);
             when(otpRepository.findActiveOtp(1L, 1, OtpType.LOGIN)).thenReturn(Optional.of(recent));
 
@@ -93,11 +97,12 @@ class OtpServiceTest {
         @Test
         @DisplayName("marks OTP used on correct input")
         void marksUsedOnCorrectOtp() {
-            OtpRow row = new OtpRow(10L, "encrypted-123456", 1, 1, OtpType.LOGIN, 0,
+            OtpRow row = new OtpRow(10L, "encrypted-123456", 1, 1L, OtpType.LOGIN, 0,
                     Instant.now().minus(1, ChronoUnit.MINUTES),
                     Instant.now().plus(9, ChronoUnit.MINUTES), null);
             when(otpRepository.findActiveOtp(1L, 1, OtpType.LOGIN)).thenReturn(Optional.of(row));
             when(piiEncryptionService.decrypt("encrypted-123456")).thenReturn("123456");
+            when(otpRepository.markUsed(10L)).thenReturn(true);
 
             otpService.verifyOtp(1L, 1, OtpType.LOGIN, "123456");
 
@@ -108,7 +113,7 @@ class OtpServiceTest {
         @Test
         @DisplayName("throws and increments attempt count on mismatch")
         void incrementsAttemptOnMismatch() {
-            OtpRow row = new OtpRow(10L, "encrypted-123456", 1, 1, OtpType.LOGIN, 0,
+            OtpRow row = new OtpRow(10L, "encrypted-123456", 1, 1L, OtpType.LOGIN, 0,
                     Instant.now().minus(1, ChronoUnit.MINUTES),
                     Instant.now().plus(9, ChronoUnit.MINUTES), null);
             when(otpRepository.findActiveOtp(1L, 1, OtpType.LOGIN)).thenReturn(Optional.of(row));
@@ -134,7 +139,7 @@ class OtpServiceTest {
         @Test
         @DisplayName("throws when max attempts exceeded")
         void throwsWhenMaxAttemptsExceeded() {
-            OtpRow row = new OtpRow(10L, "enc", 1, 1, OtpType.LOGIN, 5,
+            OtpRow row = new OtpRow(10L, "enc", 1, 1L, OtpType.LOGIN, 5,
                     Instant.now().minus(1, ChronoUnit.MINUTES),
                     Instant.now().plus(9, ChronoUnit.MINUTES), null);
             when(otpRepository.findActiveOtp(1L, 1, OtpType.LOGIN)).thenReturn(Optional.of(row));

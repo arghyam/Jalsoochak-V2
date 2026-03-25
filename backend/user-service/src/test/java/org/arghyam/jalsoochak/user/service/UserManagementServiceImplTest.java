@@ -40,7 +40,6 @@ import org.arghyam.jalsoochak.user.repository.UserCommonRepository;
 import org.arghyam.jalsoochak.user.repository.UserTenantRepository;
 import org.arghyam.jalsoochak.user.repository.records.AdminUserRow;
 import org.arghyam.jalsoochak.user.repository.records.AdminUserTokenRow;
-import org.arghyam.jalsoochak.user.service.MetadataDecryptionHelper;
 import org.arghyam.jalsoochak.user.service.serviceImpl.UserManagementServiceImpl;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;

@@ -53,8 +53,9 @@ public class TenantStaffRepository {
 
     /**
      * Decrypts a PII value, falling back to the raw value for legacy plaintext rows.
-     * Legacy detection: if the value is not valid base64 or decodes to ≤ 12 bytes (shorter
-     * than the AES-GCM IV), it cannot be a valid ciphertext and is treated as stored plaintext.
+     * Legacy detection: if the value is not valid base64 or decodes to &lt; 28 bytes (shorter
+     * than the minimum AES-GCM payload of 12-byte IV + 16-byte auth tag), it cannot be a
+     * valid ciphertext and is treated as stored plaintext.
      * Real decryption failures (wrong key, auth-tag mismatch) are not swallowed — they surface
      * as {@link IllegalStateException}.
      */

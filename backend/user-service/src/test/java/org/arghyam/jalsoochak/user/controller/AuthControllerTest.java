@@ -1,9 +1,20 @@
 package org.arghyam.jalsoochak.user.controller;
 
-import jakarta.servlet.http.Cookie;
+import static org.hamcrest.Matchers.containsString;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.reset;
+import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
 import org.arghyam.jalsoochak.user.config.properties.CookieProperties;
 import org.arghyam.jalsoochak.user.dto.internal.AuthResult;
-import org.arghyam.jalsoochak.user.util.CookieHelper;
 import org.arghyam.jalsoochak.user.dto.response.InviteInfoResponseDTO;
 import org.arghyam.jalsoochak.user.dto.response.TokenResponseDTO;
 import org.arghyam.jalsoochak.user.exceptions.AccountDeactivatedException;
@@ -12,6 +23,7 @@ import org.arghyam.jalsoochak.user.exceptions.TokenAlreadyUsedException;
 import org.arghyam.jalsoochak.user.exceptions.UserAlreadyExistsException;
 import org.arghyam.jalsoochak.user.service.AuthService;
 import org.arghyam.jalsoochak.user.service.StaffAuthService;
+import org.arghyam.jalsoochak.user.util.CookieHelper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -27,18 +39,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
-import static org.hamcrest.Matchers.containsString;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.doNothing;
-import static org.mockito.Mockito.doThrow;
-import static org.mockito.Mockito.reset;
-import static org.mockito.Mockito.when;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import jakarta.servlet.http.Cookie;
 
 /**
  * Tests for {@link AuthController} covering validation, happy paths, and error responses.

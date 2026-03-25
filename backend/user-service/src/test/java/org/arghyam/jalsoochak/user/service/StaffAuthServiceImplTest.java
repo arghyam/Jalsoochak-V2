@@ -1,5 +1,15 @@
 package org.arghyam.jalsoochak.user.service;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+import java.util.Optional;
+
 import org.arghyam.jalsoochak.user.clients.KeycloakClient;
 import org.arghyam.jalsoochak.user.clients.KeycloakTokenResponse;
 import org.arghyam.jalsoochak.user.config.properties.OtpProperties;
@@ -23,13 +33,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-
-import java.util.Optional;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.*;
-import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 @DisplayName("StaffAuthServiceImpl")
@@ -123,6 +126,20 @@ class StaffAuthServiceImplTest {
             service.requestOtp(request);
 
             verify(otpService, never()).requestOtp(any(), any(), any());
+        }
+
+        @Test
+        @DisplayName("returns silently on OTP cooldown (anti-enumeration)")
+        void silentOnCooldown() {
+            when(userCommonRepository.findTenantIdByStateCode("MP")).thenReturn(Optional.of(1));
+            when(userTenantRepository.findUserByPhone("tenant_mp", "919876543210"))
+                    .thenReturn(Optional.of(ACTIVE_USER));
+            doThrow(new BadRequestException("Please wait 50 second(s)"))
+                    .when(otpService).requestOtp(10L, 1, OtpType.LOGIN);
+
+            service.requestOtp(request); // must not throw
+
+            verify(eventPublisher, never()).publishLoginOtpAfterCommit(any());
         }
 
         @Test

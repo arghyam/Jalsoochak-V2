@@ -64,7 +64,14 @@ public class StaffAuthServiceImpl implements StaffAuthService {
             return; // Anti-enumeration: don't reveal whether account is inactive
         }
 
-        String rawOtp = otpService.requestOtp(user.id(), tenantId, OtpType.LOGIN);
+        String rawOtp;
+        try {
+            rawOtp = otpService.requestOtp(user.id(), tenantId, OtpType.LOGIN);
+        } catch (Exception e) {
+            // Swallow to preserve anti-enumeration: exposing cooldown/errors would confirm the phone is registered.
+            log.debug("OTP request suppressed for staffUserId={} tenantCode={}: {}", user.id(), tenantCode, e.getMessage());
+            return;
+        }
 
         String deliveryChannel = otpProperties.deliveryChannel();
 
@@ -96,11 +103,12 @@ public class StaffAuthServiceImpl implements StaffAuthService {
         TenantUserRecord user = userTenantRepository.findUserByPhone(schema, request.getPhoneNumber().trim())
                 .orElseThrow(() -> new BadRequestException("Invalid or expired OTP"));
 
+        // Verify OTP before checking account status to avoid leaking whether an account is deactivated
+        otpService.verifyOtp(user.id(), tenantId, OtpType.LOGIN, request.getOtp());
+
         if (user.status() == null || user.status() != TenantUserStatus.ACTIVE.code) {
             throw new AccountDeactivatedException("Account is deactivated");
         }
-
-        otpService.verifyOtp(user.id(), tenantId, OtpType.LOGIN, request.getOtp());
 
         String managedPassword = staffKeycloakService.ensureKeycloakAccount(user, tenantCode, schema);
         KeycloakTokenResponse token = keycloakClient.obtainToken(user.phoneNumber(), managedPassword);

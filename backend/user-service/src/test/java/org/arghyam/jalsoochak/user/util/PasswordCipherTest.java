@@ -63,4 +63,30 @@ class PasswordCipherTest {
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("32 bytes");
     }
+
+    @Test
+    @DisplayName("throws IllegalStateException when key is not valid Base64")
+    void throwsOnInvalidBase64Key() {
+        assertThatThrownBy(() -> new PasswordCipher("not-valid-base64!!!"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("Base64");
+    }
+
+    @Test
+    @DisplayName("throws IllegalStateException when ciphertext is not valid Base64")
+    void throwsOnInvalidBase64Ciphertext() {
+        assertThatThrownBy(() -> cipher.decrypt("not-valid-base64!!!"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("Base64");
+    }
+
+    @Test
+    @DisplayName("throws IllegalStateException when decoded ciphertext is too short")
+    void throwsOnTooShortCiphertext() {
+        // 27 bytes — one byte below the 28-byte minimum (12 IV + 16 GCM tag)
+        String tooShort = Base64.getEncoder().encodeToString(new byte[27]);
+        assertThatThrownBy(() -> cipher.decrypt(tooShort))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("too short");
+    }
 }

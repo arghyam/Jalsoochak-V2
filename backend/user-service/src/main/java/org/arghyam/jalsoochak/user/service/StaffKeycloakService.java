@@ -12,6 +12,7 @@ import org.keycloak.representations.idm.CredentialRepresentation;
 import org.keycloak.representations.idm.UserRepresentation;
 import org.springframework.stereotype.Service;
 
+import java.net.URI;
 import java.security.SecureRandom;
 import java.util.Base64;
 import java.util.HashMap;
@@ -37,7 +38,7 @@ import java.util.Set;
 public class StaffKeycloakService {
 
     /** Placeholder values set when the user was created without a Keycloak account. */
-    private static final Set<String> PLACEHOLDER_PASSWORDS = Set.of("CSV_ONBOARDED", "KEYCLOAK_MANAGED", "test_password");
+    private static final Set<String> PLACEHOLDER_PASSWORDS = Set.of("CSV_ONBOARDED", "KEYCLOAK_MANAGED");
 
     private static final int MANAGED_PASSWORD_BYTES = 48;
 
@@ -104,7 +105,12 @@ public class StaffKeycloakService {
                     throw new KeycloakOperationException(
                             "Failed to create Keycloak user for staff: HTTP " + createResponse.getStatus());
                 }
-                String location = createResponse.getLocation().toString();
+                URI locationUri = createResponse.getLocation();
+                if (locationUri == null) {
+                    throw new KeycloakOperationException(
+                            "Keycloak returned 201 but no Location header — cannot extract user UUID");
+                }
+                String location = locationUri.toString();
                 keycloakUuid = location.substring(location.lastIndexOf('/') + 1);
             }
 

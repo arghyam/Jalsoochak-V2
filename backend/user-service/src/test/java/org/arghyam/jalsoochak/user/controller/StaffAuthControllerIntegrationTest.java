@@ -1,7 +1,21 @@
 package org.arghyam.jalsoochak.user.controller;
 
-import com.github.tomakehurst.wiremock.client.WireMock;
-import jakarta.ws.rs.core.Response;
+import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
+import static com.github.tomakehurst.wiremock.client.WireMock.stubFor;
+import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.is;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+import java.net.URI;
+
 import org.arghyam.jalsoochak.user.config.KeycloakProvider;
 import org.arghyam.jalsoochak.user.event.UserNotificationEventPublisher;
 import org.arghyam.jalsoochak.user.service.PiiEncryptionService;
@@ -27,14 +41,9 @@ import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
-import java.net.URI;
+import com.github.tomakehurst.wiremock.client.WireMock;
 
-import static com.github.tomakehurst.wiremock.client.WireMock.*;
-import static org.hamcrest.Matchers.is;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.*;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+import jakarta.ws.rs.core.Response;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK)
 @AutoConfigureMockMvc(addFilters = false)
@@ -115,7 +124,7 @@ class StaffAuthControllerIntegrationTest {
             Integer count = jdbcTemplate.queryForObject(
                     "SELECT COUNT(*) FROM common_schema.otp_table WHERE user_id = ? AND used_at IS NULL",
                     Integer.class, staffUserId);
-            assert count != null && count == 1;
+            assertThat(count).isNotNull().isEqualTo(1);
         }
 
         @Test
@@ -171,6 +180,7 @@ class StaffAuthControllerIntegrationTest {
             Response createResponse = mock(Response.class);
             when(createResponse.getStatus()).thenReturn(201);
             when(createResponse.getLocation()).thenReturn(URI.create("http://keycloak/users/new-kc-id"));
+            // Note: Mock Response doesn't require close(); production code handles real Response via try-with-resources
             when(usersResource.create(any())).thenReturn(createResponse);
 
             // WireMock: Keycloak token endpoint

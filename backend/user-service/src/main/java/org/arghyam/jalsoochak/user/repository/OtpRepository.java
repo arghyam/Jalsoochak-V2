@@ -77,15 +77,17 @@ public class OtpRepository {
     }
 
     /**
-     * Marks the OTP as consumed. Removes it from the partial unique index,
-     * allowing a new OTP to be requested immediately if needed.
+     * Atomically marks the OTP as consumed only if it has not already been used.
+     * Returns {@code true} if the row was updated (CAS succeeded), {@code false} if another
+     * concurrent caller already consumed it (used_at was already non-NULL).
      */
-    public void markUsed(Long otpId) {
-        jdbcTemplate.update("""
+    public boolean markUsed(Long otpId) {
+        int rows = jdbcTemplate.update("""
                 UPDATE common_schema.otp_table
                 SET used_at = NOW()
-                WHERE id = ?
+                WHERE id = ? AND used_at IS NULL
                 """, otpId);
+        return rows > 0;
     }
 
     private OtpRow mapRow(ResultSet rs) throws SQLException {
@@ -96,7 +98,7 @@ public class OtpRepository {
                 rs.getLong("id"),
                 rs.getString("otp"),
                 rs.getInt("tenant_id"),
-                rs.getInt("user_id"),
+                rs.getLong("user_id"),
                 OtpType.valueOf(rs.getString("otp_type")),
                 rs.getInt("attempt_count"),
                 createdAt != null ? createdAt.toInstant() : null,

@@ -32,7 +32,12 @@ public class PasswordCipher {
     private final SecureRandom rng = new SecureRandom();
 
     public PasswordCipher(@Value("${staff.managed-password-key}") String encodedKey) {
-        byte[] keyBytes = Base64.getDecoder().decode(encodedKey);
+        byte[] keyBytes;
+        try {
+            keyBytes = Base64.getDecoder().decode(encodedKey);
+        } catch (IllegalArgumentException e) {
+            throw new IllegalStateException("STAFF_MANAGED_PASSWORD_KEY is not valid Base64", e);
+        }
         if (keyBytes.length != 32) {
             throw new IllegalStateException(
                     "STAFF_MANAGED_PASSWORD_KEY must decode to exactly 32 bytes (256 bits)");
@@ -74,7 +79,17 @@ public class PasswordCipher {
     public String decrypt(String encoded) {
         if (encoded == null) return null;
         try {
-            byte[] decoded = Base64.getDecoder().decode(encoded);
+            byte[] decoded;
+            try {
+                decoded = Base64.getDecoder().decode(encoded);
+            } catch (IllegalArgumentException e) {
+                throw new IllegalStateException("Ciphertext is not valid Base64", e);
+            }
+            // Minimum: 12-byte IV + 16-byte GCM auth tag = 28 bytes
+            if (decoded.length < IV_LENGTH_BYTES + 16) {
+                throw new IllegalStateException(
+                        "Ciphertext too short to be a valid AES-GCM payload (" + decoded.length + " bytes)");
+            }
             byte[] iv = Arrays.copyOfRange(decoded, 0, IV_LENGTH_BYTES);
             byte[] ciphertextAndTag = Arrays.copyOfRange(decoded, IV_LENGTH_BYTES, decoded.length);
 

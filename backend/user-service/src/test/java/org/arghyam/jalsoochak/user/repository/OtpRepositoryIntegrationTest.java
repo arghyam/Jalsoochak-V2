@@ -1,5 +1,12 @@
 package org.arghyam.jalsoochak.user.repository;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
+import java.util.Optional;
+
 import org.arghyam.jalsoochak.user.enums.OtpType;
 import org.arghyam.jalsoochak.user.repository.records.OtpRow;
 import org.junit.jupiter.api.BeforeEach;
@@ -8,6 +15,7 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -15,13 +23,6 @@ import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
-
-import java.time.Instant;
-import java.time.temporal.ChronoUnit;
-import java.util.Optional;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @SpringBootTest
 @Testcontainers
@@ -93,7 +94,7 @@ class OtpRepositoryIntegrationTest {
 
             assertThatThrownBy(() ->
                     otpRepository.insertOtp(USER_ID, TENANT_ID, OtpType.LOGIN, "otp-2", futureExpiry()))
-                    .isInstanceOf(Exception.class); // unique constraint violation
+                    .isInstanceOf(DataIntegrityViolationException.class);
         }
     }
 

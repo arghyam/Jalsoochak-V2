@@ -94,12 +94,18 @@ public class OtpService {
             throw new BadRequestException("Invalid or expired OTP");
         }
 
-        otpRepository.markUsed(otpRow.id());
+        boolean consumed = otpRepository.markUsed(otpRow.id());
+        if (!consumed) {
+            throw new BadRequestException("Invalid or expired OTP");
+        }
         log.debug("OTP verified for userId={} tenantId={} type={}", userId, tenantId, otpType);
     }
 
     private String generateOtp() {
-        int bound = (int) Math.pow(10, otpProperties.otpLength());
+        int bound = 1;
+        for (int i = 0; i < otpProperties.otpLength(); i++) {
+            bound *= 10;
+        }
         int value = secureRandom.nextInt(bound);
         return String.format("%0" + otpProperties.otpLength() + "d", value);
     }

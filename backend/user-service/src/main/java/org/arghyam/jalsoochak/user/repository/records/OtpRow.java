@@ -11,7 +11,7 @@ public record OtpRow(
         Long id,
         String encryptedOtp,
         Integer tenantId,
-        Integer userId,
+        Long userId,
         OtpType otpType,
         int attemptCount,
         Instant createdAt,

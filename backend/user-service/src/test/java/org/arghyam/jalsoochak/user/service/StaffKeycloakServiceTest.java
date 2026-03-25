@@ -1,6 +1,20 @@
 package org.arghyam.jalsoochak.user.service;
 
-import jakarta.ws.rs.core.Response;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+import java.net.URI;
+import java.util.Optional;
+
 import org.arghyam.jalsoochak.user.config.KeycloakProvider;
 import org.arghyam.jalsoochak.user.exceptions.KeycloakOperationException;
 import org.arghyam.jalsoochak.user.repository.TenantUserRecord;
@@ -18,13 +32,7 @@ import org.mockito.Answers;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import java.net.URI;
-import java.util.Optional;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.*;
-import static org.mockito.Mockito.*;
+import jakarta.ws.rs.core.Response;
 
 @ExtendWith(MockitoExtension.class)
 @DisplayName("StaffKeycloakService")
@@ -123,6 +131,28 @@ class StaffKeycloakServiceTest {
                     .isInstanceOf(RuntimeException.class);
 
             verify(keycloakAdminHelper).deleteUser("new-uuid");
+        }
+
+        @Test
+        @DisplayName("throws KeycloakOperationException when Keycloak create returns 201 but no Location header")
+        void throwsOnMissingLocationHeader() {
+            when(userTenantRepository.findPasswordByUserId("tenant_mp", 10L))
+                    .thenReturn(Optional.empty());
+
+            Keycloak mockAdmin = mock(Keycloak.class, Answers.RETURNS_DEEP_STUBS);
+            UsersResource usersResource = mock(UsersResource.class, Answers.RETURNS_DEEP_STUBS);
+            when(keycloakProvider.getAdminInstance()).thenReturn(mockAdmin);
+            when(keycloakProvider.getRealm()).thenReturn("realm");
+            when(mockAdmin.realm("realm").users()).thenReturn(usersResource);
+
+            Response response = mock(Response.class);
+            when(response.getStatus()).thenReturn(201);
+            when(response.getLocation()).thenReturn(null);
+            when(usersResource.create(any())).thenReturn(response);
+
+            assertThatThrownBy(() -> service.ensureKeycloakAccount(USER, "MP", "tenant_mp"))
+                    .isInstanceOf(KeycloakOperationException.class)
+                    .hasMessageContaining("Location");
         }
 
         @Test

@@ -8,8 +8,9 @@ public interface StaffAuthService {
 
     /**
      * Requests an OTP for a staff user.
-     * Always returns without error regardless of whether the phone is registered
-     * (OWASP anti-enumeration).
+     * Always returns without error regardless of whether the phone is registered,
+     * the account is inactive, or a cooldown is active (OWASP anti-enumeration:
+     * any observable difference would reveal whether a phone number is registered).
      */
     void requestOtp(StaffOtpRequestDTO request);
 

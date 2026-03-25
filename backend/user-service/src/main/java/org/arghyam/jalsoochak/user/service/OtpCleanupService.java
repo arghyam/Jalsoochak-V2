@@ -20,10 +20,14 @@ public class OtpCleanupService {
 
     @Scheduled(cron = "0 0 3 * * *")
     public void deleteExpiredOtps() {
-        int deleted = jdbcTemplate.update("""
-                DELETE FROM common_schema.otp_table
-                WHERE expires_at < NOW() - INTERVAL '1 day'
-                """);
-        log.info("OTP cleanup: deleted {} expired row(s)", deleted);
+        try {
+            int deleted = jdbcTemplate.update("""
+                    DELETE FROM common_schema.otp_table
+                    WHERE expires_at < NOW() - INTERVAL '1 day'
+                    """);
+            log.info("OTP cleanup: deleted {} expired row(s)", deleted);
+        } catch (Exception e) {
+            log.error("OTP cleanup failed — will retry on next scheduled run", e);
+        }
     }
 }

@@ -4,6 +4,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
 import lombok.Getter;
 import lombok.Setter;
+import org.arghyam.jalsoochak.user.validation.ValidOtp;
 
 /**
  * Request body for {@code POST /api/v1/auth/staff/verify-otp}.
@@ -25,7 +26,8 @@ public class StaffOtpVerifyDTO {
     @NotBlank(message = "tenantCode is required")
     private String tenantCode;
 
-    /** The OTP received via WhatsApp or SMS. */
+    /** The OTP received via WhatsApp or SMS. Length and digit-only validated via {@link ValidOtp}. */
     @NotBlank(message = "otp is required")
+    @ValidOtp
     private String otp;
 }
