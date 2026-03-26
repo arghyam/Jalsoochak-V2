@@ -57,6 +57,16 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
     private static final String SCHEME_REGULARITY_CACHE_PREFIX = ":scheme_regularity";
     private static final String READING_SUBMISSION_RATE_CACHE_PREFIX = ":reading_submission_rate";
     private static final String NATIONAL_DASHBOARD_CACHE_PREFIX = ":national:dashboard";
+    private static final String REGION_WISE_WATER_QUANTITY_CACHE_PREFIX = ":water_quantity:region_wise";
+    private static final String PERIODIC_WATER_QUANTITY_CACHE_PREFIX = ":water_quantity:periodic";
+    private static final String PERIODIC_SCHEME_REGULARITY_CACHE_PREFIX = ":scheme_regularity:periodic";
+    private static final String OUTAGE_REASON_SCHEME_COUNT_CACHE_PREFIX = ":outage_reasons";
+    private static final String PERIODIC_OUTAGE_REASON_SCHEME_COUNT_CACHE_PREFIX = ":outage_reasons:periodic";
+    private static final String NON_SUBMISSION_REASON_SCHEME_COUNT_CACHE_PREFIX = ":non_submission_reasons";
+    private static final String SUBMISSION_STATUS_SUMMARY_CACHE_PREFIX = ":submission_status:summary";
+    private static final String SCHEME_STATUS_COUNT_CACHE_PREFIX = ":schemes:status-count";
+    private static final String SCHEME_STATUS_TOP_REPORTING_CACHE_PREFIX = ":schemes:dashboard";
+    private static final String SCHEME_REGION_REPORT_CACHE_PREFIX = ":schemes:region-report";
     private static final int DEFAULT_TOP_SCHEME_COUNT = 10;
     private static final int DEFAULT_PAGE_COUNT = 10;
     private static final String DEBUG_LOG_PATH = "/home/beehyv/Desktop/Codes/jalSoochak/JalSoochak_New/.cursor/debug.log";
@@ -1058,6 +1068,16 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
         validateLgdInput(parentLgdId);
         validateDateRange(startDate, endDate);
 
+        String cacheKey = REGION_WISE_WATER_QUANTITY_CACHE_PREFIX
+                + ":parent_lgd:" + parentLgdId
+                + ":start:" + startDate
+                + ":end:" + endDate
+                + ":v1";
+        RegionWiseWaterQuantityResponse cached = readFromCache(cacheKey, RegionWiseWaterQuantityResponse.class);
+        if (cached != null) {
+            return cached;
+        }
+
         Integer parentLgdLevel = schemeRegularityRepository.getLgdLevel(parentLgdId);
         if (parentLgdLevel == null) {
             throw new IllegalArgumentException("parent_lgd_id not found in dim_lgd_location_table: " + parentLgdId);
@@ -1078,7 +1098,7 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
                         .build())
                 .toList();
 
-        return RegionWiseWaterQuantityResponse.builder()
+        RegionWiseWaterQuantityResponse response = RegionWiseWaterQuantityResponse.builder()
                 .parentLgdId(parentLgdId)
                 .parentDepartmentId(null)
                 .parentLgdLevel(parentLgdLevel)
@@ -1088,6 +1108,8 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
                 .childRegionCount(childRegions.size())
                 .childRegions(childRegions)
                 .build();
+        writeToCache(cacheKey, response);
+        return response;
     }
 
     @Override
@@ -1136,10 +1158,24 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
         validateDateRange(startDate, endDate);
         validateScaleInput(scale);
 
+        String cacheKey = PERIODIC_WATER_QUANTITY_CACHE_PREFIX
+                + ":lgd:" + lgdId
+                + ":scale:" + scale.name().toLowerCase()
+                + ":start:" + startDate
+                + ":end:" + endDate
+                + ":v1";
+        PeriodicWaterQuantityResponse cached = readFromCache(cacheKey, PeriodicWaterQuantityResponse.class);
+        if (cached != null) {
+            return cached;
+        }
+
         List<SchemeRegularityRepository.PeriodicWaterQuantityMetrics> metrics =
                 schemeRegularityRepository.getPeriodicWaterQuantityByLgdId(lgdId, startDate, endDate, scale);
 
-        return buildPeriodicWaterQuantityResponse(lgdId, null, startDate, endDate, scale, metrics);
+        PeriodicWaterQuantityResponse response =
+                buildPeriodicWaterQuantityResponse(lgdId, null, startDate, endDate, scale, metrics);
+        writeToCache(cacheKey, response);
+        return response;
     }
 
     @Override
@@ -1162,10 +1198,24 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
         validateDateRange(startDate, endDate);
         validateScaleInput(scale);
 
+        String cacheKey = PERIODIC_SCHEME_REGULARITY_CACHE_PREFIX
+                + ":lgd:" + lgdId
+                + ":scale:" + scale.name().toLowerCase()
+                + ":start:" + startDate
+                + ":end:" + endDate
+                + ":v1";
+        PeriodicSchemeRegularityResponse cached = readFromCache(cacheKey, PeriodicSchemeRegularityResponse.class);
+        if (cached != null) {
+            return cached;
+        }
+
         List<SchemeRegularityRepository.PeriodicSchemeRegularityMetrics> metrics =
                 schemeRegularityRepository.getPeriodicSchemeRegularityByLgdId(lgdId, startDate, endDate, scale);
 
-        return buildPeriodicSchemeRegularityResponse(lgdId, null, startDate, endDate, scale, metrics);
+        PeriodicSchemeRegularityResponse response =
+                buildPeriodicSchemeRegularityResponse(lgdId, null, startDate, endDate, scale, metrics);
+        writeToCache(cacheKey, response);
+        return response;
     }
 
     @Override
@@ -1253,11 +1303,26 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
         validateDateRange(startDate, endDate);
         validateScaleInput(scale);
 
+        String cacheKey = PERIODIC_OUTAGE_REASON_SCHEME_COUNT_CACHE_PREFIX
+                + ":lgd:" + lgdId
+                + ":scale:" + scale.name().toLowerCase()
+                + ":start:" + startDate
+                + ":end:" + endDate
+                + ":v1";
+        PeriodicOutageReasonSchemeCountResponse cached =
+                readFromCache(cacheKey, PeriodicOutageReasonSchemeCountResponse.class);
+        if (cached != null) {
+            return cached;
+        }
+
         List<SchemeRegularityRepository.PeriodicOutageReasonSchemeCountRow> rows =
                 schemeRegularityRepository.getPeriodicOutageReasonSchemeCountByLgdId(
                         lgdId, startDate, endDate, scale);
 
-        return buildPeriodicOutageReasonSchemeCountResponse(lgdId, null, startDate, endDate, scale, rows);
+        PeriodicOutageReasonSchemeCountResponse response =
+                buildPeriodicOutageReasonSchemeCountResponse(lgdId, null, startDate, endDate, scale, rows);
+        writeToCache(cacheKey, response);
+        return response;
     }
 
     @Override
@@ -1279,6 +1344,17 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
             Integer parentLgdId, LocalDate startDate, LocalDate endDate) {
         validateLgdInput(parentLgdId);
         validateDateRange(startDate, endDate);
+
+        String cacheKey = OUTAGE_REASON_SCHEME_COUNT_CACHE_PREFIX
+                + ":parent_lgd:" + parentLgdId
+                + ":start:" + startDate
+                + ":end:" + endDate
+                + ":v1";
+        OutageReasonSchemeCountResponse cached = readFromCache(cacheKey, OutageReasonSchemeCountResponse.class);
+        if (cached != null) {
+            return cached;
+        }
+
         Integer parentLgdLevel = schemeRegularityRepository.getLgdLevel(parentLgdId);
         if (parentLgdLevel == null) {
             throw new IllegalArgumentException("parent_lgd_id not found in dim_lgd_location_table: " + parentLgdId);
@@ -1291,7 +1367,7 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
         List<SchemeRegularityRepository.ChildRegionOutageReasonSchemeCount> childRows =
                 schemeRegularityRepository.getChildOutageReasonSchemeCountByLgd(parentLgdId, startDate, endDate);
 
-        return OutageReasonSchemeCountResponse.builder()
+        OutageReasonSchemeCountResponse response = OutageReasonSchemeCountResponse.builder()
                 .lgdId(parentLgdId)
                 .departmentId(null)
                 .startDate(startDate)
@@ -1305,6 +1381,8 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
                         childRows,
                         SchemeRegularityRepository.ChildRegionOutageReasonSchemeCount::lgdId))
                 .build();
+        writeToCache(cacheKey, response);
+        return response;
     }
 
     @Override
@@ -1397,6 +1475,18 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
             Integer parentLgdId, LocalDate startDate, LocalDate endDate) {
         validateLgdInput(parentLgdId);
         validateDateRange(startDate, endDate);
+
+        String cacheKey = NON_SUBMISSION_REASON_SCHEME_COUNT_CACHE_PREFIX
+                + ":parent_lgd:" + parentLgdId
+                + ":start:" + startDate
+                + ":end:" + endDate
+                + ":v1";
+        NonSubmissionReasonSchemeCountResponse cached =
+                readFromCache(cacheKey, NonSubmissionReasonSchemeCountResponse.class);
+        if (cached != null) {
+            return cached;
+        }
+
         Integer parentLgdLevel = schemeRegularityRepository.getLgdLevel(parentLgdId);
         if (parentLgdLevel == null) {
             throw new IllegalArgumentException("parent_lgd_id not found in dim_lgd_location_table: " + parentLgdId);
@@ -1411,7 +1501,7 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
                 schemeRegularityRepository.getChildNonSubmissionReasonSchemeCountByLgd(
                         parentLgdId, startDate, endDate);
 
-        return NonSubmissionReasonSchemeCountResponse.builder()
+        NonSubmissionReasonSchemeCountResponse response = NonSubmissionReasonSchemeCountResponse.builder()
                 .lgdId(parentLgdId)
                 .departmentId(null)
                 .startDate(startDate)
@@ -1425,6 +1515,8 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
                         childRows,
                         SchemeRegularityRepository.ChildRegionNonSubmissionReasonSchemeCount::lgdId))
                 .build();
+        writeToCache(cacheKey, response);
+        return response;
     }
 
     @Override
@@ -1572,11 +1664,22 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
         validateLgdInput(lgdId);
         validateDateRange(startDate, endDate);
 
+        String cacheKey = SUBMISSION_STATUS_SUMMARY_CACHE_PREFIX
+                + ":lgd:" + lgdId
+                + ":start:" + startDate
+                + ":end:" + endDate
+                + ":v1";
+        SubmissionStatusSummaryResponse cached =
+                readFromCache(cacheKey, SubmissionStatusSummaryResponse.class);
+        if (cached != null) {
+            return cached;
+        }
+
         Integer schemeCount = schemeRegularityRepository.getSchemeCountByLgd(lgdId);
         SchemeRegularityRepository.SubmissionStatusCount submissionStatusCount =
                 schemeRegularityRepository.getSubmissionStatusCountByLgd(lgdId, startDate, endDate);
 
-        return SubmissionStatusSummaryResponse.builder()
+        SubmissionStatusSummaryResponse response = SubmissionStatusSummaryResponse.builder()
                 .schemeCount(schemeCount == null ? 0 : schemeCount)
                 .compliantSubmissionCount(
                         submissionStatusCount.compliantSubmissionCount() == null
@@ -1587,6 +1690,8 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
                                 ? 0
                                 : submissionStatusCount.anomalousSubmissionCount())
                 .build();
+        writeToCache(cacheKey, response);
+        return response;
     }
 
     @Override
@@ -1615,13 +1720,25 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
     @Override
     public Map<String, Integer> getSchemeStatusCountByLgd(Integer lgdId) {
         validateLgdInput(lgdId);
+
+        String cacheKey = SCHEME_STATUS_COUNT_CACHE_PREFIX
+                + ":lgd:" + lgdId
+                + ":v1";
+        @SuppressWarnings("unchecked")
+        Map<String, Integer> cached = (Map<String, Integer>) (Map<?, ?>) readFromCache(cacheKey, Map.class);
+        if (cached != null) {
+            return cached;
+        }
+
         SchemeRegularityRepository.SchemeStatusCount count =
                 schemeRegularityRepository.getSchemeStatusCountByLgd(lgdId);
-        return Map.of(
+        Map<String, Integer> response = Map.of(
                 SchemeStatus.ACTIVE.name().toLowerCase() + "_schemes_count",
                 count.activeSchemeCount() == null ? 0 : count.activeSchemeCount(),
                 SchemeStatus.INACTIVE.name().toLowerCase() + "_schemes_count",
                 count.inactiveSchemeCount() == null ? 0 : count.inactiveSchemeCount());
+        writeToCache(cacheKey, response);
+        return response;
     }
 
     @Override
@@ -1643,6 +1760,18 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
         validateDateRange(startDate, endDate);
         topSchemeCount = topSchemeCount == null ? DEFAULT_TOP_SCHEME_COUNT : topSchemeCount;
         validateTopSchemeCount(topSchemeCount);
+
+        String cacheKey = SCHEME_STATUS_TOP_REPORTING_CACHE_PREFIX
+                + ":parent_lgd:" + parentLgdId
+                + ":scheme_count:" + topSchemeCount
+                + ":start:" + startDate
+                + ":end:" + endDate
+                + ":v1";
+        SchemeStatusAndTopReportingResponse cached =
+                readFromCache(cacheKey, SchemeStatusAndTopReportingResponse.class);
+        if (cached != null) {
+            return cached;
+        }
         int daysInRange = (int) ChronoUnit.DAYS.between(startDate, endDate) + 1;
 
         SchemeRegularityRepository.SchemeStatusCount statusCount =
@@ -1653,7 +1782,7 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
                 schemeRegularityRepository.getTopSchemeSubmissionMetricsByLgd(
                         parentLgdId, startDate, endDate, topSchemeCount);
 
-        return SchemeStatusAndTopReportingResponse.builder()
+        SchemeStatusAndTopReportingResponse response = SchemeStatusAndTopReportingResponse.builder()
                 .parentLgdId(parentLgdId)
                 .parentDepartmentId(null)
                 .parentLgdCName(parentLgdCName)
@@ -1684,6 +1813,8 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
                                 .build())
                         .toList())
                 .build();
+        writeToCache(cacheKey, response);
+        return response;
     }
 
     @Override
@@ -1744,6 +1875,19 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
         validateLgdInput(parentLgdId);
         validateDateRange(startDate, endDate);
         validatePaginationInput(pageNumber, count);
+
+        String cacheKey = SCHEME_REGION_REPORT_CACHE_PREFIX
+                + ":parent_lgd:" + parentLgdId
+                + ":page:" + (pageNumber == null ? "all" : pageNumber)
+                + ":count:" + (count == null ? "all" : count)
+                + ":start:" + startDate
+                + ":end:" + endDate
+                + ":v1";
+        SchemeRegularityListResponse cached =
+                readFromCache(cacheKey, SchemeRegularityListResponse.class);
+        if (cached != null) {
+            return cached;
+        }
         int daysInRange = (int) ChronoUnit.DAYS.between(startDate, endDate) + 1;
 
         List<SchemeRegularityRepository.SchemeRegularityListMetrics> schemes =
@@ -1773,7 +1917,7 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
         List<SchemeRegularityListResponse.SchemeMetrics> schemeMetrics =
                 paginateSchemeReport(allSchemeMetrics, pageNumber, count);
 
-        return SchemeRegularityListResponse.builder()
+        SchemeRegularityListResponse response = SchemeRegularityListResponse.builder()
                 .parentLgdId(parentLgdId)
                 .parentDepartmentId(null)
                 .parentLgdCName(parentLgdCName)
@@ -1789,6 +1933,8 @@ public class SchemeRegularityServiceImpl implements SchemeRegularityService {
                 .schemeCountInResponse(schemeMetrics.size())
                 .schemes(schemeMetrics)
                 .build();
+        writeToCache(cacheKey, response);
+        return response;
     }
 
     @Override
