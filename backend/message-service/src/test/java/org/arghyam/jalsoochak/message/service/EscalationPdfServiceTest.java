@@ -187,6 +187,25 @@ class EscalationPdfServiceTest {
         assertThat(subDir.resolve(filename).toFile()).exists();
     }
 
+    @Test
+    void generate_usesCorrelationId_forFilename() throws Exception {
+        List<OperatorEscalationDetail> operators = List.of(buildOperator("Op One", "S-01", 3, "2024-01-01"));
+
+        String filename = service.generate(operators, 1, "SO Officer", "SECTION_OFFICER", "test-corr-id");
+
+        assertThat(filename).contains("test-corr-id");
+    }
+
+    @Test
+    void generate_usesRandomSuffix_whenCorrelationIdIsBlank() throws Exception {
+        List<OperatorEscalationDetail> operators = List.of(buildOperator("Op One", "S-01", 3, "2024-01-01"));
+
+        String filename1 = service.generate(operators, 1, "SO Officer", "SECTION_OFFICER", "");
+        String filename2 = service.generate(operators, 1, "SO Officer", "SECTION_OFFICER", "  ");
+
+        assertThat(filename1).isNotEqualTo(filename2);
+    }
+
     // ────────────────────────────── helpers ────────────────────────────────────
 
     private OperatorEscalationDetail buildOperator(String name, String scheme, int daysMissed, String lastDate) {

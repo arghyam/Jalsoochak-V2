@@ -54,8 +54,10 @@ public class EscalationPdfService {
         String dateStr = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd"));
         String safeOfficerName = (officerName != null ? officerName : "Unknown")
                 .replaceAll("[^a-zA-Z0-9_\\-]", "_");
-        String stableKey = (correlationId != null && !correlationId.isBlank())
-                ? correlationId : UUID.randomUUID().toString();
+        String sanitizedCorrelationId = correlationId != null
+                ? correlationId.replaceAll("[^a-zA-Z0-9_\\-]", "") : "";
+        String stableKey = sanitizedCorrelationId.isBlank()
+                ? UUID.randomUUID().toString() : sanitizedCorrelationId;
         String filename = String.format("escalation_L%d_%s_%s-%s.pdf",
                 level, safeOfficerName, dateStr, stableKey);
         Path filePath = Paths.get(reportDir, filename);
