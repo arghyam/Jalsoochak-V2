@@ -12,6 +12,7 @@ import org.arghyam.jalsoochak.analytics.entity.FactMeterReading;
 import org.arghyam.jalsoochak.analytics.entity.FactSchemePerformance;
 import org.arghyam.jalsoochak.analytics.entity.FactWaterQuantity;
 import org.arghyam.jalsoochak.analytics.repository.AnomalyRepository;
+import org.arghyam.jalsoochak.analytics.repository.DimDateRepository;
 import org.arghyam.jalsoochak.analytics.repository.DimTenantRepository;
 import org.arghyam.jalsoochak.analytics.repository.FactEscalationRepository;
 import org.arghyam.jalsoochak.analytics.repository.FactMeterReadingRepository;
@@ -31,6 +32,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 import java.util.List;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -55,6 +57,8 @@ class FactServiceImplTest {
     private AnomalyRepository anomalyRepository;
     @Mock
     private DimTenantRepository dimTenantRepository;
+    @Mock
+    private DimDateRepository dimDateRepository;
 
     @InjectMocks
     private FactServiceImpl service;
@@ -93,6 +97,7 @@ class FactServiceImplTest {
         event.setSubmissionStatus(1);
         event.setOutageReason("no_electricity");
         event.setDate("invalid-date");
+        when(dimDateRepository.findByFullDate(any())).thenReturn(Optional.empty());
 
         service.ingestWaterQuantity(event);
 
