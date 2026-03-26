@@ -146,7 +146,7 @@ public class UserManagementServiceImpl implements UserManagementService {
         String raw = tokenService.generateRawToken();
         String hash = tokenService.hash(raw);
         Instant expiresAt = Instant.now().plus(inviteProperties.expiryHours(), ChronoUnit.HOURS);
-        userCommonRepository.upsertToken(request.getEmail(), hash, "INVITE", metadataJson, expiresAt,
+        userCommonRepository.insertToken(request.getEmail(), hash, "INVITE", metadataJson, expiresAt,
                 callerRow.id() != null ? callerRow.id().intValue() : null);
 
         String inviteUrl = UriComponentsBuilder
@@ -231,7 +231,7 @@ public class UserManagementServiceImpl implements UserManagementService {
         String raw = tokenService.generateRawToken();
         String hash = tokenService.hash(raw);
         Instant expiresAt = Instant.now().plus(inviteProperties.expiryHours(), ChronoUnit.HOURS);
-        userCommonRepository.upsertToken(target.email(), hash, "INVITE", metadataJson, expiresAt,
+        userCommonRepository.insertToken(target.email(), hash, "INVITE", metadataJson, expiresAt,
                 callerRow.id() != null ? callerRow.id().intValue() : null);
 
         String inviteUrl = UriComponentsBuilder

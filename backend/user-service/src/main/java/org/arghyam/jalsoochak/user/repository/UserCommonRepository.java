@@ -370,18 +370,13 @@ public class UserCommonRepository {
     // --- Token methods ---
 
     /**
-     * Soft-revoke any existing active token for (email, tokenType), then insert new one.
-     * Must be called from a @Transactional context.
+     * Insert a new token without touching any existing active tokens for (email, tokenType).
+     * Old tokens remain valid until consumed or expired (invalidate-on-use, not on-issue).
+     * When a token is eventually consumed, all sibling tokens are superseded via deleted_at.
      */
     @Transactional
-    public void upsertToken(String email, String tokenHash, String tokenType,
+    public void insertToken(String email, String tokenHash, String tokenType,
                             String metadataJson, Instant expiresAt, Integer createdBy) {
-        // Use LOWER() on both sides so the revoke matches regardless of stored case
-        jdbcTemplate.update("""
-                UPDATE common_schema.admin_user_token_table
-                SET deleted_at = NOW()
-                WHERE LOWER(email) = LOWER(?) AND token_type = ? AND used_at IS NULL AND deleted_at IS NULL
-                """, email, tokenType);
         jdbcTemplate.update("""
                 INSERT INTO common_schema.admin_user_token_table
                     (email, token_hash, token_type, metadata, expires_at, created_by)
@@ -390,7 +385,26 @@ public class UserCommonRepository {
                 Timestamp.from(expiresAt), createdBy);
     }
 
-    /** Find the most recent unconsumed INVITE token by email (regardless of expiry — used to read name metadata for PENDING users). */
+    /**
+     * Mark all other pending tokens for the same (email, tokenType) as deleted (superseded).
+     * Called atomically after a token is consumed so sibling links stop working.
+     */
+    private void supersedeSiblingTokens(String email, String tokenType, String usedTokenHash) {
+        jdbcTemplate.update("""
+                UPDATE common_schema.admin_user_token_table
+                SET deleted_at = NOW()
+                WHERE LOWER(email) = LOWER(?)
+                  AND token_type = ?
+                  AND token_hash != ?
+                  AND used_at IS NULL
+                  AND deleted_at IS NULL
+                """, email, tokenType, usedTokenHash);
+    }
+
+    /**
+     * Find the most recent unconsumed, non-superseded INVITE token by email
+     * (regardless of expiry — used to read name metadata for PENDING users).
+     */
     public Optional<AdminUserTokenRow> findInviteTokenByEmail(String email) {
         String sql = """
                 SELECT id, email, token_hash, token_type, metadata::TEXT, expires_at, used_at, deleted_at, created_at
@@ -428,7 +442,8 @@ public class UserCommonRepository {
     }
 
     /**
-     * Atomically validates and consumes an active, non-expired token in a single UPDATE.
+     * Atomically validates and consumes an active, non-expired token in a single UPDATE,
+     * then supersedes all other pending tokens for the same (email, token_type).
      * Returns the consumed row if successful; empty if the token is invalid, expired, or already used.
      */
     @Transactional
@@ -440,11 +455,14 @@ public class UserCommonRepository {
                 RETURNING id, email, token_hash, token_type, metadata::TEXT, expires_at, used_at, deleted_at, created_at
                 """;
         List<AdminUserTokenRow> rows = jdbcTemplate.query(sql, (rs, n) -> mapTokenRow(rs), tokenHash);
-        return rows.stream().findFirst();
+        Optional<AdminUserTokenRow> result = rows.stream().findFirst();
+        result.ifPresent(row -> supersedeSiblingTokens(row.email(), row.tokenType(), tokenHash));
+        return result;
     }
 
     /**
-     * Atomically validates and consumes an active, non-expired token only when its type matches.
+     * Atomically validates and consumes an active, non-expired token only when its type matches,
+     * then supersedes all other pending tokens for the same (email, token_type).
      * Returns the consumed row if successful; empty if invalid, expired, used, or type mismatch.
      */
     @Transactional
@@ -456,7 +474,9 @@ public class UserCommonRepository {
                 RETURNING id, email, token_hash, token_type, metadata::TEXT, expires_at, used_at, deleted_at, created_at
                 """;
         List<AdminUserTokenRow> rows = jdbcTemplate.query(sql, (rs, n) -> mapTokenRow(rs), tokenHash, expectedType);
-        return rows.stream().findFirst();
+        Optional<AdminUserTokenRow> result = rows.stream().findFirst();
+        result.ifPresent(row -> supersedeSiblingTokens(row.email(), row.tokenType(), tokenHash));
+        return result;
     }
 
     /** Admin revocation. */

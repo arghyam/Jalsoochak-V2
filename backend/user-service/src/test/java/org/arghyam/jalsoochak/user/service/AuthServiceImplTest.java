@@ -360,7 +360,7 @@ class AuthServiceImplTest {
             when(passwordResetProperties.expiryMinutes()).thenReturn(30);
             when(frontendProperties.baseUrl()).thenReturn("http://localhost:3000");
             when(frontendProperties.resetPath()).thenReturn("/reset-password");
-            doNothing().when(userCommonRepository).upsertToken(
+            doNothing().when(userCommonRepository).insertToken(
                     eq("user@example.com"), eq("reset-hash"), eq("RESET"), eq(null), any(), eq(null));
 
             ForgotPasswordRequestDTO req = new ForgotPasswordRequestDTO();
@@ -368,7 +368,7 @@ class AuthServiceImplTest {
 
             authService.forgotPassword(req);
 
-            verify(userCommonRepository).upsertToken(
+            verify(userCommonRepository).insertToken(
                     eq("user@example.com"), eq("reset-hash"), eq("RESET"), eq(null), any(), eq(null));
             verify(userNotificationEventPublisher).publishResetPasswordEmailAfterCommit(any(ResetPasswordEmailEvent.class));
         }

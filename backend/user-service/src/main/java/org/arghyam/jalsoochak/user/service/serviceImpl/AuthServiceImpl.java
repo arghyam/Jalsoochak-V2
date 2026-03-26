@@ -246,7 +246,7 @@ public class AuthServiceImpl implements AuthService {
         String raw = tokenService.generateRawToken();
         String hash = tokenService.hash(raw);
         Instant expiresAt = Instant.now().plus(passwordResetProperties.expiryMinutes(), ChronoUnit.MINUTES);
-        userCommonRepository.upsertToken(request.getEmail(), hash, "RESET", null, expiresAt, null);
+        userCommonRepository.insertToken(request.getEmail(), hash, "RESET", null, expiresAt, null);
         String resetUrl = UriComponentsBuilder
                 .fromHttpUrl(frontendProperties.baseUrl())
                 .path(frontendProperties.resetPath())

@@ -330,7 +330,7 @@ class UserManagementServiceImplTest {
             when(tokenService.generateRawToken()).thenReturn("raw-invite-token");
             when(tokenService.hash("raw-invite-token")).thenReturn("invite-hash");
             when(inviteProperties.expiryHours()).thenReturn(24);
-            doNothing().when(userCommonRepository).upsertToken(
+            doNothing().when(userCommonRepository).insertToken(
                     eq("new@example.com"), eq("invite-hash"), eq("INVITE"), anyString(), any(), eq(1));
             when(frontendProperties.baseUrl()).thenReturn("http://localhost:3000");
             when(frontendProperties.invitePath()).thenReturn("/invite");
@@ -344,7 +344,7 @@ class UserManagementServiceImplTest {
 
             userManagementService.inviteUser(req, auth);
 
-            verify(userCommonRepository).upsertToken(
+            verify(userCommonRepository).insertToken(
                     eq("new@example.com"), eq("invite-hash"), eq("INVITE"), anyString(), any(), eq(1));
             verify(userNotificationEventPublisher).publishInviteEmailAfterCommit(any(InviteEmailEvent.class));
         }
@@ -707,14 +707,14 @@ class UserManagementServiceImplTest {
             when(tokenService.generateRawToken()).thenReturn("new-raw-token");
             when(tokenService.hash("new-raw-token")).thenReturn("new-hash");
             when(inviteProperties.expiryHours()).thenReturn(24);
-            doNothing().when(userCommonRepository).upsertToken(
+            doNothing().when(userCommonRepository).insertToken(
                     eq("pending@example.com"), eq("new-hash"), eq("INVITE"), anyString(), any(), eq(1));
             when(frontendProperties.baseUrl()).thenReturn("http://localhost:3000");
             when(frontendProperties.invitePath()).thenReturn("/invite");
 
             userManagementService.reinviteUser(7L, auth);
 
-            verify(userCommonRepository).upsertToken(
+            verify(userCommonRepository).insertToken(
                     eq("pending@example.com"), eq("new-hash"), eq("INVITE"), anyString(), any(), eq(1));
             verify(userNotificationEventPublisher).publishInviteEmailAfterCommit(any(InviteEmailEvent.class));
         }
@@ -742,7 +742,7 @@ class UserManagementServiceImplTest {
             when(tokenService.generateRawToken()).thenReturn("new-raw-token");
             when(tokenService.hash("new-raw-token")).thenReturn("new-hash");
             when(inviteProperties.expiryHours()).thenReturn(24);
-            doNothing().when(userCommonRepository).upsertToken(
+            doNothing().when(userCommonRepository).insertToken(
                     eq("pending@example.com"), eq("new-hash"), eq("INVITE"), anyString(), any(), eq(1));
             when(frontendProperties.baseUrl()).thenReturn("http://localhost:3000");
             when(frontendProperties.invitePath()).thenReturn("/invite");
@@ -754,9 +754,9 @@ class UserManagementServiceImplTest {
             verify(userNotificationEventPublisher).publishInviteEmailAfterCommit(eventCaptor.capture());
             assertEquals("Jane Doe", eventCaptor.getValue().getName());
 
-            // Verify that upsertToken was called with metadata containing firstName and lastName
+            // Verify that insertToken was called with metadata containing firstName and lastName
             ArgumentCaptor<String> metadataCaptor = ArgumentCaptor.forClass(String.class);
-            verify(userCommonRepository).upsertToken(
+            verify(userCommonRepository).insertToken(
                     eq("pending@example.com"), eq("new-hash"), eq("INVITE"),
                     metadataCaptor.capture(), any(), eq(1));
             String storedMetadata = metadataCaptor.getValue();
