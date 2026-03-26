@@ -52,4 +52,7 @@ public class FactWaterQuantity {
 
     @Column(name = "outage_reason")
     private String outageReason;
+
+    @Column(name = "non_submission_reason")
+    private String nonSubmissionReason;
 }
