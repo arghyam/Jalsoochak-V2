@@ -99,7 +99,10 @@ public class UserManagementServiceImpl implements UserManagementService {
         }
 
         var existingUser = userCommonRepository.findAdminUserByEmail(request.getEmail());
-        if (existingUser.isPresent() && existingUser.get().status() != AdminUserStatus.PENDING) {
+        if (existingUser.isPresent()) {
+            if (existingUser.get().status() == AdminUserStatus.PENDING) {
+                throw new BadRequestException("User already has a pending invitation. Use the reinvite endpoint.");
+            }
             throw new UserAlreadyExistsException("User with this email is already registered");
         }
 
@@ -110,19 +113,8 @@ public class UserManagementServiceImpl implements UserManagementService {
                 : userCommonRepository.findTenantIdByStateCode(request.getTenantCode())
                         .orElseThrow(() -> new ResourceNotFoundException("Tenant not found for state code: " + request.getTenantCode()));
 
-        // If a PENDING user already exists, reject if role/tenant metadata differs
-        if (existingUser.isPresent()) {
-            var pending = existingUser.get();
-            if (!pending.adminLevel().equals(adminLevelId) || !pending.tenantId().equals(tenantId)) {
-                throw new BadRequestException(
-                        "A pending invitation exists for this email with different role or tenant. Revoke it before re-inviting.");
-            }
-            // Same role+tenant: update phone number and re-send invite token
-            userCommonRepository.updatePendingAdminUserPhone(pending.id(), request.getPhoneNumber());
-        } else {
-            userCommonRepository.createAdminUserPending(request.getEmail(), request.getPhoneNumber(), tenantId,
-                    adminLevelId, callerRow.id() != null ? callerRow.id().intValue() : null);
-        }
+        userCommonRepository.createAdminUserPending(request.getEmail(), request.getPhoneNumber(), tenantId,
+                adminLevelId, callerRow.id() != null ? callerRow.id().intValue() : null);
 
         String tenantName = "STATE_ADMIN".equals(request.getRole())
                 ? userCommonRepository.findTenantTitleByStateCode(request.getTenantCode()).orElse(null)

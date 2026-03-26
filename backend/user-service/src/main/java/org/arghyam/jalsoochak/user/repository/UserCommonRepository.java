@@ -138,18 +138,6 @@ public class UserCommonRepository {
         return id != null ? id.longValue() : null;
     }
 
-    public void updatePendingAdminUserPhone(Long id, String phoneNumber) {
-        int updated = jdbcTemplate.update("""
-                UPDATE common_schema.tenant_admin_user_master_table
-                SET phone_number = ?, phone_number_hash = ?, updated_at = NOW()
-                WHERE id = ? AND status = 2 AND deleted_at IS NULL
-                """, pii.encrypt(phoneNumber), pii.hmac(phoneNumber), id);
-        if (updated == 0) {
-            throw new ResourceNotFoundException(
-                    "Pending admin user not found or already activated [id=" + id + "]");
-        }
-    }
-
     /**
      * Complete activation of a PENDING admin user after Keycloak account creation.
      * Sets the real Keycloak UUID, phone number, and status = 1 (active).
