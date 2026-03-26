@@ -80,7 +80,7 @@ class NudgeRepositoryIntegrationTest {
 
     @BeforeEach
     void setUp() {
-        when(piiEncryptionService.decrypt(anyString())).thenAnswer(inv -> inv.getArgument(0));
+        when(piiEncryptionService.safeDecrypt(anyString())).thenAnswer(inv -> inv.getArgument(0));
 
         operatorTypeId = jdbcTemplate.queryForObject(
                 "SELECT id FROM common_schema.user_type_master_table WHERE UPPER(c_name) = 'PUMP_OPERATOR'",

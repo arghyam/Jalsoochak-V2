@@ -21,13 +21,7 @@ public class MetadataDecryptionHelper {
      */
     public String parseAndDecrypt(String json, String key) {
         String raw = parse(json, key);
-        if (raw == null) return null;
-        try {
-            String decrypted = pii.decrypt(raw);
-            return decrypted != null ? decrypted : raw;
-        } catch (Exception e) {
-            return raw; // legacy plaintext token
-        }
+        return pii.safeDecrypt(raw);
     }
 
     private String parse(String json, String key) {

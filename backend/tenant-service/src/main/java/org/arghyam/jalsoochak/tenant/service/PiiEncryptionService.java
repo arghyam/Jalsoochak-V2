@@ -1,5 +1,6 @@
 package org.arghyam.jalsoochak.tenant.service;
 
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
@@ -31,6 +32,7 @@ import static java.nio.charset.StandardCharsets.UTF_8;
  * supplied via environment variables {@code PII_ENCRYPTION_KEY} and {@code PII_HMAC_KEY}.
  * Never commit key material to source control.
  */
+@Slf4j
 @Service
 public class PiiEncryptionService {
 
@@ -122,6 +124,36 @@ public class PiiEncryptionService {
         } catch (Exception e) {
             throw new IllegalStateException("AES-GCM decryption failed", e);
         }
+    }
+
+    /**
+     * Decrypts a PII column value read from the database, with transparent fallback for
+     * legacy rows that were stored as plaintext before encryption was introduced.
+     *
+     * <p>A value is treated as legacy plaintext when it is either not valid Base64 or its
+     * decoded length is less than 28 bytes (12-byte IV + 16-byte GCM auth tag — the
+     * minimum AES-GCM payload for empty plaintext). Such values are returned as-is and
+     * logged at WARN so the legacy row is visible without causing a hard failure.
+     *
+     * <p>Values that pass the structural check are decrypted normally. Real decryption
+     * failures (wrong key, tampered ciphertext, auth-tag mismatch) are <em>not</em>
+     * swallowed — they surface as {@link IllegalStateException}.
+     *
+     * @return decrypted plaintext, raw value for legacy rows, or {@code null} if input is {@code null}
+     */
+    public String safeDecrypt(String encoded) {
+        if (encoded == null) return null;
+        try {
+            byte[] decoded = Base64.getDecoder().decode(encoded);
+            if (decoded.length < IV_LENGTH_BYTES + 16) {
+                log.warn("PII field appears to be unencrypted legacy plaintext (decoded {} bytes, minimum AES-GCM is 28). Returning raw value.", decoded.length);
+                return encoded;
+            }
+        } catch (IllegalArgumentException e) {
+            log.warn("PII field is not valid Base64 — treating as legacy plaintext. Returning raw value.");
+            return encoded;
+        }
+        return decrypt(encoded);
     }
 
     /**

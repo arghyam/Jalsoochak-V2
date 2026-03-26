@@ -232,9 +232,9 @@ public class PublicPumpOperatorRepository {
                 return PumpOperatorDetailsDTO.builder()
                         .id(rs.getLong("id"))
                         .uuid(rs.getString("uuid"))
-                        .name(pii.decrypt(rs.getString("title")))
+                        .name(pii.safeDecrypt(rs.getString("title")))
                         .email(rs.getString("email"))
-                        .phoneNumber(pii.decrypt(rs.getString("phone_number")))
+                        .phoneNumber(pii.safeDecrypt(rs.getString("phone_number")))
                         .status(getNullableInt(rs, "status"))
                         .schemeId(getNullableInt(rs, "scheme_id"))
                         .schemeName(rs.getString("scheme_name"))
@@ -339,9 +339,9 @@ public class PublicPumpOperatorRepository {
                     rs.getString("scheme_name"),
                     rs.getLong("user_id"),
                     rs.getString("uuid"),
-                    pii.decrypt(rs.getString("name")),
+                    pii.safeDecrypt(rs.getString("name")),
                     rs.getString("email"),
-                    pii.decrypt(rs.getString("phone_number")),
+                    pii.safeDecrypt(rs.getString("phone_number")),
                     getNullableInt(rs, "status")
             ), baseParams.toArray());
 
@@ -490,9 +490,9 @@ public class PublicPumpOperatorRepository {
                 rs.getString("scheme_name"),
                 rs.getLong("user_id"),
                 rs.getString("uuid"),
-                pii.decrypt(rs.getString("name")),
+                pii.safeDecrypt(rs.getString("name")),
                 rs.getString("email"),
-                pii.decrypt(rs.getString("phone_number")),
+                pii.safeDecrypt(rs.getString("phone_number")),
                 getNullableInt(rs, "status")
         ), opsParams.toArray());
 
@@ -555,7 +555,7 @@ public class PublicPumpOperatorRepository {
                 LocalDateTime lastSubmissionAt = ts == null ? null : ts.toLocalDateTime();
                 BigDecimal confirmed = (BigDecimal) rs.getObject("confirmed_reading");
                 return PumpOperatorReadingComplianceDTO.builder()
-                        .name(pii.decrypt(rs.getString("name")))
+                        .name(pii.safeDecrypt(rs.getString("name")))
                         .lastSubmissionAt(lastSubmissionAt)
                         .confirmedReading(confirmed)
                         .build();
@@ -599,7 +599,7 @@ public class PublicPumpOperatorRepository {
             return PumpOperatorReadingComplianceRowDTO.builder()
                     .id(rs.getLong("id"))
                     .uuid(rs.getString("uuid"))
-                    .name(pii.decrypt(rs.getString("name")))
+                    .name(pii.safeDecrypt(rs.getString("name")))
                     .lastSubmissionAt(lastSubmissionAt)
                     .confirmedReading(confirmed)
                     .build();
@@ -777,9 +777,9 @@ public class PublicPumpOperatorRepository {
             return new RowData(
                     rs.getLong("id"),
                     rs.getString("uuid"),
-                    pii.decrypt(rs.getString("name")),
+                    pii.safeDecrypt(rs.getString("name")),
                     rs.getString("email"),
-                    pii.decrypt(rs.getString("phone_number")),
+                    pii.safeDecrypt(rs.getString("phone_number")),
                     getNullableInt(rs, "status"),
                     rs.getLong("scheme_id"),
                     rs.getString("scheme_name"),

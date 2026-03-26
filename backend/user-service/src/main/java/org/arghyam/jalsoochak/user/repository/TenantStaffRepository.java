@@ -11,7 +11,6 @@ import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Repository;
 
 import java.util.ArrayList;
-import java.util.Base64;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
@@ -42,36 +41,13 @@ public class TenantStaffRepository {
         return (rs, rowNum) -> TenantStaffResponseDTO.builder()
                 .id(rs.getLong("id"))
                 .uuid(rs.getString("uuid"))
-                .title(safeDecrypt(rs.getString("title")))
+                .title(pii.safeDecrypt(rs.getString("title")))
                 .email(rs.getString("email"))
-                .phoneNumber(safeDecrypt(rs.getString("phone_number")))
+                .phoneNumber(pii.safeDecrypt(rs.getString("phone_number")))
                 .status(mapStatus(rs.getObject("status")))
                 .role(rs.getString("role"))
                 .schemes(null)
                 .build();
-    }
-
-    /**
-     * Decrypts a PII value, falling back to the raw value for legacy plaintext rows.
-     * Legacy detection: if the value is not valid base64 or decodes to &lt; 28 bytes (shorter
-     * than the minimum AES-GCM payload of 12-byte IV + 16-byte auth tag), it cannot be a
-     * valid ciphertext and is treated as stored plaintext.
-     * Real decryption failures (wrong key, auth-tag mismatch) are not swallowed — they surface
-     * as {@link IllegalStateException}.
-     */
-    private String safeDecrypt(String value) {
-        if (value == null) return null;
-        try {
-            byte[] decoded = Base64.getDecoder().decode(value);
-            // AES-GCM: 12-byte IV + 16-byte auth tag = 28 bytes minimum (for empty plaintext)
-            if (decoded.length < 28) {
-                return value; // too short to be AES-GCM ciphertext — legacy plaintext
-            }
-        } catch (IllegalArgumentException e) {
-            return value; // not valid base64 — legacy plaintext
-        }
-        // Looks like a real ciphertext; let decryption errors surface
-        return pii.decrypt(value);
     }
 
     private void validateSchemaName(String schemaName) {
