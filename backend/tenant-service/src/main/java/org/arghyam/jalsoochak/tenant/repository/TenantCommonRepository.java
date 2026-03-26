@@ -145,29 +145,64 @@ public class TenantCommonRepository {
     }
 
     /**
-     * Lists all non-system tenants in the common_schema.tenant_master_table with pagination.
+     * Lists all non-system tenants with pagination and optional filters.
      * The system tenant (id = 0) is excluded from results.
+     *
+     * @param limit   Page size.
+     * @param offset  Row offset.
+     * @param status  Optional status filter; {@code null} means all statuses.
+     * @param search  Optional case-insensitive partial match on tenant name; {@code null} or blank means no filter.
      */
-    public List<TenantResponseDTO> findAll(int limit, long offset) {
+    public List<TenantResponseDTO> findAll(int limit, long offset, TenantStatusEnum status, String search) {
         if (limit <= 0) {
             throw new IllegalArgumentException("limit must be greater than 0");
         }
         if (offset < 0) {
             throw new IllegalArgumentException("offset must be non-negative");
         }
-        return jdbcTemplate.query(
-                "SELECT * FROM common_schema.tenant_master_table WHERE id != 0 ORDER BY id LIMIT ? OFFSET ?",
-                TENANT_ROW_MAPPER, limit, offset);
+
+        List<Object> params = new ArrayList<>();
+        StringBuilder sql = new StringBuilder(
+                "SELECT * FROM common_schema.tenant_master_table WHERE id != 0");
+
+        if (status != null) {
+            sql.append(" AND status = ?");
+            params.add(status.getCode());
+        }
+        if (search != null && !search.isBlank()) {
+            sql.append(" AND title ILIKE ?");
+            params.add("%" + search.strip() + "%");
+        }
+
+        sql.append(" ORDER BY id LIMIT ? OFFSET ?");
+        params.add(limit);
+        params.add(offset);
+
+        return jdbcTemplate.query(sql.toString(), TENANT_ROW_MAPPER, params.toArray());
     }
 
     /**
-     * Counts the total number of non-system tenants in common_schema.tenant_master_table.
+     * Counts the total number of non-system tenants with optional filters.
      * The system tenant (id = 0) is excluded from the count.
+     *
+     * @param status  Optional status filter; {@code null} means all statuses.
+     * @param search  Optional case-insensitive partial match on tenant name; {@code null} or blank means no filter.
      */
-    public long countAllTenants() {
-        return jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM common_schema.tenant_master_table WHERE id != 0",
-                Long.class);
+    public long countAllTenants(TenantStatusEnum status, String search) {
+        List<Object> params = new ArrayList<>();
+        StringBuilder sql = new StringBuilder(
+                "SELECT COUNT(*) FROM common_schema.tenant_master_table WHERE id != 0");
+
+        if (status != null) {
+            sql.append(" AND status = ?");
+            params.add(status.getCode());
+        }
+        if (search != null && !search.isBlank()) {
+            sql.append(" AND title ILIKE ?");
+            params.add("%" + search.strip() + "%");
+        }
+
+        return jdbcTemplate.queryForObject(sql.toString(), Long.class, params.toArray());
     }
 
     /**

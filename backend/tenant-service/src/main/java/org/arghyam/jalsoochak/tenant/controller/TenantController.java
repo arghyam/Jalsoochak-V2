@@ -22,6 +22,7 @@ import org.arghyam.jalsoochak.tenant.dto.response.TenantConfigStatusResponseDTO;
 import org.arghyam.jalsoochak.tenant.dto.response.TenantResponseDTO;
 import org.arghyam.jalsoochak.tenant.dto.response.TenantSummaryResponseDTO;
 import org.arghyam.jalsoochak.tenant.enums.TenantConfigKeyEnum;
+import org.arghyam.jalsoochak.tenant.enums.TenantStatusEnum;
 import org.arghyam.jalsoochak.tenant.dto.internal.LogoSource;
 import org.arghyam.jalsoochak.tenant.dto.internal.TenantLogoResult;
 import org.arghyam.jalsoochak.tenant.service.TenantManagementService;
@@ -108,18 +109,22 @@ public class TenantController {
         /**
          * Get all tenants
          */
-        @Operation(summary = "List all tenants with pagination", description = "Returns a paginated list of tenants registered in the common schema, ordered by ID.")
+        @Operation(summary = "List all tenants with pagination", description = "Returns a paginated list of tenants registered in the common schema, ordered by ID. "
+                        + "Optionally filter by status and/or search by name (case-insensitive partial match).")
         @ApiResponses({
                         @ApiResponse(responseCode = "200", description = "Paginated list of tenants"),
+                        @ApiResponse(responseCode = "400", description = "Invalid query parameter"),
                         @ApiResponse(responseCode = "500", description = "Internal server error")
         })
         @GetMapping
         public ResponseEntity<ApiResponseDTO<PageResponseDTO<TenantResponseDTO>>> getAllTenants(
                         @Parameter(description = "Page number (0-indexed)", example = "0") @RequestParam(defaultValue = "0") @Min(0) int page,
-                        @Parameter(description = "Page size", example = "10") @RequestParam(defaultValue = "10") @Min(1) @Max(MAX_PAGE_SIZE) int size) {
-                log.info("GET /api/v1/tenants – page: {}, size: {}", page, size);
+                        @Parameter(description = "Page size", example = "10") @RequestParam(defaultValue = "10") @Min(1) @Max(MAX_PAGE_SIZE) int size,
+                        @Parameter(description = "Filter by tenant status", example = "ACTIVE") @RequestParam(required = false) TenantStatusEnum status,
+                        @Parameter(description = "Case-insensitive partial match on tenant name", example = "madhya") @RequestParam(required = false) String search) {
+                log.info("GET /api/v1/tenants – page: {}, size: {}, status: {}, search: {}", page, size, status, search);
                 return ResponseEntity.ok(ApiResponseDTO.of(200, "Tenants retrieved successfully",
-                                tenantManagementService.getAllTenants(page, size)));
+                                tenantManagementService.getAllTenants(page, size, status, search)));
         }
 
         /**

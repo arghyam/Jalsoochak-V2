@@ -175,7 +175,7 @@ class TenantControllerTest {
                     .totalElements(2L)
                     .build();
 
-            when(tenantManagementService.getAllTenants(anyInt(), anyInt())).thenReturn(pageResponse);
+            when(tenantManagementService.getAllTenants(anyInt(), anyInt(), any(), any())).thenReturn(pageResponse);
 
             mockMvc.perform(get("/api/v1/tenants")
                     .param("page", "0")
@@ -186,7 +186,7 @@ class TenantControllerTest {
                     .andExpect(jsonPath("$.data.content", hasSize(2)))
                     .andExpect(jsonPath("$.data.totalElements").value(2));
 
-            verify(tenantManagementService).getAllTenants(0, 10);
+            verify(tenantManagementService).getAllTenants(0, 10, null, null);
         }
 
         @Test
@@ -198,7 +198,7 @@ class TenantControllerTest {
                     .totalElements(0L)
                     .build();
 
-            when(tenantManagementService.getAllTenants(anyInt(), anyInt())).thenReturn(emptyPageResponse);
+            when(tenantManagementService.getAllTenants(anyInt(), anyInt(), any(), any())).thenReturn(emptyPageResponse);
 
             mockMvc.perform(get("/api/v1/tenants")
                     .param("page", "0")
@@ -217,11 +217,87 @@ class TenantControllerTest {
                     .totalElements(1L)
                     .build();
 
-            when(tenantManagementService.getAllTenants(0, 10)).thenReturn(pageResponse);
+            when(tenantManagementService.getAllTenants(0, 10, null, null)).thenReturn(pageResponse);
 
             mockMvc.perform(get("/api/v1/tenants"))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.data.content", hasSize(1)));
+        }
+
+        @Test
+        void getAllTenants_FilterByStatus_ReturnsFilteredResults() throws Exception {
+            TenantResponseDTO tenant = TenantResponseDTO.builder().id(1).name("Active Tenant").status(TenantStatusEnum.ACTIVE.name()).build();
+            PageResponseDTO<TenantResponseDTO> pageResponse = PageResponseDTO.<TenantResponseDTO>builder()
+                    .content(List.of(tenant))
+                    .number(0)
+                    .size(10)
+                    .totalElements(1L)
+                    .build();
+
+            when(tenantManagementService.getAllTenants(0, 10, TenantStatusEnum.ACTIVE, null)).thenReturn(pageResponse);
+
+            mockMvc.perform(get("/api/v1/tenants")
+                    .param("page", "0")
+                    .param("size", "10")
+                    .param("status", "ACTIVE"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.content", hasSize(1)))
+                    .andExpect(jsonPath("$.data.content[0].status").value("ACTIVE"));
+
+            verify(tenantManagementService).getAllTenants(0, 10, TenantStatusEnum.ACTIVE, null);
+        }
+
+        @Test
+        void getAllTenants_FilterBySearch_ReturnsFilteredResults() throws Exception {
+            TenantResponseDTO tenant = TenantResponseDTO.builder().id(1).name("Madhya Pradesh").build();
+            PageResponseDTO<TenantResponseDTO> pageResponse = PageResponseDTO.<TenantResponseDTO>builder()
+                    .content(List.of(tenant))
+                    .number(0)
+                    .size(10)
+                    .totalElements(1L)
+                    .build();
+
+            when(tenantManagementService.getAllTenants(0, 10, null, "madhya")).thenReturn(pageResponse);
+
+            mockMvc.perform(get("/api/v1/tenants")
+                    .param("page", "0")
+                    .param("size", "10")
+                    .param("search", "madhya"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.content", hasSize(1)))
+                    .andExpect(jsonPath("$.data.content[0].name").value("Madhya Pradesh"));
+
+            verify(tenantManagementService).getAllTenants(0, 10, null, "madhya");
+        }
+
+        @Test
+        void getAllTenants_FilterByStatusAndSearch_ReturnsFilteredResults() throws Exception {
+            TenantResponseDTO tenant = TenantResponseDTO.builder().id(1).name("Madhya Pradesh").status(TenantStatusEnum.ACTIVE.name()).build();
+            PageResponseDTO<TenantResponseDTO> pageResponse = PageResponseDTO.<TenantResponseDTO>builder()
+                    .content(List.of(tenant))
+                    .number(0)
+                    .size(10)
+                    .totalElements(1L)
+                    .build();
+
+            when(tenantManagementService.getAllTenants(0, 10, TenantStatusEnum.ACTIVE, "madhya")).thenReturn(pageResponse);
+
+            mockMvc.perform(get("/api/v1/tenants")
+                    .param("status", "ACTIVE")
+                    .param("search", "madhya"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.content", hasSize(1)));
+
+            verify(tenantManagementService).getAllTenants(0, 10, TenantStatusEnum.ACTIVE, "madhya");
+        }
+
+        @Test
+        void getAllTenants_InvalidStatus_ReturnsBadRequest() throws Exception {
+            mockMvc.perform(get("/api/v1/tenants")
+                    .param("status", "NOT_A_STATUS"))
+                    .andExpect(status().isBadRequest());
+
+            verify(tenantManagementService, never()).getAllTenants(anyInt(), anyInt(), any(), any());
         }
     }
 
