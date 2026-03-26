@@ -38,6 +38,7 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -408,6 +409,7 @@ public class SchemeServiceImpl implements SchemeService {
     private int validateSchemes(MultipartFile file, String extension, List<String> activeHeaders) {
         List<SchemeUploadErrorDTO> errors = new ArrayList<>();
         final int[] total = {0};
+        Set<String> seenStateSchemeIds = new HashSet<>();
 
         try {
             streamRows(file, extension, activeHeaders, (rowNumber, values) -> {
@@ -427,6 +429,14 @@ public class SchemeServiceImpl implements SchemeService {
                 requireField(values, rowNumber, "scheme_name", errors);
                 requireField(values, rowNumber, "house_hold_count", errors);
                 requireField(values, rowNumber, "work_status", errors);
+
+                String stateSchemeId = normalize(values.get("state_scheme_id"));
+                if (!stateSchemeId.isBlank()) {
+                    String key = stateSchemeId.toLowerCase(Locale.ROOT);
+                    if (!seenStateSchemeIds.add(key)) {
+                        errors.add(error(rowNumber, "state_scheme_id", "Duplicate state_scheme_id in uploaded file"));
+                    }
+                }
 
                 // Optional: planned_fhtc, achieved_fhtc, latitude, longitude, operating_status
                 parseInteger(values.get("planned_fhtc"), rowNumber, "planned_fhtc", errors);
@@ -533,6 +543,7 @@ public class SchemeServiceImpl implements SchemeService {
         List<SchemeUploadErrorDTO> errors = new ArrayList<>();
         List<MappingRow> chunk = new ArrayList<>(CHUNK_SIZE);
         final int[] total = {0};
+        Set<String> seenMappingKeys = new HashSet<>();
 
         try {
             streamRows(file, extension, activeHeaders, (rowNumber, values) -> {
@@ -548,6 +559,16 @@ public class SchemeServiceImpl implements SchemeService {
                 requireField(values, rowNumber, "sub_division_name", errors);
 
                 boolean rowHasErrors = errors.size() != before;
+                if (!rowHasErrors) {
+                    String stateSchemeId = normalize(values.get("state_scheme_id")).toLowerCase(Locale.ROOT);
+                    String villageCode = normalize(values.get("village_lgd_code")).toLowerCase(Locale.ROOT);
+                    String subDivision = normalize(values.get("sub_division_name")).toLowerCase(Locale.ROOT);
+                    String key = stateSchemeId + "|" + villageCode + "|" + subDivision;
+                    if (!seenMappingKeys.add(key)) {
+                        errors.add(error(rowNumber, "state_scheme_id", "Duplicate mapping in uploaded file"));
+                        rowHasErrors = true;
+                    }
+                }
                 if (!rowHasErrors) {
                     chunk.add(new MappingRow(
                             rowNumber,
