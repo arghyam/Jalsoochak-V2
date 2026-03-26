@@ -67,9 +67,9 @@ BEGIN
         'CREATE INDEX idx_%1$s_ut_active          ON %1$I.user_token_table(email, token_type) WHERE used_at IS NULL AND deleted_at IS NULL'
     );
 
-    EXECUTE format(
-        $q$CREATE OR REPLACE FUNCTION common_schema.create_tenant_schema(schema_name TEXT)
-           RETURNS VOID LANGUAGE plpgsql AS $body$%s$body$$q$,
-        func_src
-    );
+    EXECUTE 'CREATE OR REPLACE FUNCTION common_schema.create_tenant_schema(schema_name TEXT) '
+         || 'RETURNS VOID LANGUAGE plpgsql AS '
+         || chr(36) || 'body' || chr(36)
+         || func_src
+         || chr(36) || 'body' || chr(36);
 END $$;
