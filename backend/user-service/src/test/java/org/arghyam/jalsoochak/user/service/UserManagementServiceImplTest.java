@@ -700,8 +700,8 @@ class UserManagementServiceImplTest {
             AdminUserTokenRow expiredToken = new AdminUserTokenRow(1L, "pending@example.com", "old-hash",
                     "INVITE", "{\"role\":\"SUPER_USER\",\"firstName\":\"" + encFirstName + "\",\"lastName\":\"" + encLastName + "\"}",
                     Instant.now().minus(2, ChronoUnit.HOURS), null, null, Instant.now().minus(26, ChronoUnit.HOURS));
-            when(pii.decrypt(encFirstName)).thenReturn("Jane");
-            when(pii.decrypt(encLastName)).thenReturn("Doe");
+            when(pii.safeDecrypt(encFirstName)).thenReturn("Jane");
+            when(pii.safeDecrypt(encLastName)).thenReturn("Doe");
 
             when(userCommonRepository.findAdminUserById(7L)).thenReturn(Optional.of(target));
             when(userCommonRepository.findAdminUserByUuid("kc-super")).thenReturn(Optional.of(callerRow));

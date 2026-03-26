@@ -3,6 +3,7 @@ package org.arghyam.jalsoochak.user.service;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -45,8 +46,9 @@ class KeycloakAdminHelperTest {
 
     @BeforeEach
     void setUp() {
-        // Default: safeDecrypt returns the raw value (mimics legacy-plaintext path)
-        when(pii.safeDecrypt(anyString())).thenAnswer(inv -> inv.getArgument(0));
+        // Default: safeDecrypt returns the raw value (mimics legacy-plaintext path).
+        // Lenient because not all tests exercise the decrypt path.
+        lenient().when(pii.safeDecrypt(anyString())).thenAnswer(inv -> inv.getArgument(0));
         MetadataDecryptionHelper metadataDecryptionHelper = new MetadataDecryptionHelper(new ObjectMapper(), pii);
         helper = new KeycloakAdminHelper(keycloakProvider, userCommonRepository, metadataDecryptionHelper);
     }
