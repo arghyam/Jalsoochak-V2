@@ -8,12 +8,14 @@ import org.arghyam.jalsoochak.analytics.dto.event.SchemePerformanceEvent;
 import org.arghyam.jalsoochak.analytics.dto.event.TenantEscalationEvent;
 import org.arghyam.jalsoochak.analytics.dto.event.WaterQuantityEvent;
 import org.arghyam.jalsoochak.analytics.entity.Anomaly;
+import org.arghyam.jalsoochak.analytics.entity.DimDate;
 import org.arghyam.jalsoochak.analytics.entity.DimTenant;
 import org.arghyam.jalsoochak.analytics.entity.FactEscalation;
 import org.arghyam.jalsoochak.analytics.entity.FactMeterReading;
 import org.arghyam.jalsoochak.analytics.entity.FactSchemePerformance;
 import org.arghyam.jalsoochak.analytics.entity.FactWaterQuantity;
 import org.arghyam.jalsoochak.analytics.repository.AnomalyRepository;
+import org.arghyam.jalsoochak.analytics.repository.DimDateRepository;
 import org.arghyam.jalsoochak.analytics.repository.DimTenantRepository;
 import org.arghyam.jalsoochak.analytics.repository.FactEscalationRepository;
 import org.arghyam.jalsoochak.analytics.repository.FactMeterReadingRepository;
@@ -31,6 +33,10 @@ import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
+import java.time.format.DateTimeFormatter;
+import java.time.format.TextStyle;
+import java.time.temporal.WeekFields;
+import java.util.Locale;
 import java.util.UUID;
 
 @Service
@@ -50,6 +56,7 @@ public class FactServiceImpl implements FactService {
     private final FactSchemePerformanceRepository schemePerformanceRepository;
     private final AnomalyRepository anomalyRepository;
     private final DimTenantRepository dimTenantRepository;
+    private final DimDateRepository dimDateRepository;
 
     @Override
     @Transactional
@@ -80,6 +87,7 @@ public class FactServiceImpl implements FactService {
     public void ingestWaterQuantity(WaterQuantityEvent event) {
         ensureTenantExists(event.getTenantId(), null);
         LocalDate date = parseDate(event.getDate());
+        ensureDateExists(date);
         LocalDateTime now = LocalDateTime.now();
 
         FactWaterQuantity fact = FactWaterQuantity.builder()
@@ -138,6 +146,38 @@ public class FactServiceImpl implements FactService {
 
         schemePerformanceRepository.save(fact);
         log.info("Ingested fact_scheme_performance_table for scheme={} tenant={}", event.getSchemeId(), event.getTenantId());
+    }
+
+    private void ensureDateExists(LocalDate date) {
+        if (date == null || dimDateRepository.findByFullDate(date).isPresent()) {
+            return;
+        }
+
+        int month = date.getMonthValue();
+        int quarter = ((month - 1) / 3) + 1;
+        String monthName = date.getMonth().getDisplayName(TextStyle.FULL, Locale.ENGLISH);
+        int week = date.get(WeekFields.ISO.weekOfWeekBasedYear());
+        boolean isWeekend = date.getDayOfWeek().getValue() >= 6;
+
+        DimDate dimDate = DimDate.builder()
+                .dateKey(Integer.parseInt(date.format(DateTimeFormatter.BASIC_ISO_DATE)))
+                .fullDate(date)
+                .day(date.getDayOfMonth())
+                .month(month)
+                .monthName(monthName)
+                .quarter(quarter)
+                .year(date.getYear())
+                .week(week)
+                .isWeekend(isWeekend)
+                .fiscalYear(date.getYear())
+                .build();
+
+        try {
+            dimDateRepository.save(dimDate);
+        } catch (DataIntegrityViolationException e) {
+            // Another concurrent ingest may have inserted the same date.
+            log.debug("Dim date already exists for {}", date);
+        }
     }
 
     @Override
