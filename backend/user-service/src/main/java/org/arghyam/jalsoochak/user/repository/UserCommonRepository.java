@@ -274,67 +274,35 @@ public class UserCommonRepository {
 
     // --- Listing (paginated) ---
 
-    public List<AdminUserRow> listSuperUsers(long offset, int limit) {
+    public List<AdminUserRow> listSuperUsers(AdminUserStatus status, long offset, int limit) {
         if (limit <= 0) {
             throw new BadRequestException("limit must be greater than 0");
         }
         if (offset < 0) {
             throw new BadRequestException("offset must be non-negative");
         }
-        String sql = """
+        List<Object> args = new java.util.ArrayList<>();
+        StringBuilder sql = new StringBuilder("""
                 SELECT id, uuid, email, phone_number, tenant_id, admin_level, status, created_by, created_at
                 FROM common_schema.tenant_admin_user_master_table
                 WHERE tenant_id = 0
-                ORDER BY created_at DESC
-                LIMIT ? OFFSET ?
-                """;
-        return jdbcTemplate.query(sql, (rs, n) -> mapAdminUserRow(rs), limit, offset);
+                """);
+        if (status != null) {
+            sql.append(" AND status = ?");
+            args.add(status.code);
+        }
+        sql.append(" ORDER BY created_at DESC LIMIT ? OFFSET ?");
+        args.add(limit);
+        args.add(offset);
+        return jdbcTemplate.query(sql.toString(), (rs, n) -> mapAdminUserRow(rs), args.toArray());
     }
 
-    public long countSuperUsers() {
-        String sql = """
-                SELECT COUNT(*)
-                FROM common_schema.tenant_admin_user_master_table
-                WHERE tenant_id = 0
-                """;
-        Long count = jdbcTemplate.queryForObject(sql, Long.class);
-        return count != null ? count : 0L;
-    }
-
-    public List<AdminUserRow> listStateAdminsByTenant(Integer tenantId, long offset, int limit) {
-        if (limit <= 0) {
-            throw new BadRequestException("limit must be greater than 0");
-        }
-        if (offset < 0) {
-            throw new BadRequestException("offset must be non-negative");
-        }
-        if (tenantId == null) {
-            String sql = """
-                    SELECT id, uuid, email, phone_number, tenant_id, admin_level, status, created_by, created_at
-                    FROM common_schema.tenant_admin_user_master_table
-                    WHERE tenant_id != 0
-                    ORDER BY created_at DESC
-                    LIMIT ? OFFSET ?
-                    """;
-            return jdbcTemplate.query(sql, (rs, n) -> mapAdminUserRow(rs), limit, offset);
-        } else {
-            String sql = """
-                    SELECT id, uuid, email, phone_number, tenant_id, admin_level, status, created_by, created_at
-                    FROM common_schema.tenant_admin_user_master_table
-                    WHERE tenant_id = ?
-                    ORDER BY created_at DESC
-                    LIMIT ? OFFSET ?
-                    """;
-            return jdbcTemplate.query(sql, (rs, n) -> mapAdminUserRow(rs), tenantId, limit, offset);
-        }
-    }
-
-    public long countStateAdminsByTenant(Integer tenantId) {
-        if (tenantId == null) {
+    public long countSuperUsers(AdminUserStatus status) {
+        if (status == null) {
             String sql = """
                     SELECT COUNT(*)
                     FROM common_schema.tenant_admin_user_master_table
-                    WHERE tenant_id != 0
+                    WHERE tenant_id = 0
                     """;
             Long count = jdbcTemplate.queryForObject(sql, Long.class);
             return count != null ? count : 0L;
@@ -342,11 +310,61 @@ public class UserCommonRepository {
             String sql = """
                     SELECT COUNT(*)
                     FROM common_schema.tenant_admin_user_master_table
-                    WHERE tenant_id = ?
+                    WHERE tenant_id = 0 AND status = ?
                     """;
-            Long count = jdbcTemplate.queryForObject(sql, Long.class, tenantId);
+            Long count = jdbcTemplate.queryForObject(sql, Long.class, status.code);
             return count != null ? count : 0L;
         }
+    }
+
+    public List<AdminUserRow> listStateAdminsByTenant(Integer tenantId, AdminUserStatus status, long offset, int limit) {
+        if (limit <= 0) {
+            throw new BadRequestException("limit must be greater than 0");
+        }
+        if (offset < 0) {
+            throw new BadRequestException("offset must be non-negative");
+        }
+        List<Object> args = new java.util.ArrayList<>();
+        StringBuilder sql = new StringBuilder("""
+                SELECT id, uuid, email, phone_number, tenant_id, admin_level, status, created_by, created_at
+                FROM common_schema.tenant_admin_user_master_table
+                WHERE
+                """);
+        if (tenantId == null) {
+            sql.append(" tenant_id != 0");
+        } else {
+            sql.append(" tenant_id = ?");
+            args.add(tenantId);
+        }
+        if (status != null) {
+            sql.append(" AND status = ?");
+            args.add(status.code);
+        }
+        sql.append(" ORDER BY created_at DESC LIMIT ? OFFSET ?");
+        args.add(limit);
+        args.add(offset);
+        return jdbcTemplate.query(sql.toString(), (rs, n) -> mapAdminUserRow(rs), args.toArray());
+    }
+
+    public long countStateAdminsByTenant(Integer tenantId, AdminUserStatus status) {
+        List<Object> args = new java.util.ArrayList<>();
+        StringBuilder sql = new StringBuilder("""
+                SELECT COUNT(*)
+                FROM common_schema.tenant_admin_user_master_table
+                WHERE
+                """);
+        if (tenantId == null) {
+            sql.append(" tenant_id != 0");
+        } else {
+            sql.append(" tenant_id = ?");
+            args.add(tenantId);
+        }
+        if (status != null) {
+            sql.append(" AND status = ?");
+            args.add(status.code);
+        }
+        Long count = jdbcTemplate.queryForObject(sql.toString(), Long.class, args.toArray());
+        return count != null ? count : 0L;
     }
 
     // --- Token methods ---

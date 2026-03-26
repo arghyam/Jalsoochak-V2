@@ -17,8 +17,10 @@ import org.springframework.web.method.annotation.MethodArgumentTypeMismatchExcep
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
 
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 @RestControllerAdvice
 @Slf4j
@@ -144,7 +146,19 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(MethodArgumentTypeMismatchException.class)
     public ResponseEntity<ApiErrorResponseDTO> handleTypeMismatch(MethodArgumentTypeMismatchException ex) {
-        return build(HttpStatus.BAD_REQUEST, "Invalid value for parameter '" + ex.getName() + "'");
+        Class<?> requiredType = ex.getRequiredType();
+        String message;
+        if (requiredType != null && requiredType.isEnum()) {
+            String validValues = Arrays.stream(requiredType.getEnumConstants())
+                    .map(e -> ((Enum<?>) e).name())
+                    .collect(Collectors.joining(", "));
+            message = String.format("Invalid value '%s' for parameter '%s'. Accepted values: [%s]",
+                    ex.getValue(), ex.getName(), validValues);
+        } else {
+            message = String.format("Invalid value '%s' for parameter '%s'", ex.getValue(), ex.getName());
+        }
+        log.warn("Type mismatch: {}", message);
+        return build(HttpStatus.BAD_REQUEST, message);
     }
 
     @ExceptionHandler(HttpRequestMethodNotSupportedException.class)

@@ -315,10 +315,10 @@ public class UserManagementServiceImpl implements UserManagementService {
     }
 
     @Override
-    public PageResponseDTO<AdminUserResponseDTO> listSuperUsers(int page, int limit) {
+    public PageResponseDTO<AdminUserResponseDTO> listSuperUsers(AdminUserStatus status, int page, int limit) {
         long offset = (long) page * limit;
-        List<AdminUserRow> rows = userCommonRepository.listSuperUsers(offset, limit);
-        long total = userCommonRepository.countSuperUsers();
+        List<AdminUserRow> rows = userCommonRepository.listSuperUsers(status, offset, limit);
+        long total = userCommonRepository.countSuperUsers(status);
         List<AdminUserResponseDTO> users = rows.stream()
                 .map(keycloakAdminHelper::buildAdminUserResponse)
                 .collect(Collectors.toList());
@@ -326,7 +326,7 @@ public class UserManagementServiceImpl implements UserManagementService {
     }
 
     @Override
-    public PageResponseDTO<AdminUserResponseDTO> listStateAdmins(String tenantCode, Authentication caller, int page, int limit) {
+    public PageResponseDTO<AdminUserResponseDTO> listStateAdmins(String tenantCode, AdminUserStatus status, Authentication caller, int page, int limit) {
         Integer tenantId = null;
         Optional<String> callerRole = SecurityUtils.extractRole(caller);
 
@@ -346,8 +346,8 @@ public class UserManagementServiceImpl implements UserManagementService {
         }
 
         long offset = (long) page * limit;
-        List<AdminUserRow> rows = userCommonRepository.listStateAdminsByTenant(tenantId, offset, limit);
-        long total = userCommonRepository.countStateAdminsByTenant(tenantId);
+        List<AdminUserRow> rows = userCommonRepository.listStateAdminsByTenant(tenantId, status, offset, limit);
+        long total = userCommonRepository.countStateAdminsByTenant(tenantId, status);
         List<AdminUserResponseDTO> users = rows.stream()
                 .map(keycloakAdminHelper::buildAdminUserResponse)
                 .collect(Collectors.toList());

@@ -219,20 +219,35 @@ class UserManagementServiceImplTest {
     class ListSuperUsersTests {
 
         @Test
-        @DisplayName("Should return paginated super users")
+        @DisplayName("Should return paginated super users with no status filter")
         void listSuperUsers_success() {
             AdminUserRow row = userRow(1L, "kc-1", "su@example.com", 0, 1, AdminUserStatus.ACTIVE);
             AdminUserResponseDTO dto = responseDTO(1L, "su@example.com", "SUPER_USER");
 
-            when(userCommonRepository.listSuperUsers(0, 20)).thenReturn(List.of(row));
-            when(userCommonRepository.countSuperUsers()).thenReturn(1L);
+            when(userCommonRepository.listSuperUsers(null, 0, 20)).thenReturn(List.of(row));
+            when(userCommonRepository.countSuperUsers(null)).thenReturn(1L);
             when(keycloakAdminHelper.buildAdminUserResponse(row)).thenReturn(dto);
 
-            PageResponseDTO<AdminUserResponseDTO> result = userManagementService.listSuperUsers(0, 20);
+            PageResponseDTO<AdminUserResponseDTO> result = userManagementService.listSuperUsers(null, 0, 20);
 
             assertEquals(1, result.getContent().size());
             assertEquals(1L, result.getTotalElements());
             assertEquals(1, result.getTotalPages());
+        }
+
+        @Test
+        @DisplayName("Should pass ACTIVE status filter through to repository")
+        void listSuperUsers_withStatusFilter_passesStatusToRepo() {
+            AdminUserRow row = userRow(1L, "kc-1", "su@example.com", 0, 1, AdminUserStatus.ACTIVE);
+            AdminUserResponseDTO dto = responseDTO(1L, "su@example.com", "SUPER_USER");
+
+            when(userCommonRepository.listSuperUsers(AdminUserStatus.ACTIVE, 0, 20)).thenReturn(List.of(row));
+            when(userCommonRepository.countSuperUsers(AdminUserStatus.ACTIVE)).thenReturn(1L);
+            when(keycloakAdminHelper.buildAdminUserResponse(row)).thenReturn(dto);
+
+            PageResponseDTO<AdminUserResponseDTO> result = userManagementService.listSuperUsers(AdminUserStatus.ACTIVE, 0, 20);
+
+            assertEquals(1, result.getContent().size());
         }
     }
 
@@ -250,11 +265,11 @@ class UserManagementServiceImplTest {
             AdminUserResponseDTO dto = responseDTO(2L, "sa@example.com", "STATE_ADMIN");
 
             when(userCommonRepository.findTenantIdByStateCode("MP")).thenReturn(Optional.of(1));
-            when(userCommonRepository.listStateAdminsByTenant(1, 0, 20)).thenReturn(List.of(row));
-            when(userCommonRepository.countStateAdminsByTenant(1)).thenReturn(1L);
+            when(userCommonRepository.listStateAdminsByTenant(1, null, 0, 20)).thenReturn(List.of(row));
+            when(userCommonRepository.countStateAdminsByTenant(1, null)).thenReturn(1L);
             when(keycloakAdminHelper.buildAdminUserResponse(row)).thenReturn(dto);
 
-            PageResponseDTO<AdminUserResponseDTO> result = userManagementService.listStateAdmins("MP", auth, 0, 20);
+            PageResponseDTO<AdminUserResponseDTO> result = userManagementService.listStateAdmins("MP", null, auth, 0, 20);
 
             assertEquals(1, result.getContent().size());
         }
@@ -267,11 +282,28 @@ class UserManagementServiceImplTest {
             AdminUserResponseDTO dto = responseDTO(2L, "sa@example.com", "STATE_ADMIN");
 
             when(userCommonRepository.findTenantIdByStateCode("MP")).thenReturn(Optional.of(1));
-            when(userCommonRepository.listStateAdminsByTenant(1, 0, 20)).thenReturn(List.of(row));
-            when(userCommonRepository.countStateAdminsByTenant(1)).thenReturn(1L);
+            when(userCommonRepository.listStateAdminsByTenant(1, null, 0, 20)).thenReturn(List.of(row));
+            when(userCommonRepository.countStateAdminsByTenant(1, null)).thenReturn(1L);
             when(keycloakAdminHelper.buildAdminUserResponse(row)).thenReturn(dto);
 
-            PageResponseDTO<AdminUserResponseDTO> result = userManagementService.listStateAdmins(null, auth, 0, 20);
+            PageResponseDTO<AdminUserResponseDTO> result = userManagementService.listStateAdmins(null, null, auth, 0, 20);
+
+            assertEquals(1, result.getContent().size());
+        }
+
+        @Test
+        @DisplayName("Should pass PENDING status filter through to repository")
+        void listStateAdmins_withStatusFilter_passesStatusToRepo() {
+            Authentication auth = superUserAuth("kc-super");
+            AdminUserRow row = userRow(3L, "kc-3", "pending@example.com", 1, 2, AdminUserStatus.PENDING);
+            AdminUserResponseDTO dto = responseDTO(3L, "pending@example.com", "STATE_ADMIN");
+
+            when(userCommonRepository.findTenantIdByStateCode("MP")).thenReturn(Optional.of(1));
+            when(userCommonRepository.listStateAdminsByTenant(1, AdminUserStatus.PENDING, 0, 20)).thenReturn(List.of(row));
+            when(userCommonRepository.countStateAdminsByTenant(1, AdminUserStatus.PENDING)).thenReturn(1L);
+            when(keycloakAdminHelper.buildAdminUserResponse(row)).thenReturn(dto);
+
+            PageResponseDTO<AdminUserResponseDTO> result = userManagementService.listStateAdmins("MP", AdminUserStatus.PENDING, auth, 0, 20);
 
             assertEquals(1, result.getContent().size());
         }
