@@ -162,6 +162,50 @@ class NudgeSchedulerServiceTest {
         assertThat(captor.getValue().getSchemeId()).isEqualTo("");
     }
 
+    // ── isolation / security tests ───────────────────────────────────────────────
+
+    @Test
+    void processNudgesForTenant_queriesOnlyItsOwnSchema() {
+        stubStream(SCHEMA, Map.of("phone_number", "919876543210", "name", "Ramesh", "scheme_id", 1, "language_id", 0));
+
+        nudgeSchedulerService.processNudgesForTenant(SCHEMA, TENANT_ID);
+
+        // Repository must be called with exactly the given schema — no other schema
+        verify(nudgeRepository).streamUsersWithNoUploadToday(eq(SCHEMA), any(LocalDate.class), any());
+        verifyNoMoreInteractions(nudgeRepository);
+    }
+
+    @Test
+    void processNudgesForTenant_twoTenants_eventsCarryCorrectTenantIdAndSchema() {
+        String schemaA = "tenant_mp";
+        int tenantA = 1;
+        String schemaB = "tenant_up";
+        int tenantB = 2;
+
+        stubStream(schemaA, Map.of("phone_number", "911111111111", "name", "Op A", "scheme_id", 1, "language_id", 0));
+        stubStream(schemaB, Map.of("phone_number", "912222222222", "name", "Op B", "scheme_id", 2, "language_id", 0));
+
+        nudgeSchedulerService.processNudgesForTenant(schemaA, tenantA);
+        nudgeSchedulerService.processNudgesForTenant(schemaB, tenantB);
+
+        ArgumentCaptor<NudgeEvent> captor = ArgumentCaptor.forClass(NudgeEvent.class);
+        verify(kafkaProducer, times(2)).publishJson(eq("common-topic"), captor.capture());
+        List<NudgeEvent> events = captor.getAllValues();
+
+        // Each event carries its own tenant's id and schema
+        assertThat(events).anySatisfy(e -> {
+            assertThat(e.getTenantId()).isEqualTo(tenantA);
+            assertThat(e.getTenantSchema()).isEqualTo(schemaA);
+        });
+        assertThat(events).anySatisfy(e -> {
+            assertThat(e.getTenantId()).isEqualTo(tenantB);
+            assertThat(e.getTenantSchema()).isEqualTo(schemaB);
+        });
+        // No event should have a mismatched tenantId / tenantSchema pair
+        assertThat(events).noneMatch(e -> e.getTenantId() == tenantA && schemaB.equals(e.getTenantSchema()));
+        assertThat(events).noneMatch(e -> e.getTenantId() == tenantB && schemaA.equals(e.getTenantSchema()));
+    }
+
     // ── helpers ─────────────────────────────────────────────────────────────────
 
     @SafeVarargs

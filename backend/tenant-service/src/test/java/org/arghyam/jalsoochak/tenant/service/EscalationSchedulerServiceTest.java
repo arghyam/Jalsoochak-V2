@@ -14,6 +14,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.LocalDate;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
 
@@ -203,6 +204,60 @@ class EscalationSchedulerServiceTest {
 
         verify(nudgeRepository).streamUsersWithMissedDays(eq(SCHEMA), eq(3), any(LocalDate.class), any());
         verify(nudgeRepository).streamUsersWithMissedDays(eq("tenant_up"), eq(5), any(LocalDate.class), any());
+    }
+
+    // ── isolation / security tests ───────────────────────────────────────────────
+
+    @Test
+    void processEscalationsForTenant_allRepositoryCalls_useOnlyTenantSchema() {
+        stubStream(SCHEMA, 3, operatorRow("Op A", "911001001001", 1, 4));
+        when(nudgeRepository.findAllOfficersByUserType(SCHEMA, "SECTION_OFFICER"))
+                .thenReturn(Map.of(1, officerRow("SO X", "919001001001", 0)));
+
+        escalationSchedulerService.processEscalationsForTenant(SCHEMA, TENANT_ID);
+
+        // Operator stream and both officer lookups must all use the given schema only
+        verify(nudgeRepository).streamUsersWithMissedDays(eq(SCHEMA), anyInt(), any(LocalDate.class), any());
+        verify(nudgeRepository, times(2)).findAllOfficersByUserType(eq(SCHEMA), anyString());
+        verifyNoMoreInteractions(nudgeRepository);
+    }
+
+    @Test
+    void processEscalationsForTenant_twoTenants_eventsCarryCorrectTenantIdAndSchema() {
+        int tenantIdB = 2;
+        String schemaB = "tenant_up";
+        when(tenantConfigService.getEscalationConfig(tenantIdB)).thenReturn(defaultConfig());
+
+        stubStream(SCHEMA, 3, operatorRow("Op MP", "911001001001", 1, 4));
+        stubStream(schemaB, 3, operatorRow("Op UP", "912002002002", 1, 4));
+
+        when(nudgeRepository.findAllOfficersByUserType(SCHEMA, "SECTION_OFFICER"))
+                .thenReturn(Map.of(1, officerRow("SO MP", "919001001001", 0)));
+        when(nudgeRepository.findAllOfficersByUserType(SCHEMA, "DISTRICT_OFFICER"))
+                .thenReturn(Map.of());
+        when(nudgeRepository.findAllOfficersByUserType(schemaB, "SECTION_OFFICER"))
+                .thenReturn(Map.of(1, officerRow("SO UP", "919002002002", 0)));
+        when(nudgeRepository.findAllOfficersByUserType(schemaB, "DISTRICT_OFFICER"))
+                .thenReturn(Map.of());
+
+        escalationSchedulerService.processEscalationsForTenant(SCHEMA, TENANT_ID);
+        escalationSchedulerService.processEscalationsForTenant(schemaB, tenantIdB);
+
+        ArgumentCaptor<EscalationEvent> captor = ArgumentCaptor.forClass(EscalationEvent.class);
+        verify(kafkaProducer, times(2)).publishJson(eq("common-topic"), captor.capture());
+        List<EscalationEvent> events = captor.getAllValues();
+
+        assertThat(events).anySatisfy(e -> {
+            assertThat(e.getTenantId()).isEqualTo(TENANT_ID);
+            assertThat(e.getTenantSchema()).isEqualTo(SCHEMA);
+        });
+        assertThat(events).anySatisfy(e -> {
+            assertThat(e.getTenantId()).isEqualTo(tenantIdB);
+            assertThat(e.getTenantSchema()).isEqualTo(schemaB);
+        });
+        // No cross-contamination between tenants
+        assertThat(events).noneMatch(e -> TENANT_ID == e.getTenantId() && schemaB.equals(e.getTenantSchema()));
+        assertThat(events).noneMatch(e -> tenantIdB == e.getTenantId() && SCHEMA.equals(e.getTenantSchema()));
     }
 
     // ── helpers ─────────────────────────────────────────────────────────────────
