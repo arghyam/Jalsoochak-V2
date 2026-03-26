@@ -78,6 +78,7 @@ public class FactServiceImpl implements FactService {
     @Override
     @Transactional
     public void ingestWaterQuantity(WaterQuantityEvent event) {
+        ensureTenantExists(event.getTenantId(), null);
         LocalDate date = parseDate(event.getDate());
         LocalDateTime now = LocalDateTime.now();
 
@@ -88,6 +89,7 @@ public class FactServiceImpl implements FactService {
                 .waterQuantity(event.getWaterQuantity())
                 .submissionStatus(event.getSubmissionStatus())
                 .outageReason(event.getOutageReason())
+                .nonSubmissionReason(event.getNonSubmissionReason())
                 .date(date)
                 .createdAt(now)
                 .updatedAt(now)
