@@ -79,16 +79,19 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(MethodArgumentTypeMismatchException.class)
     public ResponseEntity<ApiErrorResponseDTO> handleTypeMismatch(MethodArgumentTypeMismatchException ex) {
         Class<?> requiredType = ex.getRequiredType();
+        String paramName = ex.getParameter().getParameterName() != null
+                ? ex.getParameter().getParameterName()
+                : ex.getName();
         String message;
         if (requiredType != null && requiredType.isEnum()) {
             String validValues = Arrays.stream(requiredType.getEnumConstants())
                     .map(e -> ((Enum<?>) e).name())
                     .collect(Collectors.joining(", "));
             message = String.format("Invalid value '%s' for parameter '%s'. Accepted values: [%s]",
-                    ex.getValue(), ex.getParameter().getParameterName(), validValues);
+                    ex.getValue(), paramName, validValues);
         } else {
             message = String.format("Invalid value '%s' for parameter '%s'",
-                    ex.getValue(), ex.getParameter().getParameterName());
+                    ex.getValue(), paramName);
         }
         log.warn("Type mismatch: {}", message);
         return build(HttpStatus.BAD_REQUEST, message);

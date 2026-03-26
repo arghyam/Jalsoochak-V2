@@ -60,11 +60,14 @@ public class NudgeRepository {
             ps.setFetchSize(500);
             return ps;
         }, rs -> {
-            Map<String, Object> row = new HashMap<>(8);
             Object userId = rs.getObject("user_id");
+            String name = decryptPii(rs.getString("name"),         "name", userId, schema);
+            String phoneNumber = decryptPii(rs.getString("phone_number"), "phone_number", userId, schema);
+            if (name == null || phoneNumber == null) return;
+            Map<String, Object> row = new HashMap<>(8);
             row.put("user_id", userId);
-            row.put("name", pii.safeDecrypt(rs.getString("name")));
-            row.put("phone_number", pii.safeDecrypt(rs.getString("phone_number")));
+            row.put("name", name);
+            row.put("phone_number", phoneNumber);
             row.put("language_id", rs.getObject("language_id"));
             row.put("whatsapp_connection_id", rs.getObject("whatsapp_connection_id"));
             row.put("scheme_id", rs.getObject("scheme_id"));
@@ -142,11 +145,14 @@ public class NudgeRepository {
             ps.setFetchSize(500);
             return ps;
         }, rs -> {
-            Map<String, Object> row = new HashMap<>(10);
             Object userId = rs.getObject("user_id");
+            String name = decryptPii(rs.getString("name"),         "name", userId, schema);
+            String phoneNumber = decryptPii(rs.getString("phone_number"), "phone_number", userId, schema);
+            if (name == null || phoneNumber == null) return;
+            Map<String, Object> row = new HashMap<>(10);
             row.put("user_id", userId);
-            row.put("name", pii.safeDecrypt(rs.getString("name")));
-            row.put("phone_number", pii.safeDecrypt(rs.getString("phone_number")));
+            row.put("name", name);
+            row.put("phone_number", phoneNumber);
             row.put("language_id", rs.getObject("language_id"));
             row.put("whatsapp_connection_id", rs.getObject("whatsapp_connection_id"));
             row.put("scheme_id", rs.getObject("scheme_id"));
@@ -223,6 +229,38 @@ public class NudgeRepository {
         return jdbcTemplate.update(
                 "UPDATE " + schema + ".user_table SET whatsapp_connection_id = ? WHERE id = ?",
                 contactId, userId);
+    }
+
+    /**
+     * Decrypts a PII field for use inside streaming row callbacks.
+     *
+     * <p>Mirrors the legacy-plaintext fallback in {@link PiiEncryptionService#safeDecrypt}
+     * but additionally catches actual decryption failures (e.g. tampered ciphertext, wrong key)
+     * and returns {@code null} instead of propagating, so a single corrupted row does not abort
+     * the entire stream batch.
+     *
+     * @return decrypted value; the raw value for legacy plaintext; or {@code null} on decryption
+     *         failure (the caller must skip the row)
+     */
+    private String decryptPii(String encoded, String fieldName, Object userId, String schema) {
+        if (encoded == null) return null;
+        // Minimum AES-256-GCM payload: 12-byte IV + 16-byte GCM auth tag = 28 bytes.
+        // Values shorter than this (or not valid Base64) are legacy plaintext rows.
+        try {
+            byte[] decoded = java.util.Base64.getDecoder().decode(encoded);
+            if (decoded.length < 28) {
+                return encoded;
+            }
+        } catch (IllegalArgumentException e) {
+            return encoded;
+        }
+        try {
+            return pii.decrypt(encoded);
+        } catch (Exception e) {
+            log.error("PII decryption failed – field='{}' user_id={} schema='{}', skipping row",
+                    fieldName, userId, schema, e);
+            return null;
+        }
     }
 
     private void validateSchemaName(String schema) {

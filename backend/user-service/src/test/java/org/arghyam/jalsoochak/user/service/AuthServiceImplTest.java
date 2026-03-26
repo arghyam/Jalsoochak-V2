@@ -352,7 +352,7 @@ class AuthServiceImplTest {
         }
 
         @Test
-        @DisplayName("Should generate token, upsert in DB, and send reset email when user is registered")
+        @DisplayName("Should generate token, insert in DB, and send reset email when user is registered")
         void forgotPassword_userFound_sendsEmail() {
             when(userCommonRepository.findAdminUserByEmail("user@example.com")).thenReturn(Optional.of(superUserRow()));
             when(tokenService.generateRawToken()).thenReturn("raw-reset-token");

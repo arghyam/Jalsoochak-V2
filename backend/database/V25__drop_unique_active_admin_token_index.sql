@@ -54,22 +54,27 @@ END $$;
 
 DO $$
 DECLARE
-    func_src TEXT;
+    func_src    TEXT;
+    patched_src TEXT;
 BEGIN
     SELECT prosrc INTO func_src
     FROM pg_proc
     WHERE proname = 'create_tenant_schema'
       AND pronamespace = (SELECT oid FROM pg_namespace WHERE nspname = 'common_schema');
 
-    func_src := replace(
+    patched_src := replace(
         func_src,
         'CREATE UNIQUE INDEX uq_%1$s_ut_active    ON %1$I.user_token_table(email, token_type) WHERE used_at IS NULL AND deleted_at IS NULL',
         'CREATE INDEX idx_%1$s_ut_active          ON %1$I.user_token_table(email, token_type) WHERE used_at IS NULL AND deleted_at IS NULL'
     );
 
+    IF patched_src = func_src THEN
+        RAISE EXCEPTION 'V25 patch failed: anchor pattern not found in create_tenant_schema() body';
+    END IF;
+
     EXECUTE 'CREATE OR REPLACE FUNCTION common_schema.create_tenant_schema(schema_name TEXT) '
          || 'RETURNS VOID LANGUAGE plpgsql AS '
          || chr(36) || 'body' || chr(36)
-         || func_src
+         || patched_src
          || chr(36) || 'body' || chr(36);
 END $$;

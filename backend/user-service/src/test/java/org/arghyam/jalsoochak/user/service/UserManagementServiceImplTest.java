@@ -8,6 +8,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -50,6 +51,7 @@ import org.mockito.Answers;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
@@ -247,6 +249,8 @@ class UserManagementServiceImplTest {
             PageResponseDTO<AdminUserResponseDTO> result = userManagementService.listSuperUsers(AdminUserStatus.ACTIVE, 0, 20);
 
             assertEquals(1, result.getContent().size());
+            assertEquals(1L, result.getTotalElements());
+            verify(userCommonRepository).countSuperUsers(AdminUserStatus.ACTIVE);
         }
     }
 
@@ -295,7 +299,9 @@ class UserManagementServiceImplTest {
         void listStateAdmins_withStatusFilter_passesStatusToRepo() {
             Authentication auth = superUserAuth("kc-super");
             AdminUserRow row = userRow(3L, "kc-3", "pending@example.com", 1, 2, AdminUserStatus.PENDING);
-            AdminUserResponseDTO dto = responseDTO(3L, "pending@example.com", "STATE_ADMIN");
+            AdminUserResponseDTO dto = AdminUserResponseDTO.builder()
+                    .id(3L).email("pending@example.com").role("STATE_ADMIN")
+                    .status(AdminUserStatus.PENDING.name()).build();
 
             when(userCommonRepository.findTenantIdByStateCode("MP")).thenReturn(Optional.of(1));
             when(userCommonRepository.listStateAdminsByTenant(1, AdminUserStatus.PENDING, 0, 20)).thenReturn(List.of(row));
@@ -305,6 +311,7 @@ class UserManagementServiceImplTest {
             PageResponseDTO<AdminUserResponseDTO> result = userManagementService.listStateAdmins("MP", AdminUserStatus.PENDING, auth, 0, 20);
 
             assertEquals(1, result.getContent().size());
+            assertEquals(AdminUserStatus.PENDING.name(), result.getContent().get(0).getStatus());
         }
     }
 
@@ -468,6 +475,58 @@ class UserManagementServiceImplTest {
             req.setTenantCode("XX");
 
             assertThrows(ResourceNotFoundException.class, () -> userManagementService.inviteUser(req, auth));
+        }
+
+        @Test
+        @DisplayName("Should throw UserAlreadyExistsException when concurrent insert hits duplicate key for active user")
+        void inviteUser_concurrentDuplicate_activeUser_throwsUserAlreadyExists() {
+            Authentication auth = superUserAuth("kc-super");
+            AdminUserRow callerRow = userRow(1L, "kc-super", "super@example.com", 0, 1, AdminUserStatus.ACTIVE);
+
+            when(userCommonRepository.findAdminUserByUuid("kc-super")).thenReturn(Optional.of(callerRow));
+            when(userCommonRepository.findUserTypeNameById(1)).thenReturn(Optional.of("SUPER_USER"));
+            // Pre-check passes (empty), then concurrent insert races ahead
+            when(userCommonRepository.findAdminUserByEmail("race@example.com")).thenReturn(Optional.empty());
+            when(userCommonRepository.findUserTypeIdByName("SUPER_USER")).thenReturn(Optional.of(1));
+            doThrow(new DuplicateKeyException("duplicate key"))
+                    .when(userCommonRepository).createAdminUserPending(eq("race@example.com"), any(), any(), any(), any());
+            // Re-query after catch finds the concurrently inserted active user
+            AdminUserRow activeUser = userRow(9L, "kc-race", "race@example.com", 0, 1, AdminUserStatus.ACTIVE);
+            when(userCommonRepository.findAdminUserByEmail("race@example.com"))
+                    .thenReturn(Optional.empty())
+                    .thenReturn(Optional.of(activeUser));
+
+            InviteRequestDTO req = new InviteRequestDTO();
+            req.setEmail("race@example.com");
+            req.setRole("SUPER_USER");
+
+            assertThrows(UserAlreadyExistsException.class, () -> userManagementService.inviteUser(req, auth));
+        }
+
+        @Test
+        @DisplayName("Should throw BadRequestException when concurrent insert hits duplicate key for pending user")
+        void inviteUser_concurrentDuplicate_pendingUser_throwsBadRequest() {
+            Authentication auth = superUserAuth("kc-super");
+            AdminUserRow callerRow = userRow(1L, "kc-super", "super@example.com", 0, 1, AdminUserStatus.ACTIVE);
+
+            when(userCommonRepository.findAdminUserByUuid("kc-super")).thenReturn(Optional.of(callerRow));
+            when(userCommonRepository.findUserTypeNameById(1)).thenReturn(Optional.of("SUPER_USER"));
+            when(userCommonRepository.findUserTypeIdByName("SUPER_USER")).thenReturn(Optional.of(1));
+            doThrow(new DuplicateKeyException("duplicate key"))
+                    .when(userCommonRepository).createAdminUserPending(eq("race@example.com"), any(), any(), any(), any());
+            // Re-query after catch finds the concurrently inserted pending user
+            AdminUserRow pendingUser = userRow(10L, "placeholder", "race@example.com", 0, 1, AdminUserStatus.PENDING);
+            when(userCommonRepository.findAdminUserByEmail("race@example.com"))
+                    .thenReturn(Optional.empty())
+                    .thenReturn(Optional.of(pendingUser));
+
+            InviteRequestDTO req = new InviteRequestDTO();
+            req.setEmail("race@example.com");
+            req.setRole("SUPER_USER");
+
+            BadRequestException ex = assertThrows(BadRequestException.class,
+                    () -> userManagementService.inviteUser(req, auth));
+            assertTrue(ex.getMessage().toLowerCase().contains("reinvite"));
         }
 
     }

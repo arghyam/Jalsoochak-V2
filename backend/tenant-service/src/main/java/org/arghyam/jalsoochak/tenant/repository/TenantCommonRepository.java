@@ -163,7 +163,7 @@ public class TenantCommonRepository {
 
         List<Object> params = new ArrayList<>();
         StringBuilder sql = new StringBuilder(
-                "SELECT * FROM common_schema.tenant_master_table WHERE id != 0");
+                "SELECT * FROM common_schema.tenant_master_table WHERE id != 0 AND deleted_at IS NULL");
 
         if (status != null) {
             sql.append(" AND status = ?");
@@ -183,7 +183,7 @@ public class TenantCommonRepository {
 
     /**
      * Counts the total number of non-system tenants with optional filters.
-     * The system tenant (id = 0) is excluded from the count.
+     * The system tenant (id = 0) and soft-deleted tenants are excluded from the count.
      *
      * @param status  Optional status filter; {@code null} means all statuses.
      * @param search  Optional case-insensitive partial match on tenant name; {@code null} or blank means no filter.
@@ -191,7 +191,7 @@ public class TenantCommonRepository {
     public long countAllTenants(TenantStatusEnum status, String search) {
         List<Object> params = new ArrayList<>();
         StringBuilder sql = new StringBuilder(
-                "SELECT COUNT(*) FROM common_schema.tenant_master_table WHERE id != 0");
+                "SELECT COUNT(*) FROM common_schema.tenant_master_table WHERE id != 0 AND deleted_at IS NULL");
 
         if (status != null) {
             sql.append(" AND status = ?");

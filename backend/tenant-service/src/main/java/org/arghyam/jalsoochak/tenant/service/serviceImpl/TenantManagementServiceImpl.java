@@ -161,9 +161,10 @@ public class TenantManagementServiceImpl implements TenantManagementService {
 
     @Override
     public PageResponseDTO<TenantResponseDTO> getAllTenants(int page, int size, TenantStatusEnum status, String search) {
+        String normalizedSearch = (search == null || search.isBlank()) ? null : search.trim();
         long offset = (long) page * size;
-        List<TenantResponseDTO> tenants = tenantCommonRepository.findAll(size, offset, status, search);
-        long totalElements = tenantCommonRepository.countAllTenants(status, search);
+        List<TenantResponseDTO> tenants = tenantCommonRepository.findAll(size, offset, status, normalizedSearch);
+        long totalElements = tenantCommonRepository.countAllTenants(status, normalizedSearch);
         return PageResponseDTO.of(tenants, totalElements, page, size);
     }
 
