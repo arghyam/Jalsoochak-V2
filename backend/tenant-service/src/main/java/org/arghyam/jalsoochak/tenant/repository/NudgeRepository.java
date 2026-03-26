@@ -62,7 +62,7 @@ public class NudgeRepository {
         }, rs -> {
             Map<String, Object> row = new HashMap<>(8);
             row.put("user_id", rs.getObject("user_id"));
-            row.put("name", rs.getString("name"));
+            row.put("name", pii.decrypt(rs.getString("name")));
             row.put("phone_number", pii.decrypt(rs.getString("phone_number")));
             row.put("language_id", rs.getObject("language_id"));
             row.put("whatsapp_connection_id", rs.getObject("whatsapp_connection_id"));
@@ -143,7 +143,7 @@ public class NudgeRepository {
         }, rs -> {
             Map<String, Object> row = new HashMap<>(10);
             row.put("user_id", rs.getObject("user_id"));
-            row.put("name", rs.getString("name"));
+            row.put("name", pii.decrypt(rs.getString("name")));
             row.put("phone_number", pii.decrypt(rs.getString("phone_number")));
             row.put("language_id", rs.getObject("language_id"));
             row.put("whatsapp_connection_id", rs.getObject("whatsapp_connection_id"));
@@ -177,6 +177,7 @@ public class NudgeRepository {
         List<Map<String, Object>> rows = jdbcTemplate.queryForList(sql, schemeId, userTypeName);
         if (rows.isEmpty()) return null;
         Map<String, Object> row = new java.util.HashMap<>(rows.get(0));
+        row.put("name", pii.decrypt((String) row.get("name")));
         row.put("phone_number", pii.decrypt((String) row.get("phone_number")));
         return row;
     }
@@ -204,6 +205,7 @@ public class NudgeRepository {
         Map<Object, Map<String, Object>> result = new HashMap<>(rows.size() * 2);
         for (Map<String, Object> row : rows) {
             Map<String, Object> decrypted = new HashMap<>(row);
+            decrypted.put("name", pii.decrypt((String) row.get("name")));
             decrypted.put("phone_number", pii.decrypt((String) row.get("phone_number")));
             result.putIfAbsent(decrypted.get("scheme_id"), decrypted);
         }
