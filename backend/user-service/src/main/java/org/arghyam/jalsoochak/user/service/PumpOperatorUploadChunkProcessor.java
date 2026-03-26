@@ -46,7 +46,7 @@ public class PumpOperatorUploadChunkProcessor {
             String schemaName,
             String tenantCode,
             TenantUserRecord actor,
-            int pumpOperatorTypeId,
+            Map<String, Integer> userTypeIds,
             int preferredLanguageId,
             int actorUserId,
             List<UploadRow> rows,
@@ -58,11 +58,19 @@ public class PumpOperatorUploadChunkProcessor {
 
         List<UserSchemeMappingCreateRow> insertRows = new ArrayList<>(rows.size());
         List<String> phonesForInsertRows = new ArrayList<>(rows.size());
+        List<String> typesForInsertRows = new ArrayList<>(rows.size());
         int uploaded = 0;
         int skipped = 0;
 
         for (UploadRow row : rows) {
             try {
+                String typeKey = normalizeType(row.personType());
+                Integer userTypeId = userTypeIds.get(typeKey);
+                if (userTypeId == null) {
+                    skipped++;
+                    continue;
+                }
+
                 Integer schemeId = resolveSchemeId(schemaName, row.stateSchemeId(), schemeIdCache);
                 if (schemeId == null || schemeId < 0) {
                     skipped++;
@@ -76,7 +84,7 @@ public class PumpOperatorUploadChunkProcessor {
                             ? row.fullName()
                             : (row.firstName() + " " + row.lastName()).trim();
                     if (title.isBlank()) {
-                        title = "Pump Operator " + row.phone();
+                        title = defaultTitle(typeKey) + " " + row.phone();
                     }
 
                     userId = userTenantRepository.createUser(
@@ -84,8 +92,8 @@ public class PumpOperatorUploadChunkProcessor {
                             java.util.UUID.randomUUID().toString(),
                             actor.tenantId(),
                             title,
-                            uniqueEmail(schemaName, row.phone()),
-                            pumpOperatorTypeId,
+                            uniqueEmail(schemaName, row.phone(), typeKey),
+                            userTypeId,
                             row.phone(),
                             "CSV_ONBOARDED",
                             actor.id()
@@ -96,8 +104,8 @@ public class PumpOperatorUploadChunkProcessor {
                     }
                     userTenantRepository.updateUserLanguageId(schemaName, userId, preferredLanguageId);
                 } else {
-                    // If an existing user isn't a pump operator, we skip to avoid mutating unrelated user types.
-                    if (user.cName() == null || !user.cName().equalsIgnoreCase("PUMP_OPERATOR")) {
+                    // If an existing user isn't the requested type, skip to avoid mutating unrelated user types.
+                    if (user.cName() == null || !user.cName().equalsIgnoreCase(typeKey.toUpperCase(java.util.Locale.ROOT))) {
                         skipped++;
                         continue;
                     }
@@ -108,6 +116,7 @@ public class PumpOperatorUploadChunkProcessor {
                 // Idempotent insert (ON CONFLICT DO NOTHING) will safely handle re-uploads + concurrent chunks.
                 insertRows.add(new UserSchemeMappingCreateRow(userId, schemeId));
                 phonesForInsertRows.add(row.phone());
+                typesForInsertRows.add(typeKey);
 
                 uploaded++;
             } catch (Exception ex) {
@@ -125,7 +134,9 @@ public class PumpOperatorUploadChunkProcessor {
         for (int i = 0; i < n; i++) {
             if (insertCounts[i] > 0) {
                 inserted++;
-                phonesToNotify.add(phonesForInsertRows.get(i));
+                if ("pump_operator".equals(typesForInsertRows.get(i))) {
+                    phonesToNotify.add(phonesForInsertRows.get(i));
+                }
             }
         }
 
@@ -160,15 +171,15 @@ public class PumpOperatorUploadChunkProcessor {
         return schemeId;
     }
 
-    private static String generatedEmailForPhone(String phone) {
-        return "po_" + phone + "@pump-operator.local";
+    private String generatedEmailForPhone(String phone, String typeKey) {
+        return emailPrefix(typeKey) + phone + "@pump-operator.local";
     }
 
-    private String uniqueEmail(String schemaName, String phone) {
-        String email = generatedEmailForPhone(phone);
+    private String uniqueEmail(String schemaName, String phone, String typeKey) {
+        String email = generatedEmailForPhone(phone, typeKey);
         // Extremely unlikely for new users (email derives from phone), but keep the same safety as the old flow.
         if (userTenantRepository.findUserByEmail(schemaName, email).isPresent()) {
-            return "po_" + phone + "_" + java.util.UUID.randomUUID() + "@pump-operator.local";
+            return emailPrefix(typeKey) + phone + "_" + java.util.UUID.randomUUID() + "@pump-operator.local";
         }
         return email;
     }
@@ -179,5 +190,28 @@ public class PumpOperatorUploadChunkProcessor {
         }
         String t = s.trim();
         return t.isBlank() ? null : t;
+    }
+
+    private String normalizeType(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value.trim().toLowerCase(java.util.Locale.ROOT).replace(' ', '_');
+    }
+
+    private String defaultTitle(String typeKey) {
+        return switch (typeKey) {
+            case "section_officer" -> "Section Officer";
+            case "sub_divisional_officer" -> "Sub Divisional Officer";
+            default -> "Pump Operator";
+        };
+    }
+
+    private String emailPrefix(String typeKey) {
+        return switch (typeKey) {
+            case "section_officer" -> "so_";
+            case "sub_divisional_officer" -> "sdo_";
+            default -> "po_";
+        };
     }
 }

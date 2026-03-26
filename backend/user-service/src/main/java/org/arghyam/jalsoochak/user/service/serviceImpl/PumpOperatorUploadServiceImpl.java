@@ -44,7 +44,11 @@ import java.util.Map;
 @Slf4j
 public class PumpOperatorUploadServiceImpl implements PumpOperatorUploadService {
 
-    private static final String REQUIRED_TARGET_USER_TYPE = "pump_operator";
+    private static final List<String> ALLOWED_USER_TYPES = List.of(
+            "pump_operator",
+            "section_officer",
+            "sub_divisional_officer"
+    );
     private static final int MAX_VALIDATION_ERRORS = 1000;
     private static final int CHUNK_SIZE = 1000;
 
@@ -88,17 +92,13 @@ public class PumpOperatorUploadServiceImpl implements PumpOperatorUploadService 
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "User not found for token"));
         int preferredLanguageId = preferredLanguageService.resolvePreferredLanguageId(actor.tenantId());
 
-        Integer pumpOperatorTypeId = userCommonRepository.findUserTypeIdByName("PUMP_OPERATOR")
-                .orElseThrow(() -> new ResponseStatusException(
-                        HttpStatus.INTERNAL_SERVER_ERROR,
-                        "Missing required user type in common_schema.user_type_master_table: " + REQUIRED_TARGET_USER_TYPE
-                ));
+        Map<String, Integer> userTypeIds = resolveUserTypeIds();
 
         String extension = extractExtension(file.getOriginalFilename());
         Map<String, Integer> schemeIdCache = new HashMap<>();
 
         int totalRows = validateUpload(schemaName, file, extension, schemeIdCache);
-        ProcessResult processed = processUpload(schemaName, tenantCode, actor, actorUserId, pumpOperatorTypeId, preferredLanguageId, file, extension, schemeIdCache);
+        ProcessResult processed = processUpload(schemaName, tenantCode, actor, actorUserId, userTypeIds, preferredLanguageId, file, extension, schemeIdCache);
 
         return PumpOperatorUploadResponseDTO.builder()
                 .message("Pump operator upload processed successfully")
@@ -155,15 +155,15 @@ public class PumpOperatorUploadServiceImpl implements PumpOperatorUploadService 
             String tenantCode,
             TenantUserRecord actor,
             int actorUserId,
-            int pumpOperatorTypeId,
+            Map<String, Integer> userTypeIds,
             int preferredLanguageId,
             MultipartFile file,
             String extension,
             Map<String, Integer> schemeIdCache
     ) {
         return "csv".equals(extension)
-                ? processCsv(schemaName, tenantCode, actor, actorUserId, pumpOperatorTypeId, preferredLanguageId, file, schemeIdCache)
-                : processXlsx(schemaName, tenantCode, actor, actorUserId, pumpOperatorTypeId, preferredLanguageId, file, schemeIdCache);
+                ? processCsv(schemaName, tenantCode, actor, actorUserId, userTypeIds, preferredLanguageId, file, schemeIdCache)
+                : processXlsx(schemaName, tenantCode, actor, actorUserId, userTypeIds, preferredLanguageId, file, schemeIdCache);
     }
 
     private int validateCsv(
@@ -270,7 +270,7 @@ public class PumpOperatorUploadServiceImpl implements PumpOperatorUploadService 
             String tenantCode,
             TenantUserRecord actor,
             int actorUserId,
-            int pumpOperatorTypeId,
+            Map<String, Integer> userTypeIds,
             int preferredLanguageId,
             MultipartFile file,
             Map<String, Integer> schemeIdCache
@@ -299,7 +299,7 @@ public class PumpOperatorUploadServiceImpl implements PumpOperatorUploadService 
                 }
                 chunk.add(toUploadRow((int) record.getRecordNumber(), map));
                 if (chunk.size() >= CHUNK_SIZE) {
-                    var res = chunkProcessor.processChunk(schemaName, tenantCode, actor, pumpOperatorTypeId, preferredLanguageId, actorUserId, chunk, schemeIdCache);
+                    var res = chunkProcessor.processChunk(schemaName, tenantCode, actor, userTypeIds, preferredLanguageId, actorUserId, chunk, schemeIdCache);
                     uploaded += res.uploadedRows();
                     skipped += res.skippedRows();
                     chunk = new ArrayList<>(CHUNK_SIZE);
@@ -307,7 +307,7 @@ public class PumpOperatorUploadServiceImpl implements PumpOperatorUploadService 
             }
 
             if (!chunk.isEmpty()) {
-                var res = chunkProcessor.processChunk(schemaName, tenantCode, actor, pumpOperatorTypeId, preferredLanguageId, actorUserId, chunk, schemeIdCache);
+                var res = chunkProcessor.processChunk(schemaName, tenantCode, actor, userTypeIds, preferredLanguageId, actorUserId, chunk, schemeIdCache);
                 uploaded += res.uploadedRows();
                 skipped += res.skippedRows();
             }
@@ -327,7 +327,7 @@ public class PumpOperatorUploadServiceImpl implements PumpOperatorUploadService 
             String tenantCode,
             TenantUserRecord actor,
             int actorUserId,
-            int pumpOperatorTypeId,
+            Map<String, Integer> userTypeIds,
             int preferredLanguageId,
             MultipartFile file,
             Map<String, Integer> schemeIdCache
@@ -362,14 +362,14 @@ public class PumpOperatorUploadServiceImpl implements PumpOperatorUploadService 
                 }
                 chunk.add(toUploadRow(i + 1, map));
                 if (chunk.size() >= CHUNK_SIZE) {
-                    var res = chunkProcessor.processChunk(schemaName, tenantCode, actor, pumpOperatorTypeId, preferredLanguageId, actorUserId, chunk, schemeIdCache);
+                    var res = chunkProcessor.processChunk(schemaName, tenantCode, actor, userTypeIds, preferredLanguageId, actorUserId, chunk, schemeIdCache);
                     uploaded += res.uploadedRows();
                     skipped += res.skippedRows();
                     chunk = new ArrayList<>(CHUNK_SIZE);
                 }
             }
             if (!chunk.isEmpty()) {
-                var res = chunkProcessor.processChunk(schemaName, tenantCode, actor, pumpOperatorTypeId, preferredLanguageId, actorUserId, chunk, schemeIdCache);
+                var res = chunkProcessor.processChunk(schemaName, tenantCode, actor, userTypeIds, preferredLanguageId, actorUserId, chunk, schemeIdCache);
                 uploaded += res.uploadedRows();
                 skipped += res.skippedRows();
             }
@@ -423,8 +423,8 @@ public class PumpOperatorUploadServiceImpl implements PumpOperatorUploadService 
             errors.add(err(row.rowNumber(), "person_type", "person_type is required"));
             return;
         }
-        if (!REQUIRED_TARGET_USER_TYPE.equals(row.personType())) {
-            errors.add(err(row.rowNumber(), "person_type", "person_type must be " + REQUIRED_TARGET_USER_TYPE));
+        if (!ALLOWED_USER_TYPES.contains(row.personType())) {
+            errors.add(err(row.rowNumber(), "person_type", "person_type must be one of: " + String.join(", ", ALLOWED_USER_TYPES)));
             return;
         }
 
@@ -504,11 +504,18 @@ public class PumpOperatorUploadServiceImpl implements PumpOperatorUploadService 
         return t.isBlank() ? null : t;
     }
 
-    private boolean isPumpOperator(String cName) {
-        if (cName == null) {
-            return false;
+    private Map<String, Integer> resolveUserTypeIds() {
+        Map<String, Integer> out = new LinkedHashMap<>();
+        for (String key : ALLOWED_USER_TYPES) {
+            String cName = key.toUpperCase(Locale.ROOT);
+            Integer id = userCommonRepository.findUserTypeIdByName(cName)
+                    .orElseThrow(() -> new ResponseStatusException(
+                            HttpStatus.INTERNAL_SERVER_ERROR,
+                            "Missing required user type in common_schema.user_type_master_table: " + cName
+                    ));
+            out.put(key, id);
         }
-        return REQUIRED_TARGET_USER_TYPE.equals(normalizeHeader(cName));
+        return out;
     }
 
     private static boolean isAllBlank(Map<String, String> map) {
