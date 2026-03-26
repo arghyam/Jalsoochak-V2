@@ -99,13 +99,13 @@ public class TelemetryEventPublisher {
 
     private static ReasonPayload mapReason(int anomalyType) {
         if (anomalyType == AnomalyConstants.TYPE_NO_WATER_SUPPLY) {
-            return new ReasonPayload("TYPE_NO_WATER_SUPPLY", null);
+            return new ReasonPayload("No Water Supply", null);
         }
         if (anomalyType == AnomalyConstants.TYPE_LOW_WATER_SUPPLY) {
-            return new ReasonPayload("TYPE_LOW_WATER_SUPPLY", null);
+            return new ReasonPayload("Low Water Supply", null);
         }
         if (anomalyType == AnomalyConstants.TYPE_NO_SUBMISSION) {
-            return new ReasonPayload(null, "TYPE_NO_SUBMISSION");
+            return new ReasonPayload(null, "No Submission");
         }
         return null;
     }
