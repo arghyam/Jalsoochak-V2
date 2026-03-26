@@ -88,7 +88,10 @@ management:
   endpoints:
     web:
       exposure:
-        include: "*"
+        include: "health,info"
+  endpoint:
+    health:
+      show-details: when-authorized
 
 # ────────────────────────────────────────────────────────────── # Nudge & Escalation Scheduler Configuration # ──────────────────────────────────────────────────────────────
 # Fallback defaults used when a tenant has no row in tenant_config_master_table
