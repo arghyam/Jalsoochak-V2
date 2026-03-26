@@ -738,6 +738,15 @@ public class TenantManagementServiceImpl implements TenantManagementService {
                     .orElseThrow(() -> new ConfigurationException(
                             "Failed to seed METER_CHANGE_REASONS for tenant [id=" + tenant.getId() + ", userId=" + currentUserId + "]"));
 
+            ReasonListConfigDTO supplyOutageReasons = ReasonListConfigDTO.builder()
+                    .reasons(tenantDefaults.getSupplyOutageReasons())
+                    .build();
+            tenantCommonRepository.upsertConfig(tenant.getId(),
+                    TenantConfigKeyEnum.SUPPLY_OUTAGE_REASONS.name(),
+                    objectMapper.writeValueAsString(supplyOutageReasons), currentUserId)
+                    .orElseThrow(() -> new ConfigurationException(
+                            "Failed to seed SUPPLY_OUTAGE_REASONS for tenant [id=" + tenant.getId() + ", userId=" + currentUserId + "]"));
+
             tenantCommonRepository.upsertConfig(tenant.getId(),
                     TenantConfigKeyEnum.LOCATION_CHECK_REQUIRED.name(),
                     objectMapper.writeValueAsString(new SimpleConfigValueDTO("NO")), currentUserId)

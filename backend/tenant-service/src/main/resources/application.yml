@@ -186,3 +186,44 @@ tenant:
         sequence-order: 3
         is-default: true
         editable: true
+    supply-outage-reasons:
+      - id: "ELECTRICITY_SUPPLY_DISCONNECTED"
+        name: "Electricity Supply Disconnected"
+        sequence-order: 1
+        is-default: true
+        editable: true
+      - id: "NO_ELECTRICITY_SUPPLY_TODAY"
+        name: "No Electricity Supply Today"
+        sequence-order: 2
+        is-default: true
+        editable: true
+      - id: "PUMP_FAILURE"
+        name: "Pump Failure"
+        sequence-order: 3
+        is-default: true
+        editable: true
+      - id: "PIPELINE_BREAK"
+        name: "Pipeline Break"
+        sequence-order: 4
+        is-default: true
+        editable: true
+      - id: "WATER_QUALITY_ISSUES"
+        name: "Water Quality Issues"
+        sequence-order: 5
+        is-default: true
+        editable: true
+      - id: "SOURCE_DRYING"
+        name: "Source Drying"
+        sequence-order: 6
+        is-default: true
+        editable: true
+      - id: "NATURAL_CALAMITY"
+        name: "Natural Calamity"
+        sequence-order: 7
+        is-default: true
+        editable: true
+      - id: "OTHERS"
+        name: "Others"
+        sequence-order: 8
+        is-default: true
+        editable: false

@@ -127,6 +127,7 @@ class TenantManagementServiceImplTest {
         lenient().when(tenantDefaults.getLgdLocationHierarchy()).thenReturn(Collections.emptyList());
         lenient().when(tenantDefaults.getDeptLocationHierarchy()).thenReturn(Collections.emptyList());
         lenient().when(tenantDefaults.getMeterChangeReasons()).thenReturn(Collections.emptyList());
+        lenient().when(tenantDefaults.getSupplyOutageReasons()).thenReturn(Collections.emptyList());
         
         // Manually create service with real ObjectMapper and mocked dependencies
         tenantManagementService = new TenantManagementServiceImpl(
@@ -172,6 +173,8 @@ class TenantManagementServiceImplTest {
             when(tenantCommonRepository.createTenant(any(CreateTenantRequestDTO.class), anyInt()))
                     .thenReturn(Optional.of(expectedResponse));
             when(tenantCommonRepository.upsertConfig(eq(1), eq("METER_CHANGE_REASONS"), anyString(), eq(100)))
+                    .thenReturn(Optional.of(ConfigDTO.builder().build()));
+            when(tenantCommonRepository.upsertConfig(eq(1), eq("SUPPLY_OUTAGE_REASONS"), anyString(), eq(100)))
                     .thenReturn(Optional.of(ConfigDTO.builder().build()));
             when(tenantCommonRepository.upsertConfig(eq(1), eq("LOCATION_CHECK_REQUIRED"), anyString(), eq(100)))
                     .thenReturn(Optional.of(ConfigDTO.builder().build()));
@@ -263,6 +266,10 @@ class TenantManagementServiceImplTest {
                     ReasonItemDTO.builder().id("METER_REPLACED").name("Meter Replaced")
                             .sequenceOrder(1).isDefault(true).editable(true).build()
             );
+            List<ReasonItemDTO> supplyOutageReasons = List.of(
+                    ReasonItemDTO.builder().id("PUMP_FAILURE").name("Pump Failure")
+                            .sequenceOrder(1).isDefault(true).editable(true).build()
+            );
 
             when(tenantCommonRepository.findByStateCode("TT")).thenReturn(Optional.empty());
             when(SecurityUtils.getCurrentUserUuid()).thenReturn("user-uuid");
@@ -272,7 +279,10 @@ class TenantManagementServiceImplTest {
             when(tenantDefaults.getLgdLocationHierarchy()).thenReturn(lgdLevels);
             when(tenantDefaults.getDeptLocationHierarchy()).thenReturn(deptLevels);
             when(tenantDefaults.getMeterChangeReasons()).thenReturn(reasons);
+            when(tenantDefaults.getSupplyOutageReasons()).thenReturn(supplyOutageReasons);
             when(tenantCommonRepository.upsertConfig(eq(1), eq("METER_CHANGE_REASONS"), anyString(), eq(100)))
+                    .thenReturn(Optional.of(ConfigDTO.builder().build()));
+            when(tenantCommonRepository.upsertConfig(eq(1), eq("SUPPLY_OUTAGE_REASONS"), anyString(), eq(100)))
                     .thenReturn(Optional.of(ConfigDTO.builder().build()));
             when(tenantCommonRepository.upsertConfig(eq(1), eq("LOCATION_CHECK_REQUIRED"), anyString(), eq(100)))
                     .thenReturn(Optional.of(ConfigDTO.builder().build()));
@@ -283,8 +293,9 @@ class TenantManagementServiceImplTest {
             // Assert — both hierarchy types seeded
             verify(tenantSchemaRepository).setLocationHierarchy("tenant_tt", RegionTypeEnum.LGD, lgdLevels, 100);
             verify(tenantSchemaRepository).setLocationHierarchy("tenant_tt", RegionTypeEnum.DEPARTMENT, deptLevels, 100);
-            // METER_CHANGE_REASONS and LOCATION_CHECK_REQUIRED written via upsertConfig
+            // All three reason/flag configs written via upsertConfig
             verify(tenantCommonRepository).upsertConfig(eq(1), eq("METER_CHANGE_REASONS"), anyString(), eq(100));
+            verify(tenantCommonRepository).upsertConfig(eq(1), eq("SUPPLY_OUTAGE_REASONS"), anyString(), eq(100));
             verify(tenantCommonRepository).upsertConfig(eq(1), eq("LOCATION_CHECK_REQUIRED"), anyString(), eq(100));
         }
     }
