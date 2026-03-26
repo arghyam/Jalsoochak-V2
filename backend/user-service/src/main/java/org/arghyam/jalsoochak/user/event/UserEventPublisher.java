@@ -105,6 +105,41 @@ public class UserEventPublisher {
         }
     }
 
+    /**
+     * Publishes welcome-message events immediately (no transaction coupling).
+     * This is intended for bulk re-sends triggered by admin endpoints.
+     */
+    public void publishWelcomeMessages(
+            String tenantCode,
+            Integer tenantId,
+            List<String> pumpOperatorPhones
+    ) {
+        if (pumpOperatorPhones == null || pumpOperatorPhones.isEmpty()) {
+            return;
+        }
+        List<List<String>> batches = partition(pumpOperatorPhones, MAX_PHONES_PER_EVENT);
+        log.info("[user-events] welcome_publish count={} topic={} tenantCode={} tenantId={} phones={}",
+                batches.size(), COMMON_TOPIC, tenantCode, tenantId, pumpOperatorPhones.size());
+
+        String triggeredAt = Instant.now().truncatedTo(ChronoUnit.MILLIS).toString();
+        for (List<String> phones : batches) {
+            PumpOperatorMessagingEvent welcome = PumpOperatorMessagingEvent.builder()
+                    .eventType("SEND_WELCOME_MESSAGE")
+                    .tenantCode(tenantCode)
+                    .tenantId(tenantId)
+                    .triggeredAt(triggeredAt)
+                    .glificLanguageId(null)
+                    .pumpOperatorPhones(phones)
+                    .build();
+
+            boolean ok = kafkaProducer.publishJson(COMMON_TOPIC, welcome);
+            if (!ok) {
+                log.warn("[user-events] welcome_publish_failed tenantCode={} tenantId={} phones={}",
+                        tenantCode, tenantId, phones.size());
+            }
+        }
+    }
+
     private static List<List<String>> partition(List<String> values, int maxPerBatch) {
         if (values == null || values.isEmpty()) {
             return Collections.emptyList();

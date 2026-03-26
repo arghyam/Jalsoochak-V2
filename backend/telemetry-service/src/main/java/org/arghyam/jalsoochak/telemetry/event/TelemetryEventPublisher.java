@@ -50,10 +50,6 @@ public class TelemetryEventPublisher {
                 .build();
 
         boolean ok = kafkaProducer.publishJson(TOPIC, event);
-        System.out.println("[telemetry] published WATER_QUANTITY_RECORDED ok=" + ok
-                + " tenantId=" + tenantId
-                + " schemeId=" + schemeId
-                + " userId=" + userId);
         if (!ok) {
             log.warn("[telemetry-events] publish_failed type={} tenantId={} schemeId={} userId={}",
                     anomalyType, tenantId, schemeId, userId);
@@ -95,12 +91,6 @@ public class TelemetryEventPublisher {
                 .build();
 
         boolean ok = kafkaProducer.publishJson(TOPIC, event);
-        System.out.println("[telemetry] published ANOMALY_RECORDED ok=" + ok
-                + " type=" + type
-                + " tenantId=" + tenantId
-                + " schemeId=" + schemeId
-                + " userId=" + userId
-                + " uuid=" + event.getUuid());
         if (!ok) {
             log.warn("[telemetry-events] publish_failed type={} tenantId={} schemeId={} userId={}",
                     type, tenantId, schemeId, userId);

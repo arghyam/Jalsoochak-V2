@@ -9,6 +9,7 @@ import org.arghyam.jalsoochak.user.enums.TenantUserStatus;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.Objects;
 
 @Repository
 @RequiredArgsConstructor
@@ -16,6 +17,23 @@ public class UserTenantRepository {
 
     private final JdbcTemplate jdbcTemplate;
     private final PiiEncryptionService pii;
+
+    /**
+     * Decrypts a PII value, falling back to raw value for legacy plaintext rows.
+     * If the value is not valid base64 or decodes to ≤ 12 bytes, treat as plaintext.
+     */
+    private String safeDecrypt(String value) {
+        if (value == null) return null;
+        try {
+            byte[] decoded = java.util.Base64.getDecoder().decode(value);
+            if (decoded.length <= 12) {
+                return value;
+            }
+        } catch (IllegalArgumentException e) {
+            return value;
+        }
+        return pii.decrypt(value);
+    }
 
     private void validateSchemaName(String schemaName) {
         if (schemaName == null || !schemaName.matches("^[a-z_][a-z0-9_]*$")) {
@@ -219,6 +237,63 @@ public class UserTenantRepository {
                 WHERE id = ?
                 """, schemaName);
         jdbcTemplate.update(sql, languageId, userId);
+    }
+
+    /**
+     * Streams phone numbers for users with the given roles and optional onboarding time window.
+     * The RowCallbackHandler is invoked for each row to avoid loading everything into memory.
+     */
+    public void streamPhonesByRolesAndOnboardingWindow(
+            String schemaName,
+            List<String> roles,
+            java.time.Instant onboardedAfter,
+            java.time.Instant onboardedBefore,
+            java.util.function.Consumer<String> phoneConsumer
+    ) {
+        validateSchemaName(schemaName);
+
+        List<String> cleaned = roles == null ? List.of() : roles.stream()
+                .filter(Objects::nonNull)
+                .map(String::trim)
+                .filter(s -> !s.isEmpty())
+                .map(String::toLowerCase)
+                .toList();
+
+        if (cleaned.isEmpty()) {
+            return;
+        }
+
+        String rolePlaceholders = String.join(", ", cleaned.stream().map(r -> "?").toList());
+        StringBuilder sql = new StringBuilder(String.format("""
+                SELECT u.phone_number
+                FROM %s.user_table u
+                LEFT JOIN common_schema.user_type_master_table ut
+                  ON ut.id = u.user_type
+                WHERE u.deleted_at IS NULL
+                  AND lower(ut.c_name) IN (%s)
+                """, schemaName, rolePlaceholders));
+
+        List<Object> args = new java.util.ArrayList<>(cleaned);
+        if (onboardedAfter != null) {
+            sql.append(" AND u.created_at >= ?");
+            args.add(java.sql.Timestamp.from(onboardedAfter));
+        }
+        if (onboardedBefore != null) {
+            sql.append(" AND u.created_at < ?");
+            args.add(java.sql.Timestamp.from(onboardedBefore));
+        }
+
+        jdbcTemplate.query(sql.toString(), rs -> {
+            String encrypted = rs.getString("phone_number");
+            if (encrypted == null || encrypted.isBlank()) {
+                return;
+            }
+            String phone = safeDecrypt(encrypted);
+            if (phone == null || phone.isBlank()) {
+                return;
+            }
+            phoneConsumer.accept(phone);
+        }, args.toArray());
     }
 
     /**
