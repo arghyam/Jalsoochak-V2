@@ -1157,10 +1157,21 @@ public class GlificMeterWorkflowService {
             LocalDate dayAfterTarget = targetDay.plusDays(1);
 
             // Use the richer lookup so we can validate bounds before updating.
-            TelemetryFlowReadingDetails targetDayRecord = telemetryTenantRepository
+            Optional<TelemetryFlowReadingDetails> targetDayRecordOpt = telemetryTenantRepository
                     .findLatestFlowReadingForDate(operatorWithSchema.schemaName(), schemeId, operatorId, targetDay)
-                    .filter(r -> r.confirmedReading() != null && r.confirmedReading().compareTo(BigDecimal.ZERO) > 0)
-                    .orElseThrow(() -> new IllegalStateException("No previous reading found to update for " + targetDay));
+                    .filter(r -> r.confirmedReading() != null && r.confirmedReading().compareTo(BigDecimal.ZERO) > 0);
+            if (targetDayRecordOpt.isEmpty()) {
+                return CreateReadingResponse.builder()
+                        .success(false)
+                        .message(localizationService.localizeMessage(
+                                "No previous day reading found for " + targetDay + ". Please submit a reading for that day first.",
+                                languageKey
+                        ))
+                        .qualityStatus("REJECTED")
+                        .correlationId(request.getContactId())
+                        .build();
+            }
+            TelemetryFlowReadingDetails targetDayRecord = targetDayRecordOpt.get();
 
             Optional<TelemetryFlowReadingDetails> dayBeforeTargetOpt = telemetryTenantRepository
                     .findLatestFlowReadingForDate(operatorWithSchema.schemaName(), schemeId, operatorId, dayBeforeTarget)
@@ -1239,9 +1250,15 @@ public class GlificMeterWorkflowService {
                     .build();
         } catch (Exception e) {
             log.error("Error updating previous day reading for contactId {}: {}", request.getContactId(), e.getMessage(), e);
+            String languageKey = localizationService.resolveLanguageKeyForContact(request.getContactId());
+            String descriptiveMessage = localizationService.resolveUserFacingErrorMessage(
+                    e,
+                    "Previous reading could not be updated.",
+                    languageKey
+            );
             return CreateReadingResponse.builder()
                     .success(false)
-                    .message("Previous reading could not be updated.")
+                    .message(descriptiveMessage)
                     .qualityStatus("REJECTED")
                     .correlationId(request.getContactId())
                     .build();
