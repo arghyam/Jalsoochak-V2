@@ -262,7 +262,7 @@ public class TenantController {
          * Set tenant logo
          */
         @Operation(summary = "Set tenant logo", description = "Sets the tenant logo from either a file upload or an external URL — exactly one must be provided. "
-                        + "File (PNG, JPEG, SVG, WebP — max 2 MB): uploaded to internal object storage. "
+                        + "File (PNG, JPEG, WebP — max 2 MB): uploaded to internal object storage. "
                         + "URL (http/https): stored as a reference. "
                         + "In both cases, the previous managed object is deleted from storage if one existed.")
         @ApiResponses({
