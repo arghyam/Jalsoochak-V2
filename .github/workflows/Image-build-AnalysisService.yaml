@@ -92,19 +92,18 @@ jobs:
         uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: 'trivy-results.sarif'
-  Deployment:
+  Deploy-Dev:
     needs: Docker-Image-Build
-    strategy:
-      matrix:
-        include:
-          - branch: refs/heads/dev
-            env: dev
-            ref: dev
-          - branch: refs/heads/main
-            env: main
-            ref: staging
-    if: github.ref == matrix.branch
-    uses: arghyam/JalSoochak-DevOps/.github/workflows/deploy.yaml@${{ matrix.ref }}
+    if: github.ref == 'refs/heads/dev'
+    uses: arghyam/JalSoochak-DevOps/.github/workflows/deploy.yaml@dev
+    with:
+      service_name: analytics-service
+      image_tag: ${{ github.sha }}
+
+  Deploy-Staging:
+    needs: Docker-Image-Build
+    if: github.ref == 'refs/heads/main'
+    uses: arghyam/JalSoochak-DevOps/.github/workflows/deploy.yaml@staging
     with:
       service_name: analytics-service
       image_tag: ${{ github.sha }}
