@@ -109,3 +109,4 @@ jobs:
     with:
       service_name: user-service
       image_tag: ${{ github.sha }}
+      kubeconfig: ${{ secrets.KUBECONFIG }}

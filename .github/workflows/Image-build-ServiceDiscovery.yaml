@@ -107,3 +107,4 @@ jobs:
     with:
       service_name: servicediscovery
       image_tag: ${{ github.sha }}
+      kubeconfig: ${{ secrets.KUBECONFIG }}
