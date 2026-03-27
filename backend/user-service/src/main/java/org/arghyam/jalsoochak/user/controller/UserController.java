@@ -16,6 +16,7 @@ import org.arghyam.jalsoochak.user.dto.request.ChangePasswordRequestDTO;
 import org.arghyam.jalsoochak.user.dto.request.InviteRequestDTO;
 import org.arghyam.jalsoochak.user.dto.request.UpdateProfileRequestDTO;
 import org.arghyam.jalsoochak.user.dto.response.AdminUserResponseDTO;
+import org.arghyam.jalsoochak.user.enums.AdminUserStatus;
 import org.arghyam.jalsoochak.user.service.UserManagementService;
 import org.arghyam.jalsoochak.user.util.SecurityUtils;
 import org.springframework.http.ResponseEntity;
@@ -104,22 +105,26 @@ public class UserController {
     @Operation(summary = "List super users", description = "Paginated list of all SUPER_USER accounts")
     @ApiResponses({
         @ApiResponse(responseCode = "200", description = "Super users retrieved"),
+        @ApiResponse(responseCode = "400", description = "Invalid status value"),
         @ApiResponse(responseCode = "403", description = "Only SUPER_USER role allowed")
     })
     @GetMapping("/super-users")
     @PreAuthorize("hasRole('SUPER_USER')")
     public ResponseEntity<ApiResponseDTO<PageResponseDTO<AdminUserResponseDTO>>> listSuperUsers(
+            @Parameter(description = "Filter by account status (ACTIVE, INACTIVE, PENDING). When null, no status filter is applied.")
+                @RequestParam(required = false) AdminUserStatus status,
             @Parameter(description = "Zero-based page number") @RequestParam(defaultValue = "0") @Min(0) int page,
             @Parameter(description = "Page size (1–100)") @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size) {
-        log.info("GET /api/v1/users/super-users – page={}, size={}", page, size);
+        log.info("GET /api/v1/users/super-users – status={}, page={}, size={}", status, page, size);
         return ResponseEntity.ok(ApiResponseDTO.of(200, "Super users retrieved",
-                userManagementService.listSuperUsers(page, size)));
+                userManagementService.listSuperUsers(status, page, size)));
     }
 
     @Operation(summary = "List state admins",
             description = "Paginated list of STATE_ADMIN accounts, optionally filtered by tenant. STATE_ADMIN callers are automatically scoped to their own state.")
     @ApiResponses({
         @ApiResponse(responseCode = "200", description = "State admins retrieved"),
+        @ApiResponse(responseCode = "400", description = "Invalid status value"),
         @ApiResponse(responseCode = "403", description = "STATE_ADMIN attempted to filter outside their state"),
         @ApiResponse(responseCode = "404", description = "Tenant not found for given tenantCode")
     })
@@ -127,13 +132,15 @@ public class UserController {
     @PreAuthorize("hasAnyRole('SUPER_USER', 'STATE_ADMIN')")
     public ResponseEntity<ApiResponseDTO<PageResponseDTO<AdminUserResponseDTO>>> listStateAdmins(
             @Parameter(description = "Tenant state code filter (optional for SUPER_USER)") @RequestParam(required = false) String tenantCode,
+            @Parameter(description = "Filter by account status (ACTIVE, INACTIVE, PENDING). When null, no status filter is applied.")
+                @RequestParam(required = false) AdminUserStatus status,
             @Parameter(description = "Zero-based page number") @RequestParam(defaultValue = "0") @Min(0) int page,
             @Parameter(description = "Page size (1–100)") @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size,
             Authentication authentication) {
-        log.info("GET /api/v1/users/state-admins – page={}, size={}", page, size);
+        log.info("GET /api/v1/users/state-admins – status={}, page={}, size={}", status, page, size);
         log.debug("GET /api/v1/users/state-admins – tenantCode={}", tenantCode);
         return ResponseEntity.ok(ApiResponseDTO.of(200, "State admins retrieved",
-                userManagementService.listStateAdmins(tenantCode, authentication, page, size)));
+                userManagementService.listStateAdmins(tenantCode, status, authentication, page, size)));
     }
 
     @Operation(summary = "Get user by ID")

@@ -148,7 +148,16 @@ public enum TenantConfigKeyEnum implements ConfigKey {
      * Positive numeric value (decimals allowed) used as multiplier for
      * calculating family members count for FHTC/Household.
      */
-    AVERAGE_MEMBERS_PER_HOUSEHOLD(ConfigType.GENERIC, SimpleConfigValueDTO.class, true, false);
+    AVERAGE_MEMBERS_PER_HOUSEHOLD(ConfigType.GENERIC, SimpleConfigValueDTO.class, true, false),
+
+    /**
+     * Supply outage reasons list with CRUD capability.
+     * Default reasons: Electricity Supply Disconnected, No Electricity Supply Today,
+     * Pump Failure, Pipeline Break, Water Quality Issues, Source Drying,
+     * Natural Calamity, Others.
+     * State Admin can add, update, and delete reasons (except 'Others').
+     */
+    SUPPLY_OUTAGE_REASONS(ConfigType.GENERIC, ReasonListConfigDTO.class, false, false);
 
     private final ConfigType type;
     private final Class<? extends ConfigValueDTO> dtoClass;

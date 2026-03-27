@@ -18,23 +18,6 @@ public class UserTenantRepository {
     private final JdbcTemplate jdbcTemplate;
     private final PiiEncryptionService pii;
 
-    /**
-     * Decrypts a PII value, falling back to raw value for legacy plaintext rows.
-     * If the value is not valid base64 or decodes to ≤ 12 bytes, treat as plaintext.
-     */
-    private String safeDecrypt(String value) {
-        if (value == null) return null;
-        try {
-            byte[] decoded = java.util.Base64.getDecoder().decode(value);
-            if (decoded.length <= 12) {
-                return value;
-            }
-        } catch (IllegalArgumentException e) {
-            return value;
-        }
-        return pii.decrypt(value);
-    }
-
     private void validateSchemaName(String schemaName) {
         if (schemaName == null || !schemaName.matches("^[a-z_][a-z0-9_]*$")) {
             throw new IllegalArgumentException("Invalid schema name: " + schemaName);
@@ -65,11 +48,11 @@ public class UserTenantRepository {
                 new TenantUserRecord(
                         toLong(rs.getObject("id")),
                         toInteger(rs.getObject("tenant_id")),
-                        pii.decrypt(rs.getString("phone_number")),
+                        pii.safeDecrypt(rs.getString("phone_number")),
                         rs.getString("email"),
                         toLong(rs.getObject("user_type")),
                         rs.getString("c_name"),
-                        pii.decrypt(rs.getString("title")),
+                        pii.safeDecrypt(rs.getString("title")),
                         rs.getString("uuid"),
                         toInteger(rs.getObject("status")),
                         toLong(rs.getObject("whatsapp_connection_id"))
@@ -102,11 +85,11 @@ public class UserTenantRepository {
                 new TenantUserRecord(
                         toLong(rs.getObject("id")),
                         toInteger(rs.getObject("tenant_id")),
-                        pii.decrypt(rs.getString("phone_number")),
+                        pii.safeDecrypt(rs.getString("phone_number")),
                         rs.getString("email"),
                         toLong(rs.getObject("user_type")),
                         rs.getString("c_name"),
-                        pii.decrypt(rs.getString("title")),
+                        pii.safeDecrypt(rs.getString("title")),
                         rs.getString("uuid"),
                         toInteger(rs.getObject("status")),
                         toLong(rs.getObject("whatsapp_connection_id"))
@@ -143,11 +126,11 @@ public class UserTenantRepository {
                 new TenantUserRecord(
                         toLong(rs.getObject("id")),
                         toInteger(rs.getObject("tenant_id")),
-                        pii.decrypt(rs.getString("phone_number")),
+                        pii.safeDecrypt(rs.getString("phone_number")),
                         rs.getString("email"),
                         toLong(rs.getObject("user_type")),
                         rs.getString("c_name"),
-                        pii.decrypt(rs.getString("title")),
+                        pii.safeDecrypt(rs.getString("title")),
                         rs.getString("uuid"),
                         toInteger(rs.getObject("status")),
                         toLong(rs.getObject("whatsapp_connection_id"))
@@ -288,7 +271,7 @@ public class UserTenantRepository {
             if (encrypted == null || encrypted.isBlank()) {
                 return;
             }
-            String phone = safeDecrypt(encrypted);
+            String phone = pii.safeDecrypt(encrypted);
             if (phone == null || phone.isBlank()) {
                 return;
             }

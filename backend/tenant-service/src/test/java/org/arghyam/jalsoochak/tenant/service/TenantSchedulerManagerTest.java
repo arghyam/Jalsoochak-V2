@@ -19,6 +19,7 @@ import java.util.List;
 import java.util.concurrent.ScheduledFuture;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
@@ -153,6 +154,85 @@ class TenantSchedulerManagerTest {
         verify(future, never()).cancel(anyBoolean());
         // But 2 new futures should be scheduled
         verify(taskScheduler, times(2)).schedule(any(Runnable.class), any(CronTrigger.class));
+    }
+
+    // ── isolation / security tests ───────────────────────────────────────────────
+
+    @Test
+    void loadAndScheduleAll_nudgeTask_boundToTenantOwnSchema() {
+        TenantResponseDTO t = TenantResponseDTO.builder().id(1).stateCode("MP").status(TenantStatusEnum.ACTIVE.name()).build();
+        when(tenantCommonRepository.findAll()).thenReturn(List.of(t));
+        stubConfigs(1, 8, 0, 9, 0);
+
+        manager.loadAndScheduleAll();
+
+        ArgumentCaptor<Runnable> runnableCaptor = ArgumentCaptor.forClass(Runnable.class);
+        verify(taskScheduler, times(2)).schedule(runnableCaptor.capture(), any(CronTrigger.class));
+
+        runnableCaptor.getAllValues().get(0).run(); // nudge runnable
+
+        verify(nudgeSchedulerService).processNudgesForTenant("tenant_mp", 1);
+        verifyNoInteractions(escalationSchedulerService);
+    }
+
+    @Test
+    void loadAndScheduleAll_escalationTask_boundToTenantOwnSchema() {
+        TenantResponseDTO t = TenantResponseDTO.builder().id(1).stateCode("MP").status(TenantStatusEnum.ACTIVE.name()).build();
+        when(tenantCommonRepository.findAll()).thenReturn(List.of(t));
+        stubConfigs(1, 8, 0, 9, 0);
+
+        manager.loadAndScheduleAll();
+
+        ArgumentCaptor<Runnable> runnableCaptor = ArgumentCaptor.forClass(Runnable.class);
+        verify(taskScheduler, times(2)).schedule(runnableCaptor.capture(), any(CronTrigger.class));
+
+        runnableCaptor.getAllValues().get(1).run(); // escalation runnable
+
+        verify(escalationSchedulerService).processEscalationsForTenant("tenant_mp", 1);
+        verifyNoInteractions(nudgeSchedulerService);
+    }
+
+    @Test
+    void loadAndScheduleAll_twoTenants_eachTaskBoundToItsOwnSchema() {
+        TenantResponseDTO mp = TenantResponseDTO.builder().id(1).stateCode("MP").status(TenantStatusEnum.ACTIVE.name()).build();
+        TenantResponseDTO up = TenantResponseDTO.builder().id(2).stateCode("UP").status(TenantStatusEnum.ACTIVE.name()).build();
+        when(tenantCommonRepository.findAll()).thenReturn(List.of(mp, up));
+        stubConfigs(1, 8, 0, 9, 0);
+        stubConfigs(2, 8, 0, 9, 0);
+
+        manager.loadAndScheduleAll();
+
+        ArgumentCaptor<Runnable> runnableCaptor = ArgumentCaptor.forClass(Runnable.class);
+        verify(taskScheduler, times(4)).schedule(runnableCaptor.capture(), any(CronTrigger.class));
+
+        List<Runnable> runnables = runnableCaptor.getAllValues();
+        runnables.get(0).run(); // nudge for MP
+        runnables.get(2).run(); // nudge for UP
+
+        verify(nudgeSchedulerService).processNudgesForTenant("tenant_mp", 1);
+        verify(nudgeSchedulerService).processNudgesForTenant("tenant_up", 2);
+        // Each tenant's task must not invoke the other tenant's schema
+        verify(nudgeSchedulerService, never()).processNudgesForTenant("tenant_mp", 2);
+        verify(nudgeSchedulerService, never()).processNudgesForTenant("tenant_up", 1);
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void rescheduleForTenant_invalidConfig_doesNotCancelExistingFutures() {
+        TenantResponseDTO t = TenantResponseDTO.builder().id(1).stateCode("MP").status(TenantStatusEnum.ACTIVE.name()).build();
+        when(tenantCommonRepository.findAll()).thenReturn(List.of(t));
+        stubConfigs(1, 8, 0, 9, 0);
+        manager.loadAndScheduleAll();
+
+        // Provide an out-of-range hour so validation throws before any cancel
+        when(tenantConfigService.getNudgeConfig(1))
+                .thenReturn(NudgeScheduleConfig.builder().hour(25).minute(0).build());
+
+        assertThatThrownBy(() -> manager.rescheduleForTenant(1, "MP"))
+                .isInstanceOf(IllegalArgumentException.class);
+
+        // The two original futures must still be alive — cancel must not have been called
+        verify(future, never()).cancel(anyBoolean());
     }
 
     // ── helpers ─────────────────────────────────────────────────────────────────

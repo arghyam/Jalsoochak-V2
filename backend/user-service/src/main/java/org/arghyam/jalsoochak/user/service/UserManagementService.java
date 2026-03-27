@@ -5,6 +5,7 @@ import org.arghyam.jalsoochak.user.dto.request.ChangePasswordRequestDTO;
 import org.arghyam.jalsoochak.user.dto.request.InviteRequestDTO;
 import org.arghyam.jalsoochak.user.dto.request.UpdateProfileRequestDTO;
 import org.arghyam.jalsoochak.user.dto.response.AdminUserResponseDTO;
+import org.arghyam.jalsoochak.user.enums.AdminUserStatus;
 import org.springframework.security.core.Authentication;
 
 public interface UserManagementService {
@@ -17,9 +18,9 @@ public interface UserManagementService {
 
     void changePassword(String keycloakId, ChangePasswordRequestDTO request);
 
-    PageResponseDTO<AdminUserResponseDTO> listSuperUsers(int page, int limit);
+    PageResponseDTO<AdminUserResponseDTO> listSuperUsers(AdminUserStatus status, int page, int limit);
 
-    PageResponseDTO<AdminUserResponseDTO> listStateAdmins(String tenantCode, Authentication caller, int page, int limit);
+    PageResponseDTO<AdminUserResponseDTO> listStateAdmins(String tenantCode, AdminUserStatus status, Authentication caller, int page, int limit);
 
     AdminUserResponseDTO getUserById(Long id, Authentication caller);
 

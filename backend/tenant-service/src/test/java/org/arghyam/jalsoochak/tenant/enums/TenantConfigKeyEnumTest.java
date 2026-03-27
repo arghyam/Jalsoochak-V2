@@ -41,6 +41,7 @@ class TenantConfigKeyEnumTest {
         assertThat(TenantConfigKeyEnum.DATA_CONSOLIDATION_TIME.isPublic()).isFalse();
         assertThat(TenantConfigKeyEnum.STATE_DATA_RECONCILIATION_TIME.isPublic()).isFalse();
         assertThat(TenantConfigKeyEnum.METER_CHANGE_REASONS.isPublic()).isFalse();
+        assertThat(TenantConfigKeyEnum.SUPPLY_OUTAGE_REASONS.isPublic()).isFalse();
         assertThat(TenantConfigKeyEnum.LOCATION_CHECK_REQUIRED.isPublic()).isFalse();
         assertThat(TenantConfigKeyEnum.TENANT_SUPPORTED_CHANNELS.isPublic()).isFalse();
         assertThat(TenantConfigKeyEnum.TENANT_WATER_QUANTITY_SUPPLY_THRESHOLD.isPublic()).isFalse();

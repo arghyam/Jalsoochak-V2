@@ -17,6 +17,7 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 
 import java.time.LocalDate;
@@ -80,6 +81,7 @@ class NudgeRepositoryIntegrationTest {
 
     @BeforeEach
     void setUp() {
+        when(piiEncryptionService.safeDecrypt(anyString())).thenAnswer(inv -> inv.getArgument(0));
         when(piiEncryptionService.decrypt(anyString())).thenAnswer(inv -> inv.getArgument(0));
 
         operatorTypeId = jdbcTemplate.queryForObject(
@@ -336,6 +338,66 @@ class NudgeRepositoryIntegrationTest {
                 nudgeRepository.findAllOfficersByUserType("tenant_test", "DISTRICT_OFFICER");
 
         assertThat(result).isEmpty();
+    }
+
+    @Test
+    void streamUsersWithNoUploadToday_includesRow_whenDbNameIsEmpty() {
+        // A user whose title (name) is an empty string — must still be emitted, not skipped
+        int opId = jdbcTemplate.queryForObject(
+                "INSERT INTO tenant_test.user_table (title, phone_number, user_type, language_id, email) " +
+                "VALUES ('', ?, ?, 0, ?) RETURNING id",
+                Integer.class, "911900000010", operatorTypeId, "empty-name@test.com");
+        insertSchemeMapping(opId, schemeId, 1);
+
+        List<Map<String, Object>> result = collectNoUploadToday("tenant_test");
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).get("name")).isEqualTo("");
+        assertThat(result.get(0).get("phone_number")).isEqualTo("911900000010");
+    }
+
+    @Test
+    void findOfficerByUserType_decryptionFailure_setsFieldNullAndDoesNotThrow() {
+        int officerId = insertUser("Corrupt Officer", "911900000011", sectionOfficerTypeId);
+        insertSchemeMapping(officerId, schemeId, 1);
+
+        when(piiEncryptionService.safeDecrypt(eq("Corrupt Officer")))
+                .thenThrow(new IllegalStateException("tampered ciphertext"));
+        when(piiEncryptionService.safeDecrypt(eq("911900000011"))).thenReturn("911900000011");
+
+        Map<String, Object> result = nudgeRepository.findOfficerByUserType(
+                "tenant_test", schemeId, "SECTION_OFFICER");
+
+        // Must not throw; failed field is set to null
+        assertThat(result).isNotNull();
+        assertThat(result.get("name")).isNull();
+        assertThat(result.get("phone_number")).isEqualTo("911900000011");
+    }
+
+    @Test
+    void findAllOfficersByUserType_decryptionFailureSkipsCorruptedRow() {
+        int goodOfficer = insertUser("SO Good", "919000000020", sectionOfficerTypeId);
+        int badOfficer  = insertUser("SO Bad",  "919000000021", sectionOfficerTypeId);
+        int scheme2Id = jdbcTemplate.queryForObject(
+                "INSERT INTO tenant_test.scheme_master_table (state_scheme_id) VALUES ('S-002') RETURNING id",
+                Integer.class);
+        insertSchemeMapping(goodOfficer, schemeId,  1);
+        insertSchemeMapping(badOfficer,  scheme2Id, 1);
+
+        // Corrupt the second officer's name — safeDecrypt throws for exactly that value
+        when(piiEncryptionService.safeDecrypt(eq("SO Bad"))).thenThrow(new IllegalStateException("tampered ciphertext"));
+        // Good officer's fields still decrypt normally
+        when(piiEncryptionService.safeDecrypt(eq("SO Good"))).thenReturn("SO Good");
+        when(piiEncryptionService.safeDecrypt(eq("919000000020"))).thenReturn("919000000020");
+
+        java.util.Map<Object, java.util.Map<String, Object>> result =
+                nudgeRepository.findAllOfficersByUserType("tenant_test", "SECTION_OFFICER");
+
+        // Corrupted row is skipped; valid row is present; no exception propagates
+        assertThat(result).hasSize(1);
+        assertThat(result.values().iterator().next().get("name")).isEqualTo("SO Good");
+
+        jdbcTemplate.update("DELETE FROM tenant_test.scheme_master_table WHERE id = ?", scheme2Id);
     }
 
     // ────────────────────────── updateWhatsAppConnectionId ─────────────────────
