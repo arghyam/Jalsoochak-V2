@@ -221,7 +221,7 @@ public class TenantCommonRepository {
                     COUNT(*) FILTER (WHERE status = ?)            AS degraded,
                     COUNT(*) FILTER (WHERE status = ?)            AS archived
                 FROM common_schema.tenant_master_table
-                WHERE id != 0
+                WHERE id != 0 AND deleted_at IS NULL
                 """;
         return jdbcTemplate.queryForObject(sql,
                 (rs, rn) -> TenantSummaryResponseDTO.builder()

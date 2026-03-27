@@ -212,10 +212,14 @@ public class NudgeRepository {
         List<Map<String, Object>> rows = jdbcTemplate.queryForList(sql, userTypeName);
         Map<Object, Map<String, Object>> result = new HashMap<>(rows.size() * 2);
         for (Map<String, Object> row : rows) {
-            Map<String, Object> decrypted = new HashMap<>(row);
-            decrypted.put("name", pii.safeDecrypt((String) row.get("name")));
-            decrypted.put("phone_number", pii.safeDecrypt((String) row.get("phone_number")));
-            result.putIfAbsent(decrypted.get("scheme_id"), decrypted);
+            try {
+                Map<String, Object> decrypted = new HashMap<>(row);
+                decrypted.put("name", pii.safeDecrypt((String) row.get("name")));
+                decrypted.put("phone_number", pii.safeDecrypt((String) row.get("phone_number")));
+                result.putIfAbsent(decrypted.get("scheme_id"), decrypted);
+            } catch (RuntimeException e) {
+                log.warn("Skipping officer row for user_id={} due to PII decryption failure", row.get("user_id"));
+            }
         }
         return result;
     }

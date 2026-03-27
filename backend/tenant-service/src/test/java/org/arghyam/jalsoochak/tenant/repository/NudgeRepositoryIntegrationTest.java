@@ -17,6 +17,7 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 
 import java.time.LocalDate;
@@ -337,6 +338,32 @@ class NudgeRepositoryIntegrationTest {
                 nudgeRepository.findAllOfficersByUserType("tenant_test", "DISTRICT_OFFICER");
 
         assertThat(result).isEmpty();
+    }
+
+    @Test
+    void findAllOfficersByUserType_decryptionFailureSkipsCorruptedRow() {
+        int goodOfficer = insertUser("SO Good", "919000000020", sectionOfficerTypeId);
+        int badOfficer  = insertUser("SO Bad",  "919000000021", sectionOfficerTypeId);
+        int scheme2Id = jdbcTemplate.queryForObject(
+                "INSERT INTO tenant_test.scheme_master_table (state_scheme_id) VALUES ('S-002') RETURNING id",
+                Integer.class);
+        insertSchemeMapping(goodOfficer, schemeId,  1);
+        insertSchemeMapping(badOfficer,  scheme2Id, 1);
+
+        // Corrupt the second officer's name — safeDecrypt throws for exactly that value
+        when(piiEncryptionService.safeDecrypt(eq("SO Bad"))).thenThrow(new IllegalStateException("tampered ciphertext"));
+        // Good officer's fields still decrypt normally
+        when(piiEncryptionService.safeDecrypt(eq("SO Good"))).thenReturn("SO Good");
+        when(piiEncryptionService.safeDecrypt(eq("919000000020"))).thenReturn("919000000020");
+
+        java.util.Map<Object, java.util.Map<String, Object>> result =
+                nudgeRepository.findAllOfficersByUserType("tenant_test", "SECTION_OFFICER");
+
+        // Corrupted row is skipped; valid row is present; no exception propagates
+        assertThat(result).hasSize(1);
+        assertThat(result.values().iterator().next().get("name")).isEqualTo("SO Good");
+
+        jdbcTemplate.update("DELETE FROM tenant_test.scheme_master_table WHERE id = ?", scheme2Id);
     }
 
     // ────────────────────────── updateWhatsAppConnectionId ─────────────────────

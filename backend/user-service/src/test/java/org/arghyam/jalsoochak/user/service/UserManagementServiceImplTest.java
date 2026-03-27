@@ -485,12 +485,10 @@ class UserManagementServiceImplTest {
 
             when(userCommonRepository.findAdminUserByUuid("kc-super")).thenReturn(Optional.of(callerRow));
             when(userCommonRepository.findUserTypeNameById(1)).thenReturn(Optional.of("SUPER_USER"));
-            // Pre-check passes (empty), then concurrent insert races ahead
-            when(userCommonRepository.findAdminUserByEmail("race@example.com")).thenReturn(Optional.empty());
             when(userCommonRepository.findUserTypeIdByName("SUPER_USER")).thenReturn(Optional.of(1));
             doThrow(new DuplicateKeyException("duplicate key"))
                     .when(userCommonRepository).createAdminUserPending(eq("race@example.com"), any(), any(), any(), any());
-            // Re-query after catch finds the concurrently inserted active user
+            // Pre-check passes (empty), then re-query after catch finds the concurrently inserted active user
             AdminUserRow activeUser = userRow(9L, "kc-race", "race@example.com", 0, 1, AdminUserStatus.ACTIVE);
             when(userCommonRepository.findAdminUserByEmail("race@example.com"))
                     .thenReturn(Optional.empty())

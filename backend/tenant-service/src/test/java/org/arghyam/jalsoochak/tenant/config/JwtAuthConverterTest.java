@@ -131,6 +131,39 @@ class JwtAuthConverterTest {
         assertThat(authorities(token)).noneMatch(a -> a.startsWith("USER_TYPE_"));
     }
 
+    @Test
+    void convert_blankPreferredUsername_fallsBackToSub() {
+        Jwt jwt = buildJwt(Map.of(
+                "sub", "fallback-uuid",
+                "preferred_username", "  "));
+
+        JwtAuthenticationToken token = (JwtAuthenticationToken) converter.convert(jwt);
+
+        assertThat(token.getName()).isEqualTo("fallback-uuid");
+    }
+
+    @Test
+    void convert_blankTenantStateCode_producesNoTenantAuthority() {
+        Jwt jwt = buildJwt(Map.of(
+                "sub", "user-uuid",
+                "tenant_state_code", ""));
+
+        JwtAuthenticationToken token = (JwtAuthenticationToken) converter.convert(jwt);
+
+        assertThat(authorities(token)).noneMatch(a -> a.startsWith("TENANT_"));
+    }
+
+    @Test
+    void convert_blankUserType_producesNoUserTypeAuthority() {
+        Jwt jwt = buildJwt(Map.of(
+                "sub", "user-uuid",
+                "user_type", "  "));
+
+        JwtAuthenticationToken token = (JwtAuthenticationToken) converter.convert(jwt);
+
+        assertThat(authorities(token)).noneMatch(a -> a.startsWith("USER_TYPE_"));
+    }
+
     private static Set<String> authorities(JwtAuthenticationToken token) {
         return token.getAuthorities().stream()
                 .map(GrantedAuthority::getAuthority)
