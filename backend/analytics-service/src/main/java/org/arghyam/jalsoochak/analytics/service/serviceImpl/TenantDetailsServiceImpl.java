@@ -63,25 +63,22 @@ public class TenantDetailsServiceImpl implements TenantDetailsService {
         DimTenant tenant = dimTenantRepository.findById(tenantId)
                 .orElseThrow(() -> new IllegalArgumentException("Tenant not found for tenant_id: " + tenantId));
 
-        String schemaName = resolveTenantSchema(tenant.getStateCode());
         // #region agent log
         appendDebugLog(
                 "H4",
-                "TenantDetailsServiceImpl:getTenantDetails:schema_resolved",
-                "Resolved tenant schema for tenant_data request",
+                "TenantDetailsServiceImpl:getTenantDetails:tenant_resolved",
+                "Resolved tenant for tenant_data request",
                 Map.of(
                         "tenantId", tenantId,
                         "stateCode", String.valueOf(tenant.getStateCode()),
-                        "schemaName", schemaName,
                         "parentLgdId", parentLgdId == null ? "null" : parentLgdId));
         // #endregion
-        assertRequiredTables(schemaName);
 
         TenantDetailsResponse response;
         if (parentLgdId != null) {
-            response = getTenantDetailsByParent(tenant, schemaName, parentLgdId);
+            response = getTenantDetailsByParent(tenant, parentLgdId);
         } else {
-            Map<String, Object> boundaryResult = tenantBoundaryRepository.getMergedBoundaryForTenant(schemaName);
+            Map<String, Object> boundaryResult = tenantBoundaryRepository.getMergedBoundaryForTenant(tenantId);
             Integer boundaryCount = (Integer) boundaryResult.get("boundary_count");
             String boundaryGeoJson = (String) boundaryResult.get("boundary_geojson");
 
@@ -118,9 +115,6 @@ public class TenantDetailsServiceImpl implements TenantDetailsService {
 
         DimTenant tenant = dimTenantRepository.findById(tenantId)
                 .orElseThrow(() -> new IllegalArgumentException("Tenant not found for tenant_id: " + tenantId));
-
-        String schemaName = resolveTenantSchema(tenant.getStateCode());
-        assertRequiredDepartmentTables();
 
         Integer parentLevel = tenantDepartmentBoundaryRepository.getDepartmentLevel(tenantId, parentDepartmentId);
         if (parentLevel == null) {
@@ -230,20 +224,19 @@ public class TenantDetailsServiceImpl implements TenantDetailsService {
 
     private TenantDetailsResponse getTenantDetailsByParent(
             DimTenant tenant,
-            String schemaName,
             Integer parentLgdId
     ) {
         if (parentLgdId <= 0) {
             throw new IllegalArgumentException("parent_lgd_id must be a positive integer");
         }
 
-        Integer parentLevel = tenantBoundaryRepository.getLocationLevel(schemaName, parentLgdId);
+        Integer parentLevel = tenantBoundaryRepository.getLocationLevel(parentLgdId);
         if (parentLevel == null) {
-            throw new IllegalArgumentException("parent_lgd_id not found in schema: " + parentLgdId);
+            throw new IllegalArgumentException("parent_lgd_id not found in dim_lgd_location_table: " + parentLgdId);
         }
 
         List<Map<String, Object>> childRows =
-                tenantBoundaryRepository.getChildLevelByParent(schemaName, parentLgdId, tenant.getTenantId());
+                tenantBoundaryRepository.getChildLevelByParent(tenant.getTenantId(), parentLgdId, parentLevel);
         List<ChildRegionDetails> childRegions = childRows.stream()
                 .map(row -> ChildRegionDetails.builder()
                         .lgdId((Integer) row.get("lgd_id"))
@@ -258,7 +251,7 @@ public class TenantDetailsServiceImpl implements TenantDetailsService {
                 .toList();
 
         Map<String, Object> mergedBoundaryResult =
-                tenantBoundaryRepository.getMergedBoundaryByParent(schemaName, parentLgdId);
+                tenantBoundaryRepository.getMergedBoundaryByParent(tenant.getTenantId(), parentLgdId, parentLevel);
 
         return TenantDetailsResponse.builder()
                 .tenantId(tenant.getTenantId())
@@ -267,52 +260,6 @@ public class TenantDetailsServiceImpl implements TenantDetailsService {
                 .boundaryGeoJson((String) mergedBoundaryResult.get("boundary_geojson"))
                 .childRegions(childRegions)
                 .build();
-    }
-
-    private String resolveTenantSchema(String stateCode) {
-        if (stateCode == null || stateCode.isBlank()) {
-            throw new IllegalStateException("State code is missing for this tenant");
-        }
-        String normalized = stateCode.trim().toLowerCase();
-        if (!normalized.matches("^[a-z0-9_]+$")) {
-            throw new IllegalStateException("Invalid tenant state code: " + stateCode);
-        }
-        return "tenant_" + normalized;
-    }
-
-    private void assertRequiredTables(String schemaName) {
-        boolean lgdTableExists = tenantBoundaryRepository.tableExists(schemaName, "lgd_location_master_table");
-        boolean configTableExists = tenantBoundaryRepository.tableExists(schemaName, "location_config_master_table");
-        boolean geomColumnExists = tenantBoundaryRepository.columnExists(schemaName, "lgd_location_master_table", "geom");
-        // #region agent log
-        appendDebugLog(
-                "H5",
-                "TenantDetailsServiceImpl:assertRequiredTables:existence_check",
-                "Tenant schema dependency check",
-                Map.of(
-                        "schemaName", schemaName,
-                        "lgdTableExists", lgdTableExists,
-                        "configTableExists", configTableExists,
-                        "geomColumnExists", geomColumnExists));
-        // #endregion
-        if (!lgdTableExists) {
-            throw new IllegalStateException("Missing table: " + schemaName + ".lgd_location_master_table");
-        }
-        if (!configTableExists) {
-            throw new IllegalStateException("Missing table: " + schemaName + ".location_config_master_table");
-        }
-        if (!geomColumnExists) {
-            throw new IllegalStateException("Missing column: " + schemaName + ".lgd_location_master_table.geom");
-        }
-    }
-
-    private void assertRequiredDepartmentTables() {
-        if (!tenantDepartmentBoundaryRepository.tableExists("analytics_schema", "dim_department_location_table")) {
-            throw new IllegalStateException("Missing table: analytics_schema.dim_department_location_table");
-        }
-        if (!tenantDepartmentBoundaryRepository.columnExists("analytics_schema", "dim_department_location_table", "geom")) {
-            throw new IllegalStateException("Missing column: analytics_schema.dim_department_location_table.geom");
-        }
     }
 
     private TenantDetailsResponse readFromCache(String cacheKey) {
