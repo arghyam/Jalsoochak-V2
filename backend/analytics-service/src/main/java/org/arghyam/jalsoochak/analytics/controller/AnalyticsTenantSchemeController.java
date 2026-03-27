@@ -4,9 +4,11 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.arghyam.jalsoochak.analytics.dto.response.TenantDetailsResponse;
+import org.arghyam.jalsoochak.analytics.entity.DimLgdLocation;
 import org.arghyam.jalsoochak.analytics.entity.DimScheme;
 import org.arghyam.jalsoochak.analytics.entity.DimTenant;
 import org.arghyam.jalsoochak.analytics.entity.FactMeterReading;
+import org.arghyam.jalsoochak.analytics.repository.DimLgdLocationRepository;
 import org.arghyam.jalsoochak.analytics.repository.DimSchemeRepository;
 import org.arghyam.jalsoochak.analytics.repository.DimTenantRepository;
 import org.arghyam.jalsoochak.analytics.repository.FactMeterReadingRepository;
@@ -28,6 +30,7 @@ import java.util.List;
 public class AnalyticsTenantSchemeController {
 
     private final DimTenantRepository dimTenantRepository;
+    private final DimLgdLocationRepository dimLgdLocationRepository;
     private final DimSchemeRepository dimSchemeRepository;
     private final FactMeterReadingRepository meterReadingRepository;
     private final TenantDetailsService tenantDetailsService;
@@ -61,7 +64,11 @@ public class AnalyticsTenantSchemeController {
             throw new IllegalArgumentException("Provide either parent_lgd_id or parent_department_id, not both");
         }
         if (parentLgdId == null && parentDepartmentId == null) {
-            throw new IllegalArgumentException("Provide either parent_lgd_id or parent_department_id");
+            DimLgdLocation tenantLevelLgd = dimLgdLocationRepository
+                    .findFirstByTenantIdAndLgdLevelOrderByLgdIdAsc(tenantId, 1)
+                    .orElseThrow(() -> new IllegalArgumentException(
+                            "No level-1 lgd_id found for tenant_id: " + tenantId));
+            parentLgdId = tenantLevelLgd.getLgdId();
         }
         if (parentDepartmentId != null) {
             return ResponseEntity.ok(

@@ -17,6 +17,8 @@ import org.arghyam.jalsoochak.analytics.dto.response.SubmissionStatusSummaryResp
 import org.arghyam.jalsoochak.analytics.dto.response.UserSubmissionStatusResponse;
 import org.arghyam.jalsoochak.analytics.enums.PeriodScale;
 import org.arghyam.jalsoochak.analytics.exception.GlobalExceptionHandler;
+import org.arghyam.jalsoochak.analytics.entity.DimLgdLocation;
+import org.arghyam.jalsoochak.analytics.repository.DimLgdLocationRepository;
 import org.arghyam.jalsoochak.analytics.repository.DimSchemeRepository;
 import org.arghyam.jalsoochak.analytics.repository.DimTenantRepository;
 import org.arghyam.jalsoochak.analytics.repository.FactEscalationRepository;
@@ -46,6 +48,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Stream;
 
@@ -86,6 +89,8 @@ class AnalyticsControllerInputCombinationTest {
 
     @MockBean
     private DimTenantRepository dimTenantRepository;
+    @MockBean
+    private DimLgdLocationRepository dimLgdLocationRepository;
     @MockBean
     private DimSchemeRepository dimSchemeRepository;
     @MockBean
@@ -154,12 +159,39 @@ class AnalyticsControllerInputCombinationTest {
     }
 
     @Test
-    void getTenantDetails_withNoParentIds_returnsBadRequest() throws Exception {
+    void getTenantDetails_withNoParentIds_routesToTenantLevelLgd() throws Exception {
+        when(dimLgdLocationRepository.findFirstByTenantIdAndLgdLevelOrderByLgdIdAsc(10, 1))
+                .thenReturn(Optional.of(DimLgdLocation.builder().lgdId(101).tenantId(10).lgdLevel(1).build()));
+        when(tenantDetailsService.getTenantDetailsWithAggregatedMetrics(
+                        eq(10),
+                        eq(101),
+                        any(LocalDate.class),
+                        any(LocalDate.class)))
+                .thenReturn(TenantDetailsResponse.builder().tenantId(10).build());
+
+        mockMvc.perform(get(BASE + "/tenant_data")
+                        .param("tenant_id", "10"))
+                .andExpect(status().isOk());
+
+        verify(dimLgdLocationRepository, times(1))
+                .findFirstByTenantIdAndLgdLevelOrderByLgdIdAsc(10, 1);
+        verify(tenantDetailsService, times(1))
+                .getTenantDetailsWithAggregatedMetrics(eq(10), eq(101), any(LocalDate.class), any(LocalDate.class));
+        verifyNoInteractions(schemeRegularityService);
+    }
+
+    @Test
+    void getTenantDetails_withNoParentIdsAndNoTenantLevelLgd_returnsBadRequest() throws Exception {
+        when(dimLgdLocationRepository.findFirstByTenantIdAndLgdLevelOrderByLgdIdAsc(10, 1))
+                .thenReturn(Optional.empty());
+
         mockMvc.perform(get(BASE + "/tenant_data")
                         .param("tenant_id", "10"))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.message", containsString("Provide either parent_lgd_id or parent_department_id")));
+                .andExpect(jsonPath("$.message", containsString("No level-1 lgd_id found for tenant_id: 10")));
 
+        verify(dimLgdLocationRepository, times(1))
+                .findFirstByTenantIdAndLgdLevelOrderByLgdIdAsc(10, 1);
         verifyNoInteractions(tenantDetailsService, schemeRegularityService);
     }
 
