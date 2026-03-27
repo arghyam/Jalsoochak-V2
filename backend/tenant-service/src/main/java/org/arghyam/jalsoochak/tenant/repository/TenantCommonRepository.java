@@ -137,10 +137,11 @@ public class TenantCommonRepository {
 
     /**
      * Lists all tenants in the common_schema.tenant_master_table (no pagination).
+     * Excludes soft-deleted tenants.
      */
     public List<TenantResponseDTO> findAll() {
         return jdbcTemplate.query(
-                "SELECT * FROM common_schema.tenant_master_table ORDER BY id",
+                "SELECT * FROM common_schema.tenant_master_table WHERE deleted_at IS NULL ORDER BY id",
                 TENANT_ROW_MAPPER);
     }
 
@@ -161,24 +162,14 @@ public class TenantCommonRepository {
             throw new IllegalArgumentException("offset must be non-negative");
         }
 
-        List<Object> params = new ArrayList<>();
-        StringBuilder sql = new StringBuilder(
-                "SELECT * FROM common_schema.tenant_master_table WHERE id != 0 AND deleted_at IS NULL");
-
-        if (status != null) {
-            sql.append(" AND status = ?");
-            params.add(status.getCode());
-        }
-        if (search != null && !search.isBlank()) {
-            sql.append(" AND title ILIKE ?");
-            params.add("%" + search.strip() + "%");
-        }
-
-        sql.append(" ORDER BY id LIMIT ? OFFSET ?");
+        FilterClause filter = buildTenantFilterClause(status, search);
+        List<Object> params = new ArrayList<>(Arrays.asList(filter.params()));
         params.add(limit);
         params.add(offset);
 
-        return jdbcTemplate.query(sql.toString(), TENANT_ROW_MAPPER, params.toArray());
+        String sql = "SELECT * FROM common_schema.tenant_master_table " + filter.whereClause()
+                + " ORDER BY id LIMIT ? OFFSET ?";
+        return jdbcTemplate.query(sql, TENANT_ROW_MAPPER, params.toArray());
     }
 
     /**
@@ -189,20 +180,25 @@ public class TenantCommonRepository {
      * @param search  Optional case-insensitive partial match on tenant name; {@code null} or blank means no filter.
      */
     public long countAllTenants(TenantStatusEnum status, String search) {
-        List<Object> params = new ArrayList<>();
-        StringBuilder sql = new StringBuilder(
-                "SELECT COUNT(*) FROM common_schema.tenant_master_table WHERE id != 0 AND deleted_at IS NULL");
+        FilterClause filter = buildTenantFilterClause(status, search);
+        String sql = "SELECT COUNT(*) FROM common_schema.tenant_master_table " + filter.whereClause();
+        return jdbcTemplate.queryForObject(sql, Long.class, filter.params());
+    }
 
+    private record FilterClause(String whereClause, Object[] params) {}
+
+    private FilterClause buildTenantFilterClause(TenantStatusEnum status, String search) {
+        List<Object> params = new ArrayList<>();
+        StringBuilder where = new StringBuilder("WHERE id != 0 AND deleted_at IS NULL");
         if (status != null) {
-            sql.append(" AND status = ?");
+            where.append(" AND status = ?");
             params.add(status.getCode());
         }
         if (search != null && !search.isBlank()) {
-            sql.append(" AND title ILIKE ?");
+            where.append(" AND title ILIKE ?");
             params.add("%" + search.strip() + "%");
         }
-
-        return jdbcTemplate.queryForObject(sql.toString(), Long.class, params.toArray());
+        return new FilterClause(where.toString(), params.toArray());
     }
 
     /**

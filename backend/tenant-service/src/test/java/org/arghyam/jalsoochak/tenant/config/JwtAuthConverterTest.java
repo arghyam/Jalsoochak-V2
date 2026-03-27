@@ -38,7 +38,7 @@ class JwtAuthConverterTest {
                 "realm_access", Map.of("roles", List.of("SUPER_USER")),
                 "resource_access", Map.of(CLIENT_ID, Map.of("roles", List.of("STATE_ADMIN")))));
 
-        JwtAuthenticationToken token = (JwtAuthenticationToken) converter.convert(jwt);
+        JwtAuthenticationToken token = toAuthToken(jwt);
         Set<String> authorities = authorities(token);
 
         assertThat(token.getName()).isEqualTo("admin@example.com");
@@ -55,7 +55,7 @@ class JwtAuthConverterTest {
                 "sub", "user-uuid",
                 "tenant_state_code", "tr"));
 
-        JwtAuthenticationToken token = (JwtAuthenticationToken) converter.convert(jwt);
+        JwtAuthenticationToken token = toAuthToken(jwt);
 
         assertThat(authorities(token)).contains("TENANT_TR");
     }
@@ -66,7 +66,7 @@ class JwtAuthConverterTest {
                 "sub", "user-uuid",
                 "user_type", "state_admin"));
 
-        JwtAuthenticationToken token = (JwtAuthenticationToken) converter.convert(jwt);
+        JwtAuthenticationToken token = toAuthToken(jwt);
 
         assertThat(authorities(token)).contains("USER_TYPE_STATE_ADMIN");
     }
@@ -75,7 +75,7 @@ class JwtAuthConverterTest {
     void convert_missingPreferredUsername_fallsBackToSub() {
         Jwt jwt = buildJwt(Map.of("sub", "fallback-uuid"));
 
-        JwtAuthenticationToken token = (JwtAuthenticationToken) converter.convert(jwt);
+        JwtAuthenticationToken token = toAuthToken(jwt);
 
         assertThat(token.getName()).isEqualTo("fallback-uuid");
     }
@@ -84,7 +84,7 @@ class JwtAuthConverterTest {
     void convert_missingRealmAccess_producesNoRealmRoles() {
         Jwt jwt = buildJwt(Map.of("sub", "user-uuid"));
 
-        JwtAuthenticationToken token = (JwtAuthenticationToken) converter.convert(jwt);
+        JwtAuthenticationToken token = toAuthToken(jwt);
 
         assertThat(authorities(token))
                 .noneMatch(a -> a.startsWith("ROLE_"));
@@ -96,7 +96,7 @@ class JwtAuthConverterTest {
                 "sub", "user-uuid",
                 "resource_access", Map.of("other-client", Map.of("roles", List.of("SOME_ROLE")))));
 
-        JwtAuthenticationToken token = (JwtAuthenticationToken) converter.convert(jwt);
+        JwtAuthenticationToken token = toAuthToken(jwt);
 
         assertThat(authorities(token)).doesNotContain("ROLE_SOME_ROLE");
     }
@@ -117,7 +117,7 @@ class JwtAuthConverterTest {
     void convert_missingTenantStateCode_producesNoTenantAuthority() {
         Jwt jwt = buildJwt(Map.of("sub", "user-uuid"));
 
-        JwtAuthenticationToken token = (JwtAuthenticationToken) converter.convert(jwt);
+        JwtAuthenticationToken token = toAuthToken(jwt);
 
         assertThat(authorities(token)).noneMatch(a -> a.startsWith("TENANT_"));
     }
@@ -126,7 +126,7 @@ class JwtAuthConverterTest {
     void convert_missingUserType_producesNoUserTypeAuthority() {
         Jwt jwt = buildJwt(Map.of("sub", "user-uuid"));
 
-        JwtAuthenticationToken token = (JwtAuthenticationToken) converter.convert(jwt);
+        JwtAuthenticationToken token = toAuthToken(jwt);
 
         assertThat(authorities(token)).noneMatch(a -> a.startsWith("USER_TYPE_"));
     }
@@ -137,7 +137,7 @@ class JwtAuthConverterTest {
                 "sub", "fallback-uuid",
                 "preferred_username", "  "));
 
-        JwtAuthenticationToken token = (JwtAuthenticationToken) converter.convert(jwt);
+        JwtAuthenticationToken token = toAuthToken(jwt);
 
         assertThat(token.getName()).isEqualTo("fallback-uuid");
     }
@@ -148,7 +148,7 @@ class JwtAuthConverterTest {
                 "sub", "user-uuid",
                 "tenant_state_code", ""));
 
-        JwtAuthenticationToken token = (JwtAuthenticationToken) converter.convert(jwt);
+        JwtAuthenticationToken token = toAuthToken(jwt);
 
         assertThat(authorities(token)).noneMatch(a -> a.startsWith("TENANT_"));
     }
@@ -159,9 +159,13 @@ class JwtAuthConverterTest {
                 "sub", "user-uuid",
                 "user_type", "  "));
 
-        JwtAuthenticationToken token = (JwtAuthenticationToken) converter.convert(jwt);
+        JwtAuthenticationToken token = toAuthToken(jwt);
 
         assertThat(authorities(token)).noneMatch(a -> a.startsWith("USER_TYPE_"));
+    }
+
+    private JwtAuthenticationToken toAuthToken(Jwt jwt) {
+        return (JwtAuthenticationToken) converter.convert(jwt);
     }
 
     private static Set<String> authorities(JwtAuthenticationToken token) {

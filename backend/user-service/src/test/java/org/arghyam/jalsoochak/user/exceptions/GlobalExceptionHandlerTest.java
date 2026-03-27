@@ -30,12 +30,32 @@ class GlobalExceptionHandlerTest {
         ResponseEntity<ApiErrorResponseDTO> response = handler.handleTypeMismatch(ex);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(response.getBody()).isNotNull();
         String message = response.getBody().getMessage();
         assertThat(message).contains("WRONG");
         assertThat(message).contains("status");
         assertThat(message).contains("INACTIVE");
         assertThat(message).contains("ACTIVE");
         assertThat(message).contains("PENDING");
+    }
+
+    @Test
+    void handleTypeMismatch_nullRequiredType_producesGenericMessage() {
+        MethodArgumentTypeMismatchException ex = mock(MethodArgumentTypeMismatchException.class);
+        MethodParameter param = mock(MethodParameter.class);
+
+        when(ex.getRequiredType()).thenReturn(null);
+        when(ex.getParameter()).thenReturn(param);
+        when(param.getParameterName()).thenReturn("id");
+        when(ex.getValue()).thenReturn("xyz");
+
+        ResponseEntity<ApiErrorResponseDTO> response = handler.handleTypeMismatch(ex);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().getMessage()).contains("xyz");
+        assertThat(response.getBody().getMessage()).contains("id");
+        assertThat(response.getBody().getMessage()).doesNotContain("Accepted values");
     }
 
     @Test

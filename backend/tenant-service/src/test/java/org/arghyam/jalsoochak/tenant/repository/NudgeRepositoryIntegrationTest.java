@@ -341,6 +341,40 @@ class NudgeRepositoryIntegrationTest {
     }
 
     @Test
+    void streamUsersWithNoUploadToday_includesRow_whenDbNameIsEmpty() {
+        // A user whose title (name) is an empty string — must still be emitted, not skipped
+        int opId = jdbcTemplate.queryForObject(
+                "INSERT INTO tenant_test.user_table (title, phone_number, user_type, language_id, email) " +
+                "VALUES ('', ?, ?, 0, ?) RETURNING id",
+                Integer.class, "911900000010", operatorTypeId, "empty-name@test.com");
+        insertSchemeMapping(opId, schemeId, 1);
+
+        List<Map<String, Object>> result = collectNoUploadToday("tenant_test");
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).get("name")).isEqualTo("");
+        assertThat(result.get(0).get("phone_number")).isEqualTo("911900000010");
+    }
+
+    @Test
+    void findOfficerByUserType_decryptionFailure_fallsBackToRawValueAndDoesNotThrow() {
+        int officerId = insertUser("Corrupt Officer", "911900000011", sectionOfficerTypeId);
+        insertSchemeMapping(officerId, schemeId, 1);
+
+        when(piiEncryptionService.safeDecrypt(eq("Corrupt Officer")))
+                .thenThrow(new IllegalStateException("tampered ciphertext"));
+        when(piiEncryptionService.safeDecrypt(eq("911900000011"))).thenReturn("911900000011");
+
+        Map<String, Object> result = nudgeRepository.findOfficerByUserType(
+                "tenant_test", schemeId, "SECTION_OFFICER");
+
+        // Must not throw; original encrypted value retained for the failed field
+        assertThat(result).isNotNull();
+        assertThat(result.get("name")).isEqualTo("Corrupt Officer"); // raw value kept
+        assertThat(result.get("phone_number")).isEqualTo("911900000011");
+    }
+
+    @Test
     void findAllOfficersByUserType_decryptionFailureSkipsCorruptedRow() {
         int goodOfficer = insertUser("SO Good", "919000000020", sectionOfficerTypeId);
         int badOfficer  = insertUser("SO Bad",  "919000000021", sectionOfficerTypeId);

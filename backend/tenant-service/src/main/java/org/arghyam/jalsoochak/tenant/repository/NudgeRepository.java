@@ -61,9 +61,11 @@ public class NudgeRepository {
             return ps;
         }, rs -> {
             Object userId = rs.getObject("user_id");
-            String name = decryptPii(rs.getString("name"),         "name", userId, schema);
-            String phoneNumber = decryptPii(rs.getString("phone_number"), "phone_number", userId, schema);
-            if (name == null || phoneNumber == null) return;
+            String rawName = rs.getString("name");
+            String rawPhone = rs.getString("phone_number");
+            String name = decryptPii(rawName, "name", userId, schema);
+            String phoneNumber = decryptPii(rawPhone, "phone_number", userId, schema);
+            if ((rawName != null && name == null) || (rawPhone != null && phoneNumber == null)) return;
             Map<String, Object> row = new HashMap<>(8);
             row.put("user_id", userId);
             row.put("name", name);
@@ -146,9 +148,11 @@ public class NudgeRepository {
             return ps;
         }, rs -> {
             Object userId = rs.getObject("user_id");
-            String name = decryptPii(rs.getString("name"),         "name", userId, schema);
-            String phoneNumber = decryptPii(rs.getString("phone_number"), "phone_number", userId, schema);
-            if (name == null || phoneNumber == null) return;
+            String rawName = rs.getString("name");
+            String rawPhone = rs.getString("phone_number");
+            String name = decryptPii(rawName, "name", userId, schema);
+            String phoneNumber = decryptPii(rawPhone, "phone_number", userId, schema);
+            if ((rawName != null && name == null) || (rawPhone != null && phoneNumber == null)) return;
             Map<String, Object> row = new HashMap<>(10);
             row.put("user_id", userId);
             row.put("name", name);
@@ -185,8 +189,16 @@ public class NudgeRepository {
         List<Map<String, Object>> rows = jdbcTemplate.queryForList(sql, schemeId, userTypeName);
         if (rows.isEmpty()) return null;
         Map<String, Object> row = new HashMap<>(rows.get(0));
-        row.put("name", pii.safeDecrypt((String) row.get("name")));
-        row.put("phone_number", pii.safeDecrypt((String) row.get("phone_number")));
+        try {
+            row.put("name", pii.safeDecrypt((String) row.get("name")));
+        } catch (RuntimeException e) {
+            log.warn("PII decryption failed for 'name', user_id={} schema='{}'", row.get("user_id"), schema);
+        }
+        try {
+            row.put("phone_number", pii.safeDecrypt((String) row.get("phone_number")));
+        } catch (RuntimeException e) {
+            log.warn("PII decryption failed for 'phone_number', user_id={} schema='{}'", row.get("user_id"), schema);
+        }
         return row;
     }
 
