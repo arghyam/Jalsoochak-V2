@@ -254,4 +254,52 @@ class SystemManagementServiceImplTest {
             assertThrows(ResourceNotFoundException.class, () -> systemManagementService.setSystemConfigs(request));
         }
     }
+
+    @Nested
+    @DisplayName("Get System Supported Channels Tests")
+    class GetSystemSupportedChannelsTests {
+
+        @Test
+        @DisplayName("Should return configured channel list")
+        void getSystemSupportedChannels_ReturnsChannels() {
+            List<ConfigDTO> configs = List.of(
+                    ConfigDTO.builder()
+                            .configKey(SystemConfigKeyEnum.SYSTEM_SUPPORTED_CHANNELS.name())
+                            .configValue("{\"channels\":[\"BFM\",\"ELM\",\"PDU\"]}")
+                            .build());
+            when(tenantCommonRepository.findConfigsByTenantId(0)).thenReturn(configs);
+
+            List<String> result = systemManagementService.getSystemSupportedChannels();
+
+            assertNotNull(result);
+            assertEquals(3, result.size());
+            assertTrue(result.containsAll(List.of("BFM", "ELM", "PDU")));
+        }
+
+        @Test
+        @DisplayName("Should return empty list when SYSTEM_SUPPORTED_CHANNELS not configured")
+        void getSystemSupportedChannels_NotConfigured_ReturnsEmptyList() {
+            when(tenantCommonRepository.findConfigsByTenantId(0)).thenReturn(List.of());
+
+            List<String> result = systemManagementService.getSystemSupportedChannels();
+
+            assertNotNull(result);
+            assertTrue(result.isEmpty());
+        }
+
+        @Test
+        @DisplayName("Should throw InvalidConfigValueException when config value is malformed JSON")
+        void getSystemSupportedChannels_MalformedJson_ThrowsInvalidConfigValueException() {
+            List<ConfigDTO> configs = List.of(
+                    ConfigDTO.builder()
+                            .configKey(SystemConfigKeyEnum.SYSTEM_SUPPORTED_CHANNELS.name())
+                            .configValue("not-valid-json{{{")
+                            .build());
+            when(tenantCommonRepository.findConfigsByTenantId(0)).thenReturn(configs);
+
+            assertThrows(
+                    org.arghyam.jalsoochak.tenant.exception.InvalidConfigValueException.class,
+                    () -> systemManagementService.getSystemSupportedChannels());
+        }
+    }
 }
