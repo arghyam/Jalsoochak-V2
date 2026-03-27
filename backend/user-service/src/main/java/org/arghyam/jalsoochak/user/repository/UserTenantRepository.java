@@ -301,6 +301,16 @@ public class UserTenantRepository {
     }
 
     /**
+     * Returns UUIDs of users in the given tenant schema whose {@code title_hash} matches
+     * the provided HMAC-SHA256 hex value. Used for exact case-insensitive name search.
+     */
+    public List<String> findUuidsByTitleHash(String schemaName, String titleHash) {
+        validateSchemaName(schemaName);
+        String sql = String.format("SELECT uuid FROM %s.user_table WHERE title_hash = ?", schemaName);
+        return jdbcTemplate.queryForList(sql, String.class, titleHash);
+    }
+
+    /**
      * Returns the raw {@code password} column value for a given user.
      * Used by {@code StaffKeycloakService} to determine whether a managed password
      * has already been set (non-placeholder value → decrypt with {@code PasswordCipher}).
