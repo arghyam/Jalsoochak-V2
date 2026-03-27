@@ -193,11 +193,13 @@ public class NudgeRepository {
             row.put("name", pii.safeDecrypt((String) row.get("name")));
         } catch (RuntimeException e) {
             log.warn("PII decryption failed for 'name', user_id={} schema='{}'", row.get("user_id"), schema);
+            row.put("name", null);
         }
         try {
             row.put("phone_number", pii.safeDecrypt((String) row.get("phone_number")));
         } catch (RuntimeException e) {
             log.warn("PII decryption failed for 'phone_number', user_id={} schema='{}'", row.get("user_id"), schema);
+            row.put("phone_number", null);
         }
         return row;
     }

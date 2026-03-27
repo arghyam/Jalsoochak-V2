@@ -3,6 +3,8 @@ package org.arghyam.jalsoochak.user.exceptions;
 import org.arghyam.jalsoochak.user.dto.common.ApiErrorResponseDTO;
 import org.arghyam.jalsoochak.user.enums.AdminUserStatus;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.core.MethodParameter;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -12,6 +14,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+@ExtendWith(MockitoExtension.class)
 class GlobalExceptionHandlerTest {
 
     private final GlobalExceptionHandler handler = new GlobalExceptionHandler();
@@ -71,6 +74,7 @@ class GlobalExceptionHandlerTest {
         ResponseEntity<ApiErrorResponseDTO> response = handler.handleTypeMismatch(ex);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(response.getBody()).isNotNull();
         String message = response.getBody().getMessage();
         assertThat(message).contains("abc");
         assertThat(message).contains("page");

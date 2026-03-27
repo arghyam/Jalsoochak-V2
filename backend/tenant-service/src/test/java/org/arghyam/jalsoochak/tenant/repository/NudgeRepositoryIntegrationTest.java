@@ -357,7 +357,7 @@ class NudgeRepositoryIntegrationTest {
     }
 
     @Test
-    void findOfficerByUserType_decryptionFailure_fallsBackToRawValueAndDoesNotThrow() {
+    void findOfficerByUserType_decryptionFailure_setsFieldNullAndDoesNotThrow() {
         int officerId = insertUser("Corrupt Officer", "911900000011", sectionOfficerTypeId);
         insertSchemeMapping(officerId, schemeId, 1);
 
@@ -368,9 +368,9 @@ class NudgeRepositoryIntegrationTest {
         Map<String, Object> result = nudgeRepository.findOfficerByUserType(
                 "tenant_test", schemeId, "SECTION_OFFICER");
 
-        // Must not throw; original encrypted value retained for the failed field
+        // Must not throw; failed field is set to null
         assertThat(result).isNotNull();
-        assertThat(result.get("name")).isEqualTo("Corrupt Officer"); // raw value kept
+        assertThat(result.get("name")).isNull();
         assertThat(result.get("phone_number")).isEqualTo("911900000011");
     }
 

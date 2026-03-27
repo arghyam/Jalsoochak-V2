@@ -195,8 +195,12 @@ public class TenantCommonRepository {
             params.add(status.getCode());
         }
         if (search != null && !search.isBlank()) {
-            where.append(" AND title ILIKE ?");
-            params.add("%" + search.strip() + "%");
+            String escapedSearch = search.strip()
+                    .replace("\\", "\\\\")
+                    .replace("%", "\\%")
+                    .replace("_", "\\_");
+            where.append(" AND title ILIKE ? ESCAPE '\\'");
+            params.add("%" + escapedSearch + "%");
         }
         return new FilterClause(where.toString(), params.toArray());
     }
