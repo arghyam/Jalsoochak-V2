@@ -16,4 +16,6 @@ public interface FactEscalationRepository extends JpaRepository<FactEscalation, 
     List<FactEscalation> findByResolutionStatus(Integer resolutionStatus);
 
     List<FactEscalation> findByTenantIdAndResolutionStatus(Integer tenantId, Integer resolutionStatus);
+
+    boolean existsByCorrelationId(String correlationId);
 }

@@ -10,4 +10,6 @@ import java.util.List;
 public interface DimLgdLocationRepository extends JpaRepository<DimLgdLocation, Integer> {
 
     List<DimLgdLocation> findByTenantId(Integer tenantId);
+
+    List<DimLgdLocation> findByLgdLevel(Integer lgdLevel);
 }

@@ -13,29 +13,26 @@ spring:
   jpa:
     hibernate:
       ddl-auto: none
-    show-sql: true
     properties:
       hibernate:
         dialect: org.hibernate.dialect.PostgreSQLDialect
-
-  security:
-    oauth2:
-      resourceserver:
-        jwt:
-          issuer-uri: ${KEYCLOAK_ISSUER_URI:http://localhost:8080/realms/jalsoochak}
-
-  data:
-    redis:
-      host: ${REDIS_HOST:localhost}
-      port: ${REDIS_PORT:6379}
-      password: ${REDIS_PASSWORD:}
-      database: ${REDIS_DATABASE:0}
 
   kafka:
     bootstrap-servers: localhost:9092
     consumer:
       group-id: anomaly-service-group
       auto-offset-reset: earliest
+
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${KEYCLOAK_ISSUER_URI:https://jalsoochak.beehyv.com/keycloak/realms/jalsoochak-realm}
+
+keycloak:
+  realm: jalsoochak-realm
+  auth-server-url: https://jalsoochak.beehyv.com/keycloak
+  resource: jalsoochak-client-id
 
 eureka:
   client:
@@ -46,17 +43,10 @@ management:
   endpoints:
     web:
       exposure:
-        include: "health,info,prometheus"
-  endpoint:
-    prometheus:
-      enabled: true
-  metrics:
-    tags:
-      application: anomaly-service
+        include: "*"
 
 logging:
   file:
     name: ${LOG_FILE_PATH:../logger/logs/backend-services.log}
-
   pattern:
     level: "service=${spring.application.name} %5p"

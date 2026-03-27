@@ -11,6 +11,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 
@@ -33,7 +34,7 @@ public class FactSchemePerformance {
     private Integer tenantId;
 
     @Column(name = "performance_score")
-    private Integer performanceScore;
+    private BigDecimal performanceScore;
 
     @Column(name = "last_water_supply_date")
     private LocalDate lastWaterSupplyDate;

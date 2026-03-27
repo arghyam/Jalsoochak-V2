@@ -1,0 +1,2 @@
+state_scheme_id,centre_scheme_id,scheme_name,fhtc_count,planned_fhtc,house_hold_count,latitude,longitude,channel,work_status,operating_status,created_by,updated_by
+SS-TEST-001,CS-TEST-001,Test Scheme Upload 1,10,12,15,12.9716,77.5946,bfm,ongoing,operative,1,1

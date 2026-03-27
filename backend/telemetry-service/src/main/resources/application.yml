@@ -1,63 +1,100 @@
 server:
-  port: 8084
+  port: 8089
 
 spring:
+  config:
+    import: optional:file:./telemetry-service/.env[.properties],optional:file:.env[.properties]
+
   application:
     name: telemetry-service
 
   datasource:
-    url: jdbc:postgresql://localhost:5432/shared_db
-    username: YOUR_USERNAME
-    password: YOUR_PASSWORD
+    url: ${SPRING_DATASOURCE_URL}
+    username: ${SPRING_DATASOURCE_USERNAME}
+    password: ${SPRING_DATASOURCE_PASSWORD}
 
   jpa:
     hibernate:
       ddl-auto: none
-    show-sql: true
     properties:
       hibernate:
         dialect: org.hibernate.dialect.PostgreSQLDialect
 
-  security:
-    oauth2:
-      resourceserver:
-        jwt:
-          issuer-uri: ${KEYCLOAK_ISSUER_URI:http://localhost:8080/realms/jalsoochak}
-
-  data:
-    redis:
-      host: ${REDIS_HOST:localhost}
-      port: ${REDIS_PORT:6379}
-      password: ${REDIS_PASSWORD:}
-      database: ${REDIS_DATABASE:0}
-
   kafka:
-    bootstrap-servers: localhost:9092
+    bootstrap-servers: ${SPRING_KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
     consumer:
-      group-id: telemetry-service-group
+      group-id: ${SPRING_KAFKA_CONSUMER_GROUP_ID:telemetry-service-group}
       auto-offset-reset: earliest
+    producer:
+      properties:
+        max.block.ms: 1000
+        request.timeout.ms: 1000
+
+minio:
+  endpoint: ${MINIO_ENDPOINT}
+  bucket: ${MINIO_BUCKET}
+  access-key: ${MINIO_ACCESS_KEY}
+  secret-key: ${MINIO_SECRET_KEY}
+  region: ${MINIO_REGION:us-east-1}
+
+glific:
+  api-token: ${GLIFIC_API_TOKEN:}
+  media-base-url: ${GLIFIC_MEDIA_BASE_URL:https://api.glific.org/v1/media}
+  sync:
+    enabled: ${GLIFIC_SYNC_ENABLED:false}
+    base-url: ${GLIFIC_SYNC_BASE_URL:https://api.arghyam.glific.com}
+    user:
+      phone: ${GLIFIC_SYNC_USER_PHONE:}
+      password: ${GLIFIC_SYNC_USER_PASSWORD:}
+
+flowvision:
+  url: ${FLOWVISION_URL:https://jalsoochak.beehyv.com/flowvision/v1/extract-reading}
+  bypass-system-proxy: ${FLOWVISION_BYPASS_SYSTEM_PROXY:true}
+  http:
+    connect-timeout-ms: ${FLOWVISION_CONNECT_TIMEOUT_MS:5000}
+    read-timeout-ms: ${FLOWVISION_READ_TIMEOUT_MS:10000}
+  retry:
+    max-attempts: ${FLOWVISION_RETRY_MAX_ATTEMPTS:3}
+    initial-backoff-ms: ${FLOWVISION_RETRY_INITIAL_BACKOFF_MS:300}
+
+media-download:
+  retry:
+    max-attempts: ${MEDIA_DOWNLOAD_RETRY_MAX_ATTEMPTS:3}
+    initial-backoff-ms: ${MEDIA_DOWNLOAD_RETRY_INITIAL_BACKOFF_MS:300}
+
+#keycloak:
+#  realm: ${KEYCLOAK_REALM:jalsoochak-realm}
+#  auth-server-url: ${KEYCLOAK_AUTH_SERVER_URL:https://jalsoochak.beehyv.com/keycloak}
+#  resource: ${KEYCLOAK_CLIENT_ID:}
+#  credentials:
+#    secret: ${KEYCLOAK_CLIENT_SECRET:}
 
 eureka:
   client:
+    enabled: ${EUREKA_ENABLED:false}
+    register-with-eureka: ${EUREKA_REGISTER:false}
+    fetch-registry: ${EUREKA_FETCH:false}
     service-url:
-      defaultZone: http://localhost:8761/eureka/
+      defaultZone: ${EUREKA_DEFAULT_ZONE:http://localhost:8761/eureka/}
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+  api-docs:
+    path: /v3/api-docs
 
 management:
   endpoints:
     web:
       exposure:
-        include: "health,info,prometheus"
-
-  endpoint:
-    prometheus:
-      enabled: true
-  metrics:
-    tags:
-      application: telemetry-service
+        include: ${MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE:health,info,prometheus}
 
 logging:
   file:
     name: ${LOG_FILE_PATH:../logger/logs/backend-services.log}
-
   pattern:
     level: "service=${spring.application.name} %5p"
+
+pii:
+  encryption-key: ${PII_ENCRYPTION_KEY}
+  hmac-key: ${PII_HMAC_KEY}

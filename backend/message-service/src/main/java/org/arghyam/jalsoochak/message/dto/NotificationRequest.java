@@ -22,4 +22,7 @@ public class NotificationRequest {
 
     /** Channel to use: WEBHOOK | EMAIL | WHATSAPP */
     private String channel;
+
+    /** Optional date string passed as template variable {{2}} for WhatsApp nudge HSM */
+    private String date;
 }

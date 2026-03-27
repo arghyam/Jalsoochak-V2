@@ -8,9 +8,15 @@ A production-ready multi-module Spring Boot microservices platform built with **
 
 ```
                     ┌──────────────────────┐
+                    │      API Gateway     │
+                    │ Spring Cloud Gateway │
+                    │        :8080         │
+                    └──────────┬───────────┘
+                               │
+                    ┌──────────┴───────────┐
                     │   Service Discovery  │
                     │   (Eureka Server)    │
-                    │     :8761            │
+                    │        :8761         │
                     └──────────┬───────────┘
                                │
           ┌────────────────────┼────────────────────┐
@@ -42,6 +48,7 @@ Infrastructure: PostgreSQL (shared_db) + Apache Kafka
 
 | Module                       | Port   | Description                                      |
 |------------------------------|--------|--------------------------------------------------|
+| `api-gateway`                | 8080   | Spring Cloud Gateway for unified API ingress     |
 | `service-discovery`          | 8761   | Netflix Eureka Server for service registration   |
 | `tenant-service`             | 8081   | Manages tenant information                       |
 | `user-service`               | 8082   | Manages user information                         |
@@ -114,7 +121,7 @@ docker run -d --name kafka -p 9092:9092 \
 
 ---
 
-## Start PostgreSQL with Docker
+<!-- ## Start PostgreSQL with Docker
 
 ```bash
 docker run -d \
@@ -124,7 +131,7 @@ docker run -d \
   -e POSTGRES_USER=YOUR_USERNAME \
   -e POSTGRES_PASSWORD=YOUR_PASSWORD \
   postgres:16-alpine
-```
+``` -->
 
 > **Note:** Update `YOUR_USERNAME` and `YOUR_PASSWORD` in each service's `application.yml` with real credentials.
 
@@ -323,6 +330,7 @@ cd backend
 mvn clean package -DskipTests
 
 # Start each service in a separate terminal
+java -jar api-gateway/target/*.jar
 java -jar service-discovery/target/*.jar
 java -jar tenant-service/target/*.jar
 java -jar user-service/target/*.jar
@@ -354,6 +362,33 @@ docker run -p 8081:8081 tenant-service
 ---
 
 ## API Endpoints
+
+### API Gateway (`:8080`)
+
+Use the gateway as the single entrypoint. Prefix-based routes are configured as:
+
+- `/tenant/**` -> `tenant-service`
+- `/user/**` -> `user-service`
+- `/anomaly/**` -> `anomaly-service`
+- `/telemetry/**` -> `telemetry-service`
+- `/message/**` -> `message-service`
+- `/scheme/**` -> `scheme-service`
+- `/analytics/**` -> `analytics-service`
+
+For service discovery mode, enable Eureka and set route URIs to load-balanced names (example: `TENANT_SERVICE_URI=lb://tenant-service`).
+
+Examples:
+
+```bash
+# Tenant service endpoint through gateway
+curl http://localhost:8080/tenant/api/v1/tenants
+
+# User service endpoint through gateway
+curl http://localhost:8080/user/api/users
+
+# Analytics endpoint through gateway
+curl "http://localhost:8080/analytics/api/v1/analytics/tenants"
+```
 
 ### Tenant Service (`:8081`)
 
@@ -452,7 +487,7 @@ docker run -p 8081:8081 tenant-service
 ### Kafka Publishing (All Services)
 
 ```bash
-curl -X POST http://localhost:8081/api/publish \
+curl -X POST http://localhost:8080/tenant/api/publish \
   -H "Content-Type: text/plain" \
   -d "Hello from tenant-service"
 ```
@@ -484,7 +519,6 @@ GET http://localhost:<port>/actuator/health
 ## Future Enhancements
 
 - **Database Separation**: Currently all services point to a single `shared_db`. In production, each service should have its own dedicated database to follow the **Database-per-Service** pattern.
-- **API Gateway**: Add Spring Cloud Gateway for centralized routing, rate limiting, and authentication.
 - **Config Server**: Externalize configuration using Spring Cloud Config Server.
 - **Circuit Breaker**: Add Resilience4j for fault tolerance and circuit-breaking patterns.
 - **Distributed Tracing**: Integrate Micrometer Tracing with Zipkin/Jaeger.
@@ -503,6 +537,13 @@ water-management-platform/
 ├── database/                        # Flyway SQL migrations (single source of truth)
 │   ├── V1__create_common_schema_tables.sql
 │   └── V2__create_tenant_schema_function.sql
+│
+├── api-gateway/                     # Port 8080 - unified API ingress
+│   ├── pom.xml
+│   ├── Dockerfile
+│   └── src/main/
+│       ├── java/org/arghyam/jalsoochak/apigateway/ApiGatewayApplication.java
+│       └── resources/application.yml
 │
 ├── service-discovery/
 │   ├── pom.xml

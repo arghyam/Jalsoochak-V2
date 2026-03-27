@@ -1,6 +1,14 @@
 server:
   port: 8085
 
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+    tags-sorter: alpha
+    operations-sorter: method
+  api-docs:
+    path: /v3/api-docs
+
 spring:
   application:
     name: message-service
@@ -13,29 +21,48 @@ spring:
   jpa:
     hibernate:
       ddl-auto: none
-    show-sql: true
     properties:
       hibernate:
         dialect: org.hibernate.dialect.PostgreSQLDialect
-
-  security:
-    oauth2:
-      resourceserver:
-        jwt:
-          issuer-uri: ${KEYCLOAK_ISSUER_URI:http://localhost:8080/realms/jalsoochak}
-
-  data:
-    redis:
-      host: ${REDIS_HOST:localhost}
-      port: ${REDIS_PORT:6379}
-      password: ${REDIS_PASSWORD:}
-      database: ${REDIS_DATABASE:0}
 
   kafka:
     bootstrap-servers: localhost:9092
     consumer:
       group-id: message-service-group
       auto-offset-reset: earliest
+      enable-auto-commit: false
+      max-poll-records: 50
+      properties:
+        session.timeout.ms: 30000
+        heartbeat.interval.ms: 10000
+        max.poll.interval.ms: 600000
+        fetch.max.wait.ms: 500
+
+  mail:
+    host: smtp.office365.com
+    port: 587
+    username: ${SPRING_MAIL_USERNAME}
+    password: ${SPRING_MAIL_PASSWORD}
+    protocol: smtp
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+            required: true
+          ssl:
+            enable: false
+            protocols: TLSv1.2
+          connectiontimeout: 30000
+          timeout: 30000
+          writetimeout: 30000
+
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${KEYCLOAK_ISSUER_URI:https://jalsoochak.beehyv.com/keycloak/realms/jalsoochak-realm}
 
 # ──────────────────────────────────────────────────────────────
 # Notification Channel Credentials (to be provided later)
@@ -55,14 +82,19 @@ notification:
       from-address: "noreply@example.com"
       from-name: "Water Management Platform"
 
-    # ── WhatsApp via Gliffic ────────────────────────────────
-    whatsapp:
-      gliffic-api-url: ""              # Gliffic API base URL
-      gliffic-api-key: ""              # Gliffic API key / auth token
-      from-number: ""                  # WhatsApp sender number
+    # ── Email via SMTP (JavaMailSender) ─────────────────────
+    smtp:
+      from-address: ${MAIL_FROM_EMAIL:noreply@example.com}
+      from-name: ${MAIL_FROM_NAME:Jalsoochak}
+
+keycloak:
+  realm: jalsoochak-realm
+  auth-server-url: https://jalsoochak.beehyv.com/keycloak
+  resource: jalsoochak-client-id
 
 eureka:
   client:
+    enabled: ${EUREKA_ENABLED:false}
     service-url:
       defaultZone: http://localhost:8761/eureka/
 
@@ -70,18 +102,65 @@ management:
   endpoints:
     web:
       exposure:
-        include: "health,info,prometheus"
+        include: "*"
 
-  endpoint:
-    prometheus:
-      enabled: true
-  metrics:
-    tags:
-      application: message-service
+# ──────────────────────────────────────────────────────────────
+# Escalation Report Configuration
+# ──────────────────────────────────────────────────────────────
+
+escalation:
+  report:
+    dir: /tmp/escalation-reports/     # Directory where escalation PDFs are saved
+
+# Base URL used to construct the public PDF download link sent via WhatsApp.
+# For local dev: http://localhost:8085
+# For demo with ngrok: https://<your-ngrok-id>.ngrok.io
+app:
+  base-url: ${APP_BASE_URL:http://localhost:8085}
+
+# ──────────────────────────────────────────────────────────────
+# Notification Guard
+# Set NOTIFICATIONS_DRY_RUN=true in dev/test to suppress all
+# outbound Glific API calls while keeping the Kafka pipeline live.
+# ──────────────────────────────────────────────────────────────
+
+notifications:
+  dry-run: ${NOTIFICATIONS_DRY_RUN:false}
+
+# ──────────────────────────────────────────────────────────────
+# Glific GraphQL API (WhatsApp HSM)
+# ──────────────────────────────────────────────────────────────
+
+glific:
+  api-url: ${GLIFIC_API_URL:https://api.arghyam.glific.com/api}
+  auth-url: ${GLIFIC_AUTH_URL:https://api.arghyam.glific.com/api/v1/session}
+  request-interval-ms: ${GLIFIC_REQUEST_INTERVAL_MS:500}
+  username: ${GLIFIC_USERNAME:}
+  password: ${GLIFIC_PASSWORD:}
+  template:
+    nudge-id: ${GLIFIC_NUDGE_TEMPLATE_ID:}
+    escalation-id: ${GLIFIC_ESCALATION_TEMPLATE_ID:}
+    login-otp-id: ${GLIFIC_LOGIN_OTP_TEMPLATE_ID:}
+  flow:
+    nudge-id: ${GLIFIC_NUDGE_FLOW_ID:}
+    welcome-id: ${GLIFIC_WELCOME_FLOW_ID:37684}
+  media:
+    escalation-caption: ${GLIFIC_ESCALATION_CAPTION:Escalations}
+    escalation-thumbnail: ${GLIFIC_ESCALATION_THUMBNAIL:}
+
+# ──────────────────────────────────────────────────────────────
+# MinIO Object Storage (escalation PDF hosting)
+# ──────────────────────────────────────────────────────────────
+
+minio:
+  endpoint:   ${MINIO_ENDPOINT:https://localhost:9000}
+  access-key: ${MINIO_ACCESS_KEY}
+  secret-key: ${MINIO_SECRET_KEY}
+  bucket:     ${MINIO_BUCKET:escalation-reports}
+  base-url:   ${MINIO_BASE_URL:https://localhost:9000}
 
 logging:
   file:
     name: ${LOG_FILE_PATH:../logger/logs/backend-services.log}
-
   pattern:
     level: "service=${spring.application.name} %5p"

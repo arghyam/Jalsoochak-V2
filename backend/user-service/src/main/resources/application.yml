@@ -1,48 +1,105 @@
 server:
-  port: 8082
+  port: 9282
 
 spring:
+  config:
+    import: "optional:file:.env[.properties],optional:file:user-service/.env[.properties]"
   application:
     name: user-service
+  flyway:
+    enabled: false
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${KEYCLOAK_ISSUER_URI:${keycloak.auth-server-url}/realms/${keycloak.realm}}
 
   datasource:
-    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/jalsoochak_db}?stringtype=unspecified
-    username: ${SPRING_DATASOURCE_USERNAME:postgres}
-    password: ${SPRING_DATASOURCE_PASSWORD:Zaqwsx@1123}
+    url: ${SPRING_DATASOURCE_URL}
+    username: ${SPRING_DATASOURCE_USERNAME}
+    password: ${SPRING_DATASOURCE_PASSWORD}
     driver-class-name: org.postgresql.Driver
     hikari:
-      maximum-pool-size: 10
-      minimum-idle: 2
+      maximum-pool-size: 50
+      minimum-idle: 20
       connection-timeout: 30000
       initialization-fail-timeout: -1
 
   jpa:
     hibernate:
       ddl-auto: none
-    show-sql: true
     properties:
       hibernate:
         dialect: org.hibernate.dialect.PostgreSQLDialect
         default_schema: common_schema
 
-  security:
-    oauth2:
-      resourceserver:
-        jwt:
-          issuer-uri: ${KEYCLOAK_ISSUER_URI:http://localhost:8080/realms/jalsoochak}
-
-  data:
-    redis:
-      host: ${REDIS_HOST:localhost}
-      port: ${REDIS_PORT:6379}
-      password: ${REDIS_PASSWORD:}
-      database: ${REDIS_DATABASE:0}
 
   kafka:
     bootstrap-servers: localhost:9092
     consumer:
       group-id: user-service-group
       auto-offset-reset: earliest
+      enable-auto-commit: false
+      max-poll-records: 50
+      properties:
+        session.timeout.ms: 30000
+        heartbeat.interval.ms: 10000
+        max.poll.interval.ms: 600000
+        fetch.max.wait.ms: 500
+
+keycloak:
+  realm: jalsoochak-realm
+  auth-server-url: https://jalsoochak.beehyv.com/keycloak
+
+  # Login client (normal users)
+  resource: ${KEYCLOAK_CLIENT_ID}
+  credentials:
+    secret: ${KEYCLOAK_CLIENT_SECRET}
+
+  # Admin client (for creating users)
+  admin-client-id: ${KEYCLOAK_ADMIN_CLIENT_ID}
+  admin-client-secret: ${KEYCLOAK_ADMIN_CLIENT_SECRET}
+  admin-grant-type: client_credentials
+
+  # Public key
+  public-key: ${KEYCLOAK_PUBLIC_KEY:}
+
+staff:
+  allowed-update-roles: SECTION_OFFICER,DISTRICT_OFFICER
+  managed-password-key: ${STAFF_MANAGED_PASSWORD_KEY}
+
+invite:
+  expiry-hours: 24
+
+password-reset:
+  expiry-minutes: ${PASSWORD_RESET_EXPIRY_MINUTES:30}
+
+frontend:
+  base-url: ${FRONTEND_BASE_URL:http://localhost:3000}
+  invite-path: /createpassword
+  reset-path: /resetpassword
+
+cors:
+  allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000}
+
+cookie:
+  secure: ${COOKIE_SECURE:false}  # set to true in production (HTTPS)
+  same-site: Strict
+
+http-client:
+  connect-timeout-ms: ${HTTP_CONNECT_TIMEOUT_MS:5000}
+  read-timeout-ms: ${HTTP_READ_TIMEOUT_MS:10000}
+
+pii:
+  encryption-key: ${PII_ENCRYPTION_KEY}
+  hmac-key: ${PII_HMAC_KEY}
+
+otp:
+  expiry-minutes: ${OTP_EXPIRY_MINUTES:10}
+  max-attempts: ${OTP_MAX_ATTEMPTS:3}
+  cooldown-seconds: ${OTP_COOLDOWN_SECONDS:60}
+  otp-length: ${OTP_LENGTH:6}
+  delivery-channel: ${OTP_DELIVERY_CHANNEL:WHATSAPP}
 
 eureka:
   client:
@@ -56,16 +113,8 @@ management:
       exposure:
         include: "health,info,prometheus"
 
-  endpoint:
-    prometheus:
-      enabled: true
-  metrics:
-    tags:
-      application: user-service
-
 logging:
   file:
     name: ${LOG_FILE_PATH:../logger/logs/backend-services.log}
-
   pattern:
     level: "service=${spring.application.name} %5p"

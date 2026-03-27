@@ -4,6 +4,8 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.util.UUID;
+
 @Data
 @NoArgsConstructor
 @JsonIgnoreProperties(ignoreUnknown = true)
@@ -14,4 +16,5 @@ public class UserEvent {
     private Integer tenantId;
     private String email;
     private Integer userType;
+    private UUID uuid;
 }

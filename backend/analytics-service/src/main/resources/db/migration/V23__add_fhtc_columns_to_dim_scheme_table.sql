@@ -1,0 +1,3 @@
+ALTER TABLE analytics_schema.dim_scheme_table
+ADD COLUMN IF NOT EXISTS fhtc_count INT NOT NULL DEFAULT 0,
+ADD COLUMN IF NOT EXISTS planned_fhtc INT NOT NULL DEFAULT 0;

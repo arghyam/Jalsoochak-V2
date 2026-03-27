@@ -1,65 +1,102 @@
 package org.arghyam.jalsoochak.user.config;
 
+import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.core.convert.converter.Converter;
+import org.springframework.core.env.Environment;
+import org.springframework.core.env.Profiles;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
-import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
-import org.springframework.security.core.GrantedAuthority;
-import org.springframework.security.core.authority.SimpleGrantedAuthority;
-import org.springframework.security.oauth2.jwt.Jwt;
-import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.CorsConfigurationSource;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
-import java.util.ArrayList;
-import java.util.Collection;
+import java.util.Arrays;
 import java.util.List;
-import java.util.Map;
+import java.util.stream.Collectors;
 
 @Configuration
-@EnableWebSecurity
 @EnableMethodSecurity
+@RequiredArgsConstructor
+@ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
 public class SecurityConfig {
+
+    private final JwtAuthConverter jwtAuthConverter;
+    private final Environment environment;
+
+    @Value("${cors.allowed-origins}")
+    private String allowedOrigins;
+
+    @Bean
+    public CorsConfigurationSource corsConfigurationSource() {
+        CorsConfiguration config = new CorsConfiguration();
+        List<String> origins = allowedOrigins == null || allowedOrigins.isBlank()
+                ? List.of()
+                : Arrays.stream(allowedOrigins.split(","))
+                        .map(String::trim)
+                        .filter(s -> !s.isEmpty())
+                        .collect(Collectors.toList());
+        config.setAllowedOrigins(origins);
+        config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
+        config.setAllowedHeaders(List.of(
+                "Authorization", "Content-Type", "Accept", "Origin",
+                "X-Requested-With", "X-Tenant-Code",
+                "Access-Control-Request-Method", "Access-Control-Request-Headers"));
+        config.setAllowCredentials(true);
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        source.registerCorsConfiguration("/**", config);
+        return source;
+    }
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+        boolean isProd = environment.acceptsProfiles(Profiles.of("prod"));
+
         http
-                .csrf(csrf -> csrf.disable())
+                .csrf(AbstractHttpConfigurer::disable)
+                .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/actuator/**").permitAll()
-                        .anyRequest().authenticated()
-                )
-                .oauth2ResourceServer(oauth2 -> oauth2
-                        .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter()))
-                );
+                .authorizeHttpRequests(auth -> {
+                    auth.requestMatchers(
+                                    "/api/v1/auth/login",
+                                    "/api/v1/auth/refresh",
+                                    "/api/v1/auth/logout",
+                                    "/api/v1/auth/invite/info",
+                                    "/api/v1/auth/activate-account",
+                                    "/api/v1/pumpoperator/**",
+                                    "/api/v1/tenant/user/staff",
+                                    "/api/v1/tenant/user/staff/counts/by-role",
+                                    "/api/v1/auth/forgot-password",
+                                    "/api/v1/auth/reset-password",
+                                    "/api/v1/auth/staff/request-otp",
+                                    "/api/v1/auth/staff/verify-otp",
+                                    // Public (no-auth) endpoints
+                                    "/api/v1/public/**",
+                                    // Tenant staff endpoints (no-auth; tenantCode param required)
+                                    "/api/v1/tenant/staff",
+                                    "/api/v1/tenant/staff/counts/by-role",
+                                    // Upload endpoint is authorized via UploadAuthService (JWT validation + role check),
+                                    // not via Spring Security's JwtDecoder (which may require network access to Keycloak).
+                                    "/api/v1/state-admin/pump-operators/upload",
+                                    "/error",
+                                    "/actuator/health",
+                                    "/actuator/info")
+                            .permitAll();
+                    if (isProd) {
+                        auth.requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").authenticated();
+                    } else {
+                        auth.requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll();
+                    }
+                    auth.anyRequest().authenticated();
+                })
+                .oauth2ResourceServer(oauth -> oauth
+                        .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthConverter)));
 
         return http.build();
-    }
-
-    @Bean
-    public JwtAuthenticationConverter jwtAuthenticationConverter() {
-        JwtAuthenticationConverter converter = new JwtAuthenticationConverter();
-        converter.setJwtGrantedAuthoritiesConverter(keycloakGrantedAuthoritiesConverter());
-        return converter;
-    }
-
-    private Converter<Jwt, Collection<GrantedAuthority>> keycloakGrantedAuthoritiesConverter() {
-        return jwt -> {
-            Collection<GrantedAuthority> authorities = new ArrayList<>();
-            Map<String, Object> realmAccess = jwt.getClaimAsMap("realm_access");
-            if (realmAccess != null) {
-                @SuppressWarnings("unchecked")
-                List<String> roles = (List<String>) realmAccess.get("roles");
-                if (roles != null) {
-                    roles.forEach(role ->
-                            authorities.add(new SimpleGrantedAuthority("ROLE_" + role))
-                    );
-                }
-            }
-            return authorities;
-        };
     }
 }

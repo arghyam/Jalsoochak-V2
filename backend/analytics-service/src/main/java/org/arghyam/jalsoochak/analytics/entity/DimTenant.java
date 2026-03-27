@@ -35,6 +35,9 @@ public class DimTenant {
     @Column(nullable = false)
     private Integer status;
 
+    @Column(name = "required_lpcd")
+    private Integer requiredLpcd;
+
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
 

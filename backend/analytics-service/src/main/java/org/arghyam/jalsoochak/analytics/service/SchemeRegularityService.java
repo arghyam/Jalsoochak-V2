@@ -1,0 +1,180 @@
+package org.arghyam.jalsoochak.analytics.service;
+
+import org.arghyam.jalsoochak.analytics.dto.response.AverageSchemeRegularityResponse;
+import org.arghyam.jalsoochak.analytics.dto.response.AverageWaterSupplyResponse;
+import org.arghyam.jalsoochak.analytics.dto.response.NonSubmissionReasonSchemeCountResponse;
+import org.arghyam.jalsoochak.analytics.dto.response.NationalDashboardResponse;
+import org.arghyam.jalsoochak.analytics.dto.response.OutageReasonSchemeCountResponse;
+import org.arghyam.jalsoochak.analytics.dto.response.PeriodicOutageReasonSchemeCountResponse;
+import org.arghyam.jalsoochak.analytics.dto.response.PeriodicSchemeRegularityResponse;
+import org.arghyam.jalsoochak.analytics.dto.response.PeriodicNationalSchemeRegularityResponse;
+import org.arghyam.jalsoochak.analytics.dto.response.PeriodicWaterQuantityResponse;
+import org.arghyam.jalsoochak.analytics.dto.response.RegionWiseWaterQuantityResponse;
+import org.arghyam.jalsoochak.analytics.dto.response.ReadingSubmissionRateResponse;
+import org.arghyam.jalsoochak.analytics.dto.response.SchemeRegularityListResponse;
+import org.arghyam.jalsoochak.analytics.dto.response.SchemeStatusAndTopReportingResponse;
+import org.arghyam.jalsoochak.analytics.dto.response.UserNonSubmissionReasonSchemeCountResponse;
+import org.arghyam.jalsoochak.analytics.dto.response.UserOutageReasonSchemeCountResponse;
+import org.arghyam.jalsoochak.analytics.dto.response.SubmissionStatusSummaryResponse;
+import org.arghyam.jalsoochak.analytics.dto.response.UserSubmissionStatusResponse;
+import org.arghyam.jalsoochak.analytics.enums.PeriodScale;
+import org.arghyam.jalsoochak.analytics.repository.SchemeRegularityRepository;
+
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+public interface SchemeRegularityService {
+
+    AverageSchemeRegularityResponse getAverageSchemeRegularity(Integer parentLgdId, LocalDate startDate, LocalDate endDate);
+
+    AverageSchemeRegularityResponse getAverageSchemeRegularityForChildRegions(
+            Integer parentLgdId, LocalDate startDate, LocalDate endDate);
+
+    ReadingSubmissionRateResponse getReadingSubmissionRateByLgd(Integer parentLgdId, LocalDate startDate, LocalDate endDate);
+
+    ReadingSubmissionRateResponse getReadingSubmissionRateByLgdForChildRegions(
+            Integer parentLgdId, LocalDate startDate, LocalDate endDate);
+
+    AverageSchemeRegularityResponse getAverageSchemeRegularityByDepartment(
+            Integer parentDepartmentId, LocalDate startDate, LocalDate endDate);
+
+    AverageSchemeRegularityResponse getAverageSchemeRegularityByDepartmentForChildRegions(
+            Integer parentDepartmentId, LocalDate startDate, LocalDate endDate);
+
+    ReadingSubmissionRateResponse getReadingSubmissionRateByDepartment(
+            Integer parentDepartmentId, LocalDate startDate, LocalDate endDate);
+
+    ReadingSubmissionRateResponse getReadingSubmissionRateByDepartmentForChildRegions(
+            Integer parentDepartmentId, LocalDate startDate, LocalDate endDate);
+
+    BigDecimal getAveragePerformanceScoreByLgd(
+            Integer parentLgdId, LocalDate startDate, LocalDate endDate);
+
+    BigDecimal getAveragePerformanceScoreByDepartment(
+            Integer parentDepartmentId, LocalDate startDate, LocalDate endDate);
+
+    List<SchemeRegularityRepository.ChildRegionPerformanceScore> getChildAveragePerformanceScoreByLgd(
+            Integer parentLgdId, LocalDate startDate, LocalDate endDate);
+
+    List<SchemeRegularityRepository.ChildRegionPerformanceScore> getChildAveragePerformanceScoreByDepartment(
+            Integer parentDepartmentId, LocalDate startDate, LocalDate endDate);
+
+    AverageWaterSupplyResponse getAverageWaterSupplyPerCurrentRegion(
+            Integer tenantId, LocalDate startDate, LocalDate endDate);
+
+    AverageWaterSupplyResponse getAverageWaterSupplyPerNation(
+            LocalDate startDate, LocalDate endDate);
+
+    // Endpoint-oriented wrappers that shape the response based on `scope` contract.
+    AverageWaterSupplyResponse getAverageWaterSupplyPerCurrentRegionForCurrentScope(
+            Integer tenantId, LocalDate startDate, LocalDate endDate);
+
+    AverageWaterSupplyResponse getAverageWaterSupplyPerNationForChildScope(
+            LocalDate startDate, LocalDate endDate);
+
+    AverageWaterSupplyResponse getAverageWaterSupplyPerCurrentRegionByLgdForChildScope(
+            Integer tenantId, Integer lgdId, LocalDate startDate, LocalDate endDate);
+
+    AverageWaterSupplyResponse getAverageWaterSupplyPerCurrentRegionByDepartmentForChildScope(
+            Integer tenantId, Integer parentDepartmentId, LocalDate startDate, LocalDate endDate);
+
+    NationalDashboardResponse getNationalDashboard(
+            LocalDate startDate, LocalDate endDate);
+
+    NationalDashboardResponse refreshNationalDashboard(
+            LocalDate startDate, LocalDate endDate);
+
+    // Endpoint-oriented wrapper (keeps controller thin; allows future shaping/versioning).
+    NationalDashboardResponse getNationalDashboardForApi(
+            LocalDate startDate, LocalDate endDate);
+
+    AverageWaterSupplyResponse getAverageWaterSupplyPerCurrentRegionByLgd(
+            Integer tenantId, Integer lgdId, LocalDate startDate, LocalDate endDate);
+
+    AverageWaterSupplyResponse getAverageWaterSupplyPerCurrentRegionByDepartment(
+            Integer tenantId, Integer parentDepartmentId, LocalDate startDate, LocalDate endDate);
+
+    RegionWiseWaterQuantityResponse getRegionWiseWaterQuantityByLgd(
+            Integer parentLgdId, LocalDate startDate, LocalDate endDate);
+
+    RegionWiseWaterQuantityResponse getRegionWiseWaterQuantityByDepartment(
+            Integer parentDepartmentId, LocalDate startDate, LocalDate endDate);
+
+    PeriodicWaterQuantityResponse getPeriodicWaterQuantityByLgdId(
+            Integer lgdId, LocalDate startDate, LocalDate endDate, PeriodScale scale);
+
+    PeriodicWaterQuantityResponse getPeriodicWaterQuantityByDepartment(
+            Integer departmentId, LocalDate startDate, LocalDate endDate, PeriodScale scale);
+
+    PeriodicSchemeRegularityResponse getPeriodicSchemeRegularityByLgdId(
+            Integer lgdId, LocalDate startDate, LocalDate endDate, PeriodScale scale);
+
+    PeriodicSchemeRegularityResponse getPeriodicSchemeRegularityByDepartment(
+            Integer departmentId, LocalDate startDate, LocalDate endDate, PeriodScale scale);
+
+    PeriodicSchemeRegularityResponse getPeriodicSchemeRegularityForNation(
+            LocalDate startDate, LocalDate endDate, PeriodScale scale);
+
+    PeriodicNationalSchemeRegularityResponse getPeriodicSchemeRegularityForNationForApi(
+            LocalDate startDate, LocalDate endDate, PeriodScale scale);
+
+    PeriodicOutageReasonSchemeCountResponse getPeriodicOutageReasonSchemeCountByLgdId(
+            Integer lgdId, LocalDate startDate, LocalDate endDate, PeriodScale scale);
+
+    PeriodicOutageReasonSchemeCountResponse getPeriodicOutageReasonSchemeCountByDepartment(
+            Integer departmentId, LocalDate startDate, LocalDate endDate, PeriodScale scale);
+
+    OutageReasonSchemeCountResponse getOutageReasonSchemeCountByLgd(
+            Integer parentLgdId, LocalDate startDate, LocalDate endDate);
+
+    OutageReasonSchemeCountResponse getOutageReasonSchemeCountByDepartment(
+            Integer parentDepartmentId, LocalDate startDate, LocalDate endDate);
+
+    UserOutageReasonSchemeCountResponse getOutageReasonSchemeCountByUser(
+            Integer userId, LocalDate startDate, LocalDate endDate);
+
+    UserOutageReasonSchemeCountResponse getOutageReasonSchemeCountByUserUuid(
+            UUID userUuid, LocalDate startDate, LocalDate endDate);
+
+    NonSubmissionReasonSchemeCountResponse getNonSubmissionReasonSchemeCountByLgd(
+            Integer parentLgdId, LocalDate startDate, LocalDate endDate);
+
+    NonSubmissionReasonSchemeCountResponse getNonSubmissionReasonSchemeCountByDepartment(
+            Integer parentDepartmentId, LocalDate startDate, LocalDate endDate);
+
+    UserNonSubmissionReasonSchemeCountResponse getNonSubmissionReasonSchemeCountByUser(
+            Integer userId, LocalDate startDate, LocalDate endDate);
+
+    UserNonSubmissionReasonSchemeCountResponse getNonSubmissionReasonSchemeCountByUserUuid(
+            UUID userUuid, LocalDate startDate, LocalDate endDate);
+
+    UserSubmissionStatusResponse getSubmissionStatusByUser(
+            Integer userId, LocalDate startDate, LocalDate endDate);
+
+    UserSubmissionStatusResponse getSubmissionStatusByUserUuid(
+            UUID userUuid, LocalDate startDate, LocalDate endDate);
+
+    SubmissionStatusSummaryResponse getSubmissionStatusSummaryByLgd(
+            Integer lgdId, LocalDate startDate, LocalDate endDate);
+
+    SubmissionStatusSummaryResponse getSubmissionStatusSummaryByDepartment(
+            Integer departmentId, LocalDate startDate, LocalDate endDate);
+
+    Map<String, Integer> getSchemeStatusCountByLgd(Integer lgdId);
+
+    Map<String, Integer> getSchemeStatusCountByDepartment(Integer departmentId);
+
+    SchemeStatusAndTopReportingResponse getSchemeStatusAndTopReportingByLgd(
+            Integer parentLgdId, LocalDate startDate, LocalDate endDate, Integer topSchemeCount);
+
+    SchemeStatusAndTopReportingResponse getSchemeStatusAndTopReportingByDepartment(
+            Integer parentDepartmentId, LocalDate startDate, LocalDate endDate, Integer topSchemeCount);
+
+    SchemeRegularityListResponse getSchemeRegionReportByLgd(
+            Integer parentLgdId, LocalDate startDate, LocalDate endDate, Integer pageNumber, Integer count);
+
+    SchemeRegularityListResponse getSchemeRegionReportByDepartment(
+            Integer parentDepartmentId, LocalDate startDate, LocalDate endDate, Integer pageNumber, Integer count);
+}

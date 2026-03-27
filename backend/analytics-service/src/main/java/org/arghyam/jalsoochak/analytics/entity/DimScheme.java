@@ -82,6 +82,15 @@ public class DimScheme {
 
     private Integer status;
 
+    @Column(name = "fhtc_count")
+    private Integer achievedFhtcCount;
+
+    @Column(name = "planned_fhtc")
+    private Integer plannedFhtcCount;
+
+    @Column(name = "house_hold_count")
+    private Integer houseHoldCount;
+
     @Column(name = "created_at")
     private LocalDateTime createdAt;
 

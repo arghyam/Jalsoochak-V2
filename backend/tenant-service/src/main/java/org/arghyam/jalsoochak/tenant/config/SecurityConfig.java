@@ -1,102 +1,61 @@
 package org.arghyam.jalsoochak.tenant.config;
 
+import lombok.RequiredArgsConstructor;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.core.convert.converter.Converter;
+import org.springframework.core.env.Environment;
+import org.springframework.core.env.Profiles;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
-import org.springframework.security.core.GrantedAuthority;
-import org.springframework.security.core.authority.SimpleGrantedAuthority;
-import org.springframework.security.oauth2.jwt.Jwt;
-import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
 import org.springframework.security.web.SecurityFilterChain;
-
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
 
 @Configuration
 @EnableWebSecurity
 @EnableMethodSecurity
+@RequiredArgsConstructor
+@ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
 public class SecurityConfig {
+
+    private static final String[] SWAGGER_PATHS = {"/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html"};
+
+    private final JwtAuthConverter jwtAuthConverter;
+    private final Environment environment;
+    private final SecurityExceptionHandler securityExceptionHandler;
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+        boolean isProd = environment.acceptsProfiles(Profiles.of("prod"));
+
         http
-                .csrf(csrf -> csrf.disable())
+                .csrf(AbstractHttpConfigurer::disable)
                 .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                .authorizeHttpRequests(auth -> auth
-                        .requestMatchers(HttpMethod.POST, "/api/v1/tenants").permitAll()
-                        .requestMatchers("/actuator/**", "/swagger-ui/**", "/v3/api-docs/**").permitAll()
-                        .anyRequest().authenticated()
-                )
-                .oauth2ResourceServer(oauth2 -> oauth2
-                        .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter()))
-                );
+                .authorizeHttpRequests(auth -> {
+                    auth.requestMatchers("/error", "/actuator/health/**", "/actuator/info").permitAll();
+                    auth.requestMatchers(HttpMethod.GET,
+                            "/api/v1/tenants",
+                            "/api/v1/tenants/*/public-config",
+                            "/api/v1/tenants/*/logo",
+                            "/api/v1/tenants/*/location-hierarchy/*",
+                            "/api/v1/tenants/*/locations/*/children/*").permitAll();
+                    if (isProd) {
+                        auth.requestMatchers(SWAGGER_PATHS).authenticated();
+                    } else {
+                        auth.requestMatchers(SWAGGER_PATHS).permitAll();
+                    }
+                    auth.anyRequest().authenticated();
+                })
+                .exceptionHandling(ex -> ex
+                        .authenticationEntryPoint(securityExceptionHandler)
+                        .accessDeniedHandler(securityExceptionHandler))
+                .oauth2ResourceServer(oauth -> oauth
+                        .authenticationEntryPoint(securityExceptionHandler)
+                        .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthConverter)));
 
         return http.build();
-    }
-
-    @Bean
-    public JwtAuthenticationConverter jwtAuthenticationConverter() {
-        JwtAuthenticationConverter converter = new JwtAuthenticationConverter();
-        converter.setJwtGrantedAuthoritiesConverter(keycloakGrantedAuthoritiesConverter());
-        return converter;
-    }
-
-    private Converter<Jwt, Collection<GrantedAuthority>> keycloakGrantedAuthoritiesConverter() {
-        return jwt -> {
-            Collection<GrantedAuthority> authorities = new ArrayList<>();
-            Map<String, Object> realmAccess = jwt.getClaimAsMap("realm_access");
-            if (realmAccess != null) {
-                @SuppressWarnings("unchecked")
-                List<String> roles = (List<String>) realmAccess.get("roles");
-                if (roles != null) {
-                    roles.forEach(role ->
-                            authorities.add(new SimpleGrantedAuthority("ROLE_" + role))
-                    );
-                }
-            }
-
-            // API-specific permissions (from `permissions` claim) and OAuth scopes.
-            // This keeps backward compatibility with role checks while enabling fine-grained checks.
-            extractPermissionAuthorities(jwt).forEach(permission ->
-                    authorities.add(new SimpleGrantedAuthority(permission))
-            );
-            return authorities;
-        };
-    }
-
-    private List<String> extractPermissionAuthorities(Jwt jwt) {
-        List<String> permissions = new ArrayList<>();
-
-        @SuppressWarnings("unchecked")
-        List<String> permissionClaim = (List<String>) jwt.getClaim("permissions");
-        if (permissionClaim != null) {
-            permissions.addAll(permissionClaim);
-        }
-
-        List<String> scopeClaim = extractScopeAuthorities(jwt);
-        permissions.addAll(scopeClaim);
-
-        return permissions.stream().filter(Objects::nonNull).distinct().toList();
-    }
-
-    private List<String> extractScopeAuthorities(Jwt jwt) {
-        List<String> scopes = new ArrayList<>();
-        String scope = jwt.getClaimAsString("scope");
-        if (scope != null && !scope.isBlank()) {
-            for (String token : scope.split(" ")) {
-                if (!token.isBlank()) {
-                    scopes.add("SCOPE_" + token);
-                }
-            }
-        }
-        return scopes;
     }
 }
