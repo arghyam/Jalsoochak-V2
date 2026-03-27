@@ -95,8 +95,17 @@ jobs:
 
   Deployment:
     needs: Docker-Image-Build
-    if: github.ref == 'refs/heads/dev'
-    uses: arghyam/JalSoochak-DevOps/.github/workflows/deploy.yaml@dev
+    strategy:
+      matrix:
+        include:
+          - branch: refs/heads/dev
+            env: dev
+            ref: dev
+          - branch: refs/heads/main
+            env: main
+            ref: staging
+    if: github.ref == matrix.branch
+    uses: arghyam/JalSoochak-DevOps/.github/workflows/deploy.yaml@${{ matrix.ref }}
     with:
       service_name: anomaly-service
       image_tag: ${{ github.sha }}
