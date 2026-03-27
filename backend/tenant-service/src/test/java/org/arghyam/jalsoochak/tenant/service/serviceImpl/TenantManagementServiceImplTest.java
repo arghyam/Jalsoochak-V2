@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -617,6 +618,82 @@ class TenantManagementServiceImplTest {
             assertEquals(tenantId, result.getTenantId());
             assertTrue(result.getConfigs().isEmpty());
         }
+
+        @Test
+        @DisplayName("Should return degraded=true with removedChannels when tenant has channels no longer in system")
+        void testGetTenantConfigs_ChannelIntersection_DegradedWhenOrphanedChannels() {
+            // Arrange: tenant was configured with [BFM, ELM, PDU, IOT, MAN], system reduced to [BFM, ELM, PDU]
+            Integer tenantId = 1;
+            TenantResponseDTO tenant = TenantResponseDTO.builder().id(tenantId).stateCode("TN").build();
+
+            List<ConfigDTO> tenantConfigs = List.of(
+                    ConfigDTO.builder()
+                            .configKey(TenantConfigKeyEnum.TENANT_SUPPORTED_CHANNELS.name())
+                            .configValue("{\"channels\":[\"BFM\",\"ELM\",\"PDU\",\"IOT\",\"MAN\"]}")
+                            .build());
+
+            List<ConfigDTO> systemConfigs = List.of(
+                    ConfigDTO.builder()
+                            .configKey("SYSTEM_SUPPORTED_CHANNELS")
+                            .configValue("{\"channels\":[\"BFM\",\"ELM\",\"PDU\"]}")
+                            .build());
+
+            when(tenantCommonRepository.findById(tenantId)).thenReturn(Optional.of(tenant));
+            when(tenantCommonRepository.findConfigsByTenantId(tenantId)).thenReturn(tenantConfigs);
+            when(tenantCommonRepository.findConfigsByTenantId(TenantConstants.SYSTEM_TENANT_ID)).thenReturn(systemConfigs);
+
+            // Act
+            TenantConfigResponseDTO result = tenantManagementService.getTenantConfigs(tenantId, null);
+
+            // Assert
+            org.arghyam.jalsoochak.tenant.dto.internal.ChannelListConfigDTO channels =
+                    (org.arghyam.jalsoochak.tenant.dto.internal.ChannelListConfigDTO)
+                            result.getConfigs().get(TenantConfigKeyEnum.TENANT_SUPPORTED_CHANNELS);
+            assertNotNull(channels);
+            assertEquals(3, channels.getChannels().size());
+            assertTrue(channels.getChannels().containsAll(List.of("BFM", "ELM", "PDU")));
+            assertEquals(Boolean.TRUE, channels.getDegraded());
+            assertNotNull(channels.getRemovedChannels());
+            assertEquals(2, channels.getRemovedChannels().size());
+            assertTrue(channels.getRemovedChannels().containsAll(List.of("IOT", "MAN")));
+        }
+
+        @Test
+        @DisplayName("Should return degraded=null with no removedChannels when all tenant channels still in system")
+        void testGetTenantConfigs_ChannelIntersection_NotDegradedWhenAllChannelsValid() {
+            // Arrange: tenant channels are a valid subset of system channels
+            Integer tenantId = 1;
+            TenantResponseDTO tenant = TenantResponseDTO.builder().id(tenantId).stateCode("TN").build();
+
+            List<ConfigDTO> tenantConfigs = List.of(
+                    ConfigDTO.builder()
+                            .configKey(TenantConfigKeyEnum.TENANT_SUPPORTED_CHANNELS.name())
+                            .configValue("{\"channels\":[\"BFM\",\"ELM\"]}")
+                            .build());
+
+            List<ConfigDTO> systemConfigs = List.of(
+                    ConfigDTO.builder()
+                            .configKey("SYSTEM_SUPPORTED_CHANNELS")
+                            .configValue("{\"channels\":[\"BFM\",\"ELM\",\"PDU\",\"IOT\",\"MAN\"]}")
+                            .build());
+
+            when(tenantCommonRepository.findById(tenantId)).thenReturn(Optional.of(tenant));
+            when(tenantCommonRepository.findConfigsByTenantId(tenantId)).thenReturn(tenantConfigs);
+            when(tenantCommonRepository.findConfigsByTenantId(TenantConstants.SYSTEM_TENANT_ID)).thenReturn(systemConfigs);
+
+            // Act
+            TenantConfigResponseDTO result = tenantManagementService.getTenantConfigs(tenantId, null);
+
+            // Assert
+            org.arghyam.jalsoochak.tenant.dto.internal.ChannelListConfigDTO channels =
+                    (org.arghyam.jalsoochak.tenant.dto.internal.ChannelListConfigDTO)
+                            result.getConfigs().get(TenantConfigKeyEnum.TENANT_SUPPORTED_CHANNELS);
+            assertNotNull(channels);
+            assertEquals(2, channels.getChannels().size());
+            assertTrue(channels.getChannels().containsAll(List.of("BFM", "ELM")));
+            assertNull(channels.getDegraded());
+            assertNull(channels.getRemovedChannels());
+        }
     }
 
     @Nested
@@ -754,6 +831,102 @@ class TenantManagementServiceImplTest {
             when(tenantCommonRepository.findUserIdByUuid("user-uuid")).thenReturn(Optional.of(100));
 
             assertThrows(InvalidConfigKeyException.class,
+                    () -> tenantManagementService.setTenantConfigs(tenantId, request));
+            verify(tenantCommonRepository, never()).upsertConfig(any(), any(), any(), any());
+        }
+
+        @Test
+        @DisplayName("Should save tenant channels when all are valid system channels")
+        void setTenantConfigs_ValidChannels_SavesSuccessfully() throws Exception {
+            // Arrange
+            Integer tenantId = 1;
+            TenantResponseDTO tenant = TenantResponseDTO.builder().id(tenantId).stateCode("TN").build();
+
+            Map<TenantConfigKeyEnum, JsonNode> configs = new HashMap<>();
+            configs.put(TenantConfigKeyEnum.TENANT_SUPPORTED_CHANNELS,
+                    objectMapper.readTree("{\"channels\":[\"BFM\",\"ELM\"]}"));
+            SetTenantConfigRequestDTO request = SetTenantConfigRequestDTO.builder().configs(configs).build();
+
+            List<ConfigDTO> systemConfigs = List.of(
+                    ConfigDTO.builder()
+                            .configKey("SYSTEM_SUPPORTED_CHANNELS")
+                            .configValue("{\"channels\":[\"BFM\",\"ELM\",\"PDU\",\"IOT\",\"MAN\"]}")
+                            .build());
+
+            ConfigDTO saved = ConfigDTO.builder()
+                    .configKey(TenantConfigKeyEnum.TENANT_SUPPORTED_CHANNELS.name())
+                    .configValue("{\"channels\":[\"BFM\",\"ELM\"]}")
+                    .build();
+
+            when(tenantCommonRepository.findById(tenantId)).thenReturn(Optional.of(tenant));
+            when(SecurityUtils.getCurrentUserUuid()).thenReturn("user-uuid");
+            when(tenantCommonRepository.findUserIdByUuid("user-uuid")).thenReturn(Optional.of(100));
+            when(tenantCommonRepository.findConfigsByTenantId(TenantConstants.SYSTEM_TENANT_ID)).thenReturn(systemConfigs);
+            when(tenantCommonRepository.upsertConfig(eq(tenantId),
+                    eq(TenantConfigKeyEnum.TENANT_SUPPORTED_CHANNELS.name()), anyString(), eq(100)))
+                    .thenReturn(Optional.of(saved));
+
+            // Act
+            TenantConfigResponseDTO result = tenantManagementService.setTenantConfigs(tenantId, request);
+
+            // Assert
+            assertNotNull(result);
+            org.arghyam.jalsoochak.tenant.dto.internal.ChannelListConfigDTO channels =
+                    (org.arghyam.jalsoochak.tenant.dto.internal.ChannelListConfigDTO)
+                            result.getConfigs().get(TenantConfigKeyEnum.TENANT_SUPPORTED_CHANNELS);
+            assertNotNull(channels);
+            assertTrue(channels.getChannels().containsAll(List.of("BFM", "ELM")));
+        }
+
+        @Test
+        @DisplayName("Should throw InvalidConfigValueException when tenant channel is not in system channels")
+        void setTenantConfigs_ChannelNotInSystemChannels_ThrowsException() throws Exception {
+            // Arrange: system has [BFM, ELM, PDU], tenant tries to set [BFM, IOT] — IOT not in system
+            Integer tenantId = 1;
+            TenantResponseDTO tenant = TenantResponseDTO.builder().id(tenantId).stateCode("TN").build();
+
+            Map<TenantConfigKeyEnum, JsonNode> configs = new HashMap<>();
+            configs.put(TenantConfigKeyEnum.TENANT_SUPPORTED_CHANNELS,
+                    objectMapper.readTree("{\"channels\":[\"BFM\",\"IOT\"]}"));
+            SetTenantConfigRequestDTO request = SetTenantConfigRequestDTO.builder().configs(configs).build();
+
+            List<ConfigDTO> systemConfigs = List.of(
+                    ConfigDTO.builder()
+                            .configKey("SYSTEM_SUPPORTED_CHANNELS")
+                            .configValue("{\"channels\":[\"BFM\",\"ELM\",\"PDU\"]}")
+                            .build());
+
+            when(tenantCommonRepository.findById(tenantId)).thenReturn(Optional.of(tenant));
+            when(SecurityUtils.getCurrentUserUuid()).thenReturn("user-uuid");
+            when(tenantCommonRepository.findUserIdByUuid("user-uuid")).thenReturn(Optional.of(100));
+            when(tenantCommonRepository.findConfigsByTenantId(TenantConstants.SYSTEM_TENANT_ID)).thenReturn(systemConfigs);
+
+            // Act & Assert
+            assertThrows(InvalidConfigValueException.class,
+                    () -> tenantManagementService.setTenantConfigs(tenantId, request));
+            verify(tenantCommonRepository, never()).upsertConfig(any(), any(), any(), any());
+        }
+
+        @Test
+        @DisplayName("Should throw InvalidConfigValueException  when system channels are empty")
+        void setTenantConfigs_SystemChannelsNotConfigured_ThrowsException() throws Exception {
+            // Arrange: SYSTEM_SUPPORTED_CHANNELS not set yet
+            Integer tenantId = 1;
+            TenantResponseDTO tenant = TenantResponseDTO.builder().id(tenantId).stateCode("TN").build();
+
+            Map<TenantConfigKeyEnum, JsonNode> configs = new HashMap<>();
+            configs.put(TenantConfigKeyEnum.TENANT_SUPPORTED_CHANNELS,
+                    objectMapper.readTree("{\"channels\":[\"BFM\"]}"));
+            SetTenantConfigRequestDTO request = SetTenantConfigRequestDTO.builder().configs(configs).build();
+
+            when(tenantCommonRepository.findById(tenantId)).thenReturn(Optional.of(tenant));
+            when(SecurityUtils.getCurrentUserUuid()).thenReturn("user-uuid");
+            when(tenantCommonRepository.findUserIdByUuid("user-uuid")).thenReturn(Optional.of(100));
+            when(tenantCommonRepository.findConfigsByTenantId(TenantConstants.SYSTEM_TENANT_ID))
+                    .thenReturn(Collections.emptyList());
+
+            // Act & Assert
+            assertThrows(InvalidConfigValueException.class,
                     () -> tenantManagementService.setTenantConfigs(tenantId, request));
             verify(tenantCommonRepository, never()).upsertConfig(any(), any(), any(), any());
         }
