@@ -99,6 +99,7 @@ jobs:
     with:
       service_name: servicediscovery
       image_tag: ${{ github.sha }}
+    secrets: inherit
 
   Deploy-Staging:
     needs: Docker-Image-Build
@@ -107,4 +108,4 @@ jobs:
     with:
       service_name: servicediscovery
       image_tag: ${{ github.sha }}
-      kubeconfig: ${{ secrets.KUBECONFIG }}
+    secrets: inherit

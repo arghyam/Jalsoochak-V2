@@ -51,6 +51,7 @@ import org.mockito.Answers;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
@@ -219,20 +220,37 @@ class UserManagementServiceImplTest {
     class ListSuperUsersTests {
 
         @Test
-        @DisplayName("Should return paginated super users")
+        @DisplayName("Should return paginated super users with no status filter")
         void listSuperUsers_success() {
             AdminUserRow row = userRow(1L, "kc-1", "su@example.com", 0, 1, AdminUserStatus.ACTIVE);
             AdminUserResponseDTO dto = responseDTO(1L, "su@example.com", "SUPER_USER");
 
-            when(userCommonRepository.listSuperUsers(0, 20)).thenReturn(List.of(row));
-            when(userCommonRepository.countSuperUsers()).thenReturn(1L);
+            when(userCommonRepository.listSuperUsers(null, 0, 20)).thenReturn(List.of(row));
+            when(userCommonRepository.countSuperUsers(null)).thenReturn(1L);
             when(keycloakAdminHelper.buildAdminUserResponse(row)).thenReturn(dto);
 
-            PageResponseDTO<AdminUserResponseDTO> result = userManagementService.listSuperUsers(0, 20);
+            PageResponseDTO<AdminUserResponseDTO> result = userManagementService.listSuperUsers(null, 0, 20);
 
             assertEquals(1, result.getContent().size());
             assertEquals(1L, result.getTotalElements());
             assertEquals(1, result.getTotalPages());
+        }
+
+        @Test
+        @DisplayName("Should pass ACTIVE status filter through to repository")
+        void listSuperUsers_withStatusFilter_passesStatusToRepo() {
+            AdminUserRow row = userRow(1L, "kc-1", "su@example.com", 0, 1, AdminUserStatus.ACTIVE);
+            AdminUserResponseDTO dto = responseDTO(1L, "su@example.com", "SUPER_USER");
+
+            when(userCommonRepository.listSuperUsers(AdminUserStatus.ACTIVE, 0, 20)).thenReturn(List.of(row));
+            when(userCommonRepository.countSuperUsers(AdminUserStatus.ACTIVE)).thenReturn(1L);
+            when(keycloakAdminHelper.buildAdminUserResponse(row)).thenReturn(dto);
+
+            PageResponseDTO<AdminUserResponseDTO> result = userManagementService.listSuperUsers(AdminUserStatus.ACTIVE, 0, 20);
+
+            assertEquals(1, result.getContent().size());
+            assertEquals(1L, result.getTotalElements());
+            verify(userCommonRepository).countSuperUsers(AdminUserStatus.ACTIVE);
         }
     }
 
@@ -250,11 +268,11 @@ class UserManagementServiceImplTest {
             AdminUserResponseDTO dto = responseDTO(2L, "sa@example.com", "STATE_ADMIN");
 
             when(userCommonRepository.findTenantIdByStateCode("MP")).thenReturn(Optional.of(1));
-            when(userCommonRepository.listStateAdminsByTenant(1, 0, 20)).thenReturn(List.of(row));
-            when(userCommonRepository.countStateAdminsByTenant(1)).thenReturn(1L);
+            when(userCommonRepository.listStateAdminsByTenant(1, null, 0, 20)).thenReturn(List.of(row));
+            when(userCommonRepository.countStateAdminsByTenant(1, null)).thenReturn(1L);
             when(keycloakAdminHelper.buildAdminUserResponse(row)).thenReturn(dto);
 
-            PageResponseDTO<AdminUserResponseDTO> result = userManagementService.listStateAdmins("MP", auth, 0, 20);
+            PageResponseDTO<AdminUserResponseDTO> result = userManagementService.listStateAdmins("MP", null, auth, 0, 20);
 
             assertEquals(1, result.getContent().size());
         }
@@ -267,13 +285,33 @@ class UserManagementServiceImplTest {
             AdminUserResponseDTO dto = responseDTO(2L, "sa@example.com", "STATE_ADMIN");
 
             when(userCommonRepository.findTenantIdByStateCode("MP")).thenReturn(Optional.of(1));
-            when(userCommonRepository.listStateAdminsByTenant(1, 0, 20)).thenReturn(List.of(row));
-            when(userCommonRepository.countStateAdminsByTenant(1)).thenReturn(1L);
+            when(userCommonRepository.listStateAdminsByTenant(1, null, 0, 20)).thenReturn(List.of(row));
+            when(userCommonRepository.countStateAdminsByTenant(1, null)).thenReturn(1L);
             when(keycloakAdminHelper.buildAdminUserResponse(row)).thenReturn(dto);
 
-            PageResponseDTO<AdminUserResponseDTO> result = userManagementService.listStateAdmins(null, auth, 0, 20);
+            PageResponseDTO<AdminUserResponseDTO> result = userManagementService.listStateAdmins(null, null, auth, 0, 20);
 
             assertEquals(1, result.getContent().size());
+        }
+
+        @Test
+        @DisplayName("Should pass PENDING status filter through to repository")
+        void listStateAdmins_withStatusFilter_passesStatusToRepo() {
+            Authentication auth = superUserAuth("kc-super");
+            AdminUserRow row = userRow(3L, "kc-3", "pending@example.com", 1, 2, AdminUserStatus.PENDING);
+            AdminUserResponseDTO dto = AdminUserResponseDTO.builder()
+                    .id(3L).email("pending@example.com").role("STATE_ADMIN")
+                    .status(AdminUserStatus.PENDING.name()).build();
+
+            when(userCommonRepository.findTenantIdByStateCode("MP")).thenReturn(Optional.of(1));
+            when(userCommonRepository.listStateAdminsByTenant(1, AdminUserStatus.PENDING, 0, 20)).thenReturn(List.of(row));
+            when(userCommonRepository.countStateAdminsByTenant(1, AdminUserStatus.PENDING)).thenReturn(1L);
+            when(keycloakAdminHelper.buildAdminUserResponse(row)).thenReturn(dto);
+
+            PageResponseDTO<AdminUserResponseDTO> result = userManagementService.listStateAdmins("MP", AdminUserStatus.PENDING, auth, 0, 20);
+
+            assertEquals(1, result.getContent().size());
+            assertEquals(AdminUserStatus.PENDING.name(), result.getContent().get(0).getStatus());
         }
     }
 
@@ -298,7 +336,7 @@ class UserManagementServiceImplTest {
             when(tokenService.generateRawToken()).thenReturn("raw-invite-token");
             when(tokenService.hash("raw-invite-token")).thenReturn("invite-hash");
             when(inviteProperties.expiryHours()).thenReturn(24);
-            doNothing().when(userCommonRepository).upsertToken(
+            doNothing().when(userCommonRepository).insertToken(
                     eq("new@example.com"), eq("invite-hash"), eq("INVITE"), anyString(), any(), eq(1));
             when(frontendProperties.baseUrl()).thenReturn("http://localhost:3000");
             when(frontendProperties.invitePath()).thenReturn("/invite");
@@ -312,7 +350,7 @@ class UserManagementServiceImplTest {
 
             userManagementService.inviteUser(req, auth);
 
-            verify(userCommonRepository).upsertToken(
+            verify(userCommonRepository).insertToken(
                     eq("new@example.com"), eq("invite-hash"), eq("INVITE"), anyString(), any(), eq(1));
             verify(userNotificationEventPublisher).publishInviteEmailAfterCommit(any(InviteEmailEvent.class));
         }
@@ -348,14 +386,13 @@ class UserManagementServiceImplTest {
         }
 
         @Test
-        @DisplayName("Should throw UserAlreadyExistsException when email already registered")
-        void inviteUser_emailAlreadyExists_throwsConflict() {
+        @DisplayName("Should throw UserAlreadyExistsException when email is already active")
+        void inviteUser_emailAlreadyActive_throwsConflict() {
             Authentication auth = superUserAuth("kc-super");
             AdminUserRow callerRow = userRow(1L, "kc-super", "super@example.com", 0, 1, AdminUserStatus.ACTIVE);
 
             when(userCommonRepository.findAdminUserByUuid("kc-super")).thenReturn(Optional.of(callerRow));
             when(userCommonRepository.findUserTypeNameById(1)).thenReturn(Optional.of("SUPER_USER"));
-            // User exists and is active (status=1, not PENDING) → duplicate
             AdminUserRow existingUser = userRow(3L, "kc-dup", "dup@example.com", 0, 1, AdminUserStatus.ACTIVE);
             when(userCommonRepository.findAdminUserByEmail("dup@example.com")).thenReturn(Optional.of(existingUser));
 
@@ -364,6 +401,45 @@ class UserManagementServiceImplTest {
             req.setRole("SUPER_USER");
 
             assertThrows(UserAlreadyExistsException.class, () -> userManagementService.inviteUser(req, auth));
+        }
+
+        @Test
+        @DisplayName("Should throw UserAlreadyExistsException when email belongs to a deactivated user")
+        void inviteUser_emailAlreadyInactive_throwsConflict() {
+            Authentication auth = superUserAuth("kc-super");
+            AdminUserRow callerRow = userRow(1L, "kc-super", "super@example.com", 0, 1, AdminUserStatus.ACTIVE);
+
+            when(userCommonRepository.findAdminUserByUuid("kc-super")).thenReturn(Optional.of(callerRow));
+            when(userCommonRepository.findUserTypeNameById(1)).thenReturn(Optional.of("SUPER_USER"));
+            AdminUserRow existingUser = userRow(3L, "kc-dup", "dup@example.com", 0, 1, AdminUserStatus.INACTIVE);
+            when(userCommonRepository.findAdminUserByEmail("dup@example.com")).thenReturn(Optional.of(existingUser));
+
+            InviteRequestDTO req = new InviteRequestDTO();
+            req.setEmail("dup@example.com");
+            req.setRole("SUPER_USER");
+
+            assertThrows(UserAlreadyExistsException.class, () -> userManagementService.inviteUser(req, auth));
+        }
+
+        @Test
+        @DisplayName("Should throw BadRequestException when email already has a pending invitation")
+        void inviteUser_emailAlreadyPending_throwsBadRequest() {
+            Authentication auth = superUserAuth("kc-super");
+            AdminUserRow callerRow = userRow(1L, "kc-super", "super@example.com", 0, 1, AdminUserStatus.ACTIVE);
+
+            when(userCommonRepository.findAdminUserByUuid("kc-super")).thenReturn(Optional.of(callerRow));
+            when(userCommonRepository.findUserTypeNameById(1)).thenReturn(Optional.of("SUPER_USER"));
+            AdminUserRow pendingUser = userRow(5L, "placeholder-uuid", "pending@example.com", 0, 1, AdminUserStatus.PENDING);
+            when(userCommonRepository.findAdminUserByEmail("pending@example.com")).thenReturn(Optional.of(pendingUser));
+
+            InviteRequestDTO req = new InviteRequestDTO();
+            req.setEmail("pending@example.com");
+            req.setRole("SUPER_USER");
+
+            BadRequestException ex = assertThrows(BadRequestException.class,
+                    () -> userManagementService.inviteUser(req, auth));
+            assertTrue(ex.getMessage().toLowerCase().contains("reinvite"),
+                    "Error message should direct the caller to the reinvite endpoint");
         }
 
         @Test
@@ -402,29 +478,55 @@ class UserManagementServiceImplTest {
         }
 
         @Test
-        @DisplayName("Should propagate ResourceNotFoundException when pending user was activated between lookup and phone update")
-        void inviteUser_pendingUserActivatedBetweenLookupAndUpdate_throwsResourceNotFound() {
+        @DisplayName("Should throw UserAlreadyExistsException when concurrent insert hits duplicate key for active user")
+        void inviteUser_concurrentDuplicate_activeUser_throwsUserAlreadyExists() {
             Authentication auth = superUserAuth("kc-super");
             AdminUserRow callerRow = userRow(1L, "kc-super", "super@example.com", 0, 1, AdminUserStatus.ACTIVE);
-            AdminUserRow pendingUser = userRow(5L, "placeholder-uuid", "pending@example.com", 0, 1, AdminUserStatus.PENDING);
 
             when(userCommonRepository.findAdminUserByUuid("kc-super")).thenReturn(Optional.of(callerRow));
             when(userCommonRepository.findUserTypeNameById(1)).thenReturn(Optional.of("SUPER_USER"));
-            when(userCommonRepository.findAdminUserByEmail("pending@example.com")).thenReturn(Optional.of(pendingUser));
             when(userCommonRepository.findUserTypeIdByName("SUPER_USER")).thenReturn(Optional.of(1));
-            // Simulate the row vanishing (activated or deleted) between SELECT and UPDATE
-            doThrow(new ResourceNotFoundException("Pending admin user not found or already activated [id=5]"))
-                    .when(userCommonRepository).updatePendingAdminUserPhone(eq(5L), anyString());
+            doThrow(new DuplicateKeyException("duplicate key"))
+                    .when(userCommonRepository).createAdminUserPending(eq("race@example.com"), any(), any(), any(), any());
+            // Pre-check passes (empty), then re-query after catch finds the concurrently inserted active user
+            AdminUserRow activeUser = userRow(9L, "kc-race", "race@example.com", 0, 1, AdminUserStatus.ACTIVE);
+            when(userCommonRepository.findAdminUserByEmail("race@example.com"))
+                    .thenReturn(Optional.empty())
+                    .thenReturn(Optional.of(activeUser));
 
             InviteRequestDTO req = new InviteRequestDTO();
-            req.setEmail("pending@example.com");
+            req.setEmail("race@example.com");
             req.setRole("SUPER_USER");
-            req.setFirstName("New");
-            req.setLastName("User");
-            req.setPhoneNumber("91XXXXXXXXXX");
 
-            assertThrows(ResourceNotFoundException.class, () -> userManagementService.inviteUser(req, auth));
+            assertThrows(UserAlreadyExistsException.class, () -> userManagementService.inviteUser(req, auth));
         }
+
+        @Test
+        @DisplayName("Should throw BadRequestException when concurrent insert hits duplicate key for pending user")
+        void inviteUser_concurrentDuplicate_pendingUser_throwsBadRequest() {
+            Authentication auth = superUserAuth("kc-super");
+            AdminUserRow callerRow = userRow(1L, "kc-super", "super@example.com", 0, 1, AdminUserStatus.ACTIVE);
+
+            when(userCommonRepository.findAdminUserByUuid("kc-super")).thenReturn(Optional.of(callerRow));
+            when(userCommonRepository.findUserTypeNameById(1)).thenReturn(Optional.of("SUPER_USER"));
+            when(userCommonRepository.findUserTypeIdByName("SUPER_USER")).thenReturn(Optional.of(1));
+            doThrow(new DuplicateKeyException("duplicate key"))
+                    .when(userCommonRepository).createAdminUserPending(eq("race@example.com"), any(), any(), any(), any());
+            // Re-query after catch finds the concurrently inserted pending user
+            AdminUserRow pendingUser = userRow(10L, "placeholder", "race@example.com", 0, 1, AdminUserStatus.PENDING);
+            when(userCommonRepository.findAdminUserByEmail("race@example.com"))
+                    .thenReturn(Optional.empty())
+                    .thenReturn(Optional.of(pendingUser));
+
+            InviteRequestDTO req = new InviteRequestDTO();
+            req.setEmail("race@example.com");
+            req.setRole("SUPER_USER");
+
+            BadRequestException ex = assertThrows(BadRequestException.class,
+                    () -> userManagementService.inviteUser(req, auth));
+            assertTrue(ex.getMessage().toLowerCase().contains("reinvite"));
+        }
+
     }
 
     // ── deactivateUser ────────────────────────────────────────────────────────────
@@ -675,14 +777,14 @@ class UserManagementServiceImplTest {
             when(tokenService.generateRawToken()).thenReturn("new-raw-token");
             when(tokenService.hash("new-raw-token")).thenReturn("new-hash");
             when(inviteProperties.expiryHours()).thenReturn(24);
-            doNothing().when(userCommonRepository).upsertToken(
+            doNothing().when(userCommonRepository).insertToken(
                     eq("pending@example.com"), eq("new-hash"), eq("INVITE"), anyString(), any(), eq(1));
             when(frontendProperties.baseUrl()).thenReturn("http://localhost:3000");
             when(frontendProperties.invitePath()).thenReturn("/invite");
 
             userManagementService.reinviteUser(7L, auth);
 
-            verify(userCommonRepository).upsertToken(
+            verify(userCommonRepository).insertToken(
                     eq("pending@example.com"), eq("new-hash"), eq("INVITE"), anyString(), any(), eq(1));
             verify(userNotificationEventPublisher).publishInviteEmailAfterCommit(any(InviteEmailEvent.class));
         }
@@ -700,8 +802,8 @@ class UserManagementServiceImplTest {
             AdminUserTokenRow expiredToken = new AdminUserTokenRow(1L, "pending@example.com", "old-hash",
                     "INVITE", "{\"role\":\"SUPER_USER\",\"firstName\":\"" + encFirstName + "\",\"lastName\":\"" + encLastName + "\"}",
                     Instant.now().minus(2, ChronoUnit.HOURS), null, null, Instant.now().minus(26, ChronoUnit.HOURS));
-            when(pii.decrypt(encFirstName)).thenReturn("Jane");
-            when(pii.decrypt(encLastName)).thenReturn("Doe");
+            when(pii.safeDecrypt(encFirstName)).thenReturn("Jane");
+            when(pii.safeDecrypt(encLastName)).thenReturn("Doe");
 
             when(userCommonRepository.findAdminUserById(7L)).thenReturn(Optional.of(target));
             when(userCommonRepository.findAdminUserByUuid("kc-super")).thenReturn(Optional.of(callerRow));
@@ -710,7 +812,7 @@ class UserManagementServiceImplTest {
             when(tokenService.generateRawToken()).thenReturn("new-raw-token");
             when(tokenService.hash("new-raw-token")).thenReturn("new-hash");
             when(inviteProperties.expiryHours()).thenReturn(24);
-            doNothing().when(userCommonRepository).upsertToken(
+            doNothing().when(userCommonRepository).insertToken(
                     eq("pending@example.com"), eq("new-hash"), eq("INVITE"), anyString(), any(), eq(1));
             when(frontendProperties.baseUrl()).thenReturn("http://localhost:3000");
             when(frontendProperties.invitePath()).thenReturn("/invite");
@@ -722,9 +824,9 @@ class UserManagementServiceImplTest {
             verify(userNotificationEventPublisher).publishInviteEmailAfterCommit(eventCaptor.capture());
             assertEquals("Jane Doe", eventCaptor.getValue().getName());
 
-            // Verify that upsertToken was called with metadata containing firstName and lastName
+            // Verify that insertToken was called with metadata containing firstName and lastName
             ArgumentCaptor<String> metadataCaptor = ArgumentCaptor.forClass(String.class);
-            verify(userCommonRepository).upsertToken(
+            verify(userCommonRepository).insertToken(
                     eq("pending@example.com"), eq("new-hash"), eq("INVITE"),
                     metadataCaptor.capture(), any(), eq(1));
             String storedMetadata = metadataCaptor.getValue();

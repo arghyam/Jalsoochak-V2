@@ -1,4 +1,4 @@
-package org.arghyam.jalsoochak.user.service;
+package org.arghyam.jalsoochak.tenant.service;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
@@ -47,7 +47,6 @@ class PiiEncryptionServiceTest {
     void encrypt_producesDistinctCiphertexts() {
         String c1 = pii.encrypt("test");
         String c2 = pii.encrypt("test");
-        // Different IVs → different ciphertexts
         assertNotEquals(c1, c2, "Two encryptions of the same plaintext should differ");
     }
 
@@ -69,7 +68,6 @@ class PiiEncryptionServiceTest {
     @Test
     @DisplayName("decrypt throws IllegalStateException for ciphertext shorter than IV length")
     void decrypt_tooShort_throwsIllegalState() {
-        // 5 bytes — shorter than the 12-byte IV
         String tooShort = Base64.getEncoder().encodeToString(new byte[5]);
         assertThrows(IllegalStateException.class, () -> pii.decrypt(tooShort));
     }
@@ -77,7 +75,6 @@ class PiiEncryptionServiceTest {
     @Test
     @DisplayName("decrypt throws IllegalStateException for invalid base64 input")
     void decrypt_invalidBase64_throwsIllegalState() {
-        // '!' is not a valid base64 character → IllegalArgumentException wrapped as IllegalStateException
         assertThrows(IllegalStateException.class, () -> pii.decrypt("!!!invalid-base64!!!"));
     }
 
@@ -85,7 +82,6 @@ class PiiEncryptionServiceTest {
     @DisplayName("decrypt throws IllegalStateException for tampered ciphertext (auth tag mismatch)")
     void decrypt_tamperedCiphertext_throwsIllegalState() {
         String good = pii.encrypt("original");
-        // Flip a byte in the middle of the ciphertext
         byte[] bytes = Base64.getDecoder().decode(good);
         bytes[bytes.length / 2] ^= 0xFF;
         String tampered = Base64.getEncoder().encodeToString(bytes);

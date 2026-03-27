@@ -304,13 +304,13 @@ class UserControllerTest {
     class ListSuperUsersTests {
 
         @Test
-        @DisplayName("Should return 200 with paginated super users")
+        @DisplayName("Should return 200 with paginated super users when no status filter")
         void listSuperUsers_returns200() throws Exception {
             AdminUserResponseDTO dto = AdminUserResponseDTO.builder()
                     .id(1L).email("su@example.com").role("SUPER_USER").status(AdminUserStatus.ACTIVE.name()).build();
             PageResponseDTO<AdminUserResponseDTO> page = PageResponseDTO.of(List.of(dto), 1L, 0, 20);
 
-            when(userManagementService.listSuperUsers(anyInt(), anyInt())).thenReturn(page);
+            when(userManagementService.listSuperUsers(any(), anyInt(), anyInt())).thenReturn(page);
 
             mockMvc.perform(get("/api/v1/users/super-users")
                             .with(mockJwt()))
@@ -318,6 +318,33 @@ class UserControllerTest {
                     .andExpect(jsonPath("$.status").value(200))
                     .andExpect(jsonPath("$.data.content[0].email").value("su@example.com"))
                     .andExpect(jsonPath("$.data.totalElements").value(1));
+        }
+
+        @Test
+        @DisplayName("Should return 200 filtered by ACTIVE status")
+        void listSuperUsers_withStatusFilter_returns200() throws Exception {
+            AdminUserResponseDTO dto = AdminUserResponseDTO.builder()
+                    .id(1L).email("su@example.com").role("SUPER_USER").status(AdminUserStatus.ACTIVE.name()).build();
+            PageResponseDTO<AdminUserResponseDTO> page = PageResponseDTO.of(List.of(dto), 1L, 0, 20);
+
+            when(userManagementService.listSuperUsers(eq(AdminUserStatus.ACTIVE), anyInt(), anyInt())).thenReturn(page);
+
+            mockMvc.perform(get("/api/v1/users/super-users")
+                            .param("status", "ACTIVE")
+                            .with(mockJwt()))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.status").value(200))
+                    .andExpect(jsonPath("$.data.content[0].status").value("ACTIVE"));
+        }
+
+        @Test
+        @DisplayName("Should return 400 for invalid status value")
+        void listSuperUsers_invalidStatus_returns400() throws Exception {
+            mockMvc.perform(get("/api/v1/users/super-users")
+                            .param("status", "BADVALUE")
+                            .with(mockJwt()))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.status").value(400));
         }
     }
 
@@ -328,13 +355,13 @@ class UserControllerTest {
     class ListStateAdminsTests {
 
         @Test
-        @DisplayName("Should return 200 with paginated state admins")
+        @DisplayName("Should return 200 with paginated state admins when no status filter")
         void listStateAdmins_returns200() throws Exception {
             AdminUserResponseDTO dto = AdminUserResponseDTO.builder()
                     .id(2L).email("admin@mp.com").role("STATE_ADMIN").tenantCode("MP").status(AdminUserStatus.ACTIVE.name()).build();
             PageResponseDTO<AdminUserResponseDTO> page = PageResponseDTO.of(List.of(dto), 1L, 0, 20);
 
-            when(userManagementService.listStateAdmins(any(), any(), anyInt(), anyInt())).thenReturn(page);
+            when(userManagementService.listStateAdmins(any(), any(), any(), anyInt(), anyInt())).thenReturn(page);
 
             mockMvc.perform(get("/api/v1/users/state-admins")
                             .param("tenantCode", "MP")
@@ -342,6 +369,33 @@ class UserControllerTest {
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.status").value(200))
                     .andExpect(jsonPath("$.data.content[0].tenantCode").value("MP"));
+        }
+
+        @Test
+        @DisplayName("Should return 200 filtered by INACTIVE status")
+        void listStateAdmins_withStatusFilter_returns200() throws Exception {
+            AdminUserResponseDTO dto = AdminUserResponseDTO.builder()
+                    .id(2L).email("admin@mp.com").role("STATE_ADMIN").tenantCode("MP").status(AdminUserStatus.INACTIVE.name()).build();
+            PageResponseDTO<AdminUserResponseDTO> page = PageResponseDTO.of(List.of(dto), 1L, 0, 20);
+
+            when(userManagementService.listStateAdmins(any(), eq(AdminUserStatus.INACTIVE), any(), anyInt(), anyInt())).thenReturn(page);
+
+            mockMvc.perform(get("/api/v1/users/state-admins")
+                            .param("status", "INACTIVE")
+                            .with(mockJwt()))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.status").value(200))
+                    .andExpect(jsonPath("$.data.content[0].status").value("INACTIVE"));
+        }
+
+        @Test
+        @DisplayName("Should return 400 for invalid status value")
+        void listStateAdmins_invalidStatus_returns400() throws Exception {
+            mockMvc.perform(get("/api/v1/users/state-admins")
+                            .param("status", "UNKNOWN")
+                            .with(mockJwt()))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.status").value(400));
         }
     }
 

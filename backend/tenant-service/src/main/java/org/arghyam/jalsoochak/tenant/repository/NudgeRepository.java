@@ -60,11 +60,16 @@ public class NudgeRepository {
             ps.setFetchSize(500);
             return ps;
         }, rs -> {
-            Map<String, Object> row = new HashMap<>(8);
             Object userId = rs.getObject("user_id");
+            String rawName = rs.getString("name");
+            String rawPhone = rs.getString("phone_number");
+            String name = decryptPii(rawName, "name", userId, schema);
+            String phoneNumber = decryptPii(rawPhone, "phone_number", userId, schema);
+            if ((rawName != null && name == null) || (rawPhone != null && phoneNumber == null)) return;
+            Map<String, Object> row = new HashMap<>(8);
             row.put("user_id", userId);
-            row.put("name", safeDecrypt(rs.getString("name"), userId, "name"));
-            row.put("phone_number", safeDecrypt(rs.getString("phone_number"), userId, "phone_number"));
+            row.put("name", name);
+            row.put("phone_number", phoneNumber);
             row.put("language_id", rs.getObject("language_id"));
             row.put("whatsapp_connection_id", rs.getObject("whatsapp_connection_id"));
             row.put("scheme_id", rs.getObject("scheme_id"));
@@ -142,11 +147,16 @@ public class NudgeRepository {
             ps.setFetchSize(500);
             return ps;
         }, rs -> {
-            Map<String, Object> row = new HashMap<>(10);
             Object userId = rs.getObject("user_id");
+            String rawName = rs.getString("name");
+            String rawPhone = rs.getString("phone_number");
+            String name = decryptPii(rawName, "name", userId, schema);
+            String phoneNumber = decryptPii(rawPhone, "phone_number", userId, schema);
+            if ((rawName != null && name == null) || (rawPhone != null && phoneNumber == null)) return;
+            Map<String, Object> row = new HashMap<>(10);
             row.put("user_id", userId);
-            row.put("name", safeDecrypt(rs.getString("name"), userId, "name"));
-            row.put("phone_number", safeDecrypt(rs.getString("phone_number"), userId, "phone_number"));
+            row.put("name", name);
+            row.put("phone_number", phoneNumber);
             row.put("language_id", rs.getObject("language_id"));
             row.put("whatsapp_connection_id", rs.getObject("whatsapp_connection_id"));
             row.put("scheme_id", rs.getObject("scheme_id"));
@@ -178,10 +188,19 @@ public class NudgeRepository {
                 """, schema, schema);
         List<Map<String, Object>> rows = jdbcTemplate.queryForList(sql, schemeId, userTypeName);
         if (rows.isEmpty()) return null;
-        Map<String, Object> row = new java.util.HashMap<>(rows.get(0));
-        Object userId = row.get("user_id");
-        row.put("name", safeDecrypt((String) row.get("name"), userId, "name"));
-        row.put("phone_number", safeDecrypt((String) row.get("phone_number"), userId, "phone_number"));
+        Map<String, Object> row = new HashMap<>(rows.get(0));
+        try {
+            row.put("name", pii.safeDecrypt((String) row.get("name")));
+        } catch (RuntimeException e) {
+            log.warn("PII decryption failed for 'name', user_id={} schema='{}'", row.get("user_id"), schema);
+            row.put("name", null);
+        }
+        try {
+            row.put("phone_number", pii.safeDecrypt((String) row.get("phone_number")));
+        } catch (RuntimeException e) {
+            log.warn("PII decryption failed for 'phone_number', user_id={} schema='{}'", row.get("user_id"), schema);
+            row.put("phone_number", null);
+        }
         return row;
     }
 
@@ -207,11 +226,14 @@ public class NudgeRepository {
         List<Map<String, Object>> rows = jdbcTemplate.queryForList(sql, userTypeName);
         Map<Object, Map<String, Object>> result = new HashMap<>(rows.size() * 2);
         for (Map<String, Object> row : rows) {
-            Map<String, Object> decrypted = new HashMap<>(row);
-            Object userId = row.get("user_id");
-            decrypted.put("name", safeDecrypt((String) row.get("name"), userId, "name"));
-            decrypted.put("phone_number", safeDecrypt((String) row.get("phone_number"), userId, "phone_number"));
-            result.putIfAbsent(decrypted.get("scheme_id"), decrypted);
+            try {
+                Map<String, Object> decrypted = new HashMap<>(row);
+                decrypted.put("name", pii.safeDecrypt((String) row.get("name")));
+                decrypted.put("phone_number", pii.safeDecrypt((String) row.get("phone_number")));
+                result.putIfAbsent(decrypted.get("scheme_id"), decrypted);
+            } catch (RuntimeException e) {
+                log.warn("Skipping officer row for user_id={} due to PII decryption failure", row.get("user_id"));
+            }
         }
         return result;
     }
@@ -227,13 +249,35 @@ public class NudgeRepository {
                 contactId, userId);
     }
 
-    private String safeDecrypt(String raw, Object userId, String field) {
-        if (raw == null) return null;
+    /**
+     * Decrypts a PII field for use inside streaming row callbacks.
+     *
+     * <p>Mirrors the legacy-plaintext fallback in {@link PiiEncryptionService#safeDecrypt}
+     * but additionally catches actual decryption failures (e.g. tampered ciphertext, wrong key)
+     * and returns {@code null} instead of propagating, so a single corrupted row does not abort
+     * the entire stream batch.
+     *
+     * @return decrypted value; the raw value for legacy plaintext; or {@code null} on decryption
+     *         failure (the caller must skip the row)
+     */
+    private String decryptPii(String encoded, String fieldName, Object userId, String schema) {
+        if (encoded == null) return null;
+        // Minimum AES-256-GCM payload: 12-byte IV + 16-byte GCM auth tag = 28 bytes.
+        // Values shorter than this (or not valid Base64) are legacy plaintext rows.
         try {
-            return pii.decrypt(raw);
+            byte[] decoded = java.util.Base64.getDecoder().decode(encoded);
+            if (decoded.length < 28) {
+                return encoded;
+            }
+        } catch (IllegalArgumentException e) {
+            return encoded;
+        }
+        try {
+            return pii.decrypt(encoded);
         } catch (Exception e) {
-            log.warn("PII decryption failed for field='{}' userId={} – falling back to raw value", field, userId, e);
-            return raw;
+            log.error("PII decryption failed – field='{}' user_id={} schema='{}', skipping row",
+                    fieldName, userId, schema, e);
+            return null;
         }
     }
 

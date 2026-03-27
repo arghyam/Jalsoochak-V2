@@ -122,7 +122,8 @@ public class PumpOperatorUploadChunkProcessor {
             } catch (Exception ex) {
                 // Best-effort: one bad row must not abort the entire batch upload.
                 skipped++;
-                log.warn("[pump-operator-upload] row_failed row={} phone={} err={}",
+                log.warn("[pump-operator-upload] row_failed row={} err={}", row.rowNumber(), ex.getMessage());
+                log.debug("[pump-operator-upload] row_failed row={} phone={} err={}",
                         row.rowNumber(), row.phone(), ex.getMessage());
             }
         }

@@ -160,10 +160,11 @@ public class TenantManagementServiceImpl implements TenantManagementService {
     }
 
     @Override
-    public PageResponseDTO<TenantResponseDTO> getAllTenants(int page, int size) {
+    public PageResponseDTO<TenantResponseDTO> getAllTenants(int page, int size, TenantStatusEnum status, String search) {
+        String normalizedSearch = (search == null || search.isBlank()) ? null : search.trim();
         long offset = (long) page * size;
-        List<TenantResponseDTO> tenants = tenantCommonRepository.findAll(size, offset);
-        long totalElements = tenantCommonRepository.countAllTenants();
+        List<TenantResponseDTO> tenants = tenantCommonRepository.findAll(size, offset, status, normalizedSearch);
+        long totalElements = tenantCommonRepository.countAllTenants(status, normalizedSearch);
         return PageResponseDTO.of(tenants, totalElements, page, size);
     }
 
@@ -737,6 +738,15 @@ public class TenantManagementServiceImpl implements TenantManagementService {
                     objectMapper.writeValueAsString(reasons), currentUserId)
                     .orElseThrow(() -> new ConfigurationException(
                             "Failed to seed METER_CHANGE_REASONS for tenant [id=" + tenant.getId() + ", userId=" + currentUserId + "]"));
+
+            ReasonListConfigDTO supplyOutageReasons = ReasonListConfigDTO.builder()
+                    .reasons(tenantDefaults.getSupplyOutageReasons())
+                    .build();
+            tenantCommonRepository.upsertConfig(tenant.getId(),
+                    TenantConfigKeyEnum.SUPPLY_OUTAGE_REASONS.name(),
+                    objectMapper.writeValueAsString(supplyOutageReasons), currentUserId)
+                    .orElseThrow(() -> new ConfigurationException(
+                            "Failed to seed SUPPLY_OUTAGE_REASONS for tenant [id=" + tenant.getId() + ", userId=" + currentUserId + "]"));
 
             tenantCommonRepository.upsertConfig(tenant.getId(),
                     TenantConfigKeyEnum.LOCATION_CHECK_REQUIRED.name(),

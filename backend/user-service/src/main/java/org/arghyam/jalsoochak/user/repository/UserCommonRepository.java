@@ -138,18 +138,6 @@ public class UserCommonRepository {
         return id != null ? id.longValue() : null;
     }
 
-    public void updatePendingAdminUserPhone(Long id, String phoneNumber) {
-        int updated = jdbcTemplate.update("""
-                UPDATE common_schema.tenant_admin_user_master_table
-                SET phone_number = ?, phone_number_hash = ?, updated_at = NOW()
-                WHERE id = ? AND status = 2 AND deleted_at IS NULL
-                """, pii.encrypt(phoneNumber), pii.hmac(phoneNumber), id);
-        if (updated == 0) {
-            throw new ResourceNotFoundException(
-                    "Pending admin user not found or already activated [id=" + id + "]");
-        }
-    }
-
     /**
      * Complete activation of a PENDING admin user after Keycloak account creation.
      * Sets the real Keycloak UUID, phone number, and status = 1 (active).
@@ -274,67 +262,35 @@ public class UserCommonRepository {
 
     // --- Listing (paginated) ---
 
-    public List<AdminUserRow> listSuperUsers(long offset, int limit) {
+    public List<AdminUserRow> listSuperUsers(AdminUserStatus status, long offset, int limit) {
         if (limit <= 0) {
             throw new BadRequestException("limit must be greater than 0");
         }
         if (offset < 0) {
             throw new BadRequestException("offset must be non-negative");
         }
-        String sql = """
+        List<Object> args = new java.util.ArrayList<>();
+        StringBuilder sql = new StringBuilder("""
                 SELECT id, uuid, email, phone_number, tenant_id, admin_level, status, created_by, created_at
                 FROM common_schema.tenant_admin_user_master_table
                 WHERE tenant_id = 0
-                ORDER BY created_at DESC
-                LIMIT ? OFFSET ?
-                """;
-        return jdbcTemplate.query(sql, (rs, n) -> mapAdminUserRow(rs), limit, offset);
+                """);
+        if (status != null) {
+            sql.append(" AND status = ?");
+            args.add(status.code);
+        }
+        sql.append(" ORDER BY created_at DESC LIMIT ? OFFSET ?");
+        args.add(limit);
+        args.add(offset);
+        return jdbcTemplate.query(sql.toString(), (rs, n) -> mapAdminUserRow(rs), args.toArray());
     }
 
-    public long countSuperUsers() {
-        String sql = """
-                SELECT COUNT(*)
-                FROM common_schema.tenant_admin_user_master_table
-                WHERE tenant_id = 0
-                """;
-        Long count = jdbcTemplate.queryForObject(sql, Long.class);
-        return count != null ? count : 0L;
-    }
-
-    public List<AdminUserRow> listStateAdminsByTenant(Integer tenantId, long offset, int limit) {
-        if (limit <= 0) {
-            throw new BadRequestException("limit must be greater than 0");
-        }
-        if (offset < 0) {
-            throw new BadRequestException("offset must be non-negative");
-        }
-        if (tenantId == null) {
-            String sql = """
-                    SELECT id, uuid, email, phone_number, tenant_id, admin_level, status, created_by, created_at
-                    FROM common_schema.tenant_admin_user_master_table
-                    WHERE tenant_id != 0
-                    ORDER BY created_at DESC
-                    LIMIT ? OFFSET ?
-                    """;
-            return jdbcTemplate.query(sql, (rs, n) -> mapAdminUserRow(rs), limit, offset);
-        } else {
-            String sql = """
-                    SELECT id, uuid, email, phone_number, tenant_id, admin_level, status, created_by, created_at
-                    FROM common_schema.tenant_admin_user_master_table
-                    WHERE tenant_id = ?
-                    ORDER BY created_at DESC
-                    LIMIT ? OFFSET ?
-                    """;
-            return jdbcTemplate.query(sql, (rs, n) -> mapAdminUserRow(rs), tenantId, limit, offset);
-        }
-    }
-
-    public long countStateAdminsByTenant(Integer tenantId) {
-        if (tenantId == null) {
+    public long countSuperUsers(AdminUserStatus status) {
+        if (status == null) {
             String sql = """
                     SELECT COUNT(*)
                     FROM common_schema.tenant_admin_user_master_table
-                    WHERE tenant_id != 0
+                    WHERE tenant_id = 0
                     """;
             Long count = jdbcTemplate.queryForObject(sql, Long.class);
             return count != null ? count : 0L;
@@ -342,28 +298,73 @@ public class UserCommonRepository {
             String sql = """
                     SELECT COUNT(*)
                     FROM common_schema.tenant_admin_user_master_table
-                    WHERE tenant_id = ?
+                    WHERE tenant_id = 0 AND status = ?
                     """;
-            Long count = jdbcTemplate.queryForObject(sql, Long.class, tenantId);
+            Long count = jdbcTemplate.queryForObject(sql, Long.class, status.code);
             return count != null ? count : 0L;
         }
+    }
+
+    public List<AdminUserRow> listStateAdminsByTenant(Integer tenantId, AdminUserStatus status, long offset, int limit) {
+        if (limit <= 0) {
+            throw new BadRequestException("limit must be greater than 0");
+        }
+        if (offset < 0) {
+            throw new BadRequestException("offset must be non-negative");
+        }
+        List<Object> args = new java.util.ArrayList<>();
+        StringBuilder sql = new StringBuilder("""
+                SELECT id, uuid, email, phone_number, tenant_id, admin_level, status, created_by, created_at
+                FROM common_schema.tenant_admin_user_master_table
+                WHERE
+                """);
+        if (tenantId == null) {
+            sql.append(" tenant_id != 0");
+        } else {
+            sql.append(" tenant_id = ?");
+            args.add(tenantId);
+        }
+        if (status != null) {
+            sql.append(" AND status = ?");
+            args.add(status.code);
+        }
+        sql.append(" ORDER BY created_at DESC LIMIT ? OFFSET ?");
+        args.add(limit);
+        args.add(offset);
+        return jdbcTemplate.query(sql.toString(), (rs, n) -> mapAdminUserRow(rs), args.toArray());
+    }
+
+    public long countStateAdminsByTenant(Integer tenantId, AdminUserStatus status) {
+        List<Object> args = new java.util.ArrayList<>();
+        StringBuilder sql = new StringBuilder("""
+                SELECT COUNT(*)
+                FROM common_schema.tenant_admin_user_master_table
+                WHERE
+                """);
+        if (tenantId == null) {
+            sql.append(" tenant_id != 0");
+        } else {
+            sql.append(" tenant_id = ?");
+            args.add(tenantId);
+        }
+        if (status != null) {
+            sql.append(" AND status = ?");
+            args.add(status.code);
+        }
+        Long count = jdbcTemplate.queryForObject(sql.toString(), Long.class, args.toArray());
+        return count != null ? count : 0L;
     }
 
     // --- Token methods ---
 
     /**
-     * Soft-revoke any existing active token for (email, tokenType), then insert new one.
-     * Must be called from a @Transactional context.
+     * Insert a new token without touching any existing active tokens for (email, tokenType).
+     * Old tokens remain valid until consumed or expired (invalidate-on-use, not on-issue).
+     * When a token is eventually consumed, all sibling tokens are superseded via deleted_at.
      */
     @Transactional
-    public void upsertToken(String email, String tokenHash, String tokenType,
+    public void insertToken(String email, String tokenHash, String tokenType,
                             String metadataJson, Instant expiresAt, Integer createdBy) {
-        // Use LOWER() on both sides so the revoke matches regardless of stored case
-        jdbcTemplate.update("""
-                UPDATE common_schema.admin_user_token_table
-                SET deleted_at = NOW()
-                WHERE LOWER(email) = LOWER(?) AND token_type = ? AND used_at IS NULL AND deleted_at IS NULL
-                """, email, tokenType);
         jdbcTemplate.update("""
                 INSERT INTO common_schema.admin_user_token_table
                     (email, token_hash, token_type, metadata, expires_at, created_by)
@@ -372,7 +373,26 @@ public class UserCommonRepository {
                 Timestamp.from(expiresAt), createdBy);
     }
 
-    /** Find the most recent unconsumed INVITE token by email (regardless of expiry — used to read name metadata for PENDING users). */
+    /**
+     * Mark all other pending tokens for the same (email, tokenType) as deleted (superseded).
+     * Called atomically after a token is consumed so sibling links stop working.
+     */
+    private void supersedeSiblingTokens(String email, String tokenType, String usedTokenHash) {
+        jdbcTemplate.update("""
+                UPDATE common_schema.admin_user_token_table
+                SET deleted_at = NOW()
+                WHERE LOWER(email) = LOWER(?)
+                  AND token_type = ?
+                  AND token_hash != ?
+                  AND used_at IS NULL
+                  AND deleted_at IS NULL
+                """, email, tokenType, usedTokenHash);
+    }
+
+    /**
+     * Find the most recent unconsumed, non-superseded INVITE token by email
+     * (regardless of expiry — used to read name metadata for PENDING users).
+     */
     public Optional<AdminUserTokenRow> findInviteTokenByEmail(String email) {
         String sql = """
                 SELECT id, email, token_hash, token_type, metadata::TEXT, expires_at, used_at, deleted_at, created_at
@@ -410,7 +430,8 @@ public class UserCommonRepository {
     }
 
     /**
-     * Atomically validates and consumes an active, non-expired token in a single UPDATE.
+     * Atomically validates and consumes an active, non-expired token in a single UPDATE,
+     * then supersedes all other pending tokens for the same (email, token_type).
      * Returns the consumed row if successful; empty if the token is invalid, expired, or already used.
      */
     @Transactional
@@ -422,11 +443,14 @@ public class UserCommonRepository {
                 RETURNING id, email, token_hash, token_type, metadata::TEXT, expires_at, used_at, deleted_at, created_at
                 """;
         List<AdminUserTokenRow> rows = jdbcTemplate.query(sql, (rs, n) -> mapTokenRow(rs), tokenHash);
-        return rows.stream().findFirst();
+        Optional<AdminUserTokenRow> result = rows.stream().findFirst();
+        result.ifPresent(row -> supersedeSiblingTokens(row.email(), row.tokenType(), tokenHash));
+        return result;
     }
 
     /**
-     * Atomically validates and consumes an active, non-expired token only when its type matches.
+     * Atomically validates and consumes an active, non-expired token only when its type matches,
+     * then supersedes all other pending tokens for the same (email, token_type).
      * Returns the consumed row if successful; empty if invalid, expired, used, or type mismatch.
      */
     @Transactional
@@ -438,7 +462,9 @@ public class UserCommonRepository {
                 RETURNING id, email, token_hash, token_type, metadata::TEXT, expires_at, used_at, deleted_at, created_at
                 """;
         List<AdminUserTokenRow> rows = jdbcTemplate.query(sql, (rs, n) -> mapTokenRow(rs), tokenHash, expectedType);
-        return rows.stream().findFirst();
+        Optional<AdminUserTokenRow> result = rows.stream().findFirst();
+        result.ifPresent(row -> supersedeSiblingTokens(row.email(), row.tokenType(), tokenHash));
+        return result;
     }
 
     /** Admin revocation. */
@@ -454,15 +480,7 @@ public class UserCommonRepository {
 
     private AdminUserRow mapAdminUserRow(java.sql.ResultSet rs) throws java.sql.SQLException {
         Timestamp createdAtTs = rs.getTimestamp("created_at");
-        String rawPhone = rs.getString("phone_number");
-        String phoneNumber = null;
-        if (rawPhone != null) {
-            try {
-                phoneNumber = pii.decrypt(rawPhone);
-            } catch (Exception e) {
-                phoneNumber = rawPhone; // legacy plaintext fallback
-            }
-        }
+        String phoneNumber = pii.safeDecrypt(rs.getString("phone_number"));
         return new AdminUserRow(
                 rs.getLong("id"),
                 rs.getString("uuid"),

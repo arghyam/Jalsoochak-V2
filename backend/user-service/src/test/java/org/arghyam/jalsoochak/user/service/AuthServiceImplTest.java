@@ -352,7 +352,7 @@ class AuthServiceImplTest {
         }
 
         @Test
-        @DisplayName("Should generate token, upsert in DB, and send reset email when user is registered")
+        @DisplayName("Should generate token, insert in DB, and send reset email when user is registered")
         void forgotPassword_userFound_sendsEmail() {
             when(userCommonRepository.findAdminUserByEmail("user@example.com")).thenReturn(Optional.of(superUserRow()));
             when(tokenService.generateRawToken()).thenReturn("raw-reset-token");
@@ -360,7 +360,7 @@ class AuthServiceImplTest {
             when(passwordResetProperties.expiryMinutes()).thenReturn(30);
             when(frontendProperties.baseUrl()).thenReturn("http://localhost:3000");
             when(frontendProperties.resetPath()).thenReturn("/reset-password");
-            doNothing().when(userCommonRepository).upsertToken(
+            doNothing().when(userCommonRepository).insertToken(
                     eq("user@example.com"), eq("reset-hash"), eq("RESET"), eq(null), any(), eq(null));
 
             ForgotPasswordRequestDTO req = new ForgotPasswordRequestDTO();
@@ -368,7 +368,7 @@ class AuthServiceImplTest {
 
             authService.forgotPassword(req);
 
-            verify(userCommonRepository).upsertToken(
+            verify(userCommonRepository).insertToken(
                     eq("user@example.com"), eq("reset-hash"), eq("RESET"), eq(null), any(), eq(null));
             verify(userNotificationEventPublisher).publishResetPasswordEmailAfterCommit(any(ResetPasswordEmailEvent.class));
         }

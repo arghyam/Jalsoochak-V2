@@ -15,6 +15,7 @@ import org.arghyam.jalsoochak.tenant.dto.response.LocationHierarchyEditConstrain
 import org.arghyam.jalsoochak.tenant.dto.response.LocationHierarchyResponseDTO;
 import org.arghyam.jalsoochak.tenant.dto.internal.LocationLevelConfigDTO;
 import org.arghyam.jalsoochak.tenant.enums.TenantConfigKeyEnum;
+import org.arghyam.jalsoochak.tenant.enums.TenantStatusEnum;
 import java.util.List;
 import java.util.Set;
 
@@ -48,13 +49,15 @@ public interface TenantManagementService {
     void deactivateTenant(Integer tenantId);
 
     /**
-     * Gets all tenants.
+     * Gets all tenants with optional filters.
      *
-     * @param page Page number.
-     * @param size Page size.
+     * @param page   Page number (0-indexed).
+     * @param size   Page size.
+     * @param status Optional status filter; {@code null} returns all statuses.
+     * @param search Optional case-insensitive partial match on tenant name; {@code null} or blank means no filter.
      * @return Page of tenants.
      */
-    PageResponseDTO<TenantResponseDTO> getAllTenants(int page, int size);
+    PageResponseDTO<TenantResponseDTO> getAllTenants(int page, int size, TenantStatusEnum status, String search);
 
     /**
      * Returns an aggregate status summary (total, active, inactive, archived)

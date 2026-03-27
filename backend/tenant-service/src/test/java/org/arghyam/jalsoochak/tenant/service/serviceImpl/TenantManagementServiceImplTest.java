@@ -127,6 +127,7 @@ class TenantManagementServiceImplTest {
         lenient().when(tenantDefaults.getLgdLocationHierarchy()).thenReturn(Collections.emptyList());
         lenient().when(tenantDefaults.getDeptLocationHierarchy()).thenReturn(Collections.emptyList());
         lenient().when(tenantDefaults.getMeterChangeReasons()).thenReturn(Collections.emptyList());
+        lenient().when(tenantDefaults.getSupplyOutageReasons()).thenReturn(Collections.emptyList());
         
         // Manually create service with real ObjectMapper and mocked dependencies
         tenantManagementService = new TenantManagementServiceImpl(
@@ -172,6 +173,8 @@ class TenantManagementServiceImplTest {
             when(tenantCommonRepository.createTenant(any(CreateTenantRequestDTO.class), anyInt()))
                     .thenReturn(Optional.of(expectedResponse));
             when(tenantCommonRepository.upsertConfig(eq(1), eq("METER_CHANGE_REASONS"), anyString(), eq(100)))
+                    .thenReturn(Optional.of(ConfigDTO.builder().build()));
+            when(tenantCommonRepository.upsertConfig(eq(1), eq("SUPPLY_OUTAGE_REASONS"), anyString(), eq(100)))
                     .thenReturn(Optional.of(ConfigDTO.builder().build()));
             when(tenantCommonRepository.upsertConfig(eq(1), eq("LOCATION_CHECK_REQUIRED"), anyString(), eq(100)))
                     .thenReturn(Optional.of(ConfigDTO.builder().build()));
@@ -263,6 +266,10 @@ class TenantManagementServiceImplTest {
                     ReasonItemDTO.builder().id("METER_REPLACED").name("Meter Replaced")
                             .sequenceOrder(1).isDefault(true).editable(true).build()
             );
+            List<ReasonItemDTO> supplyOutageReasons = List.of(
+                    ReasonItemDTO.builder().id("PUMP_FAILURE").name("Pump Failure")
+                            .sequenceOrder(1).isDefault(true).editable(true).build()
+            );
 
             when(tenantCommonRepository.findByStateCode("TT")).thenReturn(Optional.empty());
             when(SecurityUtils.getCurrentUserUuid()).thenReturn("user-uuid");
@@ -272,7 +279,10 @@ class TenantManagementServiceImplTest {
             when(tenantDefaults.getLgdLocationHierarchy()).thenReturn(lgdLevels);
             when(tenantDefaults.getDeptLocationHierarchy()).thenReturn(deptLevels);
             when(tenantDefaults.getMeterChangeReasons()).thenReturn(reasons);
+            when(tenantDefaults.getSupplyOutageReasons()).thenReturn(supplyOutageReasons);
             when(tenantCommonRepository.upsertConfig(eq(1), eq("METER_CHANGE_REASONS"), anyString(), eq(100)))
+                    .thenReturn(Optional.of(ConfigDTO.builder().build()));
+            when(tenantCommonRepository.upsertConfig(eq(1), eq("SUPPLY_OUTAGE_REASONS"), anyString(), eq(100)))
                     .thenReturn(Optional.of(ConfigDTO.builder().build()));
             when(tenantCommonRepository.upsertConfig(eq(1), eq("LOCATION_CHECK_REQUIRED"), anyString(), eq(100)))
                     .thenReturn(Optional.of(ConfigDTO.builder().build()));
@@ -283,8 +293,9 @@ class TenantManagementServiceImplTest {
             // Assert — both hierarchy types seeded
             verify(tenantSchemaRepository).setLocationHierarchy("tenant_tt", RegionTypeEnum.LGD, lgdLevels, 100);
             verify(tenantSchemaRepository).setLocationHierarchy("tenant_tt", RegionTypeEnum.DEPARTMENT, deptLevels, 100);
-            // METER_CHANGE_REASONS and LOCATION_CHECK_REQUIRED written via upsertConfig
+            // All three reason/flag configs written via upsertConfig
             verify(tenantCommonRepository).upsertConfig(eq(1), eq("METER_CHANGE_REASONS"), anyString(), eq(100));
+            verify(tenantCommonRepository).upsertConfig(eq(1), eq("SUPPLY_OUTAGE_REASONS"), anyString(), eq(100));
             verify(tenantCommonRepository).upsertConfig(eq(1), eq("LOCATION_CHECK_REQUIRED"), anyString(), eq(100));
         }
     }
@@ -427,34 +438,93 @@ class TenantManagementServiceImplTest {
                     TenantResponseDTO.builder().id(2).name("Tenant2").build()
             );
 
-            when(tenantCommonRepository.findAll(size, 0)).thenReturn(tenants);
-            when(tenantCommonRepository.countAllTenants()).thenReturn(2L);
+            when(tenantCommonRepository.findAll(size, 0, null, null)).thenReturn(tenants);
+            when(tenantCommonRepository.countAllTenants(null, null)).thenReturn(2L);
 
             // Act
-            PageResponseDTO<TenantResponseDTO> result = tenantManagementService.getAllTenants(page, size);
+            PageResponseDTO<TenantResponseDTO> result = tenantManagementService.getAllTenants(page, size, null, null);
 
             // Assert
             assertNotNull(result);
             assertEquals(2, result.getContent().size());
             assertEquals(2L, result.getTotalElements());
-            verify(tenantCommonRepository).findAll(size, 0);
-            verify(tenantCommonRepository).countAllTenants();
+            verify(tenantCommonRepository).findAll(size, 0, null, null);
+            verify(tenantCommonRepository).countAllTenants(null, null);
         }
 
         @Test
         @DisplayName("Should return empty list when no tenants exist")
         void testGetAllTenants_Empty() {
             // Arrange
-            when(tenantCommonRepository.findAll(10, 0)).thenReturn(Collections.emptyList());
-            when(tenantCommonRepository.countAllTenants()).thenReturn(0L);
+            when(tenantCommonRepository.findAll(10, 0, null, null)).thenReturn(Collections.emptyList());
+            when(tenantCommonRepository.countAllTenants(null, null)).thenReturn(0L);
 
             // Act
-            PageResponseDTO<TenantResponseDTO> result = tenantManagementService.getAllTenants(0, 10);
+            PageResponseDTO<TenantResponseDTO> result = tenantManagementService.getAllTenants(0, 10, null, null);
 
             // Assert
             assertNotNull(result);
             assertEquals(0, result.getContent().size());
             assertEquals(0L, result.getTotalElements());
+        }
+
+        @Test
+        @DisplayName("Should filter tenants by status")
+        void testGetAllTenants_FilterByStatus() {
+            int page = 0, size = 10;
+            List<TenantResponseDTO> tenants = List.of(
+                    TenantResponseDTO.builder().id(1).name("Active Tenant").status(TenantStatusEnum.ACTIVE.name()).build()
+            );
+
+            when(tenantCommonRepository.findAll(size, 0, TenantStatusEnum.ACTIVE, null)).thenReturn(tenants);
+            when(tenantCommonRepository.countAllTenants(TenantStatusEnum.ACTIVE, null)).thenReturn(1L);
+
+            PageResponseDTO<TenantResponseDTO> result = tenantManagementService.getAllTenants(page, size, TenantStatusEnum.ACTIVE, null);
+
+            assertNotNull(result);
+            assertEquals(1, result.getContent().size());
+            assertEquals(TenantStatusEnum.ACTIVE.name(), result.getContent().get(0).getStatus());
+            verify(tenantCommonRepository).findAll(size, 0, TenantStatusEnum.ACTIVE, null);
+            verify(tenantCommonRepository).countAllTenants(TenantStatusEnum.ACTIVE, null);
+        }
+
+        @Test
+        @DisplayName("Should filter tenants by search term")
+        void testGetAllTenants_FilterBySearch() {
+            int page = 0, size = 10;
+            List<TenantResponseDTO> tenants = List.of(
+                    TenantResponseDTO.builder().id(1).name("Madhya Pradesh").build()
+            );
+
+            when(tenantCommonRepository.findAll(size, 0, null, "madhya")).thenReturn(tenants);
+            when(tenantCommonRepository.countAllTenants(null, "madhya")).thenReturn(1L);
+
+            PageResponseDTO<TenantResponseDTO> result = tenantManagementService.getAllTenants(page, size, null, "madhya");
+
+            assertNotNull(result);
+            assertEquals(1, result.getContent().size());
+            assertEquals("Madhya Pradesh", result.getContent().get(0).getName());
+            verify(tenantCommonRepository).findAll(size, 0, null, "madhya");
+            verify(tenantCommonRepository).countAllTenants(null, "madhya");
+        }
+
+        @Test
+        @DisplayName("Should filter tenants by status and search term combined")
+        void testGetAllTenants_FilterByStatusAndSearch() {
+            int page = 0, size = 10;
+            List<TenantResponseDTO> tenants = List.of(
+                    TenantResponseDTO.builder().id(1).name("Madhya Pradesh").status(TenantStatusEnum.ACTIVE.name()).build()
+            );
+
+            when(tenantCommonRepository.findAll(size, 0, TenantStatusEnum.ACTIVE, "madhya")).thenReturn(tenants);
+            when(tenantCommonRepository.countAllTenants(TenantStatusEnum.ACTIVE, "madhya")).thenReturn(1L);
+
+            PageResponseDTO<TenantResponseDTO> result = tenantManagementService.getAllTenants(page, size, TenantStatusEnum.ACTIVE, "madhya");
+
+            assertNotNull(result);
+            assertEquals(1, result.getContent().size());
+            verify(tenantCommonRepository).findAll(size, 0, TenantStatusEnum.ACTIVE, "madhya");
+            verify(tenantCommonRepository).countAllTenants(TenantStatusEnum.ACTIVE, "madhya");
         }
     }
 

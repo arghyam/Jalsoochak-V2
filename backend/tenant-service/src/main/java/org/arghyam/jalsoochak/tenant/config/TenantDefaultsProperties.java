@@ -24,4 +24,7 @@ public class TenantDefaultsProperties {
 
     @NotEmpty
     private List<@Valid ReasonItemDTO> meterChangeReasons;
+
+    @NotEmpty
+    private List<@Valid ReasonItemDTO> supplyOutageReasons;
 }

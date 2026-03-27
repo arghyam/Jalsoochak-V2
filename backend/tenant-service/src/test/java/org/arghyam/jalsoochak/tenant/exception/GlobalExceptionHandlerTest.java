@@ -107,11 +107,12 @@ class GlobalExceptionHandlerTest {
     class TypeMismatchHandlerTests {
 
         @Test
-        @DisplayName("Should handle type mismatch and return bad request with correct message")
-        void testHandleTypeMismatch_Success() {
+        @DisplayName("Should handle type mismatch for non-enum and return bad request with correct message")
+        void testHandleTypeMismatch_NonEnum() {
             // Arrange
             MethodArgumentTypeMismatchException ex = mock(MethodArgumentTypeMismatchException.class);
             when(ex.getValue()).thenReturn("abc");
+            when(ex.getRequiredType()).thenReturn(null);
             when(ex.getParameter()).thenReturn(mock(MethodParameter.class));
             when(ex.getParameter().getParameterName()).thenReturn("pageSize");
 
@@ -124,6 +125,32 @@ class GlobalExceptionHandlerTest {
             assertEquals(400, response.getBody().getStatus());
             assertTrue(response.getBody().getMessage().contains("Invalid value"));
             assertTrue(response.getBody().getMessage().contains("pageSize"));
+            assertFalse(response.getBody().getMessage().contains("Accepted values"));
+        }
+
+        @SuppressWarnings({ "rawtypes", "unchecked" })
+        @Test
+        @DisplayName("Should include accepted enum values in message when type mismatch is for an enum param")
+        void testHandleTypeMismatch_EnumType_IncludesAcceptedValues() {
+            // Arrange
+            MethodArgumentTypeMismatchException ex = mock(MethodArgumentTypeMismatchException.class);
+            when(ex.getValue()).thenReturn("NOT_A_STATUS");
+            when(ex.getRequiredType()).thenReturn((Class) TenantStatusEnum.class);
+            when(ex.getParameter()).thenReturn(mock(MethodParameter.class));
+            when(ex.getParameter().getParameterName()).thenReturn("status");
+
+            // Act
+            ResponseEntity<ApiErrorResponseDTO> response = handler.handleTypeMismatch(ex);
+
+            // Assert
+            assertEquals(HttpStatus.BAD_REQUEST, response.getStatusCode());
+            assertNotNull(response.getBody());
+            assertEquals(400, response.getBody().getStatus());
+            assertTrue(response.getBody().getMessage().contains("NOT_A_STATUS"));
+            assertTrue(response.getBody().getMessage().contains("status"));
+            assertTrue(response.getBody().getMessage().contains("Accepted values"));
+            assertTrue(response.getBody().getMessage().contains("ACTIVE"));
+            assertTrue(response.getBody().getMessage().contains("INACTIVE"));
         }
     }
 

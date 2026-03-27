@@ -137,37 +137,72 @@ public class TenantCommonRepository {
 
     /**
      * Lists all tenants in the common_schema.tenant_master_table (no pagination).
+     * Excludes soft-deleted tenants.
      */
     public List<TenantResponseDTO> findAll() {
         return jdbcTemplate.query(
-                "SELECT * FROM common_schema.tenant_master_table ORDER BY id",
+                "SELECT * FROM common_schema.tenant_master_table WHERE deleted_at IS NULL ORDER BY id",
                 TENANT_ROW_MAPPER);
     }
 
     /**
-     * Lists all non-system tenants in the common_schema.tenant_master_table with pagination.
+     * Lists all non-system tenants with pagination and optional filters.
      * The system tenant (id = 0) is excluded from results.
+     *
+     * @param limit   Page size.
+     * @param offset  Row offset.
+     * @param status  Optional status filter; {@code null} means all statuses.
+     * @param search  Optional case-insensitive partial match on tenant name; {@code null} or blank means no filter.
      */
-    public List<TenantResponseDTO> findAll(int limit, long offset) {
+    public List<TenantResponseDTO> findAll(int limit, long offset, TenantStatusEnum status, String search) {
         if (limit <= 0) {
             throw new IllegalArgumentException("limit must be greater than 0");
         }
         if (offset < 0) {
             throw new IllegalArgumentException("offset must be non-negative");
         }
-        return jdbcTemplate.query(
-                "SELECT * FROM common_schema.tenant_master_table WHERE id != 0 ORDER BY id LIMIT ? OFFSET ?",
-                TENANT_ROW_MAPPER, limit, offset);
+
+        FilterClause filter = buildTenantFilterClause(status, search);
+        List<Object> params = new ArrayList<>(Arrays.asList(filter.params()));
+        params.add(limit);
+        params.add(offset);
+
+        String sql = "SELECT * FROM common_schema.tenant_master_table " + filter.whereClause()
+                + " ORDER BY id LIMIT ? OFFSET ?";
+        return jdbcTemplate.query(sql, TENANT_ROW_MAPPER, params.toArray());
     }
 
     /**
-     * Counts the total number of non-system tenants in common_schema.tenant_master_table.
-     * The system tenant (id = 0) is excluded from the count.
+     * Counts the total number of non-system tenants with optional filters.
+     * The system tenant (id = 0) and soft-deleted tenants are excluded from the count.
+     *
+     * @param status  Optional status filter; {@code null} means all statuses.
+     * @param search  Optional case-insensitive partial match on tenant name; {@code null} or blank means no filter.
      */
-    public long countAllTenants() {
-        return jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM common_schema.tenant_master_table WHERE id != 0",
-                Long.class);
+    public long countAllTenants(TenantStatusEnum status, String search) {
+        FilterClause filter = buildTenantFilterClause(status, search);
+        String sql = "SELECT COUNT(*) FROM common_schema.tenant_master_table " + filter.whereClause();
+        return jdbcTemplate.queryForObject(sql, Long.class, filter.params());
+    }
+
+    private record FilterClause(String whereClause, Object[] params) {}
+
+    private FilterClause buildTenantFilterClause(TenantStatusEnum status, String search) {
+        List<Object> params = new ArrayList<>();
+        StringBuilder where = new StringBuilder("WHERE id != 0 AND deleted_at IS NULL");
+        if (status != null) {
+            where.append(" AND status = ?");
+            params.add(status.getCode());
+        }
+        if (search != null && !search.isBlank()) {
+            String escapedSearch = search.strip()
+                    .replace("\\", "\\\\")
+                    .replace("%", "\\%")
+                    .replace("_", "\\_");
+            where.append(" AND title ILIKE ? ESCAPE '\\'");
+            params.add("%" + escapedSearch + "%");
+        }
+        return new FilterClause(where.toString(), params.toArray());
     }
 
     /**
@@ -186,7 +221,7 @@ public class TenantCommonRepository {
                     COUNT(*) FILTER (WHERE status = ?)            AS degraded,
                     COUNT(*) FILTER (WHERE status = ?)            AS archived
                 FROM common_schema.tenant_master_table
-                WHERE id != 0
+                WHERE id != 0 AND deleted_at IS NULL
                 """;
         return jdbcTemplate.queryForObject(sql,
                 (rs, rn) -> TenantSummaryResponseDTO.builder()

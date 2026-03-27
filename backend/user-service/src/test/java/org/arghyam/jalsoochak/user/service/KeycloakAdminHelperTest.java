@@ -2,6 +2,8 @@ package org.arghyam.jalsoochak.user.service;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -44,6 +46,9 @@ class KeycloakAdminHelperTest {
 
     @BeforeEach
     void setUp() {
+        // Default: safeDecrypt returns the raw value (mimics legacy-plaintext path).
+        // Lenient because not all tests exercise the decrypt path.
+        lenient().when(pii.safeDecrypt(anyString())).thenAnswer(inv -> inv.getArgument(0));
         MetadataDecryptionHelper metadataDecryptionHelper = new MetadataDecryptionHelper(new ObjectMapper(), pii);
         helper = new KeycloakAdminHelper(keycloakProvider, userCommonRepository, metadataDecryptionHelper);
     }
@@ -104,8 +109,8 @@ class KeycloakAdminHelperTest {
                     .thenReturn(Optional.of(tokenRow("enc@example.com", metadata)));
             when(userCommonRepository.findUserTypeNameById(2)).thenReturn(Optional.of("STATE_ADMIN"));
             when(userCommonRepository.findTenantStateCodeById(1)).thenReturn(Optional.of("MP"));
-            when(pii.decrypt(encFirstName)).thenReturn("Alice");
-            when(pii.decrypt(encLastName)).thenReturn("Smith");
+            when(pii.safeDecrypt(encFirstName)).thenReturn("Alice");
+            when(pii.safeDecrypt(encLastName)).thenReturn("Smith");
 
             AdminUserResponseDTO result = helper.buildAdminUserResponse(user);
 
