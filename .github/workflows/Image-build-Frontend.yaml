@@ -119,3 +119,4 @@ jobs:
     with:
       service_name: jalsoochak-frontend
       image_tag: ${{ github.sha }}
+      kubeconfig: ${{ secrets.KUBECONFIG }}

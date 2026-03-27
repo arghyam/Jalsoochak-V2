@@ -107,4 +107,4 @@ jobs:
     with:
       service_name: apigateway
       image_tag: ${{ github.sha }}
-
+      kubeconfig: ${{ secrets.KUBECONFIG }}
