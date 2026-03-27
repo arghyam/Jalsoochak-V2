@@ -1,9 +1,12 @@
 package org.arghyam.jalsoochak.user.repository;
 
-import lombok.RequiredArgsConstructor;
+import java.sql.Timestamp;
+import java.time.Instant;
+import java.util.List;
+import java.util.Optional;
+
 import org.arghyam.jalsoochak.user.enums.AdminUserStatus;
 import org.arghyam.jalsoochak.user.exceptions.BadRequestException;
-import org.arghyam.jalsoochak.user.exceptions.ResourceNotFoundException;
 import org.arghyam.jalsoochak.user.repository.records.AdminUserRow;
 import org.arghyam.jalsoochak.user.repository.records.AdminUserTokenRow;
 import org.arghyam.jalsoochak.user.service.PiiEncryptionService;
@@ -11,10 +14,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.sql.Timestamp;
-import java.time.Instant;
-import java.util.List;
-import java.util.Optional;
+import lombok.RequiredArgsConstructor;
 
 @Repository
 @RequiredArgsConstructor
