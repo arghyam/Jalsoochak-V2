@@ -5,8 +5,10 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.util.Collections;
 import java.util.EnumSet;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -17,6 +19,7 @@ import java.util.stream.Collectors;
 
 import org.arghyam.jalsoochak.tenant.config.TenantDefaultsProperties;
 import org.arghyam.jalsoochak.tenant.dto.common.PageResponseDTO;
+import org.arghyam.jalsoochak.tenant.dto.internal.ChannelListConfigDTO;
 import org.arghyam.jalsoochak.tenant.dto.internal.ConfigDTO;
 import org.arghyam.jalsoochak.tenant.dto.internal.ConfigValueDTO;
 import org.arghyam.jalsoochak.tenant.dto.internal.LogoSource;
@@ -39,6 +42,7 @@ import org.arghyam.jalsoochak.tenant.dto.response.TenantResponseDTO;
 import org.arghyam.jalsoochak.tenant.dto.response.TenantSummaryResponseDTO;
 import org.arghyam.jalsoochak.tenant.enums.ConfigStatusEnum;
 import org.arghyam.jalsoochak.tenant.enums.RegionTypeEnum;
+import org.arghyam.jalsoochak.tenant.enums.SystemConfigKeyEnum;
 import org.arghyam.jalsoochak.tenant.enums.TenantConfigKeyEnum;
 import org.arghyam.jalsoochak.tenant.enums.TenantConfigKeyEnum.ConfigType;
 import org.arghyam.jalsoochak.tenant.enums.TenantStatusEnum;
@@ -214,6 +218,24 @@ public class TenantManagementServiceImpl implements TenantManagementService {
             }
         }
 
+        if (configMap.containsKey(TenantConfigKeyEnum.TENANT_SUPPORTED_CHANNELS)) {
+            ChannelListConfigDTO stored = (ChannelListConfigDTO) configMap.get(TenantConfigKeyEnum.TENANT_SUPPORTED_CHANNELS);
+            Set<String> systemChannels = new HashSet<>(fetchSystemSupportedChannels());
+            List<String> effective = stored.getChannels().stream()
+                    .filter(systemChannels::contains)
+                    .collect(Collectors.toList());
+            List<String> removed = stored.getChannels().stream()
+                    .filter(ch -> !systemChannels.contains(ch))
+                    .collect(Collectors.toList());
+            boolean degraded = !removed.isEmpty();
+            configMap.put(TenantConfigKeyEnum.TENANT_SUPPORTED_CHANNELS,
+                    ChannelListConfigDTO.builder()
+                            .channels(effective)
+                            .degraded(degraded ? Boolean.TRUE : null)
+                            .removedChannels(degraded ? removed : null)
+                            .build());
+        }
+
         return TenantConfigResponseDTO.builder()
                 .tenantId(tenantId)
                 .configs(configMap)
@@ -245,6 +267,22 @@ public class TenantManagementServiceImpl implements TenantManagementService {
             } catch (JsonProcessingException e) {
                 throw new InvalidConfigValueException(
                         "Invalid value for config key " + key + ": " + e.getMessage(), e);
+            }
+
+            if (key == TenantConfigKeyEnum.TENANT_SUPPORTED_CHANNELS) {
+                ChannelListConfigDTO channelDto = (ChannelListConfigDTO) dto;
+                Set<String> systemChannels = new HashSet<>(fetchSystemSupportedChannels());
+                if (systemChannels.isEmpty()) {
+                    throw new InvalidConfigValueException(
+                            "The system currently does not support any channels.");
+                }
+                List<String> invalid = channelDto.getChannels().stream()
+                        .filter(ch -> !systemChannels.contains(ch))
+                        .collect(Collectors.toList());
+                if (!invalid.isEmpty()) {
+                    throw new InvalidConfigValueException(
+                            "Channels not supported at system level: " + invalid);
+                }
             }
 
             if (key.getType() == ConfigType.GENERIC) {
@@ -713,6 +751,22 @@ public class TenantManagementServiceImpl implements TenantManagementService {
     private boolean isExternalUrl(String value) {
         String lower = value.toLowerCase();
         return lower.startsWith("http://") || lower.startsWith("https://");
+    }
+
+    private List<String> fetchSystemSupportedChannels() {
+        List<ConfigDTO> systemConfigs = tenantCommonRepository.findConfigsByTenantId(TenantConstants.SYSTEM_TENANT_ID);
+        return systemConfigs.stream()
+                .filter(cfg -> SystemConfigKeyEnum.SYSTEM_SUPPORTED_CHANNELS.name().equals(cfg.getConfigKey()))
+                .findFirst()
+                .map(cfg -> {
+                    try {
+                        return objectMapper.readValue(cfg.getConfigValue(), ChannelListConfigDTO.class).getChannels();
+                    } catch (JsonProcessingException e) {
+                        log.error("Malformed SYSTEM_SUPPORTED_CHANNELS config value", e);
+                        throw new InvalidConfigValueException("Malformed SYSTEM_SUPPORTED_CHANNELS config value", e);
+                    }
+                })
+                .orElse(Collections.emptyList());
     }
 
     private Integer resolveCurrentUserId() {
