@@ -544,36 +544,49 @@ public class GlificMeterWorkflowService {
                     operatorContextService.resolveOperatorLanguage(operatorWithSchema, tenantId)
             );
 
-            String configValue = tenantConfigRepository.findConfigValue(tenantId, "SUPPLY_OUTAGE_REASONS")
-                    .orElseThrow(() -> new IllegalStateException("SUPPLY_OUTAGE_REASONS config is not configured"));
-            JsonNode root = objectMapper.readTree(configValue);
-            JsonNode reasonsNode = root.path("reasons");
-            if (!reasonsNode.isArray() || reasonsNode.isEmpty()) {
-                throw new IllegalStateException("SUPPLY_OUTAGE_REASONS config has no reasons");
-            }
-            List<JsonNode> reasons = new java.util.ArrayList<>();
-            reasonsNode.forEach(reasons::add);
-            reasons.sort((a, b) -> Integer.compare(
-                    a.path("sequenceOrder").asInt(Integer.MAX_VALUE),
-                    b.path("sequenceOrder").asInt(Integer.MAX_VALUE)
-            ));
-
             String rawIssueReason = request.getIssueReason().trim();
-            Integer selectedIndex = null;
-            if (rawIssueReason.matches("^\\d+$")) {
-                selectedIndex = Integer.parseInt(rawIssueReason);
-            }
+            Optional<String> configValue = tenantConfigRepository.findConfigValue(tenantId, "SUPPLY_OUTAGE_REASONS");
+            String resolvedIssueReason;
+            String selectedKey;
 
-            if (selectedIndex == null || selectedIndex < 1 || selectedIndex > reasons.size()) {
-                return IntroResponse.builder()
-                        .success(false)
-                        .message("Please choose a number between 1 and " + reasons.size() + ".")
-                        .build();
-            }
+            if (configValue.isPresent()) {
+                JsonNode root = objectMapper.readTree(configValue.get());
+                JsonNode reasonsNode = root.path("reasons");
+                if (!reasonsNode.isArray() || reasonsNode.isEmpty()) {
+                    throw new IllegalStateException("SUPPLY_OUTAGE_REASONS config has no reasons");
+                }
+                List<JsonNode> reasons = new java.util.ArrayList<>();
+                reasonsNode.forEach(reasons::add);
+                reasons.sort((a, b) -> Integer.compare(
+                        a.path("sequenceOrder").asInt(Integer.MAX_VALUE),
+                        b.path("sequenceOrder").asInt(Integer.MAX_VALUE)
+                ));
 
-            JsonNode selectedReasonNode = reasons.get(selectedIndex - 1);
-            String resolvedIssueReason = selectedReasonNode.path("name").asText().trim();
-            String selectedKey = selectedReasonNode.path("id").asText().trim();
+                Integer selectedIndex = null;
+                if (rawIssueReason.matches("^\\d+$")) {
+                    selectedIndex = Integer.parseInt(rawIssueReason);
+                }
+
+                if (selectedIndex == null || selectedIndex < 1 || selectedIndex > reasons.size()) {
+                    return IntroResponse.builder()
+                            .success(false)
+                            .message("Please choose a number between 1 and " + reasons.size() + ".")
+                            .build();
+                }
+
+                JsonNode selectedReasonNode = reasons.get(selectedIndex - 1);
+                resolvedIssueReason = selectedReasonNode.path("name").asText().trim();
+                selectedKey = selectedReasonNode.path("id").asText().trim();
+            } else {
+                List<String> reasons = "hindi".equals(languageKey) ? TELEMETRY_ISSUE_REASONS_HINDI : TELEMETRY_ISSUE_REASONS;
+                resolvedIssueReason = resolveSelection(rawIssueReason, reasons).orElse(rawIssueReason);
+                selectedKey = resolveIssueSelectionKey(
+                        rawIssueReason,
+                        resolvedIssueReason,
+                        reasons,
+                        TELEMETRY_ISSUE_REASON_SELECTION_KEYS
+                );
+            }
 
             Long schemeId = telemetryTenantRepository
                     .findFirstSchemeForUser(operatorWithSchema.schemaName(), operatorWithSchema.operator().id())
@@ -639,7 +652,7 @@ public class GlificMeterWorkflowService {
                     .message(message)
                     .correlationId(correlationId)
                     .selected(selectedKey)
-                    .notOthers("OTHERS".equalsIgnoreCase(selectedKey))
+                    .notOthers("OTHERS".equalsIgnoreCase(selectedKey) || "others".equalsIgnoreCase(selectedKey))
                     .build();
         } catch (Exception e) {
             log.error("Error saving telemetry issue report for contactId {}: {}", request.getContactId(), e.getMessage(), e);
