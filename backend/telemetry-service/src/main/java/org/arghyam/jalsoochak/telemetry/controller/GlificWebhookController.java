@@ -20,6 +20,7 @@ import jakarta.validation.Valid;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -284,6 +285,26 @@ public class GlificWebhookController {
                             .message("Issue report could not be saved.")
                             .build()
             );
+        }
+    }
+
+    @PostMapping(
+            value = "/telemetry/issueReport",
+            consumes = "application/json",
+            produces = "application/json"
+    )
+    public ResponseEntity<String> issueReportTelemetryReasons(@RequestBody @Valid IntroRequest request) {
+        try {
+            String response = glificWebhookService.issueReportTelemetryReasons(request);
+            return ResponseEntity.ok()
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(response);
+        } catch (Exception e) {
+            log.error("Error fetching telemetry issue report reasons: {}", e.getMessage(), e);
+            log.debug("Error fetching telemetry issue report reasons for contactId {}: {}", request.getContactId(), e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body("{\"message\":\"Supply outage reasons could not be fetched.\"}");
         }
     }
 

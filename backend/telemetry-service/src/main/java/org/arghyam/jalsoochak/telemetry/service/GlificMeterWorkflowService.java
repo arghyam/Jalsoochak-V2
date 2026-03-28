@@ -294,6 +294,58 @@ public class GlificMeterWorkflowService {
         }
     }
 
+    public String issueReportTelemetryReasons(IntroRequest request) {
+        if (request.getContactId() == null || request.getContactId().isBlank()) {
+            throw new IllegalStateException("contactId is required");
+        }
+
+        TelemetryOperatorWithSchema operatorWithSchema = operatorContextService.resolveOperatorWithSchema(request.getContactId());
+        Integer tenantId = operatorWithSchema.operator().tenantId();
+        if (tenantId == null) {
+            throw new IllegalStateException("Operator tenant could not be resolved");
+        }
+
+        String configValue = tenantConfigRepository.findConfigValue(tenantId, "SUPPLY_OUTAGE_REASONS")
+                .orElseThrow(() -> new IllegalStateException("SUPPLY_OUTAGE_REASONS config is not configured"));
+
+        JsonNode root;
+        try {
+            root = objectMapper.readTree(configValue);
+        } catch (Exception e) {
+            throw new IllegalStateException("SUPPLY_OUTAGE_REASONS config is not valid JSON", e);
+        }
+
+        JsonNode reasonsNode = root.path("reasons");
+        if (!reasonsNode.isArray() || reasonsNode.isEmpty()) {
+            throw new IllegalStateException("SUPPLY_OUTAGE_REASONS config has no reasons");
+        }
+
+        List<JsonNode> reasons = new java.util.ArrayList<>();
+        reasonsNode.forEach(reasons::add);
+        reasons.sort((a, b) -> Integer.compare(
+                a.path("sequenceOrder").asInt(Integer.MAX_VALUE),
+                b.path("sequenceOrder").asInt(Integer.MAX_VALUE)
+        ));
+
+        StringBuilder message = new StringBuilder(LEGACY_ISSUE_PROMPT_ENGLISH);
+        for (int i = 0; i < reasons.size(); i++) {
+            String name = reasons.get(i).path("name").asText();
+            if (name == null || name.isBlank()) {
+                continue;
+            }
+            message.append("\n")
+                    .append(i + 1)
+                    .append(". ")
+                    .append(name.trim());
+        }
+
+        try {
+            return objectMapper.writeValueAsString(java.util.Map.of("message", message.toString()));
+        } catch (Exception e) {
+            throw new IllegalStateException("Failed to serialize issue report reasons message", e);
+        }
+    }
+
     public IntroResponse issueReportSubmitMessage(IssueReportRequest request) {
         try {
             if (request.getContactId() == null || request.getContactId().isBlank()) {
@@ -492,15 +544,36 @@ public class GlificMeterWorkflowService {
                     operatorContextService.resolveOperatorLanguage(operatorWithSchema, tenantId)
             );
 
-            List<String> reasons = "hindi".equals(languageKey) ? TELEMETRY_ISSUE_REASONS_HINDI : TELEMETRY_ISSUE_REASONS;
+            String configValue = tenantConfigRepository.findConfigValue(tenantId, "SUPPLY_OUTAGE_REASONS")
+                    .orElseThrow(() -> new IllegalStateException("SUPPLY_OUTAGE_REASONS config is not configured"));
+            JsonNode root = objectMapper.readTree(configValue);
+            JsonNode reasonsNode = root.path("reasons");
+            if (!reasonsNode.isArray() || reasonsNode.isEmpty()) {
+                throw new IllegalStateException("SUPPLY_OUTAGE_REASONS config has no reasons");
+            }
+            List<JsonNode> reasons = new java.util.ArrayList<>();
+            reasonsNode.forEach(reasons::add);
+            reasons.sort((a, b) -> Integer.compare(
+                    a.path("sequenceOrder").asInt(Integer.MAX_VALUE),
+                    b.path("sequenceOrder").asInt(Integer.MAX_VALUE)
+            ));
+
             String rawIssueReason = request.getIssueReason().trim();
-            String resolvedIssueReason = resolveSelection(rawIssueReason, reasons).orElse(rawIssueReason);
-            String selectedKey = resolveIssueSelectionKey(
-                    rawIssueReason,
-                    resolvedIssueReason,
-                    reasons,
-                    TELEMETRY_ISSUE_REASON_SELECTION_KEYS
-            );
+            Integer selectedIndex = null;
+            if (rawIssueReason.matches("^\\d+$")) {
+                selectedIndex = Integer.parseInt(rawIssueReason);
+            }
+
+            if (selectedIndex == null || selectedIndex < 1 || selectedIndex > reasons.size()) {
+                return IntroResponse.builder()
+                        .success(false)
+                        .message("Please choose a number between 1 and " + reasons.size() + ".")
+                        .build();
+            }
+
+            JsonNode selectedReasonNode = reasons.get(selectedIndex - 1);
+            String resolvedIssueReason = selectedReasonNode.path("name").asText().trim();
+            String selectedKey = selectedReasonNode.path("id").asText().trim();
 
             Long schemeId = telemetryTenantRepository
                     .findFirstSchemeForUser(operatorWithSchema.schemaName(), operatorWithSchema.operator().id())
@@ -566,6 +639,7 @@ public class GlificMeterWorkflowService {
                     .message(message)
                     .correlationId(correlationId)
                     .selected(selectedKey)
+                    .notOthers("OTHERS".equalsIgnoreCase(selectedKey))
                     .build();
         } catch (Exception e) {
             log.error("Error saving telemetry issue report for contactId {}: {}", request.getContactId(), e.getMessage(), e);
